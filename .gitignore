@@ -46,7 +46,3 @@ desktop.ini
 node_modules/
 npm-debug.log*
 yarn-error.log*
-
-# --- 생성 결과물 ---
-generate_recipes/output/*
-!generate_recipes/output/.gitkeep
