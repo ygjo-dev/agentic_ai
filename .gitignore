@@ -1,0 +1,52 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# --- 가상환경 ---
+.venv/
+venv/
+env/
+ENV/
+
+# --- 테스트 / 커버리지 ---
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
+# --- 환경변수 (OLLAMA_HOST, OLLAMA_MODEL 등) ---
+.env
+.env.*
+!.env.example
+
+# --- 에디터 / IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- Streamlit ---
+.streamlit/secrets.toml
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- Node (사용 시) ---
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# --- 생성 결과물 ---
+generate_recipes/output/*
+!generate_recipes/output/.gitkeep

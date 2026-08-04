@@ -1,0 +1,18 @@
+steps:
+
+  - node: load_cctv
+    inputs: []
+    outputs:
+      - Video
+
+  - node: analyze_crowd
+    inputs:
+      - Video
+    outputs:
+      - AnalysisResult
+
+  - node: generate_word
+    inputs:
+      - AnalysisResult
+    outputs:
+      - Report

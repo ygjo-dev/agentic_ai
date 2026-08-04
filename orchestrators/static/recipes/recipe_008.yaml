@@ -1,0 +1,18 @@
+steps:
+
+  - node: load_image
+    inputs: []
+    outputs:
+      - Image
+
+  - node: detect_crack
+    inputs:
+      - Image
+    outputs:
+      - AnalysisResult
+
+  - node: generate_word
+    inputs:
+      - AnalysisResult
+    outputs:
+      - Report

@@ -1,0 +1,6 @@
+steps:
+
+  - node: load_image
+    inputs: []
+    outputs:
+      - Image

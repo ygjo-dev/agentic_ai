@@ -1,0 +1,18 @@
+steps:
+
+  - node: load_cctv
+    inputs: []
+    outputs:
+      - Video
+
+  - node: analyze_crowd
+    inputs:
+      - Video
+    outputs:
+      - AnalysisResult
+
+  - node: notify_manager
+    inputs:
+      - AnalysisResult
+    outputs:
+      - Notification

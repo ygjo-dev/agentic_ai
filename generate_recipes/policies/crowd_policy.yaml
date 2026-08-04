@@ -1,0 +1,29 @@
+id: crowd_policy
+
+rules:
+  # 이벤트 기반 판단
+  - name: emergency_event
+    condition:
+      type: event
+      event: CROWD_DANGER
+    action:
+      node: notify_manager
+
+  # 값 비교 기반 판단
+  - name: high_density
+    condition:
+      type: compare
+      field: density
+      operator: ">="
+      value: 80
+    action:
+      node: notify_manager
+
+  - name: normal
+    condition:
+      type: compare
+      field: density
+      operator: "<"
+      value: 80
+    action:
+      node: generate_report
