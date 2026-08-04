@@ -11,7 +11,10 @@
 
 # --- 런타임 ---
 PyYAML>=6.0.3          # 온톨로지 / Recipe / Policy YAML 파싱
-streamlit>=1.60.0      # 데모 UI (streamlit/main.py)
+fastapi>=0.100.0       # Backend API (backend/main.py)
+uvicorn>=0.24.0        # FastAPI 서버 실행
+streamlit>=1.60.0      # 데모 UI (frontend/main.py)
+requests>=2.31.0       # Frontend에서 Backend 호출
 
 # --- 개발 / 테스트 ---
 pytest>=9.1.1          # tests/test_static_workflow.py
