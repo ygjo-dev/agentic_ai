@@ -1,6 +1,6 @@
 # Python 3.12 기준
 #
-# LLM 호출(common/llm/ollama.py)은 표준 라이브러리 urllib 만 사용하므로
+# LLM 호출(llm_engine/ollama.py)은 표준 라이브러리 urllib 만 사용하므로
 # 별도의 HTTP 클라이언트 의존성이 없다.
 # 대신 Ollama 데몬이 실행 중이어야 한다.
 #   ollama serve

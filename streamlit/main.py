@@ -13,16 +13,16 @@ if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
 import paths
-from common.llm.ollama import OLLAMA_HOST, OLLAMA_MODEL, OllamaClient
-from common.nlu.route_resolver import RouteResolutionError, resolve_route
-from orchestrators.static.menu.load import load_menu
-from orchestrators.static.schemas.response_schema import (
+from llm_engine.ollama import OLLAMA_HOST, OLLAMA_MODEL, OllamaClient
+from orchestrator.route_resolver import RouteResolutionError, resolve_route
+from orchestrator.schemas.response_schema import (
     CLARIFY,
     NO_MATCH,
     RESPONSE_SCHEMA,
     SELECT,
 )
-from orchestrators.static.schemas.static_route_result import StaticRouteResult
+from orchestrator.schemas.static_route_result import StaticRouteResult
+from workflows.static.menu.load import load_menu
 
 # ------------------------------------------------------------------ Sample
 #

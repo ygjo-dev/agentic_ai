@@ -6,13 +6,14 @@ import urllib.request
 from pathlib import Path
 
 import pytest
+import yaml
 
 import paths
-from common.llm.ollama import OllamaClient
-from common.nlu.route_resolver import RouteResolutionError, resolve_route
-from orchestrators.static.menu.load import load_menu
-from orchestrators.static.schemas.response_schema import RESPONSE_SCHEMA
+from llm_engine.ollama import OllamaClient
+from orchestrator.route_resolver import RouteResolutionError, resolve_route
+from orchestrator.schemas.response_schema import RESPONSE_SCHEMA
 from stubs.stub_llm_client import StubLLMClient
+from workflows.static.menu.load import load_menu
 
 SELECT = "SELECT"
 CLARIFY = "CLARIFY"
@@ -22,7 +23,8 @@ VALID_STATUSES = {SELECT, CLARIFY, NO_MATCH}
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
-MENU_PATH = paths.MENU_PATH.resolve()
+# LLM 에 Context 로 전달하는 Menu 원문.
+MENU_YAML_PATH = paths.MENU_YAML_PATH.resolve()
 
 
 # ------------------------------------------------------------ 공통 Helper
@@ -73,7 +75,7 @@ def menu_was_read(recorded):
         if not isinstance(entry, (str, Path)):
             continue
         try:
-            if Path(entry).resolve() == MENU_PATH:
+            if Path(entry).resolve() == MENU_YAML_PATH:
                 return True
         except OSError:
             continue
@@ -82,11 +84,10 @@ def menu_was_read(recorded):
 
 @pytest.fixture(scope="session")
 def menu_recipe_ids():
-    assert MENU_PATH.exists(), f"실제 menu 파일이 없다: {MENU_PATH}"
-    menu_text = MENU_PATH.read_text(encoding="utf-8")
+    assert MENU_YAML_PATH.exists(), f"실제 menu 파일이 없다: {MENU_YAML_PATH}"
+    menu = yaml.safe_load(MENU_YAML_PATH.read_text(encoding="utf-8"))
 
-    numbers = re.findall(r"^#\s*Recipe\s*(\d+)", menu_text, flags=re.MULTILINE)
-    recipe_ids = {f"recipe_{number}" for number in numbers}
+    recipe_ids = set(menu["recipes"])
 
     assert len(recipe_ids) >= 2, f"실제 menu 에서 Recipe 를 찾지 못했다: {recipe_ids}"
     return recipe_ids
@@ -134,9 +135,9 @@ def require_ollama(ollama_status):
         )
 
 
-# ------------------------------------------- 01. Context Loading for static workflow (menu.md)
+# ------------------------------------------ 01. Context Loading for static workflow (menu.yaml)
 def test_01_load_static_context(read_file_paths):
-    """Static Workflow 는 Context 로 실제 menu.md 원문을 사용해야 한다.
+    """Static Workflow 는 Context 로 실제 menu.yaml 원문을 사용해야 한다.
     LLM 은 여기서 호출하지 않는다. Context 로딩은 LLM 호출보다 먼저 일어난다.
     """
     read_file_paths.clear()
@@ -144,11 +145,59 @@ def test_01_load_static_context(read_file_paths):
     menu = load_menu()
 
     assert menu_was_read(read_file_paths), (
-        "load_menu() 가 실제 menu.md 를 읽지 않았다.\n"
-        f"  기대한 파일 : {MENU_PATH}"
+        "load_menu() 가 실제 menu.yaml 을 읽지 않았다.\n"
+        f"  기대한 파일 : {MENU_YAML_PATH}"
     )
     assert isinstance(menu, str)
     assert menu.strip() != ""
+
+
+def test_01_static_context_is_parsable_yaml(menu_recipe_ids):
+    """Context 는 LLM 이 일관되게 읽을 수 있는 구조여야 한다.
+    prompt(recipe_selection.md) 가 약속한 recipes/function/steps 구조를 실제로 지키는지 본다.
+    """
+    menu = yaml.safe_load(load_menu())
+
+    assert set(menu["recipes"]) == menu_recipe_ids
+
+    for recipe_id, recipe in menu["recipes"].items():
+        assert recipe_id.startswith("recipe_"), recipe_id
+
+        # prompt 는 function 문장만 보고 Recipe 를 고른다.
+        assert isinstance(recipe["function"], str) and recipe["function"].strip() != ""
+
+        # steps 는 실행 순서. 목록 순서와 step 번호가 어긋나면 안 된다.
+        steps = recipe["steps"]
+        assert steps, recipe_id
+        assert [step["step"] for step in steps] == list(range(1, len(steps) + 1)), recipe_id
+        for step in steps:
+            assert isinstance(step["node"], str)
+            assert isinstance(step["inputs"], list)
+            assert isinstance(step["outputs"], list)
+
+
+def test_01_menu_md_matches_menu_yaml():
+    """menu.md 는 사람이 읽는 사본이다.
+    LLM 이 보는 것은 menu.yaml 뿐이므로, 한쪽만 고치면 문서가 조용히 거짓말을 하게 된다.
+    Recipe 목록과 기능 문장이 두 파일에서 같은지 본다.
+    """
+    md_text = paths.MENU_MD_PATH.read_text(encoding="utf-8")
+    md_functions = {
+        f"recipe_{number}": function.strip()
+        for number, function in re.findall(
+            r"^#\s*Recipe\s*(\d+)\s*\n+##\s*기능\s*\n+(.+)$", md_text, flags=re.MULTILINE
+        )
+    }
+    yaml_functions = {
+        recipe_id: recipe["function"]
+        for recipe_id, recipe in yaml.safe_load(load_menu())["recipes"].items()
+    }
+
+    assert md_functions == yaml_functions, (
+        "menu.md 와 menu.yaml 의 내용이 다르다.\n"
+        f"  menu.md 에만 : {sorted(md_functions.items() - yaml_functions.items())}\n"
+        f"  menu.yaml 에만 : {sorted(yaml_functions.items() - md_functions.items())}"
+    )
 
 
 # ------------------------------------------ 02. Recipe Resolution w/o LLM for static workflow
@@ -307,7 +356,7 @@ END_TO_END_CASES = [
     ("CCTV 군중 분석 결과를 문서로 만들어줘", CLARIFY, None, {"recipe_003", "recipe_004"}),
     ("데이터를 불러와서 분석해줘", CLARIFY, None, {"recipe_002", "recipe_007"}),
 
-    # NO_MATCH : Menu.md 에 없는 recipe.
+    # NO_MATCH : Menu 에 없는 recipe.
     ("CCTV 영상으로 열차 속도를 분석해줘", NO_MATCH, None, set()),
     ("오늘 날씨 알려줘", NO_MATCH, None, set()),
 ]
@@ -340,10 +389,10 @@ def test_04_static_workflow_end_to_end(
         llm_client=OllamaClient(),
     )
 
-    # 1. menu.md 를 읽었는지 검토
+    # 1. menu.yaml 을 읽었는지 검토
     assert menu_was_read(read_file_paths), (
-        "Static Workflow 가 실제 menu.md 를 읽지 않았다.\n"
-        f"  기대한 파일 : {MENU_PATH}"
+        "Static Workflow 가 실제 menu.yaml 을 읽지 않았다.\n"
+        f"  기대한 파일 : {MENU_YAML_PATH}"
     )
 
     # 2. 실제 menu 에 존재하는 Recipe 인지 검토

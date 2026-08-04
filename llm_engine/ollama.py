@@ -21,7 +21,7 @@ def call_ollama(prompt: str, response_schema: dict) -> str:
             "stream": False,
             "format": response_schema,
             "think": False,            
-            "options": {"temperature": 0, "seed": 0, "num_ctx": 8192}, # Menu.md 길이가 길수록, num_ctx ↑.
+            "options": {"temperature": 0, "seed": 0, "num_ctx": 8192}, # menu.yaml 길이가 길수록, num_ctx ↑.
         }
     ).encode("utf-8")
 

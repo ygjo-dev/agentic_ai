@@ -4,9 +4,15 @@
 [Menu]
 {menu}
 
+[Menu 읽는 법]
+- Menu 는 YAML 이다.
+- recipes 아래의 key 하나가 Recipe 하나이고, 그 key 가 Recipe ID 다.
+- 각 Recipe 의 function 값이 그 Recipe 가 하는 일이다.
+- steps 는 그 Recipe 의 실행 순서다. 판단에는 function 만 쓴다.
+
 [규칙]
-- Recipe ID 는 recipe_002, recipe_010 처럼 Menu 에 적힌 세 자리로 쓴다.
-- 각 Recipe 의 "## 기능" 문장을 사용자 요청과 비교한다.
+- Recipe ID 는 recipe_002, recipe_010 처럼 recipes 의 key 를 그대로 쓴다.
+- 각 Recipe 의 function 문장을 사용자 요청과 비교한다.
 - 하는 일이 사용자 요청과 똑같은 Recipe 를 모두 candidate_recipe_ids 에 넣는다.
   요청보다 더 많이 하거나 덜 하는 Recipe 는 넣지 않는다.
 - 요청은 사용자가 말한 마지막 작업에서 끝난다.

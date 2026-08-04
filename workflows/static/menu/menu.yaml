@@ -1,0 +1,177 @@
+version: 1.0
+
+recipes:
+
+  recipe_001:
+    function: CCTV 동영상을 불러온다.
+    steps:
+      - step: 1
+        node: load_cctv
+        inputs: []
+        outputs:
+          - Video
+
+  recipe_002:
+    function: CCTV 동영상을 불러와 동영상에서 군중을 분석한다.
+    steps:
+      - step: 1
+        node: load_cctv
+        inputs: []
+        outputs:
+          - Video
+      - step: 2
+        node: analyze_crowd
+        inputs:
+          - Video
+        outputs:
+          - AnalysisResult
+
+  recipe_003:
+    function: CCTV 동영상을 불러와 동영상에서 군중을 분석하고 분석 결과를 Word 문서로 생성한다.
+    steps:
+      - step: 1
+        node: load_cctv
+        inputs: []
+        outputs:
+          - Video
+      - step: 2
+        node: analyze_crowd
+        inputs:
+          - Video
+        outputs:
+          - AnalysisResult
+      - step: 3
+        node: generate_word
+        inputs:
+          - AnalysisResult
+        outputs:
+          - Report
+
+  recipe_004:
+    function: CCTV 동영상을 불러와 동영상에서 군중을 분석하고 분석 결과를 PPT 문서로 생성한다.
+    steps:
+      - step: 1
+        node: load_cctv
+        inputs: []
+        outputs:
+          - Video
+      - step: 2
+        node: analyze_crowd
+        inputs:
+          - Video
+        outputs:
+          - AnalysisResult
+      - step: 3
+        node: generate_ppt
+        inputs:
+          - AnalysisResult
+        outputs:
+          - Report
+
+  recipe_005:
+    function: CCTV 동영상을 불러와 동영상에서 군중을 분석하고 분석 결과를 관리자에게 전달한다.
+    steps:
+      - step: 1
+        node: load_cctv
+        inputs: []
+        outputs:
+          - Video
+      - step: 2
+        node: analyze_crowd
+        inputs:
+          - Video
+        outputs:
+          - AnalysisResult
+      - step: 3
+        node: notify_manager
+        inputs:
+          - AnalysisResult
+        outputs:
+          - Notification
+
+  recipe_006:
+    function: 이미지를 불러온다.
+    steps:
+      - step: 1
+        node: load_image
+        inputs: []
+        outputs:
+          - Image
+
+  recipe_007:
+    function: 이미지를 불러와 이미지에서 균열을 분석한다.
+    steps:
+      - step: 1
+        node: load_image
+        inputs: []
+        outputs:
+          - Image
+      - step: 2
+        node: detect_crack
+        inputs:
+          - Image
+        outputs:
+          - AnalysisResult
+
+  recipe_008:
+    function: 이미지를 불러와 이미지에서 균열을 분석하고 분석 결과를 Word 문서로 생성한다.
+    steps:
+      - step: 1
+        node: load_image
+        inputs: []
+        outputs:
+          - Image
+      - step: 2
+        node: detect_crack
+        inputs:
+          - Image
+        outputs:
+          - AnalysisResult
+      - step: 3
+        node: generate_word
+        inputs:
+          - AnalysisResult
+        outputs:
+          - Report
+
+  recipe_009:
+    function: 이미지를 불러와 이미지에서 균열을 분석하고 분석 결과를 PPT 문서로 생성한다.
+    steps:
+      - step: 1
+        node: load_image
+        inputs: []
+        outputs:
+          - Image
+      - step: 2
+        node: detect_crack
+        inputs:
+          - Image
+        outputs:
+          - AnalysisResult
+      - step: 3
+        node: generate_ppt
+        inputs:
+          - AnalysisResult
+        outputs:
+          - Report
+
+  recipe_010:
+    function: 이미지를 불러와 이미지에서 균열을 분석하고 분석 결과를 관리자에게 전달한다.
+    steps:
+      - step: 1
+        node: load_image
+        inputs: []
+        outputs:
+          - Image
+      - step: 2
+        node: detect_crack
+        inputs:
+          - Image
+        outputs:
+          - AnalysisResult
+      - step: 3
+        node: notify_manager
+        inputs:
+          - AnalysisResult
+        outputs:
+          - Notification
