@@ -1,8 +1,6 @@
 # Python 3.12 기준
 #
-# LLM 호출(llm_engine/ollama.py)은 표준 라이브러리 urllib 만 사용하므로
-# 별도의 HTTP 클라이언트 의존성이 없다.
-# 대신 Ollama 데몬이 실행 중이어야 한다.
+# LLM 호출(llm_engine/ollama.py)
 #   ollama serve
 #   ollama pull qwen3:14b
 #
@@ -17,4 +15,5 @@ streamlit>=1.60.0      # 데모 UI (frontend/main.py)
 requests>=2.31.0       # Frontend에서 Backend 호출
 
 # --- 개발 / 테스트 ---
-pytest>=9.1.1          # tests/test_static_workflow.py
+pytest>=9.1.1          # tests/ · 실행은 python -m pytest (저장소 루트가 sys.path 에 필요)
+httpx>=0.27.0          # fastapi TestClient (tests/api_contract)
