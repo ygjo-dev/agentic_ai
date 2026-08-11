@@ -1,12 +1,15 @@
 """노드 등록. 온톨로지 · recipe · menu 를 갱신.
+
+온톨로지 읽기와 쓰기는 store 에게 맡긴다. 이 파일은 ontology.yaml 을 직접
+열지 않는다 — 저장소가 그래프DB 로 바뀌어도 등록 규칙은 그대로여야 한다.
+recipe 와 menu 는 아직 store 가 맡는 자산이 아니라 여기서 직접 쓴다.
 """
 
 import re
 import shutil
 
-import yaml
-
 import paths
+from ontology import store
 from orchestrator.route_resolver import resolve_route
 
 # 쓸 수 있는 property key. 값(value)은 새로워도 되지만 key 는 여기 있는 것만 쓴다.
@@ -30,12 +33,10 @@ class UnknownPropertyKey(ValueError):
 def add_node(node_id: str, node: dict, path=None) -> None:
     """온톨로지에 노드를 추가한다.
 
-    yaml.dump 로 다시 쓰지 않고 텍스트를 이어 붙인다 — 파일 상단의 구조 원칙
-    주석과 기존 들여쓰기를 그대로 두기 위해서다. nodes: 가 파일 마지막이라
-    끝에 붙이면 된다.
+    여기서 보는 것은 등록 규칙뿐이다 — 중복인가, 아는 인터페이스인가, 아는
+    property key 인가. 파일에 어떻게 적히는지는 store 가 안다.
     """
-    path = path or paths.ONTOLOGY_PATH
-    ontology = yaml.safe_load(path.read_text(encoding="utf-8"))
+    ontology = store.read(path)
 
     if node_id in ontology["nodes"]:
         raise DuplicateNode(f"이미 있는 노드다: {node_id}")
@@ -56,41 +57,7 @@ def add_node(node_id: str, node: dict, path=None) -> None:
             f"  쓸 수 있는 것 : {sorted(PROPERTY_KEYS)}"
         )
 
-    path.write_text(
-        path.read_text(encoding="utf-8").rstrip("\n")
-        + "\n\n"
-        + _node_block(node_id, node)
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
-
-
-def _node_block(node_id: str, node: dict) -> str:
-    """온톨로지에 적을 노드 한 덩어리. 기존 파일과 같은 들여쓰기."""
-    lines = [
-        f"  {node_id}:",
-        f"    name: {node['name']}",
-        f"    description: {node['description']}",
-    ]
-
-    for field in ("inputs", "outputs"):
-        values = node[field]
-        if values:
-            lines.append(f"    {field}:")
-            lines += [f"      - {value}" for value in values]
-        else:
-            lines.append(f"    {field}: []")
-
-    properties = node.get("properties") or {}
-    if properties:
-        lines.append("    properties:")
-        lines += [f"      {key}: {value}" for key, value in properties.items()]
-    else:
-        # 기존 노드와 관계가 없다는 뜻. 억지로 채우지 않는다.
-        lines.append("    properties: {}")
-
-    return "\n".join(lines)
+    store.append_node(node_id, node, path)
 
 
 # LLM 응답 구조(json). node_id 형식은 코드에서 다시 검증한다.
@@ -122,8 +89,7 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
         InvalidInference: 형식에 맞지 않거나 쓸 수 없는 값을 돌려줬다.
         RouteResolutionError: 응답이 JSON 이 아니거나 필수 key 가 없다.
     """
-    path = path or paths.ONTOLOGY_PATH
-    nodes = yaml.safe_load(path.read_text(encoding="utf-8"))["nodes"]
+    nodes = store.nodes(path)
 
     result = resolve_route(
         prompt=paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8"),
@@ -363,9 +329,9 @@ def register_node(form: dict, llm_client) -> dict:
         "outputs": form["outputs"],
         "properties": inferred["properties"],
     }
-    add_node(node_id, node, path=paths.ONTOLOGY_PATH)
+    add_node(node_id, node)
 
-    nodes = yaml.safe_load(paths.ONTOLOGY_PATH.read_text(encoding="utf-8"))["nodes"]
+    nodes = store.nodes()
     chains = new_recipes_for(node_id, nodes)
     recipe_ids = append_recipes(chains, nodes)
     append_menu(recipe_ids, chains, nodes)
@@ -379,7 +345,7 @@ def reset_to_init() -> None:
     등록으로 늘어난 recipe 도 사라져야 하므로 디렉터리를 통째로 갈아끼운다.
     _init 사본 자체는 절대 건드리지 않는다 — 그것이 망가지면 되돌릴 곳이 없다.
     """
-    shutil.copy2(paths.INIT_ONTOLOGY_PATH, paths.ONTOLOGY_PATH)
+    store.restore_from_init()
     shutil.copy2(paths.INIT_MENU_YAML_PATH, paths.MENU_YAML_PATH)
     shutil.copy2(paths.INIT_MENU_MD_PATH, paths.MENU_MD_PATH)
 
