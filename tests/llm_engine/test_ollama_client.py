@@ -1,9 +1,13 @@
-"""대상 : llm_engine/ollama.py
+"""대상 : llm_engine/ — LLM 호출을 한 곳에 가둔다
 
-llm_engine 검증.
+해석 엔진(orchestrator)은 어떤 LLM 을 쓰는지 모른다. `generate(prompt, schema)`
+하나만 아는 Protocol 로 이야기하고, 그 구현이 여기 있다. 모델을 바꾸려면
+이 폴더만 갈아끼운다.
 
-call_ollama() 는 urllib.request.urlopen 을 monkeypatch 해서 검증한다.
-Ollama 데몬 없이 요청 인자와 응답 처리를 그대로 볼 수 있다.
+**응답을 파싱하지 않는다.** Ollama 응답 봉투에서 원문만 꺼내 그대로 넘긴다 —
+파싱과 계약 검증은 route_resolver 의 몫이라 두 곳에 흩어지면 안 된다.
+
+Ollama 데몬 없이 검증한다. urlopen 을 가로채 요청 인자를 그대로 본다.
 """
 
 import inspect
@@ -21,6 +25,7 @@ RESPONSE_SCHEMA = {
     "properties": {"status": {"type": "string"}},
     "required": ["status"],
 }
+ANSWER = '{"status": "SELECT"}'
 
 
 class FakeHTTPResponse:
@@ -47,103 +52,60 @@ def sent_request(monkeypatch):
     def fake_urlopen(request, *args, **kwargs):
         captured["request"] = request
         captured["kwargs"] = kwargs
-        return FakeHTTPResponse({"response": '{"status": "SELECT"}'})
+        return FakeHTTPResponse({"response": ANSWER})
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     return captured
 
 
-def sent_body(captured):
-    return json.loads(captured["request"].data.decode("utf-8"))
+def test_the_request_forces_a_structured_deterministic_answer(sent_request):
+    """세 가지가 없으면 시연이 무너진다.
 
+    format(schema) — 없으면 LLM 이 자유 문장을 돌려주고 파싱이 깨진다.
+    temperature/seed 0 — 없으면 같은 발화가 실행할 때마다 다른 Recipe 로 간다.
+    think=False — 켜지면 응답에 사고 과정이 섞여 JSON 이 아니게 된다.
 
-# ------------------------------------------------------------ 요청 구성
-def test_call_ollama_posts_to_generate_endpoint(sent_request):
+    num_ctx 는 menu 전체가 들어갈 만큼이어야 한다. 넘치면 응답이 잘려
+    타임아웃처럼 보인다.
+    """
     call_ollama("발화", RESPONSE_SCHEMA)
 
-    assert sent_request["request"].full_url == f"{OLLAMA_HOST}/api/generate"
+    request = sent_request["request"]
+    body = json.loads(request.data.decode("utf-8"))
+    headers = {key.lower(): value for key, value in request.headers.items()}
 
-
-def test_call_ollama_body_carries_model_prompt_and_no_stream(sent_request):
-    call_ollama("승강장 CCTV 동영상으로 혼잡도를 분석해줘", RESPONSE_SCHEMA)
-
-    body = sent_body(sent_request)
-
-    assert body["model"] == OLLAMA_MODEL
-    assert body["prompt"] == "승강장 CCTV 동영상으로 혼잡도를 분석해줘"
-    assert body["stream"] is False
-
-
-def test_call_ollama_passes_response_schema_as_format(sent_request):
-    """구조화 출력의 핵심. schema 가 그대로 실리지 않으면 응답 형식을 강제할 수 없다."""
-    call_ollama("발화", RESPONSE_SCHEMA)
-
-    assert sent_body(sent_request)["format"] == RESPONSE_SCHEMA
-
-
-def test_call_ollama_requests_deterministic_options(sent_request):
-    """temperature / seed 가 고정되지 않으면 같은 발화가 다른 Recipe 로 간다."""
-    call_ollama("발화", RESPONSE_SCHEMA)
-
-    options = sent_body(sent_request)["options"]
-
-    assert options["temperature"] == 0
-    assert options["seed"] == 0
-    assert options["num_ctx"] == 8192
-
-
-def test_call_ollama_disables_thinking(sent_request):
-    """think 가 켜지면 응답에 사고 과정이 섞여 JSON 파싱이 깨진다."""
-    call_ollama("발화", RESPONSE_SCHEMA)
-
-    assert sent_body(sent_request)["think"] is False
-
-
-def test_call_ollama_sends_json_content_type(sent_request):
-    call_ollama("발화", RESPONSE_SCHEMA)
-
-    headers = {key.lower(): value for key, value in sent_request["request"].headers.items()}
-
+    assert request.full_url == f"{OLLAMA_HOST}/api/generate"
     assert headers["content-type"] == "application/json"
 
+    assert body["model"] == OLLAMA_MODEL
+    assert body["prompt"] == "발화"
+    assert body["stream"] is False
+    assert body["format"] == RESPONSE_SCHEMA
+    assert body["think"] is False
+    assert body["options"]["temperature"] == 0
+    assert body["options"]["seed"] == 0
+    assert body["options"]["num_ctx"] == 8192
 
-# ------------------------------------------------------------ 응답 처리
-def test_call_ollama_returns_response_field(sent_request):
-    """Ollama 응답 봉투에서 ["response"] 원문만 꺼내 돌려줘야 한다."""
-    result = call_ollama("발화", RESPONSE_SCHEMA)
-
-    assert result == '{"status": "SELECT"}'
-
-
-def test_ollama_client_delegates_to_call_ollama(sent_request):
-    result = OllamaClient().generate("발화", RESPONSE_SCHEMA)
-
-    assert result == '{"status": "SELECT"}'
-    assert sent_body(sent_request)["prompt"] == "발화"
+    # 시연 중 LLM 이 멎어도 화면이 영영 기다리면 안 된다.
+    assert sent_request["kwargs"].get("timeout"), "타임아웃이 없다"
 
 
-# ------------------------------------------------------------ LLMClient Protocol
-def assert_satisfies_llm_client(instance):
-    """LLMClient Protocol 이 요구하는 generate() 를 그대로 갖추었는지 본다.
+def test_the_raw_answer_comes_back_untouched(sent_request):
+    """봉투에서 ["response"] 원문만 꺼낸다. 파싱은 route_resolver 가 한다.
 
-    LLMClient 는 @runtime_checkable 이 아니라 isinstance 로 볼 수 없다.
-    Protocol 선언부의 signature 와 직접 비교한다.
+    Protocol 을 벗어나면 orchestrator 가 구현을 갈아끼울 수 없고, 테스트의
+    Stub 도 실제와 다른 것을 검증하게 된다. 그래서 실물과 Stub 둘 다 본다.
     """
-    generate = getattr(instance, "generate", None)
-    assert callable(generate), f"{type(instance).__name__} 에 generate() 가 없다."
+    assert call_ollama("발화", RESPONSE_SCHEMA) == ANSWER
+    assert OllamaClient().generate("발화", RESPONSE_SCHEMA) == ANSWER
+    assert json.loads(sent_request["request"].data.decode("utf-8"))["prompt"] == "발화"
 
-    expected = list(inspect.signature(LLMClient.generate).parameters.values())[1:]  # self 제외
-    actual = list(inspect.signature(generate).parameters.values())
+    expected = list(inspect.signature(LLMClient.generate).parameters.values())[1:]
+    for instance in (OllamaClient(), StubLLMClient(ANSWER)):
+        generate = getattr(instance, "generate", None)
+        assert callable(generate), type(instance).__name__
 
-    assert [(p.name, p.annotation) for p in actual] == [
-        (p.name, p.annotation) for p in expected
-    ], f"{type(instance).__name__}.generate() signature 가 Protocol 과 다르다."
-
-
-def test_ollama_client_satisfies_llm_client_protocol():
-    assert_satisfies_llm_client(OllamaClient())
-
-
-def test_stub_llm_client_satisfies_llm_client_protocol():
-    """Stub 이 Protocol 을 벗어나면 테스트가 실제와 다른 것을 검증하게 된다."""
-    assert_satisfies_llm_client(StubLLMClient("{}"))
+        actual = list(inspect.signature(generate).parameters.values())
+        assert [(p.name, p.annotation) for p in actual] == [
+            (p.name, p.annotation) for p in expected
+        ], f"{type(instance).__name__}.generate() 가 Protocol 과 다르다"
