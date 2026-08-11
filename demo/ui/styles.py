@@ -12,7 +12,7 @@ st.container(key="x") 는 DOM 에 .st-key-x 클래스를 남긴다. 그것을 �
 
 import html
 
-from demo.ui import config
+from demo.ui import config, theme
 
 
 def note_markup(message: str) -> str:
@@ -131,7 +131,7 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
 }}
 .new-badge {{
   display: inline-block;
-  background: {config.NEW_COLOR};
+  background: {theme.new()};
   color: #12141A;
   font-size: 0.72rem;
   font-weight: 700;
@@ -142,7 +142,7 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
 }}
 /* 오류 한 줄. 정상일 때는 아예 안 나온다. */
 .note {{
-  color: {config.PLAIN_COLOR};
+  color: {theme.plain()};
   font-size: 0.8rem;
   opacity: 0.85;
   padding: 0.15rem 0;
@@ -160,7 +160,7 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
 .chip {{
   display: inline-block;
   padding: 0.24rem 0.7rem;
-  border: 1px solid {config.PLAIN_COLOR};
+  border: 1px solid {theme.plain()};
   border-radius: 999px;
   background: rgba(255,255,255,0.04);
   color: #E6E8EB;
@@ -186,7 +186,7 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
   display: block;
   width: 100%;
   height: 1px;
-  background: {config.PLAIN_COLOR};
+  background: {theme.plain()};
   position: relative;
   transform-origin: left center;
   animation: line-grow 0.2s ease-out forwards;
@@ -196,7 +196,7 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
   content: "";
   position: absolute;
   right: -1px; top: -2.5px;
-  border-left: 5px solid {config.PLAIN_COLOR};
+  border-left: 5px solid {theme.plain()};
   border-top: 3px solid transparent;
   border-bottom: 3px solid transparent;
 }}
@@ -213,11 +213,11 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
 /* ---------------------------------------------- 등록 스탯 */
 .stats {{ display: flex; gap: 1.4rem; margin: 0.15rem 0 0.5rem 0; }}
 .stat {{ display: inline-flex; align-items: baseline; gap: 0.35rem; }}
-.stat-label {{ color: {config.PLAIN_COLOR}; font-size: 0.8rem; }}
-.stat-before {{ color: {config.PLAIN_COLOR}; font-size: 1.05rem; }}
-.stat-arrow {{ color: {config.PLAIN_COLOR}; font-size: 0.9rem; }}
+.stat-label {{ color: {theme.plain()}; font-size: 0.8rem; }}
+.stat-before {{ color: {theme.plain()}; font-size: 1.05rem; }}
+.stat-arrow {{ color: {theme.plain()}; font-size: 0.9rem; }}
 .stat-after {{
-  color: {config.NEW_COLOR};
+  color: {theme.new()};
   font-size: 1.32rem;
   font-weight: 700;
   animation: pop-in 0.32s ease-out;

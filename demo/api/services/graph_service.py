@@ -10,6 +10,7 @@
 import hashlib
 
 import paths
+from demo.api.graph_svg.dot import COLORS
 from ontology.graph import (
     dotted_edges,
     load_ontology,
@@ -73,6 +74,18 @@ def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
     return {recipe_id: path_of(recipe_id, nodes) for recipe_id in dict.fromkeys(ids)}
 
 
+def domain_graph() -> tuple[dict, dict, dict]:
+    """그리기가 쓰는 도메인 형태 그대로. (nodes, solid, dotted)
+
+    solid / dotted 는 튜플 키 dict 다. JSON 은 튜플 키를 못 담아 graph_payload 는
+    리스트로 펴는데, 서버 안에서 그릴 때는 펼 이유가 없다 — 예전에는 프론트엔드가
+    받아서 다시 튜플로 되돌렸다(to_build_dot_args). 그 왕복이 사라졌다.
+
+    온톨로지를 읽는 곳은 이 모듈 하나다. graph_svg 는 여기서 받아 쓰기만 한다.
+    """
+    return load_ontology()["nodes"], solid_edges(), dotted_edges()
+
+
 def graph_payload() -> dict:
     """그래프 한 벌 전체. 프론트엔드가 그리는 데 필요한 것만 담는다.
 
@@ -85,6 +98,9 @@ def graph_payload() -> dict:
 
     return {
         "version": ontology_version(),
+        # 색은 graph_svg 가 정한다. UI 가 자기 팔레트를 따로 들면 두 곳이
+        # 조용히 어긋나고, 그때 사람은 화면을 보고 코드를 의심한다.
+        "colors": dict(COLORS),
         # interfaces 는 {이름: {description}} 형태의 dict 다. 이름만 뽑아 순서대로.
         "interfaces": list(ontology["interfaces"]),
         "nodes": {

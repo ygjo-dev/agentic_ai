@@ -5,7 +5,8 @@ import shutil
 
 import pytest
 
-from demo.ui.components.graph_section import build_dot, render_svg
+from demo.api.graph_svg.dot import build_dot
+from demo.api.graph_svg.graphviz import render_svg
 
 NODES = {
     "load_cctv_platform": {"name": "승강장 CCTV 불러오기"},

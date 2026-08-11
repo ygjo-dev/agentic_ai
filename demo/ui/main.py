@@ -21,10 +21,10 @@ REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-from demo.ui import api_client, config, styles
+from demo.ui import api_client, config, styles, theme
 from demo.ui.api_client import ApiError
 from demo.ui.components.focus_panel import render_focus_section
-from demo.ui.components.graph_section import mark_from_registration, render_graph_section
+from demo.ui.components.graph_section import render_graph_section
 from demo.ui.components.input_section import render_input_section
 from demo.ui.components.node_form import render_node_form
 from demo.ui.components.path_panel import render_band, skeleton_markup
@@ -42,6 +42,32 @@ def _is_registration(view) -> bool:
     return isinstance(view, dict) and view.get("kind") == "register" and "result" in view
 
 
+def render_mode(view) -> tuple[str, dict | None]:
+    """지금 장면의 render 모드와 강조 원본.
+
+    등록 결과일 때만 mark 를 넘긴다. 무엇을 강조로 바꿀지는 서버가 정한다 —
+    화면이 new_solid_edges 같은 도메인 형태를 알 필요가 없다.
+    """
+    if _is_registration(view):
+        return "register", view["result"]
+    if isinstance(view, dict) and view.get("kind") == "resolve":
+        return "resolve", None
+    return "plain", None
+
+
+def recipe_ids_to_show(view) -> list[str]:
+    """강조할 recipe 목록. 등록은 새로 생긴 것, 해석은 고른 것과 후보들."""
+    if not isinstance(view, dict) or "error" in view:
+        return []
+
+    result = view.get("result") or {}
+    if view.get("kind") == "register":
+        return list(result.get("recipe_ids") or [])
+
+    wanted = [result.get("recipe_id"), *(result.get("candidate_recipe_ids") or [])]
+    return list(dict.fromkeys(r for r in wanted if r))
+
+
 def format_elapsed(seconds: float) -> str:
     """Run 클릭부터 응답까지 걸린 시간을 초단위로 표시. 60초 이상이면 분:초로 표시."""
     if seconds < 60:
@@ -54,7 +80,6 @@ def format_elapsed(seconds: float) -> str:
 st.set_page_config(page_title="Recipe Resolver", layout="wide")
 
 ratios = config.layout_ratios()
-st.markdown(styles.page_css(ratios), unsafe_allow_html=True)
 
 if config.DEBUG:
     st.title("Recipe Resolver Frontend")
@@ -77,8 +102,19 @@ try:
 except ApiError:
     graph, graph_stale = None, False
 
+# 색은 백엔드가 정한다. CSS 를 짜기 전에 받아둬야 칩·배지가 제 색으로 나온다.
+theme.set_colors((graph or {}).get("colors"))
+st.markdown(styles.page_css(ratios), unsafe_allow_html=True)
+
 view = st.session_state.get("view")
-mark = mark_from_registration(view["result"]) if _is_registration(view) else None
+
+# 그리기는 백엔드가 한다. 여기서 정하는 것은 "무엇을 강조할 장면인가" 뿐이다.
+mode, mark = render_mode(view)
+try:
+    rendered = api_client.render(mode, recipe_ids_to_show(view), mark)
+    render_error = None
+except ApiError as exc:
+    rendered, render_error = None, str(exc)
 
 # ================================================================ 상단
 top = st.container(key="top_panel")
@@ -107,7 +143,10 @@ with top:
                     styles.note_markup("Backend 응답이 없어 마지막으로 받은 그래프를 보여줍니다."),
                     unsafe_allow_html=True,
                 )
-            render_graph_section(graph, mark, ratios)
+            if render_error:
+                st.markdown(styles.note_markup(f"그래프를 그릴 수 없습니다 — {render_error}"),
+                            unsafe_allow_html=True)
+            render_graph_section(rendered, pulse=_is_registration(view), ratios=ratios)
 
 # ================================================================ 하단
 # 위쪽 얇은 띠(발화·범례·오류·스켈레톤)는 Streamlit, 아래 본문은 iframe 하나다.
@@ -152,7 +191,7 @@ with bottom:
     with band_slot:
         render_band(view)
     with body_slot:
-        render_focus_section(view, graph, mark, ratios)
+        render_focus_section(rendered, view, ratios)
 
     if config.DEBUG and isinstance(view, dict) and view.get("elapsed") is not None:
         st.metric("⏱️ Run Time", format_elapsed(view["elapsed"]))

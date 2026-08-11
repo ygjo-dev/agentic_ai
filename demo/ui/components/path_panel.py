@@ -6,6 +6,10 @@ Graphviz 를 쓰지 않는다 — 1/3 높이에 9노드 그래프를 또 그리�
 경로는 본질적으로 선형 사슬이라 칩+화살표가 훨씬 잘 읽히고, dot 왕복이 없어
 즉각적이며 애니메이션을 붙이기 쉽다.
 
+경로를 무엇으로 채울지는 백엔드가 정한다(graph_svg/focus.py). 여기는 이름
+사슬을 받아 칩으로 그리기만 한다 — 순서 계산이 두 곳에 있으면 그래프와 목록이
+서로 다른 순서를 말하게 된다.
+
 마크업 생성은 Streamlit 없이 부를 수 있는 순수 함수다(테스트 때문).
 """
 
@@ -13,7 +17,7 @@ import html
 
 import streamlit as st
 
-from demo.ui import config, focus, styles
+from demo.ui import config, styles, theme
 
 # 안내 문구를 두지 않는다. 실행 전에는 하단 지도가 그대로 떠 있고, NO_MATCH 면
 # 지도는 있는데 켜지는 길이 없다 — 문구 없이 그림으로 읽힌다.
@@ -45,54 +49,30 @@ def link(index: int) -> str:
     )
 
 
-def path_chain(recipe_id: str, steps: list[dict], color: str) -> str:
-    """recipe 하나를 칩 사슬 한 줄로.
+def path_chain(names: list[str], color: str) -> str:
+    """이름 사슬 하나를 칩 한 줄로.
 
     recipe id 는 적지 않는다. 줄끼리는 노드 내용으로 구분되고, id 는 사람이
-    읽을 정보가 아니다. recipe_id 인자는 호출부의 형태를 유지하려고 남긴다.
+    읽을 정보가 아니다.
     """
-    if not steps:
+    if not names:
         return '<div class="chain"></div>'
 
     parts = []
-    for position, step in enumerate(steps):
-        name = str(step.get("name") or step.get("node_id", ""))
+    for position, name in enumerate(names):
         parts.append(chip(name, position, color))
-        if position < len(steps) - 1:
+        if position < len(names) - 1:
             parts.append(link(position))
 
     return f'<div class="chain">{"".join(parts)}</div>'
 
 
-# 순서 계산은 demo/ui/focus.py 가 한다 — 그래프 쪽도 같은 순서를 써야 한다.
-ordered_recipe_ids = focus.ordered_recipe_ids
-
-
-def chips_markup(paths: dict, recipe_ids: list[str], color: str) -> str:
-    """recipe 목록 전체를 칩 사슬로. iframe 안에 들어간다.
+def chips_markup(chains: list[list[str]], color: str) -> str:
+    """이름 사슬 목록 전체를 칩으로. iframe 안에 들어간다.
 
     비면 빈 칸이다. 안내 문구를 넣지 않는다 — 옆 그래프가 이미 상태를 말한다.
     """
-    return "".join(
-        path_chain(recipe_id, (paths or {}).get(recipe_id) or [], color)
-        for recipe_id in recipe_ids
-    )
-
-
-def paths_markup(result: dict | None, color: str | None = None) -> str:
-    """결과의 경로 사슬. 후보가 없으면 빈 문자열이다.
-
-    CLARIFY 는 후보를 나란히 둔다. 클릭으로 좁히지 않는다 — 여럿이 보이는 것
-    자체가 "아직 안 정해졌다" 를 말해준다.
-    """
-    if not result:
-        return ""
-
-    return chips_markup(
-        result.get("paths") or {},
-        ordered_recipe_ids(result),
-        color or config.HIGHLIGHT_COLOR,
-    )
+    return "".join(path_chain(names, color) for names in chains or [])
 
 
 def utterance_markup(utterance: str | None) -> str:
@@ -133,7 +113,7 @@ def registration_header(result: dict) -> str:
 
     return (
         f'<div class="utterance">'
-        f'<span class="new-badge" style="background:{config.NEW_COLOR}">새 노드</span> '
+        f'<span class="new-badge" style="background:{theme.new()}">새 노드</span> '
         f"{html.escape(str(name))}</div>" + counts_markup(result.get("counts"))
     )
 

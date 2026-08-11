@@ -16,6 +16,7 @@ BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 # 타임아웃은 하는 일에 맞춘다. LLM 이 끼는 호출만 길다.
 GRAPH_TIMEOUT = 10
+RENDER_TIMEOUT = 30  # Graphviz 를 여러 벌 돌린다. 캐시 적중이면 즉시 온다.
 RESOLVE_TIMEOUT = 180
 NODES_TIMEOUT = 180
 HEALTH_TIMEOUT = 5
@@ -74,6 +75,20 @@ def get_graph() -> tuple[dict, bool]:
 
     st.session_state[GRAPH_CACHE_KEY] = payload
     return payload, False
+
+
+def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> dict:
+    """화면 한 장에 필요한 SVG 와 칩 데이터.
+
+    그리기는 전부 백엔드가 한다 — 여기는 무엇을 강조할지만 말한다.
+    mark 는 POST /nodes 응답을 그대로 넘긴다. 줄이는 일은 서버가 한다.
+    """
+    return _call(
+        "POST",
+        "/render",
+        timeout=RENDER_TIMEOUT,
+        json={"mode": mode, "recipe_ids": list(recipe_ids or []), "mark": mark},
+    )
 
 
 def resolve(utterance: str) -> dict:

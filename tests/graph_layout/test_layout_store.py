@@ -7,7 +7,7 @@
 
 import json
 
-from demo.ui import layout_store
+from demo.api.graph_svg import layout_store
 
 POSITIONS = {
     "load_cctv_platform": (86.2, 209.91),
@@ -15,8 +15,9 @@ POSITIONS = {
 }
 
 
-def graph_of(*node_ids):
-    return {"nodes": {node_id: {"name": node_id} for node_id in node_ids}}
+def nodes_of(*node_ids):
+    """resolve 가 받는 노드 dict. 이름만 있으면 된다."""
+    return {node_id: {"name": node_id} for node_id in node_ids}
 
 
 # ------------------------------------------------------------ 왕복
@@ -75,7 +76,7 @@ def test_resolve_returns_stored_positions(tmp_path):
     path = tmp_path / "layout.json"
     layout_store.save(POSITIONS, path=path)
 
-    positions, missing = layout_store.resolve(graph_of(*POSITIONS), path=path)
+    positions, missing = layout_store.resolve(nodes_of(*POSITIONS), path=path)
 
     assert positions == POSITIONS
     assert missing == []
@@ -86,7 +87,7 @@ def test_resolve_drops_nodes_that_are_gone(tmp_path):
     path = tmp_path / "layout.json"
     layout_store.save(POSITIONS, path=path)
 
-    positions, _ = layout_store.resolve(graph_of("analyze_congestion"), path=path)
+    positions, _ = layout_store.resolve(nodes_of("analyze_congestion"), path=path)
 
     assert set(positions) == {"analyze_congestion"}
 
@@ -96,7 +97,7 @@ def test_resolve_reports_nodes_without_coordinates(tmp_path):
     layout_store.save(POSITIONS, path=path)
 
     _, missing = layout_store.resolve(
-        graph_of("analyze_congestion", "generate_word", "generate_ppt"), path=path
+        nodes_of("analyze_congestion", "generate_word", "generate_ppt"), path=path
     )
 
     assert missing == ["generate_word", "generate_ppt"]
@@ -104,7 +105,7 @@ def test_resolve_reports_nodes_without_coordinates(tmp_path):
 
 def test_resolve_on_a_fresh_install_reports_everything_missing(tmp_path):
     positions, missing = layout_store.resolve(
-        graph_of("a", "b"), path=tmp_path / "없다.json"
+        nodes_of("a", "b"), path=tmp_path / "없다.json"
     )
 
     assert positions == {}

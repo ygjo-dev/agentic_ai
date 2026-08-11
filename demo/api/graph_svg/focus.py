@@ -1,7 +1,7 @@
 """해석된 경로를 다루는 순수 함수.
 
-무엇을 강조하고 무엇을 클릭할 수 있는지 정한다. Streamlit 도 Graphviz 도
-모른다 — 그래야 런타임 없이 검증할 수 있다.
+무엇을 강조하고, 무엇을 클릭할 수 있고, 칩에 어떤 이름이 실리는지 정한다.
+Streamlit 도 Graphviz 도 모른다 — 그래야 런타임 없이 검증할 수 있다.
 
 클릭 의미론 : 노드를 누르면 **그 노드로 끝나는** recipe 만 남는다.
 그 노드를 지나는 recipe 를 남기는 것이 아니다. 후보가 여럿일 때 갈라지는
@@ -92,4 +92,54 @@ def nodes_of(paths: dict, recipe_ids: list[str]) -> set[str]:
         node_id
         for recipe_id in recipe_ids
         for node_id in step_ids((paths or {}).get(recipe_id) or [])
+    }
+
+
+def recipe_ids_of(result: dict | None) -> list[str]:
+    """해석 결과에서 강조할 recipe 목록. SELECT 는 하나, CLARIFY 는 후보 전부."""
+    if not result:
+        return []
+    if result.get("status") == "SELECT" and result.get("recipe_id"):
+        return [result["recipe_id"]]
+    if result.get("status") == "CLARIFY":
+        return list(result.get("candidate_recipe_ids") or [])
+    return []  # NO_MATCH — 강조할 것이 없다.
+
+
+def chain_names(steps: list[dict]) -> list[str]:
+    """경로 하나를 화면에 적을 이름 사슬로.
+
+    id 가 아니라 사람이 읽는 이름이다. 이름이 없으면 id 로 떨어진다 —
+    시연 중에 빈 칩이 뜨는 것보다 낫다.
+    """
+    return [
+        str(step.get("name") or step.get("node_id", ""))
+        for step in steps or []
+    ]
+
+
+def chips_of(paths: dict, recipe_ids: list[str]) -> list[list[str]]:
+    """recipe 여럿을 이름 사슬 목록으로. UI 는 이걸 받아 칩으로 그리기만 한다."""
+    return [
+        chain_names((paths or {}).get(recipe_id) or [])
+        for recipe_id in recipe_ids
+    ]
+
+
+def chips_by_variant(paths: dict, recipe_ids: list[str]) -> dict[str, list[list[str]]]:
+    """변형별 칩 데이터. 그래프 변형과 키가 같아야 한다.
+
+    키가 어긋나면 노드를 눌렀을 때 그래프만 좁혀지고 목록은 그대로 남는다.
+    """
+    return {
+        key: chips_of(paths, ids)
+        for key, ids in focus_variants(paths, recipe_ids).items()
+    }
+
+
+def recipes_by_last_node(paths: dict, recipe_ids: list[str]) -> dict[str, list[str]]:
+    """마지막 노드별로 그것으로 끝나는 recipe 목록."""
+    return {
+        node_id: recipes_ending_at(paths, recipe_ids, node_id)
+        for node_id in last_nodes(paths, recipe_ids)
     }

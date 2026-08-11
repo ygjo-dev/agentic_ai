@@ -9,12 +9,8 @@ import shutil
 
 import pytest
 
-from demo.ui.components.graph_section import (
-    GraphvizFailed,
-    GraphvizNotFound,
-    build_dot,
-    render_svg,
-)
+from demo.api.graph_svg.dot import build_dot
+from demo.api.graph_svg.graphviz import GraphvizFailed, GraphvizNotFound, render_svg
 
 pytestmark = pytest.mark.skipif(
     shutil.which("dot") is None, reason="graphviz 가 설치되어 있지 않다"
@@ -68,7 +64,7 @@ def test_failure_message_keeps_the_dot_stderr():
 def test_missing_dot_binary_raises_not_found(monkeypatch):
     """dot 이 없는 환경에서도 조용히 비지 않고 설치 안내가 나와야 한다."""
     monkeypatch.setattr(
-        "demo.ui.components.graph_section.shutil.which", lambda name: None
+        "demo.api.graph_svg.graphviz.shutil.which", lambda name: None
     )
 
     with pytest.raises(GraphvizNotFound) as error_info:

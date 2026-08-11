@@ -13,20 +13,17 @@ import shutil
 
 import pytest
 
-from demo.ui.components.graph_section import (
+from demo.api.graph_svg.build import wrap_label
+from demo.api.graph_svg.dot import (
     DOTTED_LEN,
     HIGHLIGHT_COLOR,
     NEW_COLOR,
-    _run_graphviz,
-    NEATO_ATTRS,
-    NEATO_FRESH_ATTRS,
     NODE_ATTRS,
     SOLID_LEN,
     build_dot,
-    layout_positions,
-    render_svg,
-    wrap_label,
 )
+from demo.api.graph_svg.graphviz import _run_graphviz, layout_positions, render_svg
+from demo.api.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"

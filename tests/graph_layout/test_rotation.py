@@ -12,14 +12,10 @@ import shutil
 
 import pytest
 
-from demo.ui import layout_store
-from demo.ui.components.graph_section import (
-    NEATO_FRESH_ATTRS,
-    build_dot,
-    ensure_positions,
-    layout_positions,
-    to_build_dot_args,
-)
+from demo.api.graph_svg import layout_store
+from demo.api.graph_svg.dot import build_dot
+from demo.api.graph_svg.graphviz import layout_positions
+from demo.api.graph_svg.layout_store import NEATO_FRESH_ATTRS, ensure_positions
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
@@ -61,6 +57,20 @@ def graph_with_extra_node(node_id: str, feeder: str = "analyze") -> dict:
             {"from": feeder, "to": node_id, "interface": "AnalysisResult"},
         ],
     }
+
+
+def domain(graph: dict) -> tuple[dict, dict, dict]:
+    """fixture 를 ensure_positions 가 받는 도메인 형태로.
+
+    예전에는 프로덕션의 to_build_dot_args 가 하던 일이다. 그리기가 서버로
+    들어가면서 JSON 왕복이 사라져 어댑터도 없어졌고, 여기서는 fixture 를
+    쓰기 좋게 펴는 용도로만 남는다.
+    """
+    return (
+        graph["nodes"],
+        {(e["from"], e["to"]): e["interface"] for e in graph["solid_edges"]},
+        {(e["a"], e["b"]): e["labels"] for e in graph["dotted_edges"]},
+    )
 
 
 @pytest.fixture
@@ -119,9 +129,9 @@ def test_transpose_preserves_relative_distances():
 # ------------------------------------------------------------ 최초 배치
 def test_fresh_layout_is_transposed(store):
     """눕히지 않으면 세로로 길어 가로 패널을 못 채운다."""
-    saved = ensure_positions(GRAPH)
+    saved = ensure_positions(*domain(GRAPH))
 
-    nodes, solid, dotted = to_build_dot_args(GRAPH)
+    nodes, solid, dotted = domain(GRAPH)
     raw = layout_positions(
         build_dot(nodes, solid, dotted, positions={}, spring=True,
                   graph_attrs=NEATO_FRESH_ATTRS)
@@ -137,9 +147,9 @@ def test_fresh_layout_swaps_the_spans(store):
     "가로로 눕는다" 를 직접 단언하지 않는다 — 그것은 그래프 모양에 달린 것이고
     코드의 성질이 아니다. 코드가 보장하는 것은 두 축이 바뀐다는 것뿐이다.
     """
-    saved = ensure_positions(GRAPH)
+    saved = ensure_positions(*domain(GRAPH))
 
-    nodes, solid, dotted = to_build_dot_args(GRAPH)
+    nodes, solid, dotted = domain(GRAPH)
     raw = layout_positions(
         build_dot(nodes, solid, dotted, positions={}, spring=True,
                   graph_attrs=NEATO_FRESH_ATTRS)
@@ -156,9 +166,9 @@ def test_fresh_layout_swaps_the_spans(store):
 # ------------------------------------------------------------ 증분 배치 (핵심)
 def test_incremental_layout_does_not_transpose(store):
     """증분에서 또 눕히면 지도가 뒤집히고 기존 노드가 전부 움직인다."""
-    before = ensure_positions(GRAPH)
+    before = ensure_positions(*domain(GRAPH))
 
-    after = ensure_positions(graph_with_extra_node("new_one"))
+    after = ensure_positions(*domain(graph_with_extra_node("new_one")))
 
     assert worst_drift(before, after) < 0.51
 
@@ -170,13 +180,13 @@ def test_two_registrations_in_a_row_keep_the_map(store):
     두 번 걸리면 서로 상쇄돼 처음과 같은 방향으로 돌아온다. 마지막만 비교하면
     그 상쇄 때문에 통과해 버린다(실측으로 확인했다).
     """
-    first = ensure_positions(GRAPH)
+    first = ensure_positions(*domain(GRAPH))
 
-    second = ensure_positions(graph_with_extra_node("new_one"))
+    second = ensure_positions(*domain(graph_with_extra_node("new_one")))
     assert worst_drift(first, second) < 0.51, "1회 등록에서 이미 틀어졌다"
 
     third = ensure_positions(
-        {
+        *domain({
             **graph_with_extra_node("new_one"),
             "nodes": {
                 **graph_with_extra_node("new_one")["nodes"],
@@ -187,7 +197,7 @@ def test_two_registrations_in_a_row_keep_the_map(store):
                 *graph_with_extra_node("new_one")["solid_edges"],
                 {"from": "analyze", "to": "new_two", "interface": "AnalysisResult"},
             ],
-        }
+        })
     )
 
     assert worst_drift(first, third) < 0.51
@@ -195,6 +205,6 @@ def test_two_registrations_in_a_row_keep_the_map(store):
 
 def test_nothing_missing_means_no_layout_run(store):
     """좌표가 다 있으면 neato 를 부르지 않는다 — 부르면 회전이 또 걸릴 위험이 있다."""
-    first = ensure_positions(GRAPH)
+    first = ensure_positions(*domain(GRAPH))
 
-    assert ensure_positions(GRAPH) == first
+    assert ensure_positions(*domain(GRAPH)) == first

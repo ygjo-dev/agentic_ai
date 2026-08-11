@@ -18,7 +18,13 @@ if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
 from demo.api.schemas.node import NodeRegisterRequest
-from demo.api.services import graph_service, node_service, resolve_service
+from demo.api.schemas.render import RenderRequest
+from demo.api.services import (
+    graph_service,
+    node_service,
+    render_service,
+    resolve_service,
+)
 from llm_engine import ollama
 from llm_engine.ollama import OllamaClient
 from ontology.registry import (
@@ -51,11 +57,36 @@ DOMAIN_ERRORS = (
 async def graph_endpoint() -> dict:
     """온톨로지 그래프 한 벌. 프론트엔드가 그리는 데 필요한 것 전부.
 
-    version · interfaces · nodes · solid_edges · dotted_edges 를 담아 돌려준다.
-    version 은 내용 해시라 프론트엔드 캐시 키가 된다.
+    version · colors · interfaces · nodes · solid_edges · dotted_edges 를 담아
+    돌려준다. version 은 내용 해시라 프론트엔드 캐시 키가 되고, colors 는
+    화면이 칩 · 배지 · 안내 문구에 쓸 색이다(색의 출처는 graph_svg 한 곳뿐이다).
     """
     try:
         return graph_service.graph_payload()
+    except DOMAIN_ERRORS as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+
+
+@app.post("/render")
+async def render_endpoint(form: RenderRequest) -> dict:
+    """화면 한 장에 필요한 SVG 와 칩 데이터.
+
+    top(상단 그래프) · variants(하단 변형들) · focus(클릭 가능한 끝노드) ·
+    chips(칩에 적을 이름 사슬)를 돌려준다.
+
+    variants 의 모든 SVG 는 노드 좌표와 캔버스 크기가 같다 — 좌표를 전부
+    고정하고 neato -n 으로 그리기 때문이다. 그래야 노드를 눌러 좁혀도
+    화면이 안 흔들린다.
+
+    같은 요청은 서버가 캐시한다. 키에 온톨로지 version 과 좌표 해시가 들어가
+    노드를 등록하면 저절로 빗나간다.
+    """
+    try:
+        return render_service.render(form.mode, form.recipe_ids, form.mark)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except DOMAIN_ERRORS as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:

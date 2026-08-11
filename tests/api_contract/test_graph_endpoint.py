@@ -1,15 +1,19 @@
 """demo/api/main.py 의 /graph 엔드포인트 검증.
 
-가장 중요한 것은 JSON 왕복에서 정보가 새지 않는지다. 프론트엔드는 이 응답을
-to_build_dot_args() 로 되돌려 그리므로, 되돌린 결과가 도메인 계산과 다르면
-화면이 달라진다.
+가장 중요한 것은 응답이 도메인 계산과 어긋나지 않는지다. 그리기는 이제 서버
+안에서 도메인 dict 를 그대로 쓰고(graph_service.domain_graph), 이 응답은 화면이
+받는 것이다. 둘이 갈라지면 사람이 보는 그래프와 서버가 아는 그래프가 달라진다.
+
+UI 를 import 하지 않는다. API 테스트가 화면을 끌어오면 화면을 갈아끼울 때
+API 테스트가 함께 깨진다.
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
 import demo.api.main as backend_main
-from demo.ui.components.graph_section import build_dot, to_build_dot_args
+from demo.api.graph_svg.dot import build_dot
+from demo.api.services.graph_service import domain_graph
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 
 
@@ -33,6 +37,7 @@ def test_graph_returns_200(client):
 def test_graph_has_contract_keys(payload):
     assert set(payload) == {
         "version",
+        "colors",
         "interfaces",
         "nodes",
         "solid_edges",
@@ -58,27 +63,43 @@ def test_stages_are_gone(payload):
     assert "stages" not in payload
 
 
-# ------------------------------------------------------------ 왕복 (핵심)
-def test_solid_edges_survive_the_round_trip(payload):
-    """JSON 은 튜플 key 를 못 담는다. 어댑터가 정확히 되돌려야 한다."""
-    _, solid, _ = to_build_dot_args(payload)
+# ------------------------------------------------------------ 도메인과의 일치 (핵심)
+def test_solid_edges_match_the_domain(payload):
+    """JSON 은 튜플 key 를 못 담아 리스트로 편다. 펴는 과정에서 새면 안 된다."""
+    flattened = {
+        (edge["from"], edge["to"]): edge["interface"]
+        for edge in payload["solid_edges"]
+    }
 
-    assert solid == solid_edges()
-
-
-def test_dotted_edges_survive_the_round_trip(payload):
-    _, _, dotted = to_build_dot_args(payload)
-
-    assert dotted == dotted_edges()
+    assert flattened == solid_edges()
 
 
-def test_dot_is_identical_to_the_domain_computation(payload):
-    """왕복한 인자로 그린 DOT 이 도메인에서 바로 그린 것과 한 글자도 다르지 않아야 한다.
+def test_dotted_edges_match_the_domain(payload):
+    flattened = {
+        (edge["a"], edge["b"]): edge["labels"] for edge in payload["dotted_edges"]
+    }
+
+    assert flattened == dotted_edges()
+
+
+def test_payload_keeps_the_domain_order(payload):
+    """순서까지 같아야 한다.
 
     노드와 엣지가 나오는 순서가 Graphviz 레이아웃을 정한다. 순서가 흔들리면
-    좌표가 바뀌어 화면이 깜빡인다 — 문자열 비교가 그것까지 잡는다.
+    좌표가 바뀌어 화면이 깜빡인다. dict 비교는 순서를 안 보므로 따로 본다.
     """
-    nodes, solid, dotted = to_build_dot_args(payload)
+    assert list(payload["nodes"]) == list(load_ontology()["nodes"])
+    assert [(e["from"], e["to"]) for e in payload["solid_edges"]] == list(solid_edges())
+    assert [(e["a"], e["b"]) for e in payload["dotted_edges"]] == list(dotted_edges())
+
+
+def test_drawing_uses_the_same_graph_as_the_response():
+    """그리기가 받는 도메인 dict 와 도메인 계산이 한 글자도 다르지 않아야 한다.
+
+    그리기는 domain_graph() 로 바로 받는다(어댑터가 사라졌다). 그 경로가
+    /graph 응답과 갈라지면 화면과 서버가 다른 그래프를 말하게 된다.
+    """
+    nodes, solid, dotted = domain_graph()
 
     assert build_dot(nodes, solid, dotted) == build_dot(
         load_ontology()["nodes"], solid_edges(), dotted_edges()
