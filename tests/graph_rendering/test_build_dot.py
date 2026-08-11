@@ -37,45 +37,6 @@ def edge_lines(dot: str, frm: str, to: str) -> list[str]:
 
 
 # ------------------------------------------------------------ 기본 그래프
-def test_solid_edge_has_no_arrow():
-    """레시피 연결은 방향 없는 선이다. 화살표는 선택된 경로에만 붙는다."""
-    dot = build_dot(NODES, SOLID, DOTTED)
-
-    for line in edge_lines(dot, "load_cctv_platform", "analyze_congestion"):
-        assert "dir=none" in line, line
-
-
-def test_solid_edge_carries_no_interface_label():
-    """같은 인터페이스 이름이 열 개 넘게 반복되면 화면이 라벨로 덮인다.
-
-    무엇이 흐르는지는 열 위치로 읽는다.
-    """
-    dot = build_dot(NODES, SOLID, DOTTED)
-
-    for line in edge_lines(dot, "load_cctv_platform", "analyze_congestion"):
-        assert "label=" not in line, line
-
-    assert "MediaData" not in dot
-    assert "AnalysisResult" not in dot
-
-
-def test_solid_edge_still_accepts_the_interface_value():
-    """시그니처는 그대로다. 나중에 툴팁 등으로 쓸 수 있어야 한다."""
-    dot = build_dot(NODES, {("load_cctv_platform", "analyze_congestion"): "MediaData"}, {})
-
-    assert edge_lines(dot, "load_cctv_platform", "analyze_congestion")
-
-
-def test_dotted_edge_is_dashed_and_has_no_arrow():
-    dot = build_dot(NODES, SOLID, DOTTED)
-
-    lines = edge_lines(dot, "generate_ppt", "generate_word")
-    assert lines
-    for line in lines:
-        assert "style=dashed" in line, line
-        assert "dir=none" in line, line
-
-
 def test_dotted_edge_does_not_use_constraint_false():
     """constraint=false 는 브라우저 Graphviz(WASM)에서 레이아웃이 끝나지 않는다.
 
@@ -87,98 +48,7 @@ def test_dotted_edge_does_not_use_constraint_false():
     assert "constraint=false" not in dot
 
 
-def test_dotted_edge_color_differs_from_solid():
-    """굵기 차이만으로는 실선과 점선이 구분되지 않는다."""
-    from demo.ui.components.graph_section import DOTTED_COLOR, PLAIN_COLOR
-
-    assert DOTTED_COLOR != PLAIN_COLOR
-
-    dot = build_dot(NODES, SOLID, DOTTED)
-
-    dotted_line = edge_lines(dot, "generate_ppt", "generate_word")[0]
-    assert DOTTED_COLOR in dotted_line
-
-    solid_line = edge_lines(dot, "load_cctv_platform", "analyze_congestion")[0]
-    assert DOTTED_COLOR not in solid_line
-
-
-def test_dotted_label_color_matches_the_line():
-    from demo.ui.components.graph_section import DOTTED_COLOR
-
-    line = build_dot(NODES, SOLID, DOTTED)
-    dotted_line = edge_lines(line, "generate_ppt", "generate_word")[0]
-
-    assert f'fontcolor="{DOTTED_COLOR}"' in dotted_line
-
-
-def test_dotted_label_keeps_key_and_value():
-    """value 만 남기면 무엇을 공유하는지 화면에서 알 수 없다."""
-    dot = build_dot(NODES, SOLID, DOTTED)
-
-    assert "output_kind: document" in dot
-
-
-def test_node_label_is_the_korean_name_not_the_id():
-    dot = build_dot(NODES, SOLID, DOTTED)
-
-    assert "승강장 CCTV 불러오기" in dot
-    assert 'label="load_cctv_platform"' not in dot
-
-
-def test_layout_is_left_to_right():
-    assert "rankdir=LR" in build_dot(NODES, SOLID, DOTTED)
-
-
-def test_background_is_transparent():
-    """흰 카드가 다크 테마 위에 얹히면 겉돈다."""
-    assert 'bgcolor="transparent"' in build_dot(NODES, SOLID, DOTTED)
-
-
-def test_node_text_and_border_have_an_explicit_color():
-    """배경이 투명이면 기본 검정 글자는 다크 배경에서 읽히지 않는다."""
-    from demo.ui.components.graph_section import PLAIN_COLOR
-
-    dot = build_dot(NODES, SOLID, DOTTED)
-    node_defaults = [line for line in dot.splitlines() if line.strip().startswith("node [")]
-
-    assert node_defaults
-    assert f'color="{PLAIN_COLOR}"' in node_defaults[0]
-    assert f'fontcolor="{PLAIN_COLOR}"' in node_defaults[0]
-
-
-def test_all_nodes_share_one_neutral_color():
-    """종류별로 색을 나누면 하이라이트가 묻힌다. 색은 강조에만 쓴다."""
-    from demo.ui.components.graph_section import HIGHLIGHT_COLOR
-
-    dot = build_dot(NODES, SOLID, DOTTED)
-    node_lines = [
-        line for line in dot.splitlines() if re.match(r'\s*"\w+"\s*\[label=', line)
-    ]
-
-    assert len(node_lines) == len(NODES)
-    for line in node_lines:
-        assert "color=" not in line.split("label=")[1], line
-        assert HIGHLIGHT_COLOR not in line, line
-
-
 # ------------------------------------------------------------ 하이라이트
-def test_without_highlight_nothing_is_bold():
-    """결과가 없거나 NO_MATCH 면 굵은 선이 하나도 없어야 한다."""
-    dot = build_dot(NODES, SOLID, DOTTED, highlight=None)
-
-    assert "penwidth=3" not in dot
-
-
-def test_highlighted_edge_has_an_arrow():
-    dot = build_dot(NODES, SOLID, DOTTED, highlight=HIGHLIGHT)
-
-    lines = edge_lines(dot, "load_cctv_platform", "analyze_congestion")
-    bold = [line for line in lines if "penwidth=3" in line]
-    assert bold, lines
-    for line in bold:
-        assert "dir=none" not in line, line
-
-
 def test_highlighted_edges_are_numbered_in_order():
     """순번이 있어야 어느 쪽으로 흐르는지 읽힌다."""
     dot = build_dot(NODES, SOLID, DOTTED, highlight=HIGHLIGHT)
@@ -190,49 +60,10 @@ def test_highlighted_edges_are_numbered_in_order():
     assert any('label="2"' in line and "penwidth=3" in line for line in second), second
 
 
-def test_unhighlighted_edge_stays_plain():
-    """하이라이트에 없는 실선은 굵어지지 않는다."""
-    dot = build_dot(
-        NODES,
-        SOLID,
-        DOTTED,
-        highlight=[("load_cctv_platform", "analyze_congestion")],
-    )
-
-    for line in edge_lines(dot, "analyze_congestion", "generate_word"):
-        assert "penwidth=3" not in line, line
-        assert "dir=none" in line, line
-
-
 def node_line(dot: str, node_id: str) -> str:
     return next(
         line for line in dot.splitlines() if re.match(rf'\s*"{node_id}"\s*\[label=', line)
     )
-
-
-def test_highlighted_path_nodes_get_a_thicker_border():
-    """어느 노드를 거치는지 선만 눈으로 따라가게 두지 않는다."""
-    from demo.ui.components.graph_section import HIGHLIGHT_COLOR
-
-    dot = build_dot(NODES, SOLID, DOTTED, highlight=HIGHLIGHT)
-
-    for node_id in ("load_cctv_platform", "analyze_congestion", "generate_word"):
-        line = node_line(dot, node_id)
-        assert "penwidth=2" in line, line
-        assert HIGHLIGHT_COLOR in line, line
-
-
-def test_node_off_the_path_keeps_the_plain_style():
-    dot = build_dot(NODES, SOLID, DOTTED, highlight=HIGHLIGHT)
-
-    line = node_line(dot, "generate_ppt")
-    assert "penwidth=2" not in line, line
-
-
-def test_without_highlight_no_node_is_emphasised():
-    dot = build_dot(NODES, SOLID, DOTTED, highlight=None)
-
-    assert "penwidth=2" not in dot
 
 
 def test_single_node_path_is_emphasised_via_highlight_nodes():

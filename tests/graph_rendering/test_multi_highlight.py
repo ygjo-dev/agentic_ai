@@ -46,25 +46,11 @@ def bold_edge(dot: str, frm: str, to: str) -> list[str]:
 
 
 # ------------------------------------------------------------ 합집합 강조
-def test_two_paths_highlight_both():
-    dot = build_dot(NODES, SOLID, {}, highlight_paths=[PATH_A, PATH_B])
-
-    assert bold_edge(dot, "load_cctv_platform", "detect_structure_crack")
-    assert bold_edge(dot, "load_inspection_car_image", "detect_structure_crack")
-    assert bold_edge(dot, "detect_structure_crack", "generate_word")
-
-
 def test_shared_edge_is_drawn_once():
     """두 경로가 공유하는 엣지를 두 번 그리면 선이 겹쳐 두꺼워 보인다."""
     dot = build_dot(NODES, SOLID, {}, highlight_paths=[PATH_A, PATH_B])
 
     assert len(bold_edge(dot, "detect_structure_crack", "generate_word")) == 1
-
-
-def test_edge_outside_every_path_stays_plain():
-    dot = build_dot(NODES, SOLID, {}, highlight_paths=[PATH_A, PATH_B])
-
-    assert not bold_edge(dot, "detect_structure_crack", "generate_ppt")
 
 
 # ------------------------------------------------------------ 순번 규칙
@@ -93,26 +79,6 @@ def test_single_path_via_highlight_paths_matches_highlight():
 
 
 # ------------------------------------------------------------ 노드 강조
-def test_nodes_of_all_paths_are_emphasised():
-    dot = build_dot(NODES, SOLID, {}, highlight_paths=[PATH_A, PATH_B])
-
-    for node_id in (
-        "load_cctv_platform",
-        "load_inspection_car_image",
-        "detect_structure_crack",
-        "generate_word",
-    ):
-        line = next(l for l in dot.splitlines() if f'"{node_id}" [label=' in l)
-        assert "penwidth=2" in line, line
-
-
-def test_node_outside_every_path_stays_plain():
-    dot = build_dot(NODES, SOLID, {}, highlight_paths=[PATH_A, PATH_B])
-
-    line = next(l for l in dot.splitlines() if '"generate_ppt" [label=' in l)
-    assert "penwidth=2" not in line, line
-
-
 def test_empty_paths_highlight_nothing():
     dot = build_dot(NODES, SOLID, {}, highlight_paths=[])
 

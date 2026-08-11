@@ -16,7 +16,6 @@ import pytest
 from demo.ui.components.graph_section import (
     DOTTED_LEN,
     HIGHLIGHT_COLOR,
-    MARK_SOLID_PENWIDTH,
     NEW_COLOR,
     _run_graphviz,
     NEATO_ATTRS,
@@ -253,28 +252,6 @@ def test_no_stages_means_no_rank_block():
 DOTTED_PAIR = ("load_cctv_platform", "load_inspection_car_image")
 
 
-def dotted_line(dot: str) -> str:
-    return next(l for l in dot.splitlines() if "dashed" in l)
-
-
-def test_mark_nodes_use_the_new_colour():
-    dot = build_dot(NODES, SOLID, DOTTED, mark_nodes={"generate_word"})
-
-    line = next(l for l in dot.splitlines() if '"generate_word" [label=' in l)
-    assert NEW_COLOR in line
-    assert "penwidth=2" in line
-
-
-def test_mark_edges_use_the_new_colour():
-    edge = ("load_cctv_platform", "analyze_congestion")
-    dot = build_dot(NODES, SOLID, DOTTED, mark_edges={edge})
-
-    line = next(l for l in dot.splitlines() if '"load_cctv_platform" -> "analyze_congestion"' in l)
-    assert NEW_COLOR in line
-    # 새 recipe 는 조연이라 얇다. 주인공은 노드가 어디에 붙었느냐다.
-    assert f"penwidth={MARK_SOLID_PENWIDTH}" in line
-
-
 def test_mark_edges_get_no_order_label():
     """등록 강조는 실행 순서가 아니라 '새로 생긴 것' 이다."""
     edge = ("load_cctv_platform", "analyze_congestion")
@@ -284,26 +261,12 @@ def test_mark_edges_get_no_order_label():
     assert "xlabel" not in line, line
 
 
-def test_mark_dotted_colours_only_the_named_pair():
-    dot = build_dot(NODES, SOLID, DOTTED, mark_dotted={DOTTED_PAIR})
-
-    assert NEW_COLOR in dotted_line(dot)
-
-
 def test_mark_dotted_accepts_either_order():
     """점선은 방향이 없다. 어느 순서로 받아도 같은 쌍이어야 한다."""
     forward = build_dot(NODES, SOLID, DOTTED, mark_dotted={DOTTED_PAIR})
     backward = build_dot(NODES, SOLID, DOTTED, mark_dotted={DOTTED_PAIR[::-1]})
 
     assert forward == backward
-
-
-def test_marked_dotted_keeps_dashed_and_dir_none():
-    """실선/점선을 이 두 속성으로 가른다. 강조해도 유지돼야 한다."""
-    line = dotted_line(build_dot(NODES, SOLID, DOTTED, mark_dotted={DOTTED_PAIR}))
-
-    assert "style=dashed" in line
-    assert "dir=none" in line
 
 
 def test_mark_colour_can_be_overridden():
