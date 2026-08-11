@@ -1,13 +1,13 @@
 steps:
 
-  - node: load_inspection_car_image
+  - node: load_weather_sensor
     inputs: []
     outputs:
-      - MediaData
+      - WeatherData
 
-  - node: analyze_congestion
+  - node: analyze_wind_risk
     inputs:
-      - MediaData
+      - WeatherData
     outputs:
       - AnalysisResult
 

@@ -18,16 +18,16 @@ from conftest import StubLLMClient
 from ontology.registry import NODE_REGISTRATION_SCHEMA, InvalidInference, infer_node
 
 FORM = {
-    "name": "구조물 균열 진행 추세 분석",
-    "description": "문서에서 구조물 균열 폭의 시간 변화를 분석한다.",
+    "name": "궤도 결함 이력 요약",
+    "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
     "inputs": ["DocumentData"],
     "outputs": ["AnalysisResult"],
 }
 
 GOOD = {
     "node_id": "analyze_crack_trend",
-    "properties": {"target": "구조물"},
-    "reason": "구조물 균열 분석과 같은 대상을 다룬다.",
+    "properties": {"subject": "궤도"},
+    "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
 }
 
 
@@ -43,9 +43,23 @@ def test_prompt_carries_existing_nodes_with_properties():
     infer_node(FORM, llm_client=client)
 
     sent = client.prompts[0]
-    assert "detect_structure_crack" in sent
-    assert "target: 구조물" in sent or "구조물" in sent
-    assert "generate_word" in sent
+
+    # 노드 id 를 박아두지 않는다. "전부 실린다" 가 검사하려는 성질이다.
+    from ontology import store
+
+    nodes = store.nodes()
+    for node_id in nodes:
+        assert node_id in sent, node_id
+
+    # properties 도 함께 실려야 관계를 판단할 수 있다.
+    values = {
+        f"{key}: {value}"
+        for node in nodes.values()
+        for key, value in (node.get("properties") or {}).items()
+    }
+    assert values, "온톨로지에 properties 가 하나도 없으면 이 검사가 무력하다"
+    for shown in values:
+        assert shown in sent, shown
 
 
 def test_prompt_carries_the_form_input():
@@ -65,8 +79,11 @@ def test_prompt_lists_the_allowed_property_keys():
 
     infer_node(FORM, llm_client=client)
 
+    from ontology.registry import PROPERTY_KEYS
+
     sent = client.prompts[0]
-    for key in ("source", "site", "target", "output_kind", "format"):
+    assert PROPERTY_KEYS, "허용 key 가 하나도 없으면 이 검사가 무력하다"
+    for key in PROPERTY_KEYS:
         assert key in sent, key
 
 
@@ -75,7 +92,7 @@ def test_returns_node_id_and_properties():
     result = infer_node(FORM, llm_client=stub(GOOD))
 
     assert result["node_id"] == "analyze_crack_trend"
-    assert result["properties"] == {"target": "구조물"}
+    assert result["properties"] == {"subject": "궤도"}
     assert result["reason"]
 
 
@@ -88,9 +105,9 @@ def test_empty_properties_is_accepted():
 
 def test_new_value_on_a_known_key_is_accepted():
     """막는 것은 key 뿐이다. 값은 새로워도 된다."""
-    result = infer_node(FORM, llm_client=stub({**GOOD, "properties": {"target": "터널"}}))
+    result = infer_node(FORM, llm_client=stub({**GOOD, "properties": {"subject": "터널"}}))
 
-    assert result["properties"] == {"target": "터널"}
+    assert result["properties"] == {"subject": "터널"}
 
 
 # ------------------------------------------------------------ 거부
@@ -118,7 +135,7 @@ def test_duplicate_node_id_is_rejected():
 
 def test_properties_must_be_an_object():
     with pytest.raises(InvalidInference):
-        infer_node(FORM, llm_client=stub({**GOOD, "properties": ["target"]}))
+        infer_node(FORM, llm_client=stub({**GOOD, "properties": ["subject"]}))
 
 
 # ------------------------------------------------------------ 깨진 응답

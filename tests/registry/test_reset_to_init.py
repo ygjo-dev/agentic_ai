@@ -64,7 +64,9 @@ def test_extra_recipes_disappear(restore_workspace):
     reset_to_init()
 
     assert not added.exists()
-    assert len(list(paths.RECIPES_DIR.glob("*.yaml"))) == 21
+    assert {p.stem for p in paths.RECIPES_DIR.glob("*.yaml")} == {
+        p.stem for p in paths.INIT_RECIPES_DIR.glob("*.yaml")
+    }
 
 
 def test_modified_recipe_is_restored(restore_workspace):

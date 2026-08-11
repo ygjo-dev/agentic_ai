@@ -1,6 +1,6 @@
 """대상 : demo/api/graph_svg/ — 레이아웃 고정
 
-레이아웃 고정 검증.
+레이아웃 고정 검증. **실제 온톨로지로** 프로덕션과 같은 경로를 태운다.
 
 결과가 올 때마다 노드가 움직이면 화면이 깜빡이고 어디를 보던 중이었는지
 잃는다. 어떤 강조 조합에서도 노드 좌표가 같아야 한다.
@@ -11,6 +11,12 @@
   (1) 강조를 평행 엣지로 그려 조합마다 엣지 수가 달라졌다.
   (2) 순번을 label 로 붙여 Graphviz 가 라벨 공간을 확보했다.
 지금은 (1) 기존 엣지의 색만 바꾸고 (2) 순번을 xlabel 로 붙여 해결했다.
+
+여기에 더해 **좌표를 전부 고정하고 neato -n 으로 그린다.** 배치를 아예 계산하지
+않으므로 좌표가 같다는 것이 구조적으로 보장된다. 예전에는 핀 없이 dot 으로 그려
+"xlabel 은 노드를 안 민다" 는 성질에만 기대고 있었는데, 그건 그래프 모양에 따라
+달라진다 — 온톨로지를 바꾸자 실제로 14pt 씩 밀렸다. 프로덕션은 그때도 핀을 쓰고
+있었으므로 화면은 멀쩡했다. 검사가 프로덕션과 다른 경로를 보고 있었던 것이다.
 """
 
 import re
@@ -18,8 +24,10 @@ import shutil
 
 import pytest
 
-from demo.api.graph_svg.dot import build_dot
+from demo.api.graph_svg.dot import NODE_ATTRS, build_dot
 from demo.api.graph_svg.graphviz import render_svg
+from demo.api.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
+from demo.api.graph_svg.graphviz import layout_positions
 from ontology.graph import (
     dotted_edges,
     highlight_edges,
@@ -29,19 +37,41 @@ from ontology.graph import (
 )
 
 pytestmark = pytest.mark.skipif(
-    shutil.which("dot") is None, reason="graphviz 가 설치되어 있지 않다"
+    shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
 )
 
 
+def pinned_positions():
+    """실제 온톨로지의 좌표 한 벌. 저장소의 layout.json 은 건드리지 않는다."""
+    return layout_positions(
+        build_dot(
+            load_ontology()["nodes"],
+            solid_edges(),
+            dotted_edges(),
+            spring=True,
+            graph_attrs=NEATO_FRESH_ATTRS,
+        )
+    )
+
+
+POSITIONS = pinned_positions() if shutil.which("neato") else {}
+
+
 def layout(**kwargs):
-    """SVG 에서 노드 중심 좌표와 캔버스 크기를 뽑는다."""
+    """SVG 에서 노드 중심 좌표와 캔버스 크기를 뽑는다. 프로덕션과 같은 경로다."""
     svg = render_svg(
         build_dot(
             load_ontology()["nodes"],
             solid_edges(),
             dotted_edges(),
+            positions=POSITIONS,
+            spring=True,
+            node_attrs=NODE_ATTRS,
+            graph_attrs=NEATO_ATTRS,
             **kwargs,
-        )
+        ),
+        "neato",
+        no_layout=True,
     )
 
     coords = {}
@@ -57,15 +87,30 @@ def layout(**kwargs):
 
 P = highlight_edges
 
+# 실재하는 recipe 만 쓴다. 없는 번호를 넣으면 경로가 빈 리스트가 되어 강조가
+# 하나도 안 걸리고, 검사가 조용히 무력해진다(예전 COMBOS 에 그런 항목이 있었다).
+CANDIDATES = ["recipe_006", "recipe_010", "recipe_012", "recipe_015"]
+
 COMBOS = {
     "하이라이트 없음": {},
     "SELECT 3단(순번)": {"highlight": P("recipe_013"), "highlight_nodes": recipe_nodes("recipe_013")},
-    "SELECT 1단(엣지 0)": {"highlight_nodes": recipe_nodes("recipe_001")},
-    "CLARIFY 후보 2개": {"highlight_paths": [P("recipe_023"), P("recipe_027")]},
-    "CLARIFY 후보 4개": {
-        "highlight_paths": [P(r) for r in ("recipe_015", "recipe_019", "recipe_023", "recipe_027")]
-    },
+    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["load_inspection_doc"]},
+    "CLARIFY 후보 2개": {"highlight_paths": [P(r) for r in CANDIDATES[:2]]},
+    "CLARIFY 후보 4개": {"highlight_paths": [P(r) for r in CANDIDATES]},
 }
+
+
+def test_every_combo_actually_highlights_something():
+    """COMBOS 가 무력하지 않은지 먼저 본다.
+
+    없는 recipe 를 가리키면 경로가 비어 강조가 하나도 안 걸리고, 그러면
+    "좌표가 안 움직인다" 는 단언이 아무것도 검증하지 못한다.
+    """
+    for name, kwargs in COMBOS.items():
+        if name == "하이라이트 없음":
+            continue
+        paths = kwargs.get("highlight_paths") or [kwargs.get("highlight") or []]
+        assert any(paths) or kwargs.get("highlight_nodes"), name
 
 
 @pytest.fixture(scope="module")

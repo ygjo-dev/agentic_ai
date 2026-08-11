@@ -6,26 +6,37 @@ dotted_edges() 검증. properties 의 같은 key: value 를 공유하는 노드 
 from ontology.graph import dotted_edges, load_ontology
 
 
-def test_same_source_links_the_two_cctv_loaders():
+def test_same_subject_links_nodes_of_different_kinds():
+    """subject 를 key 하나로 둔 이유가 이것이다.
+
+    불러오기(load_track_image)와 분석(detect_track_crack)은 종류가 다르지만
+    같은 대상을 다룬다. 예전에는 불러오기가 site, 분석이 target 을 써서
+    같은 대상인데도 이어지지 않았다.
+    """
     edges = dotted_edges()
 
-    assert "source: cctv" in edges[("load_cctv_platform", "load_inspection_car_image")]
+    assert "subject: 궤도" in edges[("detect_track_crack", "load_track_image")]
 
 
-def test_same_output_kind_links_the_two_generators():
+def test_a_subject_group_is_linked_pairwise():
+    """기상 세 노드가 서로 다 이어져야 한 덩어리로 보인다."""
     edges = dotted_edges()
+    weather = ["analyze_icing_risk", "analyze_wind_risk", "load_weather_sensor"]
 
-    assert "output_kind: document" in edges[("generate_ppt", "generate_word")]
+    for index, a in enumerate(weather):
+        for b in weather[index + 1 :]:
+            assert "subject: 기상" in edges[(a, b)], (a, b)
 
 
 def test_differing_value_is_not_a_shared_property():
-    """generate_word 는 format: word, generate_ppt 는 format: ppt 다.
+    """analyze_congestion 은 subject: 승강장, detect_track_crack 은 subject: 궤도 다.
 
-    key 만 같고 value 가 다르면 '같은 특성' 이 아니다.
+    key 만 같고 value 가 다르면 '같은 것을 다룬다' 가 아니다.
     """
-    labels = dotted_edges()[("generate_ppt", "generate_word")]
+    edges = dotted_edges()
 
-    assert not [label for label in labels if label.startswith("format:")]
+    assert ("analyze_congestion", "detect_track_crack") not in edges
+    assert ("detect_track_crack", "analyze_congestion") not in edges
 
 
 def test_label_is_key_colon_value():

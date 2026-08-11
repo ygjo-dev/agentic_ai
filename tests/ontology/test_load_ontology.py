@@ -5,14 +5,18 @@ load_ontology() 검증. ontology.yaml 원문을 dict 로 읽는다.
 
 from ontology.graph import load_ontology
 
+# 시설 점검(승강장 · 궤도)과 기상 환경 두 도메인이다. 어휘가 안 겹쳐야
+# 발화가 조금 모호해도 후보가 다섯씩 쏟아지지 않는다.
 NODE_IDS = {
-    "load_cctv_platform",
-    "load_inspection_car_image",
-    "load_inspection_document",
+    "load_platform_cctv",
+    "extract_frames",
+    "load_track_image",
+    "load_inspection_doc",
     "analyze_congestion",
-    "detect_structure_crack",
-    "analyze_incident_frequency",
-    "summarize_defect_history",
+    "detect_track_crack",
+    "load_weather_sensor",
+    "analyze_icing_risk",
+    "analyze_wind_risk",
     "generate_word",
     "generate_ppt",
 }

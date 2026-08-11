@@ -16,6 +16,7 @@ import shutil
 import pytest
 from fastapi.testclient import TestClient
 
+import paths
 import demo.api.main as backend_main
 from demo.api.graph_svg import build
 
@@ -29,14 +30,34 @@ def client():
     return TestClient(backend_main.app)
 
 
+def existing_recipe_ids(count: int) -> list[str]:
+    """지금 저장소에 있는 recipe id 를 앞에서부터.
+
+    번호를 박아두지 않는다 — 필요한 것은 특정 recipe 가 아니라 "서로 다른
+    후보 몇 개" 이고, 온톨로지를 바꾸면 번호가 통째로 달라진다.
+    """
+    ids = sorted(path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml"))
+    assert len(ids) >= count, f"recipe 가 {count}개는 있어야 한다: {ids}"
+    return ids[:count]
+
+
 @pytest.fixture
-def recipe_ids(client):
-    """지금 있는 recipe 중 앞 셋. 후보가 여럿인 장면을 만든다."""
-    return sorted(client.get("/graph").json()["nodes"]) and [
-        "recipe_004",
-        "recipe_006",
-        "recipe_008",
-    ]
+def recipe_ids():
+    """후보가 여럿인 장면을 만든다. 끝나는 노드가 서로 달라야 변형이 여러 벌 나온다."""
+    from ontology.graph import recipe_nodes
+
+    ids = sorted(path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml"))
+    picked, endings = [], set()
+    for recipe_id in ids:
+        last = recipe_nodes(recipe_id)[-1]
+        if last not in endings:
+            endings.add(last)
+            picked.append(recipe_id)
+        if len(picked) == 3:
+            break
+
+    assert len(picked) == 3, f"끝나는 노드가 다른 recipe 가 셋은 있어야 한다: {ids}"
+    return picked
 
 
 def post(client, **body):
@@ -157,8 +178,16 @@ def test_chips_carry_names_not_ids(client, recipe_ids):
     """칩에 id 가 뜨면 비전공자에게는 읽히지 않는다."""
     chains = post(client, mode="resolve", recipe_ids=recipe_ids)["chips"][""]
 
+    from ontology.graph import load_ontology
+
+    names = {node["name"] for node in load_ontology()["nodes"].values()}
+    ids = set(load_ontology()["nodes"])
+
     assert chains and all(chain for chain in chains)
-    assert any("승강장" in name for chain in chains for name in chain)
+    for chain in chains:
+        for name in chain:
+            assert name in names, name
+            assert name not in ids, f"id 가 그대로 실렸다: {name}"
 
 
 def test_plain_has_one_variant_and_no_clicks(client):
@@ -185,8 +214,9 @@ def test_same_request_is_served_from_cache(client, recipe_ids):
 def test_recipe_order_does_not_split_the_cache(client):
     """후보 순서만 다른데 캐시가 헛돌면 같은 그림을 매번 다시 만든다."""
     build.clear_cache()
-    post(client, mode="resolve", recipe_ids=["recipe_004", "recipe_006"])
-    post(client, mode="resolve", recipe_ids=["recipe_006", "recipe_004"])
+    first, second = existing_recipe_ids(2)
+    post(client, mode="resolve", recipe_ids=[first, second])
+    post(client, mode="resolve", recipe_ids=[second, first])
 
     assert len(build._CACHE) == 1
 

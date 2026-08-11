@@ -10,21 +10,30 @@
 #   코드값이 아니라 사람이 읽는 단어로 쓴다.
 #
 # 사용 중인 property key
-# - source      : 데이터를 가져오는 곳 (불러오기 노드)
-# - site        : 데이터가 만들어진 장소 (불러오기 노드)
-# - target      : 분석 대상 (분석 노드)
-# - output_kind : 산출물 종류 (산출 노드)
-# - format      : 산출물 형식 (산출 노드)
+# - subject : 이 노드가 다루는 대상. 같은 값을 가진 노드끼리 관계(점선)로 이어진다.
+#             지금 쓰이는 값 : 승강장 · 궤도 · 기상
+#             어느 대상에도 매이지 않는 범용 노드는 비운다.
+#
+#   key 를 하나로 둔 이유 : 예전에는 source / site / target / output_kind / format
+#   다섯 개를 썼는데, key 가 노드 종류에 묶여 있어 관계가 끊겼다. 불러오기는
+#   site, 분석은 target 을 써서 같은 "승강장" 인데도 점선이 안 생겼다.
+#   대상을 묻는 key 하나로 두면 노드 종류와 무관하게 이어진다.
 
 version: 1.0
 
 interfaces:
 
-  MediaData:
-    description: 이미지 또는 동영상 데이터
+  VideoData:
+    description: 영상 데이터
+
+  ImageData:
+    description: 이미지 데이터
+
+  WeatherData:
+    description: 기상 관측값
 
   DocumentData:
-    description: 문서 데이터 (Word, Excel, PDF 등)
+    description: 문서 데이터
 
   AnalysisResult:
     description: 분석 결과
@@ -32,93 +41,105 @@ interfaces:
 
 nodes:
 
-  load_cctv_platform:
+  load_platform_cctv:
     name: 승강장 CCTV 불러오기
-    description: 승강장에 설치된 CCTV 동영상을 불러온다.
+    description: 승강장에 설치된 CCTV 영상을 불러온다.
     inputs: []
     outputs:
-      - MediaData
+      - VideoData
     properties:
-      source: cctv
-      site: 승강장
+      subject: 승강장
 
-  load_inspection_car_image:
-    name: 검측차 이미지 불러오기
-    description: 검측차가 본선에서 촬영한 이미지를 불러온다.
+  extract_frames:
+    name: 영상 프레임 추출
+    description: 영상에서 분석용 이미지 프레임을 추출한다.
+    inputs:
+      - VideoData
+    outputs:
+      - ImageData
+    properties: {}
+
+  load_track_image:
+    name: 궤도 검측 이미지 불러오기
+    description: 검측차가 촬영한 궤도 이미지를 불러온다.
     inputs: []
     outputs:
-      - MediaData
+      - ImageData
     properties:
-      source: cctv
-      site: 본선
+      subject: 궤도
 
-  load_inspection_document:
-    name: 점검 문서 불러오기
-    description: 점검 과정에서 기록된 문서를 불러온다.
+  load_inspection_doc:
+    name: 궤도 점검 보고서 불러오기
+    description: 궤도 점검 과정에서 기록된 보고서를 불러온다.
     inputs: []
     outputs:
       - DocumentData
     properties:
-      source: 점검문서
+      subject: 궤도
 
   analyze_congestion:
     name: 승강장 혼잡도 분석
-    description: 영상이나 이미지에서 승강장 혼잡도를 분석한다.
+    description: 이미지에서 승강장 혼잡도를 분석한다.
     inputs:
-      - MediaData
+      - ImageData
     outputs:
       - AnalysisResult
     properties:
-      target: 승강장
+      subject: 승강장
 
-  detect_structure_crack:
-    name: 구조물 균열 분석
-    description: 영상이나 이미지에서 구조물 균열을 분석한다.
+  detect_track_crack:
+    name: 궤도 균열 검출
+    description: 이미지에서 궤도 균열을 검출한다.
     inputs:
-      - MediaData
+      - ImageData
     outputs:
       - AnalysisResult
     properties:
-      target: 구조물
+      subject: 궤도
 
-  analyze_incident_frequency:
-    name: 승강장 장애 발생 빈도 분석
-    description: 문서에서 승강장 장애가 얼마나 자주 발생했는지 분석한다.
-    inputs:
-      - DocumentData
+  load_weather_sensor:
+    name: 기상 관측값 불러오기
+    description: 관측 장비에서 기상 관측값을 불러온다.
+    inputs: []
     outputs:
-      - AnalysisResult
+      - WeatherData
     properties:
-      target: 승강장
+      subject: 기상
 
-  summarize_defect_history:
-    name: 구조물 결함 이력 요약
-    description: 문서에서 구조물 결함이 어떻게 이어져 왔는지 요약한다.
+  analyze_icing_risk:
+    name: 결빙 위험도 분석
+    description: 기상 관측값에서 결빙 위험도를 분석한다.
     inputs:
-      - DocumentData
+      - WeatherData
     outputs:
       - AnalysisResult
     properties:
-      target: 구조물
+      subject: 기상
+
+  analyze_wind_risk:
+    name: 강풍 위험도 분석
+    description: 기상 관측값에서 강풍 위험도를 분석한다.
+    inputs:
+      - WeatherData
+    outputs:
+      - AnalysisResult
+    properties:
+      subject: 기상
 
   generate_word:
-    name: Word 생성
-    description: 분석 결과를 Word 문서로 생성한다.
+    name: Word 보고서 생성
+    description: 분석 결과를 Word 보고서로 생성한다.
     inputs:
       - AnalysisResult
     outputs:
       - DocumentData
-    properties:
-      output_kind: document
-      format: word
+    properties: {}
 
   generate_ppt:
-    name: PPT 생성
-    description: 분석 결과를 PPT 문서로 생성한다.
+    name: PPT 보고서 생성
+    description: 분석 결과를 PPT 보고서로 생성한다.
     inputs:
       - AnalysisResult
     outputs:
       - DocumentData
-    properties:
-      output_kind: document
-      format: ppt
+    properties: {}

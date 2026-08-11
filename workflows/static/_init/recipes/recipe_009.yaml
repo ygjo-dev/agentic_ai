@@ -1,12 +1,24 @@
 steps:
 
-  - node: load_inspection_document
+  - node: load_platform_cctv
     inputs: []
     outputs:
-      - DocumentData
+      - VideoData
 
-  - node: summarize_defect_history
+  - node: extract_frames
     inputs:
-      - DocumentData
+      - VideoData
+    outputs:
+      - ImageData
+
+  - node: detect_track_crack
+    inputs:
+      - ImageData
     outputs:
       - AnalysisResult
+
+  - node: generate_ppt
+    inputs:
+      - AnalysisResult
+    outputs:
+      - DocumentData

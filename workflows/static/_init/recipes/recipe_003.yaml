@@ -1,6 +1,12 @@
 steps:
 
-  - node: load_inspection_document
+  - node: load_track_image
     inputs: []
     outputs:
-      - DocumentData
+      - ImageData
+
+  - node: detect_track_crack
+    inputs:
+      - ImageData
+    outputs:
+      - AnalysisResult

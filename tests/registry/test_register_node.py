@@ -16,16 +16,16 @@ from conftest import StubLLMClient
 from ontology.registry import InvalidInference, register_node, reset_to_init
 
 FORM = {
-    "name": "구조물 균열 진행 추세 분석",
-    "description": "문서에서 구조물 균열 폭의 시간 변화를 분석한다.",
+    "name": "궤도 결함 이력 요약",
+    "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
     "inputs": ["DocumentData"],
     "outputs": ["AnalysisResult"],
 }
 
 INFERRED = {
     "node_id": "analyze_crack_trend",
-    "properties": {"target": "구조물"},
-    "reason": "구조물 균열 분석과 같은 대상을 다룬다.",
+    "properties": {"subject": "궤도"},
+    "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
 }
 
 
@@ -60,14 +60,17 @@ def test_node_lands_in_the_ontology():
 
     node = ontology_nodes()["analyze_crack_trend"]
     assert node["name"] == FORM["name"]
-    assert node["properties"] == {"target": "구조물"}
+    assert node["properties"] == {"subject": "궤도"}
 
 
-def test_recipes_are_created_and_numbered_after_021():
+def test_recipes_are_created_and_numbered_after_the_last_one():
+    """번호를 박지 않는다 — 저장소의 recipe 개수는 온톨로지를 바꿀 때마다 달라진다."""
+    last = max(int(p.stem.split("_")[1]) for p in paths.RECIPES_DIR.glob("recipe_*.yaml"))
+
     result = register_node(FORM, llm_client=stub())
 
     assert result["recipe_ids"]
-    assert result["recipe_ids"][0] == "recipe_022"
+    assert result["recipe_ids"][0] == f"recipe_{last + 1:03d}"
     for recipe_id in result["recipe_ids"]:
         assert (paths.RECIPES_DIR / f"{recipe_id}.yaml").exists()
 
@@ -88,7 +91,7 @@ def test_menu_and_recipes_dir_agree():
     assert set(menu_recipes()) == {p.stem for p in paths.RECIPES_DIR.glob("*.yaml")}
 
 
-def test_existing_21_recipes_are_untouched():
+def test_existing_recipes_are_untouched():
     before = {
         p.name: p.read_bytes() for p in paths.INIT_RECIPES_DIR.glob("*.yaml")
     }
@@ -152,8 +155,10 @@ def test_reset_undoes_a_registration():
     reset_to_init()
 
     assert "analyze_crack_trend" not in ontology_nodes()
-    assert len(list(paths.RECIPES_DIR.glob("*.yaml"))) == 21
-    assert len(menu_recipes()) == 21
+    # 개수를 박지 않는다. 초기화의 정의는 "_init 과 같아진다" 이다.
+    initial = {p.stem for p in paths.INIT_RECIPES_DIR.glob("*.yaml")}
+    assert {p.stem for p in paths.RECIPES_DIR.glob("*.yaml")} == initial
+    assert set(menu_recipes()) == initial
 
 
 # ------------------------------------------------------------ 반환값
@@ -161,7 +166,7 @@ def test_returns_what_the_screen_needs():
     result = register_node(FORM, llm_client=stub())
 
     assert result["node_id"] == "analyze_crack_trend"
-    assert result["properties"] == {"target": "구조물"}
+    assert result["properties"] == {"subject": "궤도"}
     assert result["reason"]
     assert result["recipe_ids"]
     assert result["chains"]

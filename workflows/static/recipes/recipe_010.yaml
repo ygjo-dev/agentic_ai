@@ -1,13 +1,13 @@
 steps:
 
-  - node: load_cctv_platform
+  - node: load_track_image
     inputs: []
     outputs:
-      - MediaData
+      - ImageData
 
-  - node: analyze_congestion
+  - node: detect_track_crack
     inputs:
-      - MediaData
+      - ImageData
     outputs:
       - AnalysisResult
 

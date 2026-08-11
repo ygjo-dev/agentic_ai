@@ -15,11 +15,11 @@ from ontology.registry import (
 )
 
 NEW = {
-    "name": "구조물 균열 진행 추세 분석",
-    "description": "문서에서 구조물 균열 폭의 시간 변화를 분석한다.",
+    "name": "궤도 결함 이력 요약",
+    "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
     "inputs": ["DocumentData"],
     "outputs": ["AnalysisResult"],
-    "properties": {"target": "구조물"},
+    "properties": {"subject": "궤도"},
 }
 
 
@@ -46,7 +46,7 @@ def test_node_is_added(ontology_file):
     assert nodes["analyze_crack_trend"]["name"] == NEW["name"]
     assert nodes["analyze_crack_trend"]["inputs"] == ["DocumentData"]
     assert nodes["analyze_crack_trend"]["outputs"] == ["AnalysisResult"]
-    assert nodes["analyze_crack_trend"]["properties"] == {"target": "구조물"}
+    assert nodes["analyze_crack_trend"]["properties"] == {"subject": "궤도"}
 
 
 def test_existing_nodes_survive(ontology_file):
@@ -98,7 +98,7 @@ def test_duplicate_does_not_modify_the_file(ontology_file):
 
 def test_unknown_input_interface_is_rejected(ontology_file):
     with pytest.raises(UnknownInterface):
-        add_node("x", {**NEW, "inputs": ["VideoData"]}, path=ontology_file)
+        add_node("x", {**NEW, "inputs": ["SensorStream"]}, path=ontology_file)
 
 
 def test_unknown_output_interface_is_rejected(ontology_file):
@@ -117,9 +117,9 @@ def test_unknown_property_key_is_rejected(ontology_file):
 
 def test_new_property_value_is_allowed(ontology_file):
     """값은 새로워도 된다. 막는 것은 key 뿐이다."""
-    add_node("x", {**NEW, "properties": {"target": "터널"}}, path=ontology_file)
+    add_node("x", {**NEW, "properties": {"subject": "터널"}}, path=ontology_file)
 
-    assert load(ontology_file)["nodes"]["x"]["properties"] == {"target": "터널"}
+    assert load(ontology_file)["nodes"]["x"]["properties"] == {"subject": "터널"}
 
 
 def test_property_keys_match_the_existing_vocabulary(ontology_file):

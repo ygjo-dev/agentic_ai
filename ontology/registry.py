@@ -15,7 +15,11 @@ from orchestrator.route_resolver import resolve_route
 # 쓸 수 있는 property key. 값(value)은 새로워도 되지만 key 는 여기 있는 것만 쓴다.
 # key 어휘가 갈라지면 점선(같은 key: value 공유) 조회가 조용히 실패한다.
 # LLM 에게 프롬프트로도 알리지만, 어기는 순간을 대비해 코드로도 막는다.
-PROPERTY_KEYS = frozenset({"source", "site", "target", "output_kind", "format"})
+#
+# 하나뿐인 이유 : 예전에는 source / site / target / output_kind / format 다섯을
+# 썼는데 key 가 노드 종류에 묶여 있었다. 불러오기는 site, 분석은 target 을 써서
+# 같은 "승강장" 인데도 점선이 안 생겼다. 대상을 묻는 key 하나면 종류와 무관하게 이어진다.
+PROPERTY_KEYS = frozenset({"subject"})
 
 
 class DuplicateNode(ValueError):

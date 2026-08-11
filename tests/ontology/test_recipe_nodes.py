@@ -7,16 +7,31 @@ from ontology.graph import recipe_nodes
 
 
 def test_three_step_recipe_returns_nodes_in_order():
-    """recipe_010 : 승강장 CCTV -> 혼잡도 분석 -> Word 생성."""
+    """recipe_010 : 궤도 이미지 -> 균열 검출 -> Word 보고서."""
     assert recipe_nodes("recipe_010") == [
-        "load_cctv_platform",
-        "analyze_congestion",
+        "load_track_image",
+        "detect_track_crack",
         "generate_word",
     ]
 
 
-def test_one_step_recipe_returns_single_node():
-    assert recipe_nodes("recipe_001") == ["load_cctv_platform"]
+def test_every_recipe_starts_at_a_loader_and_flows_forward():
+    """순서가 뒤집히면 경로가 거꾸로 그려진다.
+
+    특정 recipe 번호를 박지 않는다 — 온톨로지를 바꿀 때마다 여기가 깨진다.
+    모든 recipe 가 지켜야 하는 성질로 적는다.
+    """
+    import paths
+    from ontology.graph import load_ontology
+
+    nodes = load_ontology()["nodes"]
+    for recipe_path in sorted(paths.RECIPES_DIR.glob("recipe_*.yaml")):
+        chain = recipe_nodes(recipe_path.stem)
+
+        assert chain, recipe_path.stem
+        assert nodes[chain[0]]["inputs"] == [], f"{recipe_path.stem} 이 불러오기로 시작하지 않는다"
+        for frm, to in zip(chain, chain[1:]):
+            assert set(nodes[frm]["outputs"]) & set(nodes[to]["inputs"]), (frm, to)
 
 
 def test_unknown_recipe_returns_empty_list():

@@ -1,6 +1,18 @@
 steps:
 
-  - node: load_inspection_car_image
+  - node: load_platform_cctv
     inputs: []
     outputs:
-      - MediaData
+      - VideoData
+
+  - node: extract_frames
+    inputs:
+      - VideoData
+    outputs:
+      - ImageData
+
+  - node: detect_track_crack
+    inputs:
+      - ImageData
+    outputs:
+      - AnalysisResult

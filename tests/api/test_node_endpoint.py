@@ -20,16 +20,18 @@ from ontology.graph import dotted_edges, load_ontology, solid_edges
 from ontology.registry import reset_to_init
 
 FORM = {
-    "name": "구조물 균열 진행 추세 분석",
-    "description": "문서에서 구조물 균열 폭의 시간 변화를 분석한다.",
+    "name": "궤도 결함 이력 요약",
+    "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
     "inputs": ["DocumentData"],
     "outputs": ["AnalysisResult"],
 }
 
+# 시연의 주력 등록이다. 끊겨 있던 load_inspection_doc(실선 0개)이 이어지고
+# 궤도 그룹에 점선이 붙는다 — subject 값을 글자 그대로 써야 그렇게 된다.
 INFERRED = {
     "node_id": "analyze_crack_trend",
-    "properties": {"target": "구조물"},
-    "reason": "구조물 균열 분석과 같은 대상을 다룬다.",
+    "properties": {"subject": "궤도"},
+    "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
 }
 
 

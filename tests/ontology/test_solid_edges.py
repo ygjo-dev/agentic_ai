@@ -10,27 +10,30 @@ def test_edge_label_is_the_shared_interface():
     """라벨은 앞.outputs 와 뒤.inputs 의 교집합이다."""
     edges = solid_edges()
 
-    assert edges[("load_cctv_platform", "analyze_congestion")] == "MediaData"
+    assert edges[("load_platform_cctv", "extract_frames")] == "VideoData"
+    assert edges[("load_track_image", "detect_track_crack")] == "ImageData"
     assert edges[("analyze_congestion", "generate_word")] == "AnalysisResult"
-    assert edges[("load_inspection_document", "summarize_defect_history")] == "DocumentData"
 
 
 def test_pair_appearing_in_many_recipes_is_stored_once():
-    """load_cctv_platform -> analyze_congestion 은 recipe_005/013/014 에 나온다.
+    """dict 이므로 키가 하나뿐인 것은 자명하다.
 
-    dict 이므로 키가 하나뿐인 것은 자명하다. 실제로 그 recipe 들이
-    존재하는지까지 확인해야 중복 제거를 검증한 것이 된다.
+    여러 recipe 에 나오는 쌍이 실제로 있는지까지 확인해야 중복 제거를 검증한
+    것이 된다. 어느 쌍인지는 데이터에 맡긴다 — recipe 번호를 박아두면
+    온톨로지를 바꿀 때마다 여기가 깨진다.
     """
+    import collections
+
+    import paths
     from ontology.graph import recipe_nodes
 
-    pair = ("load_cctv_platform", "analyze_congestion")
-    containing = [
-        rid
-        for rid in (f"recipe_{n:03d}" for n in range(1, 29))
-        if pair in list(zip(recipe_nodes(rid), recipe_nodes(rid)[1:]))
-    ]
+    seen = collections.Counter()
+    for recipe_path in sorted(paths.RECIPES_DIR.glob("recipe_*.yaml")):
+        chain = recipe_nodes(recipe_path.stem)
+        seen.update(zip(chain, chain[1:]))
 
-    assert len(containing) > 1, f"중복 제거를 검증하려면 2개 이상이어야 한다: {containing}"
+    pair, count = seen.most_common(1)[0]
+    assert count > 1, f"중복 제거를 검증하려면 2개 이상이어야 한다: {seen}"
     assert list(solid_edges()).count(pair) == 1
 
 
