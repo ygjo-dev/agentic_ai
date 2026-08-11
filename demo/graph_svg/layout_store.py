@@ -15,13 +15,14 @@ import os
 import tempfile
 from pathlib import Path
 
-from demo.api.graph_svg.dot import build_dot
-from demo.api.graph_svg.graphviz import layout_positions
+from demo.graph_svg.dot import build_dot
+from demo.graph_svg.graphviz import layout_positions
 
-# demo/api/ 아래에 둔다. 좌표를 만드는 것도 쓰는 것도 서버뿐이다.
+# 이 패키지 안에 둔다. 좌표는 그리기의 소유다 — 만드는 것도 쓰는 것도 여기뿐이고,
+# 나중에 JS 렌더러로 갈아끼우면 좌표 파일도 함께 사라진다.
 # 파일을 옮기면 이미 잡아둔 좌표를 잃지만, 최초 배치는 결정적이라 같은
 # 온톨로지에서는 같은 지도가 다시 나온다(좌표 해시로 확인).
-LAYOUT_PATH = Path(__file__).resolve().parent.parent / "layout.json"
+LAYOUT_PATH = Path(__file__).resolve().parent / "layout.json"
 
 
 def load(path: Path | None = None) -> dict[str, tuple[float, float]]:

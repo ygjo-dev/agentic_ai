@@ -18,8 +18,8 @@ import hashlib
 import json
 from collections import OrderedDict
 
-from demo.api.graph_svg import focus
-from demo.api.graph_svg.dot import (
+from demo.graph_svg import focus
+from demo.graph_svg.dot import (
     DOTTED_COLOR_BOTTOM,
     DOTTED_COLOR_TOP,
     EDGE_COLOR,
@@ -28,7 +28,7 @@ from demo.api.graph_svg.dot import (
     NODE_ATTRS_TOP,
     build_dot,
 )
-from demo.api.graph_svg.graphviz import fit_svg, render_svg, stack_nodes_on_top
+from demo.graph_svg.graphviz import fit_svg, render_svg, stack_nodes_on_top
 
 # 서버 캐시. 키가 version 을 포함하므로 온톨로지가 바뀌면 저절로 빗나간다.
 # 그래도 상한을 둔다 — 시연이 길어지면 등록 · 발화 조합이 계속 쌓인다.

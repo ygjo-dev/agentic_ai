@@ -6,7 +6,7 @@
 여기서 하는 판단은 하나뿐이다 — 어떤 모드가 어떤 recipe 를 강조하느냐.
 """
 
-from demo.api.graph_svg import build, layout_store
+from demo.graph_svg import build, layout_store
 from demo.api.services import graph_service
 
 MODES = ("plain", "resolve", "register")

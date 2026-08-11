@@ -10,7 +10,7 @@
 import hashlib
 
 import paths
-from demo.api.graph_svg.dot import COLORS
+from demo.graph_svg.dot import COLORS
 from ontology.graph import (
     dotted_edges,
     load_ontology,

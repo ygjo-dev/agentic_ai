@@ -43,7 +43,7 @@ python tools/check_ontology.py
 | 폴더 | 대상 | 개수 |
 |---|---|---:|
 | `demo/api/` | `demo/api/main.py` · `services/` | 62 |
-| `demo/graph_svg/` | `demo/api/graph_svg/` | 98 |
+| `demo/graph_svg/` | `demo/graph_svg/` | 98 |
 
 여기 있는 단언 대부분은 **몇 주에 걸쳐 실측으로 알아낸 배치 성질**이다.
 어떤 강조 조합에서도 좌표가 같다 · 노드를 등록해도 기존 노드가 안 움직인다 ·

@@ -13,7 +13,7 @@ import re
 import shutil
 import subprocess
 
-from demo.api.graph_svg.dot import FONT  # noqa: F401 — 폰트 규칙을 한곳에서 본다
+from demo.graph_svg.dot import FONT  # noqa: F401 — 폰트 규칙을 한곳에서 본다
 
 
 class GraphvizNotFound(RuntimeError):

@@ -1,4 +1,4 @@
-"""대상 : demo/api/graph_svg/layout_store.py — 좌표 보관
+"""대상 : demo/graph_svg/layout_store.py — 좌표 보관
 
 노드 좌표 보관 검증.
 
@@ -9,7 +9,7 @@
 
 import json
 
-from demo.api.graph_svg import layout_store
+from demo.graph_svg import layout_store
 
 POSITIONS = {
     "load_cctv_platform": (86.2, 209.91),

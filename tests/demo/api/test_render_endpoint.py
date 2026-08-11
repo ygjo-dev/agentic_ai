@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 import paths
 import demo.api.main as backend_main
-from demo.api.graph_svg import build
+from demo.graph_svg import build
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"

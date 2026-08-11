@@ -14,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import demo.api.main as backend_main
-from demo.api.graph_svg.dot import build_dot
+from demo.graph_svg.dot import build_dot
 from demo.api.services.graph_service import domain_graph
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 

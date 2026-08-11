@@ -1,4 +1,4 @@
-"""대상 : demo/api/graph_svg/ — neato 배치
+"""대상 : demo/graph_svg/ — neato 배치
 
 neato 배치 검증.
 
@@ -15,8 +15,8 @@ import shutil
 
 import pytest
 
-from demo.api.graph_svg.build import wrap_label
-from demo.api.graph_svg.dot import (
+from demo.graph_svg.build import wrap_label
+from demo.graph_svg.dot import (
     DOTTED_LEN,
     HIGHLIGHT_COLOR,
     NEW_COLOR,
@@ -24,8 +24,8 @@ from demo.api.graph_svg.dot import (
     SOLID_LEN,
     build_dot,
 )
-from demo.api.graph_svg.graphviz import _run_graphviz, layout_positions, render_svg
-from demo.api.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
+from demo.graph_svg.graphviz import _run_graphviz, layout_positions, render_svg
+from demo.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"

@@ -1,4 +1,4 @@
-"""대상 : demo/api/graph_svg/dot.py — 다중 경로 강조
+"""대상 : demo/graph_svg/dot.py — 다중 경로 강조
 
 build_dot() 의 다중 경로 강조 검증 (CLARIFY 후보).
 
@@ -8,7 +8,7 @@ build_dot() 의 다중 경로 강조 검증 (CLARIFY 후보).
 
 import re
 
-from demo.api.graph_svg.dot import build_dot
+from demo.graph_svg.dot import build_dot
 
 NODES = {
     "load_cctv_platform": {"name": "승강장 CCTV 불러오기"},

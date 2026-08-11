@@ -1,4 +1,4 @@
-"""대상 : demo/api/graph_svg/dot.py — build_dot()
+"""대상 : demo/graph_svg/dot.py — build_dot()
 
 build_dot() 검증. 계산 결과를 Graphviz DOT 문자열로 옮긴다.
 """
@@ -8,8 +8,8 @@ import shutil
 
 import pytest
 
-from demo.api.graph_svg.dot import build_dot
-from demo.api.graph_svg.graphviz import render_svg
+from demo.graph_svg.dot import build_dot
+from demo.graph_svg.graphviz import render_svg
 
 NODES = {
     "load_cctv_platform": {"name": "승강장 CCTV 불러오기"},

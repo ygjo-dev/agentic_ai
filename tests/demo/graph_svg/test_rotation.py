@@ -1,4 +1,4 @@
-"""대상 : demo/api/graph_svg/layout_store.py — 최초 배치 회전
+"""대상 : demo/graph_svg/layout_store.py — 최초 배치 회전
 
 최초 배치 좌표 회전 검증.
 
@@ -14,10 +14,10 @@ import shutil
 
 import pytest
 
-from demo.api.graph_svg import layout_store
-from demo.api.graph_svg.dot import build_dot
-from demo.api.graph_svg.graphviz import layout_positions
-from demo.api.graph_svg.layout_store import NEATO_FRESH_ATTRS, ensure_positions
+from demo.graph_svg import layout_store
+from demo.graph_svg.dot import build_dot
+from demo.graph_svg.graphviz import layout_positions
+from demo.graph_svg.layout_store import NEATO_FRESH_ATTRS, ensure_positions
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"

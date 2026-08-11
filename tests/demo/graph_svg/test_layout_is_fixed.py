@@ -1,4 +1,4 @@
-"""대상 : demo/api/graph_svg/ — 레이아웃 고정
+"""대상 : demo/graph_svg/ — 레이아웃 고정
 
 레이아웃 고정 검증. **실제 온톨로지로** 프로덕션과 같은 경로를 태운다.
 
@@ -24,10 +24,10 @@ import shutil
 
 import pytest
 
-from demo.api.graph_svg.dot import NODE_ATTRS, build_dot
-from demo.api.graph_svg.graphviz import render_svg
-from demo.api.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
-from demo.api.graph_svg.graphviz import layout_positions
+from demo.graph_svg.dot import NODE_ATTRS, build_dot
+from demo.graph_svg.graphviz import render_svg
+from demo.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
+from demo.graph_svg.graphviz import layout_positions
 from ontology.graph import (
     dotted_edges,
     highlight_edges,
