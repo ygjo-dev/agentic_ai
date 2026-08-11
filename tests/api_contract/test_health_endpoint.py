@@ -1,4 +1,4 @@
-"""backend/main.py 의 /health 엔드포인트 검증.
+"""demo/api/main.py 의 /health 엔드포인트 검증.
 
 시연 직전 점검용이다. LLM 에 닿지 못하는 것은 점검 결과이지 서버 고장이
 아니므로, 그때도 200 이어야 한다.
@@ -9,7 +9,7 @@ import urllib.request
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as backend_main
+import demo.api.main as backend_main
 from llm_engine import ollama
 
 

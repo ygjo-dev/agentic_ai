@@ -13,7 +13,7 @@ import html
 
 import streamlit as st
 
-from frontend import config, focus, styles
+from demo.ui import config, focus, styles
 
 # 안내 문구를 두지 않는다. 실행 전에는 하단 지도가 그대로 떠 있고, NO_MATCH 면
 # 지도는 있는데 켜지는 길이 없다 — 문구 없이 그림으로 읽힌다.
@@ -64,7 +64,7 @@ def path_chain(recipe_id: str, steps: list[dict], color: str) -> str:
     return f'<div class="chain">{"".join(parts)}</div>'
 
 
-# 순서 계산은 frontend/focus.py 가 한다 — 그래프 쪽도 같은 순서를 써야 한다.
+# 순서 계산은 demo/ui/focus.py 가 한다 — 그래프 쪽도 같은 순서를 써야 한다.
 ordered_recipe_ids = focus.ordered_recipe_ids
 
 

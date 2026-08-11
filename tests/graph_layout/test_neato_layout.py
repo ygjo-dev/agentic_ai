@@ -13,7 +13,7 @@ import shutil
 
 import pytest
 
-from frontend.components.graph_section import (
+from demo.ui.components.graph_section import (
     DOTTED_LEN,
     HIGHLIGHT_COLOR,
     MARK_SOLID_PENWIDTH,

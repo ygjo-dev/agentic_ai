@@ -1,4 +1,4 @@
-"""backend/main.py 의 /graph 엔드포인트 검증.
+"""demo/api/main.py 의 /graph 엔드포인트 검증.
 
 가장 중요한 것은 JSON 왕복에서 정보가 새지 않는지다. 프론트엔드는 이 응답을
 to_build_dot_args() 로 되돌려 그리므로, 되돌린 결과가 도메인 계산과 다르면
@@ -8,8 +8,8 @@ to_build_dot_args() 로 되돌려 그리므로, 되돌린 결과가 도메인 �
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as backend_main
-from frontend.components.graph_section import build_dot, to_build_dot_args
+import demo.api.main as backend_main
+from demo.ui.components.graph_section import build_dot, to_build_dot_args
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 
 

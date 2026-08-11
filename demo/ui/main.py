@@ -16,18 +16,19 @@ from pathlib import Path
 
 import streamlit as st
 
-REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+# demo/ui/main.py -> demo/ui -> demo -> 저장소 뿌리. 한 단계 깊어졌다.
+REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-from frontend import api_client, config, styles
-from frontend.api_client import ApiError
-from frontend.components.focus_panel import render_focus_section
-from frontend.components.graph_section import mark_from_registration, render_graph_section
-from frontend.components.input_section import render_input_section
-from frontend.components.node_form import render_node_form
-from frontend.components.path_panel import render_band, skeleton_markup
-from frontend.components.sample_picker import render_sample_picker
+from demo.ui import api_client, config, styles
+from demo.ui.api_client import ApiError
+from demo.ui.components.focus_panel import render_focus_section
+from demo.ui.components.graph_section import mark_from_registration, render_graph_section
+from demo.ui.components.input_section import render_input_section
+from demo.ui.components.node_form import render_node_form
+from demo.ui.components.path_panel import render_band, skeleton_markup
+from demo.ui.components.sample_picker import render_sample_picker
 
 ASK, REGISTER = "사용자 질문", "노드 등록"
 

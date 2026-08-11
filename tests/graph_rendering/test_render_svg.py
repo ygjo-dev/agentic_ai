@@ -9,7 +9,7 @@ import shutil
 
 import pytest
 
-from frontend.components.graph_section import (
+from demo.ui.components.graph_section import (
     GraphvizFailed,
     GraphvizNotFound,
     build_dot,
@@ -68,7 +68,7 @@ def test_failure_message_keeps_the_dot_stderr():
 def test_missing_dot_binary_raises_not_found(monkeypatch):
     """dot 이 없는 환경에서도 조용히 비지 않고 설치 안내가 나와야 한다."""
     monkeypatch.setattr(
-        "frontend.components.graph_section.shutil.which", lambda name: None
+        "demo.ui.components.graph_section.shutil.which", lambda name: None
     )
 
     with pytest.raises(GraphvizNotFound) as error_info:

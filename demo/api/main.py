@@ -1,7 +1,7 @@
 """
 Backend FastAPI 진입점.
 
-라우팅과 오류 매핑만 둔다. 도메인 로직은 backend/services/ 가 안다.
+라우팅과 오류 매핑만 둔다. 도메인 로직은 demo/api/services/ 가 안다.
 
 (향후 타 샌드박스와의 소켓/HTTP 통신을 추가 예정).
 """
@@ -12,12 +12,13 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
-REPO_ROOT = str(Path(__file__).resolve().parent.parent)
+# demo/api/main.py -> demo/api -> demo -> 저장소 뿌리. 한 단계 깊어졌다.
+REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-from backend.schemas.node import NodeRegisterRequest
-from backend.services import graph_service, node_service, resolve_service
+from demo.api.schemas.node import NodeRegisterRequest
+from demo.api.services import graph_service, node_service, resolve_service
 from llm_engine import ollama
 from llm_engine.ollama import OllamaClient
 from ontology.registry import (
@@ -130,4 +131,4 @@ async def health_endpoint() -> dict:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("demo.api.main:app", host="0.0.0.0", port=8000, reload=True)

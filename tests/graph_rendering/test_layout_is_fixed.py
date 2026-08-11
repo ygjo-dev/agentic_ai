@@ -16,7 +16,7 @@ import shutil
 
 import pytest
 
-from frontend.components.graph_section import build_dot, render_svg
+from demo.ui.components.graph_section import build_dot, render_svg
 from ontology.graph import (
     dotted_edges,
     highlight_edges,

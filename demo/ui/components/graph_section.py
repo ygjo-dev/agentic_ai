@@ -17,8 +17,8 @@ import subprocess
 
 import streamlit as st
 
-from frontend import config, focus, layout_store, styles
-from frontend.components import zoom
+from demo.ui import config, focus, layout_store, styles
+from demo.ui.components import zoom
 
 
 class GraphvizNotFound(RuntimeError):
@@ -31,7 +31,7 @@ class GraphvizFailed(RuntimeError):
 # 한글 노드 라벨이 깨지지 않도록 지정. Windows 기본 한글 폰트.
 FONT = "Malgun Gothic"
 
-# 색은 frontend/config.py 가 정한다. 여기서 다시 내보내는 것은
+# 색은 demo/ui/config.py 가 정한다. 여기서 다시 내보내는 것은
 # tests/graph_rendering 이 이 모듈에서 import 하고 있어서다.
 HIGHLIGHT_COLOR = config.HIGHLIGHT_COLOR
 DOTTED_COLOR = config.DOTTED_COLOR

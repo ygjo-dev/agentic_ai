@@ -1,4 +1,4 @@
-"""backend/main.py 의 /nodes · /nodes/reset 엔드포인트 검증.
+"""demo/api/main.py 의 /nodes · /nodes/reset 엔드포인트 검증.
 
 등록은 실제 저장소 파일을 바꾼다. tests/node_registration 과 같은 방식으로
 앞뒤에 reset_to_init() 을 걸어 되돌린다 — register_node 는 paths 전역을
@@ -12,7 +12,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as backend_main
+import demo.api.main as backend_main
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 from ontology.registry import reset_to_init
@@ -49,7 +49,7 @@ def client():
 
 @pytest.fixture
 def use_llm_client(monkeypatch):
-    """backend.main 이 쓰는 OllamaClient 를 주어진 Stub 으로 교체한다."""
+    """demo.api.main 이 쓰는 OllamaClient 를 주어진 Stub 으로 교체한다."""
 
     def _use(response=INFERRED):
         llm_client = StubLLMClient(json.dumps(response))

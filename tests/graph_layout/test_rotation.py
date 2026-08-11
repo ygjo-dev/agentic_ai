@@ -12,8 +12,8 @@ import shutil
 
 import pytest
 
-from frontend import layout_store
-from frontend.components.graph_section import (
+from demo.ui import layout_store
+from demo.ui.components.graph_section import (
     NEATO_FRESH_ATTRS,
     build_dot,
     ensure_positions,

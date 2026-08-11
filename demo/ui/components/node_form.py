@@ -5,8 +5,8 @@
 
 import streamlit as st
 
-from frontend import api_client, config
-from frontend.api_client import ApiError
+from demo.ui import api_client, config
+from demo.ui.api_client import ApiError
 
 # 등록 샘플. inputs/outputs 는 온톨로지 인터페이스를 그대로 쓴다.
 NODE_SAMPLES = [

@@ -1,4 +1,4 @@
-"""backend/main.py 의 /resolve 엔드포인트 연결 검증.
+"""demo/api/main.py 의 /resolve 엔드포인트 연결 검증.
 """
 
 import json
@@ -6,7 +6,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-import backend.main as backend_main
+import demo.api.main as backend_main
 from conftest import SELECT, StubLLMClient
 from orchestrator.route_resolver import RouteResolutionError
 
@@ -35,7 +35,7 @@ def client():
 
 @pytest.fixture
 def use_llm_client(monkeypatch):
-    """backend.main 이 쓰는 OllamaClient 를 주어진 Stub 으로 교체한다."""
+    """demo.api.main 이 쓰는 OllamaClient 를 주어진 Stub 으로 교체한다."""
 
     def _use(llm_client):
         monkeypatch.setattr(backend_main, "OllamaClient", lambda: llm_client)

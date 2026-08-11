@@ -7,7 +7,7 @@
 
 import json
 
-from frontend import layout_store
+from demo.ui import layout_store
 
 POSITIONS = {
     "load_cctv_platform": (86.2, 209.91),

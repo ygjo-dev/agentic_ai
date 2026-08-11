@@ -1,6 +1,6 @@
 """노드 등록 / 초기화. registry 호출 → DTO."""
 
-from backend.services import graph_service
+from demo.api.services import graph_service
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 from ontology.registry import register_node, reset_to_init
 

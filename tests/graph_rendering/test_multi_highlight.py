@@ -6,7 +6,7 @@
 
 import re
 
-from frontend.components.graph_section import build_dot
+from demo.ui.components.graph_section import build_dot
 
 NODES = {
     "load_cctv_platform": {"name": "승강장 CCTV 불러오기"},

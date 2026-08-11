@@ -14,8 +14,10 @@ import os
 import tempfile
 from pathlib import Path
 
-# 저장소 루트. frontend 는 paths 를 import 하지 않는다(계층 규칙).
-LAYOUT_PATH = Path(__file__).resolve().parent.parent / "layout.json"
+# 저장소 루트. demo/ui 는 paths 를 import 하지 않는다(계층 규칙).
+# 저장소 뿌리에 둔다. demo/ 안으로 옮기면 이미 잡아둔 좌표를 잃고 배치가
+# 통째로 다시 계산된다 — 리허설을 다시 해야 한다는 뜻이다.
+LAYOUT_PATH = Path(__file__).resolve().parent.parent.parent / "layout.json"
 
 
 def load(path: Path | None = None) -> dict[str, tuple[float, float]]:

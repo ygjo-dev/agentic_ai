@@ -5,7 +5,7 @@ import shutil
 
 import pytest
 
-from frontend.components.graph_section import build_dot, render_svg
+from demo.ui.components.graph_section import build_dot, render_svg
 
 NODES = {
     "load_cctv_platform": {"name": "승강장 CCTV 불러오기"},
@@ -89,7 +89,7 @@ def test_dotted_edge_does_not_use_constraint_false():
 
 def test_dotted_edge_color_differs_from_solid():
     """굵기 차이만으로는 실선과 점선이 구분되지 않는다."""
-    from frontend.components.graph_section import DOTTED_COLOR, PLAIN_COLOR
+    from demo.ui.components.graph_section import DOTTED_COLOR, PLAIN_COLOR
 
     assert DOTTED_COLOR != PLAIN_COLOR
 
@@ -103,7 +103,7 @@ def test_dotted_edge_color_differs_from_solid():
 
 
 def test_dotted_label_color_matches_the_line():
-    from frontend.components.graph_section import DOTTED_COLOR
+    from demo.ui.components.graph_section import DOTTED_COLOR
 
     line = build_dot(NODES, SOLID, DOTTED)
     dotted_line = edge_lines(line, "generate_ppt", "generate_word")[0]
@@ -136,7 +136,7 @@ def test_background_is_transparent():
 
 def test_node_text_and_border_have_an_explicit_color():
     """배경이 투명이면 기본 검정 글자는 다크 배경에서 읽히지 않는다."""
-    from frontend.components.graph_section import PLAIN_COLOR
+    from demo.ui.components.graph_section import PLAIN_COLOR
 
     dot = build_dot(NODES, SOLID, DOTTED)
     node_defaults = [line for line in dot.splitlines() if line.strip().startswith("node [")]
@@ -148,7 +148,7 @@ def test_node_text_and_border_have_an_explicit_color():
 
 def test_all_nodes_share_one_neutral_color():
     """종류별로 색을 나누면 하이라이트가 묻힌다. 색은 강조에만 쓴다."""
-    from frontend.components.graph_section import HIGHLIGHT_COLOR
+    from demo.ui.components.graph_section import HIGHLIGHT_COLOR
 
     dot = build_dot(NODES, SOLID, DOTTED)
     node_lines = [
@@ -212,7 +212,7 @@ def node_line(dot: str, node_id: str) -> str:
 
 def test_highlighted_path_nodes_get_a_thicker_border():
     """어느 노드를 거치는지 선만 눈으로 따라가게 두지 않는다."""
-    from frontend.components.graph_section import HIGHLIGHT_COLOR
+    from demo.ui.components.graph_section import HIGHLIGHT_COLOR
 
     dot = build_dot(NODES, SOLID, DOTTED, highlight=HIGHLIGHT)
 

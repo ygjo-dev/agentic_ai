@@ -12,9 +12,9 @@ import json
 
 import streamlit as st
 
-from frontend import config, focus, styles
-from frontend.components import path_panel, zoom
-from frontend.components.graph_section import (
+from demo.ui import config, focus, styles
+from demo.ui.components import path_panel, zoom
+from demo.ui.components.graph_section import (
     GraphvizFailed,
     GraphvizNotFound,
     build_focus_svgs,
