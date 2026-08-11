@@ -11,21 +11,24 @@
 import streamlit as st
 
 # (발화, 기대 status, 기대 recipe_id, 기대 후보)
+#
+# 온톨로지가 두 도메인(시설 점검 · 기상 환경)으로 갈려 있어 도메인만 밝혀도
+# 후보가 크게 준다. 예전에는 어휘가 촘촘히 겹쳐 조금만 모호해도 다섯씩 나왔다.
 SAMPLES = [
     # SELECT : 발화가 Recipe 하나로 유일하게 결정.
-    # 소스(CCTV)를 밝혀 검측차 쪽(recipe_006)과 갈린다.
-    ("승강장 CCTV 동영상으로 혼잡도를 분석해줘", "SELECT", "recipe_004", ["recipe_004"]),
-    # 분석에서 끝나므로 문서 생성까지 가는 018/019 는 후보가 아니다.
-    ("점검 문서로 승강장 장애 발생 빈도를 분석해줘", "SELECT", "recipe_008", ["recipe_008"]),
-    ("검측차가 촬영한 본선 이미지로 구조물 균열을 분석하고 결과를 PPT 문서로 만들어줘", "SELECT", "recipe_017", ["recipe_017"]),
+    # 분석에서 끝나므로 보고서까지 가는 012/013 은 후보가 아니다.
+    ("기상 관측값으로 결빙 위험도를 분석해줘", "SELECT", "recipe_004", ["recipe_004"]),
+    # 이미지 출처(검측 이미지)와 산출 형식(PPT)을 둘 다 밝혀 하나로 좁혀진다.
+    ("궤도 검측 이미지로 균열을 찾아서 PPT 보고서로 만들어줘", "SELECT", "recipe_011", ["recipe_011"]),
+    ("승강장 CCTV 로 혼잡도를 분석해줘", "SELECT", "recipe_001", ["recipe_001"]),
     # CLARIFY : Recipe 후보가 2개 이상으로 갈린다.
-    # 산출 방식이 갈림 (Word / PPT)
-    ("승강장 CCTV 동영상으로 혼잡도를 분석하고 결과를 문서로 만들어줘", "CLARIFY", None, ["recipe_010", "recipe_011"]),
-    # 분석 방법이 갈림 (승강장을 영상으로도, 문서로도 분석 가능)
-    ("승강장 상태를 분석해줘", "CLARIFY", None, ["recipe_004", "recipe_006", "recipe_008"]),
+    # 어느 위험도인지가 갈림 (결빙 / 강풍)
+    ("기상 관측값으로 위험도를 분석해줘", "CLARIFY", None, ["recipe_004", "recipe_005"]),
+    # 산출 형식이 갈림 (Word / PPT)
+    ("승강장 혼잡도를 분석하고 보고서로 만들어줘", "CLARIFY", None, ["recipe_006", "recipe_007"]),
     # NO_MATCH : Menu 에 없는 기능
-    ("CCTV 영상으로 열차 속도를 분석해줘", "NO_MATCH", None, []),
-    ("오늘 날씨 알려줘", "NO_MATCH", None, []),
+    ("승객 민원 추세를 분석해줘", "NO_MATCH", None, []),
+    ("오늘 지하철 요금 알려줘", "NO_MATCH", None, []),
 ]
 
 PLACEHOLDER = "(직접 입력)"

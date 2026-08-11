@@ -10,20 +10,24 @@ from demo.ui.api_client import ApiError
 
 # 등록 샘플. inputs/outputs 는 온톨로지 인터페이스를 그대로 쓴다.
 NODE_SAMPLES = [
+    # 시연의 주력. 궤도 점검 보고서는 지금 어느 recipe 에도 안 들어가 실선이 0개다 —
+    # 이 노드를 등록하면 그 끊긴 자리가 이어지고 궤도 그룹에 점선이 붙는다.
     (
-        "구조물 균열 진행 추세 분석",
-        "문서에서 구조물 균열 폭의 시간 변화를 분석한다.",
+        "궤도 결함 이력 요약",
+        "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
         ["DocumentData"],
         ["AnalysisResult"],
     ),
+    # 기상 도메인 쪽에 붙는 경우.
     (
-        "승강장 안전사고 분석",
-        "CCTV 영상에서 승강장 안전사고 위험 상황을 검지한다.",
-        ["MediaData"],
+        "적설 영향 분석",
+        "기상 관측값에서 적설이 운행에 미치는 영향을 분석한다.",
+        ["WeatherData"],
         ["AnalysisResult"],
     ),
+    # 어느 대상에도 매이지 않는 범용 노드. subject 가 비어 점선이 안 생긴다.
     (
-        "Excel 생성",
+        "Excel 보고서 생성",
         "분석 결과를 Excel 표로 생성한다.",
         ["AnalysisResult"],
         ["DocumentData"],
