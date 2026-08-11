@@ -7,6 +7,9 @@
 **응답을 파싱하지 않는다.** Ollama 응답 봉투에서 원문만 꺼내 그대로 넘긴다 —
 파싱과 계약 검증은 route_resolver 의 몫이라 두 곳에 흩어지면 안 된다.
 
+닿는지 확인하는 것도 여기 있다. 라우팅 계층이 HTTP 를 직접 던지면
+"LLM 호출을 한 곳에 가둔다" 는 약속이 깨진다.
+
 Ollama 데몬 없이 검증한다. urlopen 을 가로채 요청 인자를 그대로 본다.
 """
 
@@ -18,7 +21,13 @@ import pytest
 
 from conftest import StubLLMClient
 from llm_engine.client import LLMClient
-from llm_engine.ollama import OLLAMA_HOST, OLLAMA_MODEL, OllamaClient, call_ollama
+from llm_engine.ollama import (
+    OLLAMA_HOST,
+    OLLAMA_MODEL,
+    OllamaClient,
+    call_ollama,
+    ping,
+)
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -109,3 +118,31 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
         assert [(p.name, p.annotation) for p in actual] == [
             (p.name, p.annotation) for p in expected
         ], f"{type(instance).__name__}.generate() 가 Protocol 과 다르다"
+
+
+def test_reachability_is_checked_without_raising(monkeypatch):
+    """시연 직전 점검용. 못 닿아도 예외를 올리지 않는다.
+
+    LLM 이 꺼져 있다는 것은 화면이 보여줘야 할 정보이지 서버가 죽을 이유가
+    아니다. 이유도 묻지 않는다 — 연결 거부든 타임아웃이든 답은 "못 닿는다" 하나다.
+
+    타임아웃이 짧다. 오래 걸리는 점검은 점검이 아니다.
+    """
+    calls = {}
+
+    def fake_urlopen(url, *args, **kwargs):
+        calls["url"] = url
+        calls["timeout"] = kwargs.get("timeout")
+        return FakeHTTPResponse({"models": []})
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+    assert ping() is True
+    assert calls["url"].startswith(OLLAMA_HOST)
+    assert 0 < calls["timeout"] <= 5, "점검이 오래 걸리면 점검이 아니다"
+
+    for boom in (ConnectionError("연결 거부"), TimeoutError("시간 초과")):
+        def exploding(*args, _boom=boom, **kwargs):
+            raise _boom
+
+        monkeypatch.setattr(urllib.request, "urlopen", exploding)
+        assert ping(timeout=0.1) is False

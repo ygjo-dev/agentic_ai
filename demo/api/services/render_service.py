@@ -1,15 +1,20 @@
 """그리기 요청 → SVG 한 벌. graph_svg 를 부르는 얇은 껍데기다.
 
-도메인 데이터는 graph_service 에서만 가져온다. graph_svg 가 ontology 를 직접
+도메인 데이터는 ontology_service 에서만 가져온다. graph_svg 가 ontology 를 직접
 읽으면 저장소가 그래프 DB 로 바뀔 때 고칠 곳이 둘이 된다.
 
 여기서 하는 판단은 하나뿐이다 — 어떤 모드가 어떤 recipe 를 강조하느냐.
 """
 
 from demo.graph_svg import build, layout_store
-from demo.api.services import graph_service
+from demo.api.services import ontology_service
 
 MODES = ("plain", "resolve", "register")
+
+
+class UnknownRenderMode(ValueError):
+    """모르는 render mode 다. 오타가 조용히 plain 으로 떨어지면
+    시연 중에 "왜 강조가 안 되지" 를 한참 찾게 된다."""
 
 
 def render(
@@ -28,13 +33,14 @@ def render(
             register 가 아니면 None.
 
     Raises:
-        ValueError: 모르는 모드. 오타가 조용히 plain 으로 떨어지면 시연 중에
-            "왜 강조가 안 되지" 를 한참 찾게 된다.
+        UnknownRenderMode: 모르는 모드. 422 로 나간다.
     """
     if mode not in MODES:
-        raise ValueError(f"모르는 render mode: {mode!r} (가능: {', '.join(MODES)})")
+        raise UnknownRenderMode(
+            f"모르는 render mode: {mode!r} (가능: {', '.join(MODES)})"
+        )
 
-    nodes, solid, dotted = graph_service.domain_graph()
+    nodes, solid, dotted = ontology_service.domain_graph()
     ids = list(recipe_ids or [])
 
     positions = layout_store.ensure_positions(nodes, solid, dotted)
@@ -45,10 +51,10 @@ def render(
         solid=solid,
         dotted=dotted,
         positions=positions,
-        paths=graph_service.paths_for(ids, nodes),
+        paths=ontology_service.paths_for(ids, nodes),
         recipe_ids=ids,
         mark=reduced,
-        version=graph_service.ontology_version(),
+        version=ontology_service.ontology_version(),
         layout=layout_store.layout_hash(positions),
         mode=mode,
     )

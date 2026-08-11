@@ -27,6 +27,19 @@ def read(path=None) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8"))
 
 
+def raw_bytes(path=None) -> bytes:
+    """파일 원문 그대로. 내용 해시를 만드는 쪽이 쓴다.
+
+    dict 로 읽어 다시 직렬화하면 같은 내용이 다른 바이트가 될 수 있다(키 순서 ·
+    따옴표 · 들여쓰기). 그러면 캐시 키가 헛돌아 화면이 깜빡인다.
+
+    저장소가 그래프DB 로 바뀌면 파일이 없으므로 여기서 스냅샷을 직렬화해
+    돌려주면 된다. 부르는 쪽은 그대로다.
+    """
+    path = path or paths.ONTOLOGY_PATH
+    return path.read_bytes()
+
+
 def nodes(path=None) -> dict:
     """노드 dict. {node_id: {name, description, inputs, outputs, properties}}"""
     return read(path)["nodes"]

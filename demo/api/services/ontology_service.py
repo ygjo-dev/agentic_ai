@@ -1,8 +1,14 @@
-"""온톨로지 그래프 조회 → DTO 변환.
+"""온톨로지를 읽어 API 응답 형태로 옮긴다.
 
-이 모듈이 온톨로지 저장소와 맞닿는 유일한 지점이다.
-지금은 ontology/graph.py 가 YAML 을 읽지만, 나중에 그래프 DB 로 바뀌면
-여기만 교체하면 되고 API 계약과 프론트엔드는 그대로다.
+**demo/ 안에서 온톨로지를 읽는 유일한 지점이다.** 다른 서비스는 여기를 거친다 —
+그래프DB 로 바뀔 때 고칠 곳이 하나여야 하기 때문이다.
+
+이름이 graph_service 였는데 graph_svg 와 "graph" 의 뜻이 달라 헷갈렸다.
+여기의 graph 는 노드와 관계라는 **데이터**이고, graph_svg 의 graph 는 **그림**이다.
+실제로 그 혼동 때문에 두 모듈이 비슷한 계층인 줄 알고 역방향 import 가 생겼었다.
+
+색만은 graph_svg 에게 묻는다. 그리는 쪽이 팔레트의 주인이고, 화면은 그래프 SVG 와
+같은 색으로 칩과 배지를 칠해야 한다 — 출처가 둘이면 조용히 어긋난다.
 
 도메인 코드를 옮기거나 고치지 않는다 — 호출만 한다.
 """
@@ -11,6 +17,7 @@ import hashlib
 
 import paths
 from demo.graph_svg.dot import COLORS
+from ontology import store
 from ontology.graph import (
     dotted_edges,
     load_ontology,
@@ -30,7 +37,7 @@ def ontology_version() -> str:
     내용만으로는 구분할 수 없다.
     """
     digest = hashlib.sha1()
-    digest.update(paths.ONTOLOGY_PATH.read_bytes())
+    digest.update(store.raw_bytes())
 
     for recipe_path in sorted(paths.RECIPES_DIR.glob("*.yaml")):
         digest.update(recipe_path.name.encode("utf-8"))

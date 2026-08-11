@@ -3,7 +3,7 @@
 demo/api/main.py 의 /graph 엔드포인트 검증.
 
 가장 중요한 것은 응답이 도메인 계산과 어긋나지 않는지다. 그리기는 이제 서버
-안에서 도메인 dict 를 그대로 쓰고(graph_service.domain_graph), 이 응답은 화면이
+안에서 도메인 dict 를 그대로 쓰고(ontology_service.domain_graph), 이 응답은 화면이
 받는 것이다. 둘이 갈라지면 사람이 보는 그래프와 서버가 아는 그래프가 달라진다.
 
 UI 를 import 하지 않는다. API 테스트가 화면을 끌어오면 화면을 갈아끼울 때
@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 import demo.api.main as backend_main
 from demo.graph_svg.dot import build_dot
-from demo.api.services.graph_service import domain_graph
+from demo.api.services.ontology_service import domain_graph
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 
 

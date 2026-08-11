@@ -1,7 +1,7 @@
 """발화 → Recipe 해석. route_resolver 호출 + 경로(paths) 덧붙이기."""
 
 import paths
-from demo.api.services import graph_service
+from demo.api.services import ontology_service
 from orchestrator.route_resolver import resolve_route
 from orchestrator.schemas.response_schema import RESPONSE_SCHEMA
 from workflows.static.menu.load import load_menu
@@ -31,4 +31,4 @@ def resolve(utterance: str, llm_client) -> dict:
         if recipe_id
     ]
 
-    return {**result, "paths": graph_service.paths_for(wanted)}
+    return {**result, "paths": ontology_service.paths_for(wanted)}

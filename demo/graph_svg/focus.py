@@ -28,22 +28,6 @@ def last_node(steps: list[dict]) -> str | None:
     return ids[-1] if ids else None
 
 
-def ordered_recipe_ids(result: dict | None) -> list[str]:
-    """그릴 recipe 순서. recipe_id 가 후보에도 있으면 한 번만."""
-    if not result:
-        return []
-
-    wanted = [
-        recipe_id
-        for recipe_id in [
-            result.get("recipe_id"),
-            *(result.get("candidate_recipe_ids") or []),
-        ]
-        if recipe_id
-    ]
-    return list(dict.fromkeys(wanted))
-
-
 def last_nodes(paths: dict, recipe_ids: list[str]) -> list[str]:
     """후보들의 마지막 노드. 중복은 접고 순서는 recipe 순서를 따른다.
 
@@ -93,17 +77,6 @@ def nodes_of(paths: dict, recipe_ids: list[str]) -> set[str]:
         for recipe_id in recipe_ids
         for node_id in step_ids((paths or {}).get(recipe_id) or [])
     }
-
-
-def recipe_ids_of(result: dict | None) -> list[str]:
-    """해석 결과에서 강조할 recipe 목록. SELECT 는 하나, CLARIFY 는 후보 전부."""
-    if not result:
-        return []
-    if result.get("status") == "SELECT" and result.get("recipe_id"):
-        return [result["recipe_id"]]
-    if result.get("status") == "CLARIFY":
-        return list(result.get("candidate_recipe_ids") or [])
-    return []  # NO_MATCH — 강조할 것이 없다.
 
 
 def chain_names(steps: list[dict]) -> list[str]:

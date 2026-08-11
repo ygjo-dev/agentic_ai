@@ -1,8 +1,18 @@
-"""노드 등록 / 초기화. registry 호출 → DTO."""
+"""노드 등록 / 초기화. registry 호출 → DTO.
 
-from demo.api.services import graph_service
-from ontology.graph import dotted_edges, load_ontology, solid_edges
+온톨로지는 ontology_service 에게 묻는다. 예전에는 ontology.graph 를 직접
+불렀는데, 그러면 "온톨로지를 읽는 유일한 지점" 이라는 ontology_service 의 약속이
+깨지고 그래프DB 로 갈 때 고칠 곳이 둘이 된다.
+"""
+
+from demo.api.services import ontology_service
 from ontology.registry import register_node, reset_to_init
+
+
+def _edges():
+    """지금의 실선 · 점선. 등록 전후로 한 번씩 불러 차집합을 낸다."""
+    _, solid, dotted = ontology_service.domain_graph()
+    return solid, dotted
 
 
 def register(form: dict, llm_client) -> dict:
@@ -13,16 +23,13 @@ def register(form: dict, llm_client) -> dict:
     new_solid_edges / new_dotted_edges 는 등록 직전과 직후의 차집합이다.
     registry 가 알려주지 않으므로 앞뒤로 한 번씩 조회해 직접 계산한다.
     """
-    before_solid = set(solid_edges())
-    before_dotted = set(dotted_edges())
-    before_nodes = len(load_ontology()["nodes"])
-    before_recipes = len(graph_service.recipe_ids())
+    before_solid, before_dotted = _edges()
+    before_nodes = len(ontology_service.domain_graph()[0])
+    before_recipes = len(ontology_service.recipe_ids())
 
     result = register_node(form, llm_client=llm_client)
 
-    after_solid = solid_edges()
-    after_dotted = dotted_edges()
-    nodes = load_ontology()["nodes"]
+    nodes, after_solid, after_dotted = ontology_service.domain_graph()
 
     return {
         "node_id": result["node_id"],
@@ -32,7 +39,7 @@ def register(form: dict, llm_client) -> dict:
         "recipe_ids": result["recipe_ids"],
         # registry 의 chains 도 같은 내용이지만 모양이 다르다. /graph · /resolve 와
         # 원소 모양을 맞춰 프론트엔드 어댑터가 하나로 끝나게 한다.
-        "paths": graph_service.paths_for(result["recipe_ids"], nodes),
+        "paths": ontology_service.paths_for(result["recipe_ids"], nodes),
         "new_solid_edges": [
             {"from": frm, "to": to, "interface": interface}
             for (frm, to), interface in after_solid.items()
@@ -45,13 +52,13 @@ def register(form: dict, llm_client) -> dict:
         ],
         "counts": {
             "nodes": [before_nodes, len(nodes)],
-            "recipes": [before_recipes, len(graph_service.recipe_ids())],
+            "recipes": [before_recipes, len(ontology_service.recipe_ids())],
         },
-        "version": graph_service.ontology_version(),
+        "version": ontology_service.ontology_version(),
     }
 
 
 def reset() -> dict:
     """_init 사본으로 되돌린다."""
     reset_to_init()
-    return {"ok": True, "version": graph_service.ontology_version()}
+    return {"ok": True, "version": ontology_service.ontology_version()}
