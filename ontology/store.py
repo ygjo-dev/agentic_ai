@@ -41,8 +41,24 @@ def raw_bytes(path=None) -> bytes:
 
 
 def nodes(path=None) -> dict:
-    """노드 dict. {node_id: {name, description, inputs, outputs, properties}}"""
+    """노드 dict. {node_id: {kind, name, description, inputs, outputs}}
+
+    kind 는 function(실행할 수 있는 것) 또는 group(대상 개념)이다.
+    group 은 inputs / outputs 가 없다 — recipe 에 들어가지 않기 때문이다.
+    """
     return read(path)["nodes"]
+
+
+def edges(path=None) -> list[dict]:
+    """노드 사이의 관계. [{"from": ..., "to": ..., "type": ...}, ...] 순서 그대로.
+
+    **실행 순서(실선)는 여기 없다.** 그건 recipe 가 정한다 — 두 곳에 적으면
+    진실의 원천이 둘이 되고 어긋났을 때 어느 쪽이 맞는지 알 수 없다.
+
+    edges 블록이 없어도 빈 리스트다. 관계가 하나도 없는 온톨로지가 이상한 것은
+    아니고, 여기서 예외를 올리면 화면이 죽는다.
+    """
+    return list(read(path).get("edges") or [])
 
 
 def interfaces(path=None) -> list[str]:
@@ -53,34 +69,78 @@ def interfaces(path=None) -> list[str]:
     return list(read(path)["interfaces"])
 
 
+# nodes 블록과 edges 블록의 경계. 노드는 이 앞에, edge 는 파일 끝에 붙는다.
+EDGES_MARKER = "\nedges:"
+
+
 def append_node(node_id: str, node: dict, path=None) -> None:
-    """노드 한 덩어리를 파일 끝에 이어 붙인다.
+    """노드 한 덩어리를 nodes 블록 끝에 끼워 넣는다.
 
     **`yaml.dump` 로 다시 쓰지 않는다.** 파일 상단의 구조 원칙 주석과 손으로
-    맞춘 들여쓰기가 통째로 날아가기 때문이다. `nodes:` 가 파일 마지막이라
-    끝에 붙이면 된다.
+    맞춘 들여쓰기가 통째로 날아가기 때문이다.
 
-    중복 · 인터페이스 · property key 검사는 하지 않는다. 그것은 도메인 규칙이라
+    예전에는 `nodes:` 가 파일 마지막이라 그냥 끝에 붙였다. `edges:` 가 뒤에
+    생기면서 그 전제가 깨졌다 — 그대로 두면 새 노드가 edges 블록 뒤에 붙어
+    노드가 아니라 edge 목록의 일부로 읽힌다. 마커 앞에 끼워 넣는다.
+
+    중복 · 인터페이스 검사는 하지 않는다. 그것은 도메인 규칙이라
     `registry.add_node()` 가 맡는다. 여기는 쓰기만 안다.
     """
     path = path or paths.ONTOLOGY_PATH
-    path.write_text(
-        path.read_text(encoding="utf-8").rstrip("\n")
-        + "\n\n"
-        + node_block(node_id, node)
-        + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
+    text = path.read_text(encoding="utf-8")
+    block = node_block(node_id, node)
+
+    head, marker, tail = text.partition(EDGES_MARKER)
+    if marker:
+        body = head.rstrip("\n") + "\n\n" + block + "\n\n" + marker.lstrip("\n") + tail
+    else:
+        # edges 블록이 아직 없는 파일. 예전처럼 끝에 붙인다.
+        body = text.rstrip("\n") + "\n\n" + block + "\n"
+
+    path.write_text(body, encoding="utf-8", newline="\n")
+
+
+def append_edge(frm: str, to: str, type_: str, path=None) -> None:
+    """관계 한 줄을 edges 블록 끝에 이어 붙인다.
+
+    edges 가 파일 마지막이라 끝에 붙이면 된다. 블록이 없으면 만들어 붙인다.
+    한 줄 형식은 기존 항목과 같게 맞춘다 — 형식이 갈라지면 파일을 읽을 때
+    새로 등록된 것만 튀어 보인다.
+    """
+    path = path or paths.ONTOLOGY_PATH
+    text = path.read_text(encoding="utf-8").rstrip("\n")
+    line = edge_line(frm, to, type_)
+
+    if EDGES_MARKER in text:
+        body = text + "\n" + line + "\n"
+    else:
+        body = text + "\n\n\nedges:\n\n" + line + "\n"
+
+    path.write_text(body, encoding="utf-8", newline="\n")
+
+
+def edge_line(frm: str, to: str, type_: str) -> str:
+    """edges 에 적을 한 줄. 기존 항목과 같은 형식."""
+    return f"  - {{ from: {frm}, to: {to}, type: {type_} }}"
 
 
 def node_block(node_id: str, node: dict) -> str:
-    """온톨로지에 적을 노드 한 덩어리. 기존 파일과 같은 들여쓰기."""
+    """온톨로지에 적을 노드 한 덩어리. 기존 파일과 같은 들여쓰기.
+
+    group 은 inputs / outputs 를 적지 않는다. 실행 대상이 아니라서 "비어 있는
+    것" 과 "없는 것" 의 뜻이 다르다 — 빈 리스트로 적으면 "입력이 없는 기능" 으로
+    읽혀 recipe 시작점이 되어버린다.
+    """
+    kind = node.get("kind", "function")
     lines = [
         f"  {node_id}:",
+        f"    kind: {kind}",
         f"    name: {node['name']}",
         f"    description: {node['description']}",
     ]
+
+    if kind == "group":
+        return "\n".join(lines)
 
     for field in ("inputs", "outputs"):
         values = node[field]
@@ -89,14 +149,6 @@ def node_block(node_id: str, node: dict) -> str:
             lines += [f"      - {value}" for value in values]
         else:
             lines.append(f"    {field}: []")
-
-    properties = node.get("properties") or {}
-    if properties:
-        lines.append("    properties:")
-        lines += [f"      {key}: {value}" for key, value in properties.items()]
-    else:
-        # 기존 노드와 관계가 없다는 뜻. 억지로 채우지 않는다.
-        lines.append("    properties: {}")
 
     return "\n".join(lines)
 

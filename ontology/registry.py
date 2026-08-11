@@ -12,14 +12,20 @@ import paths
 from ontology import store
 from orchestrator.route_resolver import resolve_route
 
-# 쓸 수 있는 property key. 값(value)은 새로워도 되지만 key 는 여기 있는 것만 쓴다.
-# key 어휘가 갈라지면 점선(같은 key: value 공유) 조회가 조용히 실패한다.
-# LLM 에게 프롬프트로도 알리지만, 어기는 순간을 대비해 코드로도 막는다.
-#
-# 하나뿐인 이유 : 예전에는 source / site / target / output_kind / format 다섯을
-# 썼는데 key 가 노드 종류에 묶여 있었다. 불러오기는 site, 분석은 target 을 써서
-# 같은 "승강장" 인데도 점선이 안 생겼다. 대상을 묻는 key 하나면 종류와 무관하게 이어진다.
-PROPERTY_KEYS = frozenset({"subject"})
+# 새 노드가 속할 대상을 가리키는 관계 이름. 지금은 이것 하나뿐이다.
+BELONGS_TO = "속함"
+
+FUNCTION, GROUP = "function", "group"
+
+
+def group_ids(nodes: dict) -> list[str]:
+    """지금 있는 group 노드 id. LLM 이 고를 수 있는 선택지 전부다."""
+    return [nid for nid, node in nodes.items() if node.get("kind") == GROUP]
+
+
+def functions(nodes: dict) -> dict:
+    """실행할 수 있는 노드만. group 은 recipe 에 들어가지 않는다."""
+    return {nid: node for nid, node in nodes.items() if node.get("kind") != GROUP}
 
 
 class DuplicateNode(ValueError):
@@ -30,15 +36,15 @@ class UnknownInterface(ValueError):
     """온톨로지에 선언되지 않은 인터페이스다."""
 
 
-class UnknownPropertyKey(ValueError):
-    """기존 어휘에 없는 property key 다."""
+class UnknownGroup(ValueError):
+    """온톨로지에 없는 group 노드 id 다."""
 
 
 def add_node(node_id: str, node: dict, path=None) -> None:
     """온톨로지에 노드를 추가한다.
 
-    여기서 보는 것은 등록 규칙뿐이다 — 중복인가, 아는 인터페이스인가, 아는
-    property key 인가. 파일에 어떻게 적히는지는 store 가 안다.
+    여기서 보는 것은 등록 규칙뿐이다 — 중복인가, 아는 인터페이스인가.
+    파일에 어떻게 적히는지는 store 가 안다.
     """
     ontology = store.read(path)
 
@@ -53,14 +59,6 @@ def add_node(node_id: str, node: dict, path=None) -> None:
                 f"  쓸 수 있는 것 : {sorted(interfaces)}"
             )
 
-    properties = node.get("properties") or {}
-    unknown = set(properties) - PROPERTY_KEYS
-    if unknown:
-        raise UnknownPropertyKey(
-            f"기존 어휘에 없는 property key 다: {sorted(unknown)}\n"
-            f"  쓸 수 있는 것 : {sorted(PROPERTY_KEYS)}"
-        )
-
     store.append_node(node_id, node, path)
 
 
@@ -69,10 +67,11 @@ NODE_REGISTRATION_SCHEMA = {
     "type": "object",
     "properties": {
         "node_id": {"type": "string"},
-        "properties": {"type": "object"},
+        # 속할 group 노드 id. 어느 대상에도 매이지 않으면 빈 문자열.
+        "group": {"type": "string"},
         "reason": {"type": "string"},
     },
-    "required": ["node_id", "properties", "reason"],
+    "required": ["node_id", "group", "reason"],
 }
 
 NODE_ID_PATTERN = re.compile(r"^[a-z]+(_[a-z]+)*$")
@@ -83,24 +82,28 @@ class InvalidInference(ValueError):
 
 
 def infer_node(form: dict, llm_client, path=None) -> dict:
-    """사람이 쓴 노드 정보를 보고 LLM 이 node_id 와 properties 를 정한다.
+    """사람이 쓴 노드 정보를 보고 LLM 이 node_id 와 속할 group 을 정한다.
 
-    "기존 key 중에서 고르기" 가 아니다. 새 노드가 기존 노드 중 무엇과 관계있는지
-    판단하고, 그 관계를 점선으로 드러내려면 관계된 노드와 같은 key: value 를
-    가져야 하므로 그렇게 쓰는 것이다. 관계가 없으면 비운다.
+    group 은 **닫힌 목록에서 고르는 것**이다. 예전에는 자유 문자열(subject 값)을
+    쓰게 했는데, "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌다. 지금은
+    존재하는 group 노드 id 중 하나이거나 빈 문자열이다.
+
+    어느 대상에도 매이지 않는 범용 노드(형식만 바꾸는 생성 노드 등)는 빈 문자열이다.
+    억지로 고르는 것보다 낫다.
 
     Raises:
         InvalidInference: 형식에 맞지 않거나 쓸 수 없는 값을 돌려줬다.
         RouteResolutionError: 응답이 JSON 이 아니거나 필수 key 가 없다.
     """
     nodes = store.nodes(path)
+    choices = group_ids(nodes)
 
     result = resolve_route(
         prompt=paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8"),
         variables={
-            "existing_nodes": _describe(nodes),
+            "existing_nodes": _describe(nodes, _group_of(store.edges(path))),
             "new_node": _describe_form(form),
-            "property_keys": ", ".join(sorted(PROPERTY_KEYS)),
+            "groups": _describe_groups(nodes, choices),
         },
         response_schema=NODE_REGISTRATION_SCHEMA,
         llm_client=llm_client,
@@ -115,36 +118,53 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
     if node_id in nodes:
         raise InvalidInference(f"이미 있는 노드 id 다: {node_id}")
 
-    properties = result["properties"]
-    if not isinstance(properties, dict):
-        raise InvalidInference(f"properties 는 객체여야 한다: {properties!r}")
+    group = result["group"]
+    if not isinstance(group, str):
+        raise InvalidInference(f"group 은 문자열이어야 한다: {group!r}")
 
-    unknown = set(properties) - PROPERTY_KEYS
-    if unknown:
+    # 빈 문자열은 "어느 대상에도 안 속한다" 는 뜻이라 허용한다.
+    if group and group not in choices:
         raise InvalidInference(
-            f"기존 어휘에 없는 property key 다: {sorted(unknown)}\n"
-            f"  쓸 수 있는 것 : {sorted(PROPERTY_KEYS)}"
+            f"온톨로지에 없는 group 이다: {group!r}\n"
+            f"  고를 수 있는 것 : {choices}"
         )
 
     return result
 
 
-def _describe(nodes: dict) -> str:
-    """기존 노드를 프롬프트에 넣을 형태로. properties 가 핵심이라 반드시 넣는다."""
+def _group_of(edges: list[dict]) -> dict[str, str]:
+    """기능 노드 -> 속한 group id. 프롬프트에 보여줄 용도다."""
+    return {edge["from"]: edge["to"] for edge in edges if edge.get("type") == BELONGS_TO}
+
+
+def _describe(nodes: dict, belongs: dict[str, str]) -> str:
+    """기존 기능 노드를 프롬프트에 넣을 형태로.
+
+    어느 group 에 속하는지가 핵심이라 반드시 넣는다 — LLM 이 비슷한 노드를
+    보고 고른다. group 노드 자체는 여기 넣지 않는다. 선택지는 따로 보여준다.
+    """
     lines = []
-    for node_id, node in nodes.items():
-        properties = node.get("properties") or {}
-        shown = (
-            ", ".join(f"{key}: {value}" for key, value in properties.items()) or "(없음)"
-        )
+    for node_id, node in functions(nodes).items():
         lines.append(
             f"- {node_id}\n"
             f"    이름 : {node['name']}\n"
             f"    설명 : {node['description']}\n"
             f"    입력 : {node['inputs'] or '없음'} -> 출력 : {node['outputs']}\n"
-            f"    properties : {shown}"
+            f"    속한 대상 : {belongs.get(node_id) or '(없음)'}"
         )
     return "\n".join(lines)
+
+
+def _describe_groups(nodes: dict, choices: list[str]) -> str:
+    """고를 수 있는 group 목록. id 와 이름을 함께 보여준다.
+
+    id 만 보여주면 LLM 이 뜻을 모르고, 이름만 보여주면 무엇을 적어야 할지
+    모른다. 적어야 하는 것은 id 다.
+    """
+    return "\n".join(
+        f"- {group_id}  ({nodes[group_id]['name']} — {nodes[group_id]['description']})"
+        for group_id in choices
+    )
 
 
 def _describe_form(form: dict) -> str:
@@ -166,10 +186,20 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
     앞 노드 outputs 와 뒤 노드 inputs 에 교집합이 있으면 이어진다.
     """
 
-    def connectable(prev_id: str, next_id: str) -> bool:
-        return bool(set(nodes[prev_id]["outputs"]) & set(nodes[next_id]["inputs"]))
+    # group 은 실행 대상이 아니다. 걸러내지 않으면 inputs 가 없어 KeyError 가
+    # 나거나, .get() 으로 넘기면 "입력이 없는 노드" 로 보여 recipe 시작점이 된다.
+    # 그러면 "궤도 -> ???" 같은 실행 불가능한 recipe 가 만들어진다.
+    runnable = functions(nodes)
 
-    starts = [nid for nid, node in nodes.items() if node["inputs"] == []]
+    def connectable(prev_id: str, next_id: str) -> bool:
+        return bool(
+            set(runnable[prev_id]["outputs"]) & set(runnable[next_id]["inputs"])
+        )
+
+    if node_id not in runnable:
+        return []
+
+    starts = [nid for nid, node in runnable.items() if node["inputs"] == []]
 
     chains = [[start] for start in starts]
     found = []
@@ -179,7 +209,7 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
             [*chain, nxt]
             for chain in chains
             if len(chain) < MAX_STEPS
-            for nxt in nodes
+            for nxt in runnable
             if nxt not in chain and connectable(chain[-1], nxt)
         ]
 
@@ -322,18 +352,24 @@ def register_node(form: dict, llm_client) -> dict:
 
     앞 단계가 실패하면 뒤는 실행되지 않는다. 온톨로지에 못 넣은 노드로
     recipe 를 만들면 존재하지 않는 노드를 가리키게 된다.
+
+    group 을 골랐으면 노드를 쓴 **뒤에** 관계를 잇는다. 순서가 바뀌면 아직
+    없는 노드를 가리키는 edge 가 파일에 남는다.
     """
     inferred = infer_node(form, llm_client=llm_client)
     node_id = inferred["node_id"]
 
     node = {
+        "kind": FUNCTION,
         "name": form["name"],
         "description": form["description"],
         "inputs": form["inputs"],
         "outputs": form["outputs"],
-        "properties": inferred["properties"],
     }
     add_node(node_id, node)
+
+    if inferred["group"]:
+        store.append_edge(node_id, inferred["group"], BELONGS_TO)
 
     nodes = store.nodes()
     chains = new_recipes_for(node_id, nodes)

@@ -1,23 +1,17 @@
 # 구조 원칙
-# - 노드 필드는 name / description / inputs / outputs / properties(선택) 다섯 개다.
-# - 노드는 그룹 없이 평평하게 둔다. data/transfer/action 구분은 inputs/outputs 에서
-#   계산되므로 중복이고, 중첩 구조는 노드 id 중복을 YAML 이 잡아주지 못한다.
-# - 노드 간 관계(near 등)는 파일에 적지 않는다. 읽는 쪽(시각화, 조회)이 계산한다.
-# - properties 에는 인터페이스로 표현되지 않는 것만 적는다.
-#   modality(video/image)나 category(data/transfer/action)는 inputs/outputs 에서
-#   유도되므로 넣지 않는다.
-# - properties 의 value 는 시각화 라벨에 그대로 노출되므로
-#   코드값이 아니라 사람이 읽는 단어로 쓴다.
+# - 노드는 kind 로 갈린다. function 은 실행할 수 있는 것, group 은 대상 개념이다.
+# - group 은 inputs / outputs 가 없다. recipe 에 들어가지 않는다.
+# - 노드 사이의 관계는 edges 에 적는다.
+# - 다만 실행 순서(실선)는 edges 가 아니라 recipe 가 정한다. 두 곳에 적으면
+#   진실의 원천이 둘이 되고, 어긋났을 때 어느 쪽이 맞는지 알 수 없다.
+# - edge 의 type 은 관계 이름이다. 지금은 "속함" 하나뿐이지만,
+#   나중에 "설치됨" · "is-a" 같은 관계가 같은 자리에 들어온다.
+# - 노드는 그룹 없이 평평하게 둔다. 중첩 구조는 노드 id 중복을 YAML 이 잡아주지 못한다.
 #
-# 사용 중인 property key
-# - subject : 이 노드가 다루는 대상. 같은 값을 가진 노드끼리 관계(점선)로 이어진다.
-#             지금 쓰이는 값 : 승강장 · 궤도 · 기상
-#             어느 대상에도 매이지 않는 범용 노드는 비운다.
-#
-#   key 를 하나로 둔 이유 : 예전에는 source / site / target / output_kind / format
-#   다섯 개를 썼는데, key 가 노드 종류에 묶여 있어 관계가 끊겼다. 불러오기는
-#   site, 분석은 target 을 써서 같은 "승강장" 인데도 점선이 안 생겼다.
-#   대상을 묻는 key 하나로 두면 노드 종류와 무관하게 이어진다.
+# 왜 group 을 노드로 뒀나
+#   예전에는 기능마다 properties 에 subject: 궤도 를 적고, 같은 값을 가진 노드끼리
+#   코드가 이어줬다. 그건 관계를 노드 속성으로 적는 것이고 위 원칙과 어긋난다.
+#   대상을 노드로 세우면 관계가 edges 한 곳에 드러나고, 그래프DB 모델과 그대로 맞는다.
 
 version: 1.0
 
@@ -41,105 +35,130 @@ interfaces:
 
 nodes:
 
+  # ---------------------------------------------------------- group : 기능이 다루는 대상
+
+  group_platform:
+    kind: group
+    name: 승강장
+    description: 승객이 열차를 타고 내리는 공간.
+
+  group_track:
+    kind: group
+    name: 궤도
+    description: 열차가 주행하는 선로 구조물.
+
+  group_weather:
+    kind: group
+    name: 기상
+    description: 운행에 영향을 주는 기상 환경.
+
+  # ---------------------------------------------------------- function : 실행할 수 있는 것
+
   load_platform_cctv:
+    kind: function
     name: 승강장 CCTV 불러오기
     description: 승강장에 설치된 CCTV 영상을 불러온다.
     inputs: []
     outputs:
       - VideoData
-    properties:
-      subject: 승강장
 
   extract_frames:
+    kind: function
     name: 영상 프레임 추출
     description: 영상에서 분석용 이미지 프레임을 추출한다.
     inputs:
       - VideoData
     outputs:
       - ImageData
-    properties: {}
 
   load_track_image:
+    kind: function
     name: 궤도 검측 이미지 불러오기
     description: 검측차가 촬영한 궤도 이미지를 불러온다.
     inputs: []
     outputs:
       - ImageData
-    properties:
-      subject: 궤도
 
   load_inspection_doc:
+    kind: function
     name: 궤도 점검 보고서 불러오기
     description: 궤도 점검 과정에서 기록된 보고서를 불러온다.
     inputs: []
     outputs:
       - DocumentData
-    properties:
-      subject: 궤도
 
   analyze_congestion:
+    kind: function
     name: 승강장 혼잡도 분석
     description: 이미지에서 승강장 혼잡도를 분석한다.
     inputs:
       - ImageData
     outputs:
       - AnalysisResult
-    properties:
-      subject: 승강장
 
   detect_track_crack:
+    kind: function
     name: 궤도 균열 검출
     description: 이미지에서 궤도 균열을 검출한다.
     inputs:
       - ImageData
     outputs:
       - AnalysisResult
-    properties:
-      subject: 궤도
 
   load_weather_sensor:
+    kind: function
     name: 기상 관측값 불러오기
     description: 관측 장비에서 기상 관측값을 불러온다.
     inputs: []
     outputs:
       - WeatherData
-    properties:
-      subject: 기상
 
   analyze_icing_risk:
+    kind: function
     name: 결빙 위험도 분석
     description: 기상 관측값에서 결빙 위험도를 분석한다.
     inputs:
       - WeatherData
     outputs:
       - AnalysisResult
-    properties:
-      subject: 기상
 
   analyze_wind_risk:
+    kind: function
     name: 강풍 위험도 분석
     description: 기상 관측값에서 강풍 위험도를 분석한다.
     inputs:
       - WeatherData
     outputs:
       - AnalysisResult
-    properties:
-      subject: 기상
 
   generate_word:
+    kind: function
     name: Word 보고서 생성
     description: 분석 결과를 Word 보고서로 생성한다.
     inputs:
       - AnalysisResult
     outputs:
       - DocumentData
-    properties: {}
 
   generate_ppt:
+    kind: function
     name: PPT 보고서 생성
     description: 분석 결과를 PPT 보고서로 생성한다.
     inputs:
       - AnalysisResult
     outputs:
       - DocumentData
-    properties: {}
+
+
+edges:
+
+  - { from: load_platform_cctv,  to: group_platform, type: 속함 }
+  - { from: analyze_congestion,  to: group_platform, type: 속함 }
+
+  - { from: load_track_image,    to: group_track,    type: 속함 }
+  - { from: load_inspection_doc, to: group_track,    type: 속함 }
+  - { from: detect_track_crack,  to: group_track,    type: 속함 }
+
+  - { from: load_weather_sensor, to: group_weather,  type: 속함 }
+  - { from: analyze_icing_risk,  to: group_weather,  type: 속함 }
+  - { from: analyze_wind_risk,   to: group_weather,  type: 속함 }

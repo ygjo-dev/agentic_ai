@@ -21,6 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 import paths  # noqa: E402
 from ontology.graph import dotted_edges, recipe_nodes, solid_edges  # noqa: E402
 from ontology.registry import MENU_BUDGET  # noqa: E402
+from ontology.store import edges as ontology_edges  # noqa: E402
 from ontology.store import interfaces, nodes  # noqa: E402
 
 
@@ -39,45 +40,43 @@ def main() -> int:
     print(f"온톨로지 점검 — {paths.ONTOLOGY_PATH}")
 
     # ------------------------------------------------------------ 규모
+    groups = {nid: n for nid, n in node_map.items() if n.get("kind") == "group"}
+    funcs = {nid: n for nid, n in node_map.items() if n.get("kind") != "group"}
+
     section("규모")
-    print(f"  노드        {len(node_map)}")
+    print(f"  노드        {len(node_map)}   (function {len(funcs)} · group {len(groups)})")
     print(f"  인터페이스   {len(interface_names)}   {', '.join(interface_names)}")
     print(f"  recipe      {len(recipe_ids)}")
-    print(f"  실선        {len(solid)}")
-    print(f"  점선        {len(dotted)}")
+    print(f"  실선        {len(solid)}   (recipe 파생)")
+    print(f"  점선        {len(dotted)}   (edges 블록 {len(ontology_edges())}줄)")
 
     # ------------------------------------------------------------ subject
-    section("subject 별 점선")
-    by_subject = Counter()
-    for labels in dotted.values():
-        for label in labels:
-            by_subject[label] += 1
-
+    section("대상(group) 별 소속")
     members = {}
-    for node_id, node in node_map.items():
-        subject = (node.get("properties") or {}).get("subject")
-        if subject:
-            members.setdefault(subject, []).append(node_id)
+    for edge in ontology_edges():
+        members.setdefault(edge["to"], []).append(edge["from"])
 
-    for subject, node_ids in sorted(members.items()):
-        count = by_subject.get(f"subject: {subject}", 0)
-        # n 개 노드가 서로 다 이어지면 nC2 개다. 다르면 값이 갈렸다는 뜻이다.
-        expected = len(node_ids) * (len(node_ids) - 1) // 2
-        mark = "" if count == expected else f"   ← 기대 {expected}"
-        print(f"  {subject:<8} 노드 {len(node_ids)}개 · 점선 {count}{mark}")
-        print(f"           {', '.join(sorted(node_ids))}")
+    for group_id, node in sorted(groups.items()):
+        attached = sorted(members.get(group_id, []))
+        mark = "   ⚠ 아무도 안 붙었다" if not attached else ""
+        print(f"  {group_id:<16} {node['name']}   기능 {len(attached)}개{mark}")
+        print(f"                   {', '.join(attached) or '없음'}")
 
-    bare = sorted(
-        node_id for node_id, node in node_map.items()
-        if not (node.get("properties") or {}).get("subject")
-    )
-    print(f"\n  subject 없음 {len(bare)}개 : {', '.join(bare) or '없음'}")
-    print("           (어느 대상에도 매이지 않는 범용 노드. 점선이 안 생기는 것이 정상)")
+    bare = sorted(set(funcs) - {edge["from"] for edge in ontology_edges()})
+    print(f"\n  대상 없는 기능 {len(bare)}개 : {', '.join(bare) or '없음'}")
+    print("           (어느 대상에도 매이지 않는 범용 노드. 안 붙는 것이 정상)")
+
+    unknown = [
+        edge for edge in ontology_edges()
+        if edge["from"] not in node_map or edge["to"] not in node_map
+    ]
+    if unknown:
+        print(f"\n  ⚠ 없는 노드를 가리키는 edge {len(unknown)}개 : {unknown}")
 
     # ------------------------------------------------------------ 끊긴 노드
     section("실선이 하나도 없는 노드")
     touched = {node_id for edge in solid for node_id in edge}
-    orphans = sorted(set(node_map) - touched)
+    orphans = sorted(set(funcs) - touched)
     if orphans:
         for node_id in orphans:
             print(f"  ⚠ {node_id}  ({node_map[node_id]['name']})")
@@ -98,17 +97,26 @@ def main() -> int:
     # ------------------------------------------------------------ recipe 길이
     section("recipe 단계 수 분포")
     lengths = Counter(len(recipe_nodes(recipe_id)) for recipe_id in recipe_ids)
+    # group 이 recipe 에 섞이면 실행할 수 없는 경로가 된다.
+    in_recipes = {n for rid in recipe_ids for n in recipe_nodes(rid)}
+    strays = sorted(in_recipes & set(groups))
+    if strays:
+        print(f"  ⚠ recipe 에 group 이 섞였다 : {strays}")
     for steps in sorted(lengths):
         print(f"  {steps}단  {lengths[steps]:>3}개  {'█' * lengths[steps]}")
 
     # ------------------------------------------------------------ 요약
-    warnings = len(orphans) + int(over)
+    warnings = len(orphans) + int(over) + len(unknown) + len(strays)
     section("요약")
     print(f"  표시할 것 {warnings}건")
     if orphans:
         print(f"    - 실선 없는 노드 {len(orphans)}개")
     if over:
         print("    - menu.yaml 상한 초과")
+    if unknown:
+        print(f"    - 없는 노드를 가리키는 edge {len(unknown)}개")
+    if strays:
+        print(f"    - recipe 에 섞인 group {len(strays)}개")
     return 0
 
 

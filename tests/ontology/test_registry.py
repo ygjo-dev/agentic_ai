@@ -23,14 +23,15 @@ import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
 from ontology import store
 from ontology.registry import (
+    BELONGS_TO,
     MAX_STEPS,
     NODE_REGISTRATION_SCHEMA,
-    PROPERTY_KEYS,
     DuplicateNode,
     InvalidInference,
     UnknownInterface,
-    UnknownPropertyKey,
+    _describe_groups,
     add_node,
+    group_ids,
     append_menu,
     append_recipes,
     function_for,
@@ -49,11 +50,11 @@ FORM = {
 
 INFERRED = {
     "node_id": "analyze_crack_trend",
-    "properties": {"subject": "궤도"},
+    "group": "group_track",
     "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
 }
 
-NEW_NODE = {**FORM, "properties": INFERRED["properties"]}
+NEW_NODE = {**FORM, "kind": "function"}
 
 
 def stub(response=None):
@@ -76,38 +77,44 @@ def recipes_now():
     return {path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml")}
 
 
+def edges_now():
+    return store.edges()
+
+
 def menu_now():
     return yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))["recipes"]
 
 
 # ================================================================ LLM 판단
-def test_the_llm_decides_the_node_id_and_its_subject():
-    """사람은 이름과 입출력만 적는다. id 와 subject 는 LLM 이 정한다.
+def test_the_llm_decides_the_node_id_and_the_group_it_belongs_to():
+    """사람은 이름과 입출력만 적는다. id 와 속할 대상은 LLM 이 정한다.
 
-    subject 는 "이 노드가 무엇을 다루는가" 다. 기존 노드와 같은 값을 쓰면
-    점선으로 이어지고, 어느 대상에도 매이지 않으면 비운다 — 억지로 끼워
-    맞추는 것보다 낫다.
+    대상은 **닫힌 목록에서 고르는 것**이다. 예전에는 자유 문자열(subject 값)을
+    쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌다. 지금은
+    존재하는 group 노드 id 이거나 빈 문자열이다.
+
+    어느 대상에도 매이지 않는 범용 노드는 빈 문자열이다 — 형식만 바꾸는 생성
+    노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀린다.
     """
     result = infer_node(FORM, llm_client=stub())
 
     assert result["node_id"] == "analyze_crack_trend"
-    assert result["properties"] == {"subject": "궤도"}
+    assert result["group"] == "group_track"
     assert result["reason"]
 
-    # 값은 새로워도 되고 비어도 된다. 막는 것은 key 뿐이다.
-    for properties in ({"subject": "터널"}, {}):
-        assert infer_node(
-            FORM, llm_client=stub({**INFERRED, "properties": properties})
-        )["properties"] == properties
+    # 빈 문자열도 정상이다.
+    assert infer_node(
+        FORM, llm_client=stub({**INFERRED, "group": ""})
+    )["group"] == ""
 
     assert set(NODE_REGISTRATION_SCHEMA["required"]) == {
-        "node_id", "properties", "reason"
+        "node_id", "group", "reason"
     }
 
 
 def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
-    """기존 노드와 그 properties 가 없으면 관계를 판단할 수 없고,
-    허용 key 를 안 알려주면 새 key 를 지어내 점선 조회가 갈라진다.
+    """기존 기능 노드가 어디에 속하는지 안 보여주면 비슷한 노드를 보고
+    고를 수가 없고, 선택지를 안 알려주면 없는 id 를 지어낸다.
 
     프롬프트 파일에 치환자가 없으면 값이 통째로 안 실린다 — 그러면 LLM 이
     아무 근거 없이 답하게 되고, 그 사실이 화면에서는 안 보인다.
@@ -120,24 +127,27 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
     for node_id in nodes:
         assert node_id in sent, node_id
 
-    shown = {
-        f"{key}: {value}"
-        for node in nodes.values()
-        for key, value in (node.get("properties") or {}).items()
-    }
-    assert shown, "온톨로지에 properties 가 없으면 이 검사가 무력하다"
-    for pair in shown:
-        assert pair in sent, pair
+    # 고를 수 있는 대상이 id 와 이름으로 다 실려야 한다. id 만 보여주면 뜻을
+    # 모르고, 이름만 보여주면 무엇을 적어야 할지 모른다.
+    #
+    # "id 가 문자열 어딘가에 있다" 로 재면 무력하다 — 아래 기존 노드 설명에도
+    # 소속 group id 가 나오고, group 이름("궤도")은 기능 이름("궤도 균열 검출")
+    # 안에도 들어 있다. 실제로 목록을 빼도 통과했다. 블록 자체를 찾는다.
+    choices = group_ids(nodes)
+    assert choices, "group 이 하나도 없으면 이 검사가 무력하다"
+    assert _describe_groups(nodes, choices) in sent, "대상 목록이 통째로 빠졌다"
 
-    assert PROPERTY_KEYS
-    for key in PROPERTY_KEYS:
-        assert key in sent, key
+    # 기존 기능이 어디에 속하는지도 보여야 비슷한 것을 보고 고른다.
+    belongs = {edge["from"]: edge["to"] for edge in edges_now()}
+    assert belongs, "edges 가 비면 이 검사가 무력하다"
+    for node_id, group_id in belongs.items():
+        assert f"속한 대상 : {group_id}" in sent, (node_id, group_id)
 
     assert FORM["name"] in sent and FORM["description"] in sent
     assert "DocumentData" in sent
 
     template = paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8")
-    for placeholder in ("{existing_nodes}", "{new_node}", "{property_keys}"):
+    for placeholder in ("{existing_nodes}", "{new_node}", "{groups}"):
         assert placeholder in template, placeholder
 
 
@@ -150,7 +160,8 @@ def test_a_malformed_llm_answer_is_rejected():
     bad_answers = [
         {**INFERRED, "node_id": "Bad-Id"},          # 대문자와 하이픈
         {**INFERRED, "node_id": "analyze crack"},   # 공백
-        {**INFERRED, "properties": ["subject"]},    # 객체가 아니다
+        {**INFERRED, "group": ["group_track"]},     # 문자열이 아니다
+        {**INFERRED, "group": "group_tunnel"},      # 온톨로지에 없는 대상
     ]
     for answer in bad_answers:
         with pytest.raises(InvalidInference):
@@ -175,9 +186,9 @@ def test_an_existing_node_id_is_rejected():
         add_node(existing, NEW_NODE)
 
 
-def test_unknown_interfaces_and_property_keys_are_rejected():
+def test_unknown_interfaces_and_unknown_groups_are_rejected():
     """온톨로지에 없는 인터페이스를 쓰면 엣지가 아무 데도 안 이어지고,
-    새 property key 를 만들면 점선 조회가 조용히 갈라진다.
+    없는 group 을 고르면 아무 데도 안 붙는 관계가 파일에 남는다.
 
     거부할 때는 파일을 한 글자도 건드리지 않아야 한다.
     """
@@ -190,16 +201,16 @@ def test_unknown_interfaces_and_property_keys_are_rejected():
         with pytest.raises(UnknownInterface):
             add_node("x", broken)
 
-    with pytest.raises(UnknownPropertyKey):
-        add_node("x", {**NEW_NODE, "properties": {"modality": "video"}})
+    with pytest.raises(InvalidInference):
+        infer_node(FORM, llm_client=stub({**INFERRED, "group": "group_tunnel"}))
 
     assert paths.ONTOLOGY_PATH.read_bytes() == before
 
-    # 지금 쓰이는 key 가 전부 허용 목록 안에 있어야 한다.
-    used = set()
-    for node in nodes_now().values():
-        used |= set(node.get("properties") or {})
-    assert used <= PROPERTY_KEYS
+    # edges 가 가리키는 노드는 전부 실재해야 한다.
+    nodes = nodes_now()
+    for edge in edges_now():
+        assert edge["from"] in nodes and edge["to"] in nodes, edge
+        assert nodes[edge["to"]]["kind"] == "group", edge
 
 
 # ================================================================ 경로 생성
@@ -261,7 +272,40 @@ def test_a_created_path_is_runnable_and_short():
             assert set(nodes[frm]["outputs"]) & set(nodes[to]["inputs"]), (frm, to)
 
 
-def test_recipe_files_continue_from_the_last_number():
+def test_a_group_never_enters_an_execution_path():
+    """**대상 노드는 실행할 수 없다.** 경로에 섞이면 안 된다.
+
+    group 은 inputs / outputs 가 아예 없다. 걸러내지 않으면 KeyError 로 터지거나,
+    `.get()` 으로 넘기면 "입력이 없는 노드" 로 보여 recipe 시작점이 된다 —
+    그러면 `궤도 -> ???` 같은 실행 불가능한 recipe 가 만들어지고, menu 에 실려
+    LLM 이 그것을 고를 수 있게 된다.
+
+    조용히 깨지는 자리다. 파일은 멀쩡해 보이고 화면도 그려지는데 실행만 안 된다.
+    """
+    nodes = {
+        "group_track": {"kind": "group", "name": "궤도", "description": "선로."},
+        "group_weather": {"kind": "group", "name": "기상", "description": "날씨."},
+        "load_doc": {
+            "kind": "function", "inputs": [], "outputs": ["DocumentData"],
+        },
+        "analyze_crack_trend": {
+            "kind": "function", "inputs": ["DocumentData"], "outputs": ["AnalysisResult"],
+        },
+        "generate_word": {
+            "kind": "function", "inputs": ["AnalysisResult"], "outputs": ["DocumentData"],
+        },
+    }
+    groups = set(group_ids(nodes))
+    assert groups, "group 이 없으면 이 검사가 무력하다"
+
+    chains = new_recipes_for("analyze_crack_trend", nodes)
+
+    assert chains
+    for chain in chains:
+        assert not groups & set(chain), f"경로에 group 이 들어갔다: {chain}"
+
+    # group 자체를 등록 대상으로 넘겨도 경로를 만들지 않는다.
+    assert new_recipes_for("group_track", nodes) == []
     """기존 번호는 절대 바뀌면 안 된다 — menu 와 시연 샘플이 그 번호를 가리킨다.
 
     파일 형식도 기존 것과 같아야 한다. steps 아래 node / inputs / outputs 다.
@@ -358,9 +402,14 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     result = register_node(FORM, llm_client=stub())
 
     node = nodes_now()["analyze_crack_trend"]
+    assert node["kind"] == "function"
     assert node["name"] == FORM["name"]
     assert node["inputs"] == FORM["inputs"] and node["outputs"] == FORM["outputs"]
-    assert node["properties"] == {"subject": "궤도"}
+
+    # 고른 대상에 관계 한 줄이 붙는다. 이게 화면에서 점선이 된다.
+    assert {"from": "analyze_crack_trend", "to": "group_track", "type": BELONGS_TO} in (
+        edges_now()
+    )
 
     assert set(result["recipe_ids"]) == recipes_now() - before_recipes
     assert set(menu_now()) == recipes_now()
@@ -375,11 +424,14 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     assert result["node_id"] and result["reason"] and result["chains"]
 
     # 두 번째 등록도 번호를 이어 간다.
+    edge_count = len(edges_now())
     second = register_node(
         {**FORM, "name": "Excel 보고서 생성", "description": "분석 결과를 Excel 표로 생성한다.",
          "inputs": ["AnalysisResult"], "outputs": ["DocumentData"]},
-        llm_client=stub({**INFERRED, "node_id": "generate_excel", "properties": {}}),
+        llm_client=stub({**INFERRED, "node_id": "generate_excel", "group": ""}),
     )
+    # 범용 노드는 어디에도 안 붙는다. 억지로 묶으면 오히려 틀린다.
+    assert len(edges_now()) == edge_count
     assert int(second["recipe_ids"][0].split("_")[1]) > int(
         result["recipe_ids"][-1].split("_")[1]
     )
@@ -401,7 +453,7 @@ def test_a_failure_leaves_nothing_half_written():
     # 1단계(LLM 판단)에서 걸리는 경우.
     for answer in (
         {**INFERRED, "node_id": "Bad-Id"},
-        {**INFERRED, "properties": {"modality": "x"}},
+        {**INFERRED, "group": "group_tunnel"},
     ):
         with pytest.raises(InvalidInference):
             register_node(FORM, llm_client=stub(answer))

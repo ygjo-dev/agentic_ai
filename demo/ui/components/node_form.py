@@ -157,10 +157,10 @@ def _show_result():
     elif result.get("reset"):
         st.success("초기화했다.")
     else:
-        # 등록 성공/실패는 DEBUG 와 무관하게 보여준다. properties 와 reason 은
+        # 등록 성공/실패는 DEBUG 와 무관하게 보여준다. group 과 reason 은
         # LLM 이 왜 그렇게 판단했는지를 보는 개발용 정보라 감춘다.
         st.success(f"등록 : **{result['node_id']}**")
         if config.DEBUG:
-            st.caption(f"properties : {result['properties'] or '(없음)'}")
+            st.caption(f"속한 대상 : {result.get('group') or '(없음)'}")
             st.caption(f"reason : {result['reason']}")
         st.caption(f"새 recipe {len(result['recipe_ids'])}개 : {', '.join(result['recipe_ids'])}")

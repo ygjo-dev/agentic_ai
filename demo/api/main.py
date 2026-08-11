@@ -32,8 +32,8 @@ from llm_engine.ollama import OllamaClient
 from ontology.registry import (
     DuplicateNode,
     InvalidInference,
+    UnknownGroup,
     UnknownInterface,
-    UnknownPropertyKey,
 )
 from orchestrator.route_resolver import RouteResolutionError
 
@@ -52,7 +52,7 @@ DOMAIN_ERRORS = (
     RouteResolutionError,
     DuplicateNode,
     UnknownInterface,
-    UnknownPropertyKey,
+    UnknownGroup,
     InvalidInference,
     UnknownRenderMode,
 )

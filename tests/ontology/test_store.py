@@ -18,11 +18,11 @@ import paths
 from ontology import store
 
 NEW = {
+    "kind": "function",
     "name": "궤도 결함 이력 요약",
     "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
     "inputs": ["DocumentData"],
     "outputs": ["AnalysisResult"],
-    "properties": {"subject": "궤도"},
 }
 
 
@@ -47,6 +47,7 @@ def test_reading_gives_the_ontology_as_written(ontology_file):
     assert store.read(ontology_file) == raw
     assert store.nodes(ontology_file) == raw["nodes"]
     assert store.interfaces(ontology_file) == list(raw["interfaces"])
+    assert store.edges(ontology_file) == list(raw["edges"])
 
     # 경로를 안 주면 실제 저장소를 본다. 프로덕션이 그렇게 부른다.
     assert store.read() == yaml.safe_load(
@@ -64,26 +65,32 @@ def test_reading_gives_the_ontology_as_written(ontology_file):
 
 
 def test_adding_a_node_preserves_the_existing_file(ontology_file):
-    """상단 구조 원칙 주석 · 기존 본문 · 두 칸 들여쓰기가 전부 그대로여야 한다.
+    """상단 구조 원칙 주석 · 기존 본문 · edges 블록 · 들여쓰기가 그대로여야 한다.
 
-    yaml.dump 로 다시 쓰면 주석과 손으로 맞춘 들여쓰기가 통째로 날아가므로,
-    nodes: 가 파일 마지막이라는 점을 이용해 텍스트를 이어 붙인다.
+    yaml.dump 로 다시 쓰면 주석과 손으로 맞춘 들여쓰기가 통째로 날아간다.
+
+    **새 노드는 edges 앞에 끼워 넣는다.** 예전에는 nodes: 가 파일 마지막이라
+    그냥 끝에 붙였는데, edges: 가 뒤에 생기면서 그 전제가 깨졌다 — 그대로 두면
+    새 노드가 edge 목록의 일부로 읽힌다.
     """
     before = ontology_file.read_text(encoding="utf-8")
     head = before[: before.index("version:")]
+    edges_block = before[before.index("\nedges:"):]
     assert head.strip().startswith("#"), "fixture 에 주석이 없으면 이 검사가 무력하다"
 
     store.append_node("analyze_crack_trend", NEW, ontology_file)
     after = ontology_file.read_text(encoding="utf-8")
 
     assert after.startswith(head), "상단 주석이 사라졌다"
-    assert after.startswith(before.rstrip("\n")), "기존 본문이 바뀌었다"
     assert after.count("#") == before.count("#")
+    assert after.endswith(edges_block), "edges 블록이 바뀌었다"
 
-    # 붙은 부분만 본다. 원문에는 절 사이에 빈 줄이 둘인 자리가 있어
-    # 파일 전체에서 세 줄바꿈을 세면 원래 있던 것까지 잡힌다.
-    appended = after[len(before.rstrip("\n")):]
-    assert appended.startswith("\n\n  analyze_crack_trend:\n"), repr(appended[:24])
+    # nodes 블록 안, edges 앞에 들어가야 한다.
+    assert "\n  analyze_crack_trend:\n" in after
+    assert after.index("analyze_crack_trend:") < after.index("\nedges:")
+
+    # 기존 노드 본문은 한 글자도 안 바뀐다.
+    assert before[: before.index("\nedges:")].rstrip("\n") in after
 
     # 덤프본과 다르다는 것을 직접 잰다 — 결과만 보면 통과하는 구현이 있다.
     assert after != yaml.safe_dump(
@@ -91,27 +98,57 @@ def test_adding_a_node_preserves_the_existing_file(ontology_file):
     )
 
 
+def test_adding_an_edge_appends_one_line(ontology_file):
+    """관계는 edges 끝에 한 줄로 붙는다. 형식이 기존 항목과 같아야 한다.
+
+    노드를 쓴 뒤에 붙인다 — 순서가 바뀌면 아직 없는 노드를 가리키는 edge 가
+    파일에 남는다.
+    """
+    before = store.edges(ontology_file)
+    body_before = ontology_file.read_text(encoding="utf-8")
+
+    store.append_node("analyze_crack_trend", NEW, ontology_file)
+    store.append_edge("analyze_crack_trend", "group_track", "속함", ontology_file)
+
+    after = store.edges(ontology_file)
+    assert after[: len(before)] == before, "기존 관계가 바뀌었다"
+    assert after[-1] == {
+        "from": "analyze_crack_trend", "to": "group_track", "type": "속함"
+    }
+
+    text = ontology_file.read_text(encoding="utf-8")
+    assert store.edge_line("analyze_crack_trend", "group_track", "속함") in text
+    assert text.startswith(body_before[: body_before.index("version:")])
+
+
 def test_an_added_node_reads_back_unchanged(ontology_file):
     """왕복이 어긋나면 화면과 파일이 갈라진다.
 
-    빈 리스트와 빈 dict 를 `[]` · `{}` 로 적는 것이 핵심이다. 생략하면
-    None 으로 되읽혀 엣지 계산이 터진다. 불러오기 노드는 입력이 없고,
-    범용 노드는 subject 가 없다.
+    빈 리스트를 `[]` 로 적는 것이 핵심이다. 생략하면 None 으로 되읽혀 엣지
+    계산이 터진다. 불러오기 노드는 입력이 없다.
+
+    group 은 반대다 — inputs / outputs 를 **아예 안 적는다.** 빈 리스트로 적으면
+    "입력이 없는 기능" 으로 읽혀 recipe 시작점이 되어버린다.
     """
     before = store.nodes(ontology_file)
 
     store.append_node("analyze_crack_trend", NEW, ontology_file)
+    store.append_node("load_something", {**NEW, "inputs": []}, ontology_file)
     store.append_node(
-        "load_something", {**NEW, "inputs": [], "properties": {}}, ontology_file
+        "group_tunnel",
+        {"kind": "group", "name": "터널", "description": "열차가 지나는 터널 구조물."},
+        ontology_file,
     )
 
     nodes = store.nodes(ontology_file)
     assert nodes["analyze_crack_trend"] == NEW
     assert nodes["load_something"]["inputs"] == []
-    assert nodes["load_something"]["properties"] == {}
+    assert nodes["group_tunnel"]["kind"] == "group"
+    assert "inputs" not in nodes["group_tunnel"]
+    assert "outputs" not in nodes["group_tunnel"]
 
-    # 두 번 이어 붙여도 기존 노드가 그대로다.
-    assert len(nodes) == len(before) + 2
+    # 세 번 이어 붙여도 기존 노드가 그대로다.
+    assert len(nodes) == len(before) + 3
     for node_id, node in before.items():
         assert nodes[node_id] == node, node_id
 

@@ -110,13 +110,15 @@ def graph_payload() -> dict:
         "colors": dict(COLORS),
         # interfaces 는 {이름: {description}} 형태의 dict 다. 이름만 뽑아 순서대로.
         "interfaces": list(ontology["interfaces"]),
+        # group 은 inputs / outputs 가 없다. 화면은 라벨만 그리므로 빈 리스트로
+        # 채워 형태를 하나로 맞춘다 — 프론트엔드가 kind 로 분기하지 않아도 된다.
         "nodes": {
             node_id: {
+                "kind": node.get("kind", "function"),
                 "name": node["name"],
                 "description": node["description"],
-                "inputs": node["inputs"],
-                "outputs": node["outputs"],
-                "properties": node.get("properties") or {},
+                "inputs": node.get("inputs") or [],
+                "outputs": node.get("outputs") or [],
             }
             for node_id, node in nodes.items()
         },

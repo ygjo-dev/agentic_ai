@@ -30,7 +30,7 @@ FORM = {
 # 궤도 그룹에 점선이 붙는다 — subject 값을 글자 그대로 써야 그렇게 된다.
 INFERRED = {
     "node_id": "analyze_crack_trend",
-    "properties": {"subject": "궤도"},
+    "group": "group_track",
     "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
 }
 
@@ -78,7 +78,7 @@ def test_register_body_has_contract_keys(client, use_llm_client):
     assert set(body) == {
         "node_id",
         "node",
-        "properties",
+        "group",
         "reason",
         "recipe_ids",
         "paths",

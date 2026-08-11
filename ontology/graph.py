@@ -39,6 +39,10 @@ def solid_edges() -> dict[tuple[str, str], str]:
     for recipe_path in sorted(paths.RECIPES_DIR.glob("*.yaml")):
         chain = recipe_nodes(recipe_path.stem)
         for frm, to in zip(chain, chain[1:]):
+            # recipe 에는 kind == "function" 노드만 들어온다. group 은 inputs /
+            # outputs 가 아예 없어서 여기 들어오면 KeyError 로 터진다 —
+            # 조용히 잘못 그리는 것보다 낫다. 경로를 만드는 쪽
+            # (registry.new_recipes_for)이 group 을 애초에 거른다.
             shared = set(nodes[frm]["outputs"]) & set(nodes[to]["inputs"])
             edges[(frm, to)] = sorted(shared)[0]
 
@@ -46,26 +50,27 @@ def solid_edges() -> dict[tuple[str, str], str]:
 
 
 def dotted_edges() -> dict[tuple[str, str], list[str]]:
-    """같은 properties 항목을 공유하는 노드 쌍. {(a, b): ["source: cctv", ...]}.
+    """온톨로지에 적힌 관계. {(a, b): ["속함", ...]}.
 
-    방향이 없으므로 쌍은 정렬해서 한 번만 담는다.
+    예전에는 같은 properties 를 가진 노드 쌍을 코드가 찾아냈다. 지금은
+    edges 블록에 명시돼 있으므로 읽기만 한다 — 관계를 노드 속성으로 적던
+    것을 실체(group 노드 + edge)로 바꿨다.
+
+    **반환 형태는 그대로다.** 방향이 없으므로 쌍은 정렬해서 한 번만 담고,
+    라벨 리스트를 값으로 둔다. 이 형태만 지키면 그리는 쪽(demo/graph_svg)은
+    구조가 바뀐 것을 모른다.
+
+    같은 쌍에 관계가 여럿이면 라벨이 쌓인다. 지금은 "속함" 하나뿐이지만
+    나중에 "설치됨" 같은 것이 같은 쌍에 붙을 수 있다.
     """
-    nodes = store.nodes()
     edges: dict[tuple[str, str], list[str]] = {}
 
-    node_ids = sorted(nodes)
-    for index, a in enumerate(node_ids):
-        for b in node_ids[index + 1 :]:
-            a_props = nodes[a].get("properties") or {}
-            b_props = nodes[b].get("properties") or {}
-
-            shared = [
-                f"{key}: {value}"
-                for key, value in sorted(a_props.items())
-                if key in b_props and b_props[key] == value
-            ]
-            if shared:
-                edges[(a, b)] = shared
+    for edge in store.edges():
+        pair = tuple(sorted((edge["from"], edge["to"])))
+        label = edge.get("type") or ""
+        labels = edges.setdefault(pair, [])
+        if label and label not in labels:
+            labels.append(label)
 
     return edges
 

@@ -4,19 +4,19 @@
 python -m pytest tests -q
 ```
 
-## 리뷰 대상 — 27개
+## 리뷰 대상 — 28개
 
-**이 27개가 이 저장소가 무엇을 하는지에 대한 명세다.** 함수 이름이 요구사항
+**이 28개가 이 저장소가 무엇을 하는지에 대한 명세다.** 함수 이름이 요구사항
 한 문장이고, docstring 에 왜 그런지가 적혀 있다. 위에서 아래로 읽으면 된다.
 
 | 폴더 | 대상 | 개수 | 무엇을 말하는가 |
 |---|---|---:|---|
 | `ontology/test_graph.py` | `ontology/graph.py` | 5 | 온톨로지에서 그래프를 계산한다 |
-| `ontology/test_store.py` | `ontology/store.py` | 4 | 저장소와 맞닿는 유일한 파일 |
-| `ontology/test_registry.py` | `ontology/registry.py` | 12 | 등록하면 시스템이 스스로 확장된다 |
+| `ontology/test_store.py` | `ontology/store.py` | 5 | 저장소와 맞닿는 유일한 파일 |
+| `ontology/test_registry.py` | `ontology/registry.py` | 13 | 등록하면 시스템이 스스로 확장된다 |
 | `orchestrator/` | `orchestrator/` | 3 | 발화를 실행 경로로 해석한다 |
 | `llm_engine/` | `llm_engine/` | 3 | LLM 호출을 한 곳에 가둔다 |
-| | **합계** | **27** | |
+| | **합계** | **28** | |
 
 폴더 이름은 소스 패키지 이름과 같다. 각 파일 첫 줄에도 대상 경로가 적혀 있다.
 

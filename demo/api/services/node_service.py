@@ -34,7 +34,8 @@ def register(form: dict, llm_client) -> dict:
     return {
         "node_id": result["node_id"],
         "node": result["node"],
-        "properties": result["properties"],
+        # 고른 대상(group 노드 id). 어느 대상에도 안 속하면 빈 문자열이다.
+        "group": result["group"],
         "reason": result["reason"],
         "recipe_ids": result["recipe_ids"],
         # registry 의 chains 도 같은 내용이지만 모양이 다르다. /graph · /resolve 와
