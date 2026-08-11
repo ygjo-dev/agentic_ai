@@ -1,0 +1,250 @@
+"""대상 : demo/api/main.py — POST /render
+
+demo/api/main.py 의 /render 엔드포인트 검증.
+
+그리기가 서버로 들어왔다. 화면은 이 응답을 받아 iframe 에 넣고 고르기만 한다.
+
+가장 중요한 것은 **변형들의 노드 좌표와 캔버스 크기가 같은지**다. 노드를 눌러
+후보를 좁힐 때 좌표가 흔들리면 화면이 튀고, 보던 자리를 잃는다. 좌표를 전부
+고정하고 neato -n 으로 그리므로 구조적으로 보장되지만, 그 보장이 깨지는 순간
+화면에서만 드러나므로 여기서 못을 박아둔다.
+"""
+
+import re
+import shutil
+
+import pytest
+from fastapi.testclient import TestClient
+
+import demo.api.main as backend_main
+from demo.api.graph_svg import build
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
+)
+
+
+@pytest.fixture
+def client():
+    return TestClient(backend_main.app)
+
+
+@pytest.fixture
+def recipe_ids(client):
+    """지금 있는 recipe 중 앞 셋. 후보가 여럿인 장면을 만든다."""
+    return sorted(client.get("/graph").json()["nodes"]) and [
+        "recipe_004",
+        "recipe_006",
+        "recipe_008",
+    ]
+
+
+def post(client, **body):
+    response = client.post("/render", json=body)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def node_coords(svg: str) -> dict[str, tuple[float, float]]:
+    """SVG 에서 노드 중심 좌표를 뽑는다."""
+    coords = {}
+    for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
+        title = re.search(r"<title>([a-z_]+)</title>", block)
+        pos = re.search(r'text-anchor="middle" x="([-\d.]+)" y="([-\d.]+)"', block)
+        if title and pos:
+            coords[title.group(1)] = (float(pos.group(1)), float(pos.group(2)))
+    return coords
+
+
+def canvas(svg: str) -> str:
+    """viewBox. 크기 속성은 fit_svg 가 뺐으므로 이것이 캔버스다."""
+    found = re.search(r'viewBox="([^"]+)"', svg)
+    return found.group(1) if found else ""
+
+
+# ------------------------------------------------------------ 형태
+def test_plain_returns_200(client):
+    assert client.post("/render", json={"mode": "plain"}).status_code == 200
+
+
+def test_contract_keys(client):
+    assert set(post(client, mode="plain")) == {
+        "version",
+        "top",
+        "variants",
+        "focus",
+        "chips",
+    }
+
+
+def test_every_mode_renders(client, recipe_ids):
+    """세 장면 모두 그려져야 한다. 하나라도 빠지면 시연 중에 화면이 빈다."""
+    for mode, ids in (
+        ("plain", []),
+        ("resolve", recipe_ids),
+        ("register", recipe_ids),
+    ):
+        payload = post(client, mode=mode, recipe_ids=ids)
+        assert payload["top"].lstrip().startswith("<?xml"), mode
+        assert payload["variants"][""], mode
+
+
+def test_unknown_mode_is_rejected(client):
+    """오타가 조용히 plain 으로 떨어지면 '왜 강조가 안 되지' 를 한참 찾게 된다."""
+    response = client.post("/render", json={"mode": "resolv"})
+
+    assert response.status_code == 422
+
+
+def test_svg_has_no_size_attributes(client):
+    """폭·높이가 박혀 있으면 고정 높이 패널에서 여백이 뜨거나 잘린다."""
+    payload = post(client, mode="plain")
+
+    assert 'width="' not in payload["top"][: payload["top"].index(">", 200)]
+    assert "viewBox" in payload["top"]
+
+
+# ------------------------------------------------------------ 좌표 (핵심)
+def test_every_variant_shares_the_node_coordinates(client, recipe_ids):
+    """노드를 눌러 좁혀도 지도가 그대로여야 한다."""
+    variants = post(client, mode="resolve", recipe_ids=recipe_ids)["variants"]
+    assert len(variants) > 1, "후보 3개면 변형이 여러 벌 나와야 한다"
+
+    base = node_coords(variants[""])
+    assert base, "노드 좌표를 하나도 못 읽었다 — 검사가 무력하다"
+    for key, svg in variants.items():
+        assert node_coords(svg) == base, key
+
+
+def test_every_variant_shares_the_canvas(client, recipe_ids):
+    """캔버스가 달라지면 축소 배율이 바뀌어 그래프가 커졌다 작아졌다 한다."""
+    variants = post(client, mode="resolve", recipe_ids=recipe_ids)["variants"]
+
+    assert len({canvas(svg) for svg in variants.values()}) == 1
+
+
+def test_top_and_bottom_share_the_coordinates(client, recipe_ids):
+    """상단과 하단이 같은 지도여야 위아래가 같은 장면을 말한다."""
+    payload = post(client, mode="resolve", recipe_ids=recipe_ids)
+
+    assert node_coords(payload["top"]) == node_coords(payload["variants"][""])
+
+
+# ------------------------------------------------------------ 변형과 칩
+def test_chips_and_variants_have_the_same_keys(client, recipe_ids):
+    """키가 어긋나면 그래프만 좁혀지고 목록은 그대로 남는다."""
+    payload = post(client, mode="resolve", recipe_ids=recipe_ids)
+
+    assert set(payload["chips"]) == set(payload["variants"])
+
+
+def test_variant_keys_are_the_last_nodes(client, recipe_ids):
+    payload = post(client, mode="resolve", recipe_ids=recipe_ids)
+
+    assert set(payload["variants"]) == {""} | set(payload["focus"]["last_nodes"])
+
+
+def test_clickable_nodes_are_only_the_last_ones(client, recipe_ids):
+    """마지막이 아닌 노드를 누르면 남는 recipe 가 0개라 화면이 빈다."""
+    focus = post(client, mode="resolve", recipe_ids=recipe_ids)["focus"]
+
+    assert set(focus["recipes_by_last_node"]) == set(focus["last_nodes"])
+    for node_id, ids in focus["recipes_by_last_node"].items():
+        assert ids, node_id
+
+
+def test_chips_carry_names_not_ids(client, recipe_ids):
+    """칩에 id 가 뜨면 비전공자에게는 읽히지 않는다."""
+    chains = post(client, mode="resolve", recipe_ids=recipe_ids)["chips"][""]
+
+    assert chains and all(chain for chain in chains)
+    assert any("승강장" in name for chain in chains for name in chain)
+
+
+def test_plain_has_one_variant_and_no_clicks(client):
+    """실행 전에는 지도만 떠 있다. 좁힐 것이 없다."""
+    payload = post(client, mode="plain")
+
+    assert list(payload["variants"]) == [""]
+    assert payload["focus"]["last_nodes"] == []
+
+
+# ------------------------------------------------------------ 캐시
+def test_same_request_is_served_from_cache(client, recipe_ids):
+    """같은 화면을 두 번 그리지 않는다. 캐시가 안 물면 Graphviz 를 매번 돈다."""
+    build.clear_cache()
+    first = post(client, mode="resolve", recipe_ids=recipe_ids)
+    size = len(build._CACHE)
+
+    second = post(client, mode="resolve", recipe_ids=recipe_ids)
+
+    assert second == first
+    assert len(build._CACHE) == size, "같은 요청인데 칸이 늘었다"
+
+
+def test_recipe_order_does_not_split_the_cache(client):
+    """후보 순서만 다른데 캐시가 헛돌면 같은 그림을 매번 다시 만든다."""
+    build.clear_cache()
+    post(client, mode="resolve", recipe_ids=["recipe_004", "recipe_006"])
+    post(client, mode="resolve", recipe_ids=["recipe_006", "recipe_004"])
+
+    assert len(build._CACHE) == 1
+
+
+def test_mode_is_part_of_the_cache_key(recipe_ids):
+    """같은 후보라도 장면이 다르면 다른 칸에 담겨야 한다.
+
+    엔드포인트로 재면 무력하다 — plain 은 후보가 비어 있어서 mode 를 키에서
+    빼도 후보 차이만으로 칸이 갈린다(실측으로 확인했다). 나머지를 전부 똑같이
+    두고 mode 하나만 바꿔서 본다.
+    """
+    same = dict(version="v", layout="L", recipe_ids=recipe_ids, mark=None)
+
+    assert build.cache_key(mode="resolve", **same) != build.cache_key(
+        mode="register", **same
+    )
+
+
+def test_cache_is_bounded(client):
+    """시연이 길어지면 조합이 계속 쌓인다."""
+    build.clear_cache()
+    for index in range(build.CACHE_LIMIT + 3):
+        post(client, mode="resolve", recipe_ids=[f"recipe_{index:03d}"])
+
+    assert len(build._CACHE) == build.CACHE_LIMIT
+
+
+# ------------------------------------------------------------ 등록 강조
+def test_register_accepts_the_raw_nodes_response(client):
+    """UI 가 POST /nodes 응답을 그대로 넘긴다. 줄이는 일은 서버가 한다."""
+    raw = {
+        "node_id": "generate_word",
+        "new_solid_edges": [{"from": "analyze_congestion", "to": "generate_word",
+                             "interface": "AnalysisResult"}],
+        "new_dotted_edges": [],
+    }
+
+    payload = post(client, mode="register", recipe_ids=[], mark=raw)
+
+    assert build.mark_key(build.mark_from_registration(raw)) != "plain"
+    assert payload["top"]
+
+
+def test_register_mark_changes_the_picture(client):
+    """강조가 그림에 반영돼야 한다. 안 그러면 등록 장면이 평소와 똑같아 보인다."""
+    plain = post(client, mode="plain")
+    marked = post(client, mode="register", mark={
+        "node_id": "generate_word", "new_solid_edges": [], "new_dotted_edges": [],
+    })
+
+    assert marked["top"] != plain["top"]
+
+
+def test_marking_does_not_move_a_node(client):
+    """강조는 색과 굵기만 바꾼다. 좌표가 움직이면 등록 순간 지도가 튄다."""
+    plain = post(client, mode="plain")
+    marked = post(client, mode="register", mark={
+        "node_id": "generate_word", "new_solid_edges": [], "new_dotted_edges": [],
+    })
+
+    assert node_coords(marked["top"]) == node_coords(plain["top"])
