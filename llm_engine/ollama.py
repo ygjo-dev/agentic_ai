@@ -5,7 +5,7 @@ import os
 import urllib.request
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:14b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b")
 
 
 class OllamaClient:
@@ -20,7 +20,8 @@ def call_ollama(prompt: str, response_schema: dict) -> str:
             "prompt": prompt,
             "stream": False,
             "format": response_schema,
-            "think": False,            
+            "think": False,
+            "keep_alive": "2h",
             "options": {"temperature": 0, "seed": 0, "num_ctx": 8192}, # menu.yaml 길이가 길수록, num_ctx ↑.
         }
     ).encode("utf-8")

@@ -18,3 +18,16 @@ def test_load_static_context(read_file_paths):
     )
     assert isinstance(menu, str)
     assert menu.strip() != ""
+
+
+def test_menu_stays_within_context_budget():
+    """menu 가 커지면 LLM 응답이 num_ctx 를 넘겨 타임아웃한다.
+
+    recipe 28개 기준 약 2,000자. 상한을 넉넉히 6,000자로 두되,
+    넘으면 num_ctx 를 올리거나 menu 를 더 줄일지 판단해야 한다.
+    """
+    menu = load_menu()
+    assert len(menu) < 6000, (
+        f"menu 가 {len(menu)}자로 상한을 넘었다.\n"
+        "  recipe 를 더 늘리려면 num_ctx 를 올리거나 menu 형식을 더 줄여야 한다."
+    )

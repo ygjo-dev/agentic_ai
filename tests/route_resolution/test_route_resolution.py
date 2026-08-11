@@ -14,28 +14,28 @@ from workflows.static.menu.load import load_menu
 ROUTE_CASES = [
     # (사용자 발화, LLM 이 돌려준 구조화 응답, 기대 status, 기대 recipe_id, 기대 후보)
     (
-        "CCTV로 군중을 분석해줘",
+        "승강장 CCTV 동영상으로 혼잡도를 분석해줘",
         {
-            "reason": "CCTV 군중 분석과 하는 일이 같다.",
-            "candidate_recipe_ids": ["recipe_002"],
+            "reason": "승강장 혼잡도 분석과 하는 일이 같다.",
+            "candidate_recipe_ids": ["recipe_005"],
             "status": SELECT,
-            "recipe_id": "recipe_002",
+            "recipe_id": "recipe_005",
         },
         SELECT,
-        "recipe_002",
-        ["recipe_002"],
+        "recipe_005",
+        ["recipe_005"],
     ),
     (
-        "CCTV 군중 분석 결과를 문서로 만들어줘",
+        "승강장 CCTV 동영상으로 혼잡도를 분석하고 결과를 문서로 만들어줘",
         {
             "reason": "문서 형식이 Word 인지 PPT 인지 발화에 없다.",
-            "candidate_recipe_ids": ["recipe_003", "recipe_004"],
+            "candidate_recipe_ids": ["recipe_013", "recipe_014"],
             "status": CLARIFY,
             "recipe_id": None,
         },
         CLARIFY,
         None,
-        ["recipe_003", "recipe_004"],
+        ["recipe_013", "recipe_014"],
     ),
     (
         "CCTV 영상으로 열차 속도를 분석해줘",
@@ -104,9 +104,9 @@ BROKEN_RESPONSE_CASES = [
         "'status': 'SELECT'",
     ),
     (
-        json.dumps(["recipe_002"]),  # object 가 아닌 JSON
+        json.dumps(["recipe_005"]),  # object 가 아닌 JSON
         TypeError,
-        "recipe_002",
+        "recipe_005",
     ),
 ]
 
@@ -135,7 +135,7 @@ def test_resolve_route_rejects_broken_llm_response(
     with pytest.raises(RouteResolutionError) as error_info:
         resolve_route(
             prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
-            variables={"menu": load_menu(), "utterance": "CCTV로 군중을 분석해줘"},
+            variables={"menu": load_menu(), "utterance": "승강장 CCTV 동영상으로 혼잡도를 분석해줘"},
             response_schema=RESPONSE_SCHEMA,
             llm_client=llm_client,
         )

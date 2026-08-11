@@ -1,0 +1,19 @@
+# 시연용 설정. 개발 편의 기능은 화면에서 걷어낸다.
+
+[theme]
+base = "dark"
+primaryColor = "#14B8A6"          # frontend/config.py 의 HIGHLIGHT_COLOR 와 같다
+backgroundColor = "#0E1117"
+secondaryBackgroundColor = "#171B26"
+textColor = "#E6E8EB"
+
+[client]
+# 우상단 햄버거 메뉴를 감춘다. 시연 중에 눌릴 일이 없다.
+toolbarMode = "minimal"
+showErrorDetails = true           # 실패했는데 화면이 조용한 것이 더 나쁘다
+
+[browser]
+gatherUsageStats = false
+
+[server]
+runOnSave = true

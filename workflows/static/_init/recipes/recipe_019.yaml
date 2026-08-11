@@ -1,0 +1,18 @@
+steps:
+
+  - node: load_inspection_document
+    inputs: []
+    outputs:
+      - DocumentData
+
+  - node: analyze_incident_frequency
+    inputs:
+      - DocumentData
+    outputs:
+      - AnalysisResult
+
+  - node: generate_ppt
+    inputs:
+      - AnalysisResult
+    outputs:
+      - DocumentData

@@ -1,0 +1,220 @@
+"""하단 본문. 해석 그래프와 recipe 칩 목록을 한 문서에 담는다.
+
+둘을 한 iframe 에 넣는 이유 : 나누면 클릭마다 Streamlit 재실행이라 반응이 굼뜨다.
+문서 안에서 처리하면 파이썬 왕복이 없어 즉각 반응하고 LLM 도 다시 불리지 않는다.
+
+고른 노드(picked)는 이 문서 안 변수로만 둔다 — 다시 그릴 때마다 전체로
+돌아가는 것이 맞다. 반면 줌 배율은 Run·등록을 건너도 남아야 하므로
+zoom.py 가 세션 저장소에 맡긴다.
+"""
+
+import json
+
+import streamlit as st
+
+from frontend import config, focus, styles
+from frontend.components import path_panel, zoom
+from frontend.components.graph_section import (
+    GraphvizFailed,
+    GraphvizNotFound,
+    build_focus_svgs,
+    ensure_positions,
+    fit_svg,
+    focus_key,
+    layout_hash,
+)
+
+# JSON 을 <script> 안에 넣을 때 "</script>" 가 섞이면 문서가 거기서 끊긴다.
+# 값 안의 "</" 를 이스케이프해 그런 일이 없게 한다.
+_SCRIPT_CLOSE = "</"
+_SCRIPT_CLOSE_SAFE = "<\\/"
+
+
+def embed_json(payload) -> str:
+    """<script> 안에 넣어도 안전한 JSON 문자열."""
+    return json.dumps(payload, ensure_ascii=False).replace(
+        _SCRIPT_CLOSE, _SCRIPT_CLOSE_SAFE
+    )
+
+
+def focus_css(left_ratio: float) -> str:
+    """iframe 안 스타일. 바깥 styles.py 와 별개다 — 문서가 분리돼 있다."""
+    left = round(left_ratio * 100, 2)
+    return f"""
+html, body {{
+  background: transparent; margin: 0; padding: 0; height: 100%;
+  overflow: hidden;
+  font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  color: #E6E8EB;
+}}
+#wrap {{ display: flex; height: 100%; gap: 10px; }}
+#graph {{ flex: 0 0 {left}%; height: 100%; overflow: hidden; }}
+#graph svg {{ width: 100%; height: 100%; display: block; }}
+/* 칩이 넘치면 세로 스크롤. 잘리게 두지 않는다. */
+#list {{ flex: 1 1 auto; height: 100%; overflow-y: auto; padding-right: 4px; min-width: 0; }}
+
+.chain {{ display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; padding: 0.22rem 0; }}
+.chip {{
+  display: inline-block; padding: 0.2rem 0.6rem;
+  border: 1px solid {config.PLAIN_COLOR}; border-radius: 999px;
+  background: rgba(255,255,255,0.04); color: #E6E8EB;
+  font-size: 0.9rem; white-space: nowrap;
+  opacity: 0; animation: chip-in 0.22s ease-out forwards;
+  animation-delay: calc(var(--i) * 55ms);
+}}
+.link {{
+  display: inline-flex; align-items: center;
+  min-width: 2.6rem; padding: 0 0.12rem;
+  opacity: 0; animation: chip-in 0.22s ease-out forwards;
+  animation-delay: calc(var(--i) * 55ms + 28ms);
+}}
+.link .arrow-line {{
+  display: block; width: 100%; height: 1px; background: {config.PLAIN_COLOR};
+  position: relative; transform-origin: left center;
+  animation: line-grow 0.2s ease-out forwards;
+  animation-delay: calc(var(--i) * 55ms + 28ms);
+}}
+.link .arrow-line::after {{
+  content: ""; position: absolute; right: -1px; top: -2.5px;
+  border-left: 5px solid {config.PLAIN_COLOR};
+  border-top: 3px solid transparent; border-bottom: 3px solid transparent;
+}}
+.empty-note {{ color: {config.PLAIN_COLOR}; font-size: 0.92rem; }}
+
+/* 클릭할 수 있는 노드에만 신호를 준다. 나머지는 눌러도 아무 일이 없으므로
+   손 모양을 보여주면 거짓말이 된다. */
+#graph g.node.pick {{ cursor: pointer; }}
+#graph g.node.pick:hover ellipse, #graph g.node.pick:hover path,
+#graph g.node.pick:hover polygon {{ stroke-width: 3; }}
+#graph g.node.dim {{ opacity: 0.28; }}
+
+@keyframes chip-in {{ from {{ opacity: 0; transform: translateX(-6px); }} to {{ opacity: 1; transform: none; }} }}
+@keyframes line-grow {{ from {{ transform: scaleX(0); }} to {{ transform: scaleX(1); }} }}
+"""
+
+
+def focus_html(
+    svgs: dict,
+    chips: dict,
+    left_ratio: float | None = None,
+    clickable: list[str] | None = None,
+) -> str:
+    """그래프와 칩 목록을 나란히 둔 문서. 마지막 노드를 누르면 함께 좁혀진다.
+
+    Args:
+        svgs: {"": 전체, "<마지막노드 id>": 좁힌 것} — 파이썬이 미리 만든 변형.
+        chips: 같은 키의 칩 목록 마크업.
+        clickable: 클릭할 수 있는 노드 id. 후보들의 마지막 노드뿐이다.
+
+    JS 는 고르기만 한다. 다시 칠하지 않는다 — 그리는 규칙이 build_dot 한 곳에만
+    남아야 엣지 굵기·색·순번이 두 곳으로 갈라지지 않는다.
+    """
+    if left_ratio is None:
+        left_ratio = config.LAYOUT["bottom_left_ratio"]
+
+    data = embed_json(
+        {"svgs": svgs, "chips": chips, "clickable": list(clickable or [])}
+    )
+
+    return f"""<style>{focus_css(left_ratio)}{zoom.ZOOM_CSS}</style>
+<div id="wrap">
+  <div id="graph"></div>
+  <div id="list"></div>
+</div>
+<script>
+const DATA = {data};
+let picked = null;
+
+function draw() {{
+  const key = (picked && DATA.svgs[picked]) ? picked : "";
+  document.getElementById("graph").innerHTML = DATA.svgs[key] || "";
+  document.getElementById("list").innerHTML = DATA.chips[key] || "";
+
+  const pickable = new Set(DATA.clickable);
+
+  // 좁힌 뒤에도 클릭 대상은 그대로 둔다. 다른 끝점으로 바로 옮겨갈 수 있어야 한다.
+  document.querySelectorAll("#graph g.node").forEach(g => {{
+    const title = g.querySelector("title");
+    if (!title) return;
+    const id = title.textContent.trim();
+    if (!pickable.has(id)) return;
+
+    g.classList.add("pick");
+    g.addEventListener("click", ev => {{
+      ev.stopPropagation();                 // 배경 복귀와 겹치지 않게.
+      picked = (picked === id) ? null : id; // 같은 노드 재클릭 = 해제.
+      draw();
+    }});
+  }});
+}}
+
+document.body.addEventListener("click", () => {{ picked = null; draw(); }});
+draw();
+</script>
+{zoom.zoom_script(zoom.BOTTOM_KEY)}"""
+
+
+def focus_inputs(view: dict | None) -> tuple[dict, list[str], str]:
+    """view 에서 하단이 쓸 것만 뽑는다. (paths, recipe_ids, 강조색)"""
+    if not isinstance(view, dict) or "error" in view:
+        return {}, [], config.HIGHLIGHT_COLOR
+
+    result = view.get("result") or {}
+
+    if view.get("kind") == "register":
+        # 등록은 새로 생긴 recipe 를 보여준다.
+        return (
+            result.get("paths") or {},
+            list(result.get("recipe_ids") or []),
+            config.NEW_COLOR,
+        )
+
+    return result.get("paths") or {}, focus.ordered_recipe_ids(result), config.HIGHLIGHT_COLOR
+
+
+def render_focus_section(
+    view: dict | None,
+    graph: dict | None = None,
+    mark: dict | None = None,
+    ratios: dict | None = None,
+):
+    """하단 본문. 해석 그래프와 recipe 칩 목록을 한 iframe 에 담는다."""
+    paths, recipe_ids, color = focus_inputs(view)
+
+    if graph is None:
+        return
+
+    # 후보가 없어도 그린다. 실행 전에는 위아래가 같은 지도로 채워진 채 시작하고,
+    # NO_MATCH 에서는 지도는 떠 있는데 켜지는 길이 하나도 없다 — 문구 없이
+    # 그림으로 읽힌다. iframe 이 항상 있어야 결과가 생길 때 화면이 안 튄다.
+
+    try:
+        positions = ensure_positions(graph)
+        svgs = build_focus_svgs(
+            _graph=graph,
+            _positions=positions,
+            _paths=paths,
+            _recipe_ids=tuple(recipe_ids),
+            _mark=mark,
+            version=(
+                f"{graph['version']}:{layout_hash(positions)}"
+                f":{focus_key(recipe_ids, mark)}"
+            ),
+        )
+        # 변형마다 칩 목록도 함께 만든다. 그래프를 좁히면 목록도 같이 줄어든다.
+        variants = focus.focus_variants(paths, recipe_ids)
+        st.components.v1.html(
+            focus_html(
+                {key: fit_svg(svg) for key, svg in svgs.items()},
+                {
+                    key: path_panel.chips_markup(paths, ids, color)
+                    for key, ids in variants.items()
+                },
+                (ratios or config.LAYOUT)["bottom_left_ratio"],
+                focus.last_nodes(paths, recipe_ids),
+            ),
+            height=styles.panel_heights(ratios or config.LAYOUT)["bottom"],
+        )
+    except (GraphvizNotFound, GraphvizFailed) as exc:
+        st.markdown(styles.note_markup(f"그래프를 그릴 수 없습니다 — {exc}"),
+                    unsafe_allow_html=True)

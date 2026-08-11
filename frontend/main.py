@@ -1,8 +1,13 @@
 """
 Frontend Streamlit 진입점.
 
-UI 컴포넌트를 조합하여 화면을 구성.
-Backend와 HTTP로 통신하여 정보를 받음.
+화면은 두 단이다.
+  위쪽 = 온톨로지 전체(지식). 왼쪽에 입력, 오른쪽에 그래프.
+  아래쪽 = 거기서 뽑아낸 답(결과).
+
+비전공자가 배석한 자리에서 시연되므로 개발용 문구는 DEMO_DEBUG 로 감춘다.
+다만 실패 메시지는 언제나 보여준다 — 시연 중에 실패했는데 화면이 조용하면
+무엇이 잘못됐는지 아무도 모른다.
 """
 
 import sys
@@ -10,34 +15,30 @@ import time
 from pathlib import Path
 
 import streamlit as st
-import yaml
-import requests
 
 REPO_ROOT = str(Path(__file__).resolve().parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-import paths
+from frontend import api_client, config, styles
+from frontend.api_client import ApiError
+from frontend.components.focus_panel import render_focus_section
+from frontend.components.graph_section import mark_from_registration, render_graph_section
 from frontend.components.input_section import render_input_section
-from frontend.components.result_section import STATUS_BADGE, render_result_section
-from frontend.components.sample_buttons import render_sample_buttons
+from frontend.components.node_form import render_node_form
+from frontend.components.path_panel import render_band, skeleton_markup
+from frontend.components.sample_picker import render_sample_picker
+
+ASK, REGISTER = "사용자 질문", "노드 등록"
+
 
 # ================================================================ Helper
-def recipe_nodes(recipe_id: str) -> list[str]:
-    """실제 recipes/<recipe_id>.yaml 에서 노드 이름을 순서 그대로 읽는다."""
-    recipe_path = paths.RECIPES_DIR / f"{recipe_id}.yaml"
-    if not recipe_path.exists():
-        return []
-    data = yaml.safe_load(recipe_path.read_text(encoding="utf-8"))
-    return [step["node"] for step in data.get("steps", [])]
+def _is_registration(view) -> bool:
+    """지금 화면이 등록 결과를 보여주는 중인가.
 
-
-def node_flow(recipe_id: str) -> str:
-    """Node Flow를 시각화."""
-    nodes = recipe_nodes(recipe_id)
-    if not nodes:
-        return "(recipe 파일 없음)"
-    return " ➜ ".join(f"`{node}`" for node in nodes)
+    강조는 그동안만 켜진다 — 상단과 하단이 같은 장면을 말하게 하려는 것이다.
+    """
+    return isinstance(view, dict) and view.get("kind") == "register" and "result" in view
 
 
 def format_elapsed(seconds: float) -> str:
@@ -49,114 +50,108 @@ def format_elapsed(seconds: float) -> str:
 
 
 # ================================================================ UI 설정
-st.set_page_config(page_title="Recipe Resolver Frontend", layout="wide")
-st.title("Recipe Resolver Frontend")
-st.caption("Backend 호출을 통한 Recipe 선택")
+st.set_page_config(page_title="Recipe Resolver", layout="wide")
+
+ratios = config.layout_ratios()
+st.markdown(styles.page_css(ratios), unsafe_allow_html=True)
+
+if config.DEBUG:
+    st.title("Recipe Resolver Frontend")
+    st.caption("Backend 호출을 통한 Recipe 선택")
 
 st.session_state.setdefault("utterance", "")
-st.session_state.setdefault("expected", None)
-st.session_state.setdefault("run", None)
+# 화면은 한 번에 한 장면만 말한다. view 하나로 상단 강조와 하단 내용이 함께 정해진다.
+#   kind="resolve"  -> 상단 기본 그래프 + 하단 경로 사슬
+#   kind="register" -> 상단 새 노드 강조 + 하단 등록 결과
+# 등록 뒤 Run 을 누르면 view 가 덮여 강조가 자연히 꺼진다.
+st.session_state.setdefault("view", None)
+# 탭은 st.tabs 가 아니라 session_state 에 묶는다. 노드 등록 뒤 st.rerun() 이
+# 돌 때 선택이 초기화되면 시연이 끊긴다.
+st.session_state.setdefault("side_tab", ASK)
 
-# ================================================================ 레이아웃
-left, right = st.columns([1, 1], gap="large")
+# ================================================================ 그래프 조회
+# 노드 등록 폼이 인터페이스 목록을 쓰므로 화면을 그리기 전에 한 번 받아둔다.
+try:
+    graph, graph_stale = api_client.get_graph()
+except ApiError:
+    graph, graph_stale = None, False
 
-with left:
-    utterance, run_clicked = render_input_section()
+view = st.session_state.get("view")
+mark = mark_from_registration(view["result"]) if _is_registration(view) else None
 
-    st.divider()
-    render_sample_buttons(node_flow)
+# ================================================================ 상단
+top = st.container(key="top_panel")
+with top:
+    left, right = st.columns([ratios["left_ratio"], 1 - ratios["left_ratio"]], gap="medium")
 
-# ================================================================ Backend 호출 및 결과 처리
-with right:
+    with left:
+        side = st.container(key="side_panel")
+        with side:
+            st.segmented_control(
+                "화면", [ASK, REGISTER], key="side_tab", label_visibility="collapsed"
+            )
+            if st.session_state["side_tab"] == REGISTER:
+                render_node_form(graph)
+                run_clicked = False
+            else:
+                _, run_clicked = render_input_section()
+                render_sample_picker()
+
+    with right:
+        graph_panel = st.container(key="graph_panel")
+        with graph_panel:
+            if graph_stale:
+                # 캐시본을 쓰는 중이다. 조용히 알리되 그래프는 계속 보여준다.
+                st.markdown(
+                    styles.note_markup("Backend 응답이 없어 마지막으로 받은 그래프를 보여줍니다."),
+                    unsafe_allow_html=True,
+                )
+            render_graph_section(graph, mark, ratios)
+
+# ================================================================ 하단
+# 위쪽 얇은 띠(발화·범례·오류·스켈레톤)는 Streamlit, 아래 본문은 iframe 하나다.
+bottom = st.container(key="bottom_panel")
+with bottom:
+    band = st.container(key="bottom_band")
+    with band:
+        band_slot = st.empty()
+    body = st.container(key="bottom_body")
+    with body:
+        body_slot = st.empty()
+
     if run_clicked:
         utterance_trimmed = st.session_state.get("utterance", "").strip()
         if not utterance_trimmed:
-            st.session_state["run"] = {"error": "발화를 입력하세요."}
-        else:
-            with st.spinner("Backend에 요청 중..."):
-                started = time.perf_counter()  # Run 클릭 ~ 응답 수신까지 측정
-                try:
-                    response = requests.post(
-                        "http://localhost:8000/resolve",
-                        params={"utterance": utterance_trimmed},
-                        timeout=180,
-                    )
-                    response.raise_for_status()
-                    result = response.json()
-                    st.session_state["run"] = {
-                        "utterance": utterance_trimmed,
-                        "result": result,
-                        "expected": st.session_state["expected"],
-                        "elapsed": time.perf_counter() - started,
-                    }
-                except requests.exceptions.ConnectionError:
-                    st.session_state["run"] = {
-                        "error": "Backend에 연결할 수 없습니다. uvicorn을 먼저 실행하세요."
-                    }
-                except requests.exceptions.Timeout:
-                    st.session_state["run"] = {"error": "Backend 응답 시간 초과 (180초)"}
-                except Exception as e:
-                    st.session_state["run"] = {"error": f"Backend 호출 실패: {str(e)}"}
+            st.session_state["view"] = {"error": "발화를 입력하세요."}
+            st.rerun()
 
-    # 결과 표시
-    run = st.session_state.get("run")
+        # 기다리는 동안 자리를 비워두지 않는다. LLM 지연이 길어 스피너만으로는
+        # 멈춘 것처럼 보인다.
+        body_slot.markdown(skeleton_markup(), unsafe_allow_html=True)
 
-    if run is None:
-        st.info("좌측에서 발화를 입력하거나 Sample을 선택한 뒤 Run을 누르세요.")
-    elif isinstance(run, dict) and "error" in run:
-        st.error(run["error"])
-    else:
-        result = run["result"]
-        expected = run["expected"]
-
-        col_utterance, col_elapsed = st.columns([3, 1])
-        with col_utterance:
-            st.markdown(f"**입력 발화** : {run['utterance']}")
-        with col_elapsed:
-            if run.get("elapsed") is not None:
-                st.metric("⏱️ Run Time", format_elapsed(run["elapsed"]))
-
-        render_result_section(result, node_flow)
-
-        # Sample 로 실행한 경우에만 Expected / Actual 을 비교.
-        if expected is not None:
-            st.divider()
-            st.markdown("##### Expected vs Actual")
-            col_expected, col_actual = st.columns(2)
-            with col_expected:
-                st.markdown("**Expected**")
-                st.markdown(
-                    f"{STATUS_BADGE.get(expected['status'], '⚪')} **{expected['status']}**"
-                )
-                if expected["recipe_id"]:
-                    st.markdown(f"**{expected['recipe_id']}**")
-                    st.markdown(node_flow(expected["recipe_id"]))
-                elif expected["candidate_recipe_ids"]:
-                    for candidate_id in expected["candidate_recipe_ids"]:
-                        st.markdown(f"- **{candidate_id}**")
-                else:
-                    st.markdown("*해당 Recipe 없음*")
-            with col_actual:
-                st.markdown("**Actual**")
-                st.markdown(
-                    f"{STATUS_BADGE.get(result['status'], '⚪')} **{result['status']}**"
-                )
-                if result["recipe_id"]:
-                    st.markdown(f"**{result['recipe_id']}**")
-                    st.markdown(node_flow(result["recipe_id"]))
-                elif result["candidate_recipe_ids"]:
-                    for candidate_id in result["candidate_recipe_ids"]:
-                        st.markdown(f"- **{candidate_id}**")
-                else:
-                    st.markdown("*해당 Recipe 없음*")
-
-            matched = (
-                result["status"] == expected["status"]
-                and result["recipe_id"] == expected["recipe_id"]
-                and set(result["candidate_recipe_ids"]) == set(expected["candidate_recipe_ids"])
-            )
-
-            if matched:
-                st.success("✓ Expected와 Actual이 일치한다.")
+        started = time.perf_counter()  # Run 클릭 ~ 응답 수신까지 측정
+        try:
+            result = api_client.resolve(utterance_trimmed)
+            st.session_state["view"] = {
+                "kind": "resolve",
+                "utterance": utterance_trimmed,
+                "result": result,
+                "elapsed": time.perf_counter() - started,
+            }
+        except ApiError as e:
+            if e.kind == "connection":
+                message = "Backend에 연결할 수 없습니다. uvicorn을 먼저 실행하세요."
+            elif e.kind == "timeout":
+                message = "Backend 응답 시간 초과 (180초)"
             else:
-                st.error("✗ Expected와 Actual이 일치하지 않는다.")
+                message = f"Backend 호출 실패: {str(e)}"
+            st.session_state["view"] = {"error": message}
+        st.rerun()  # 결과를 하단에 그리려면 다시 한 번 돈다
+
+    with band_slot:
+        render_band(view)
+    with body_slot:
+        render_focus_section(view, graph, mark, ratios)
+
+    if config.DEBUG and isinstance(view, dict) and view.get("elapsed") is not None:
+        st.metric("⏱️ Run Time", format_elapsed(view["elapsed"]))

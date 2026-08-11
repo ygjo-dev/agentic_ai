@@ -63,12 +63,12 @@ def test_call_ollama_posts_to_generate_endpoint(sent_request):
 
 
 def test_call_ollama_body_carries_model_prompt_and_no_stream(sent_request):
-    call_ollama("CCTV로 군중을 분석해줘", RESPONSE_SCHEMA)
+    call_ollama("승강장 CCTV 동영상으로 혼잡도를 분석해줘", RESPONSE_SCHEMA)
 
     body = sent_body(sent_request)
 
     assert body["model"] == OLLAMA_MODEL
-    assert body["prompt"] == "CCTV로 군중을 분석해줘"
+    assert body["prompt"] == "승강장 CCTV 동영상으로 혼잡도를 분석해줘"
     assert body["stream"] is False
 
 

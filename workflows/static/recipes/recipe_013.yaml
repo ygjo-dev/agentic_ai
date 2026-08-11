@@ -1,0 +1,18 @@
+steps:
+
+  - node: load_cctv_platform
+    inputs: []
+    outputs:
+      - MediaData
+
+  - node: detect_structure_crack
+    inputs:
+      - MediaData
+    outputs:
+      - AnalysisResult
+
+  - node: generate_ppt
+    inputs:
+      - AnalysisResult
+    outputs:
+      - DocumentData

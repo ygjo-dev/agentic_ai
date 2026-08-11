@@ -15,7 +15,7 @@ def render_input_section():
     utterance = st.text_input(
         "발화를 입력하세요",
         key="utterance",
-        placeholder="예) CCTV로 군중을 분석해줘",
+        placeholder="예) 승강장 CCTV 동영상으로 혼잡도를 분석해줘",
     )
     run_clicked = st.button("Run", type="primary", use_container_width=True)
 
