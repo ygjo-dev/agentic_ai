@@ -50,7 +50,8 @@ DOMAIN_ERRORS = (
 async def graph_endpoint() -> dict:
     """온톨로지 그래프 한 벌. 프론트엔드가 그리는 데 필요한 것 전부.
 
-    Returns: GraphResponse
+    version · interfaces · nodes · solid_edges · dotted_edges 를 담아 돌려준다.
+    version 은 내용 해시라 프론트엔드 캐시 키가 된다.
     """
     try:
         return graph_service.graph_payload()
@@ -68,7 +69,8 @@ async def resolve_endpoint(utterance: str) -> dict:
     Args:
         utterance: 사용자 자연어 입력
 
-    Returns: ResolveResponse
+    status(SELECT / CLARIFY / NO_MATCH) · recipe_id · candidate_recipe_ids ·
+    reason · paths 를 돌려준다. paths 는 후보별 실행 경로이고 NO_MATCH 면 비어 있다.
     """
     try:
         return resolve_service.resolve(utterance, llm_client=OllamaClient())
@@ -82,7 +84,8 @@ async def resolve_endpoint(utterance: str) -> dict:
 async def register_node_endpoint(form: NodeRegisterRequest) -> dict:
     """노드 등록. 온톨로지 · recipe · menu 가 함께 갱신된다.
 
-    Returns: NodeRegisterResponse
+    새로 생긴 것(node_id · node · recipe_ids · paths · new_solid_edges ·
+    new_dotted_edges)과 등록 전후 개수(counts), 갱신된 version 을 돌려준다.
     """
     try:
         return node_service.register(form.model_dump(), llm_client=OllamaClient())

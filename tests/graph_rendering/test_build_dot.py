@@ -21,12 +21,6 @@ SOLID = {
 
 DOTTED = {("generate_ppt", "generate_word"): ["output_kind: document"]}
 
-STAGES = [
-    ["load_cctv_platform"],
-    ["analyze_congestion"],
-    ["generate_word", "generate_ppt"],
-]
-
 HIGHLIGHT = [
     ("load_cctv_platform", "analyze_congestion"),
     ("analyze_congestion", "generate_word"),
@@ -86,9 +80,9 @@ def test_dotted_edge_does_not_use_constraint_false():
     """constraint=false 는 브라우저 Graphviz(WASM)에서 레이아웃이 끝나지 않는다.
 
     네이티브 dot 은 즉시 끝내므로 subprocess 검증으로는 잡히지 않았고,
-    화면만 비었다. 열 정렬은 rank=same 만으로 충분하다.
+    화면만 비었다.
     """
-    dot = build_dot(NODES, SOLID, DOTTED, stages=STAGES)
+    dot = build_dot(NODES, SOLID, DOTTED)
 
     assert "constraint=false" not in dot
 
@@ -165,28 +159,6 @@ def test_all_nodes_share_one_neutral_color():
     for line in node_lines:
         assert "color=" not in line.split("label=")[1], line
         assert HIGHLIGHT_COLOR not in line, line
-
-
-# ------------------------------------------------------------ 열 정렬
-def test_one_rank_block_per_stage():
-    dot = build_dot(NODES, SOLID, DOTTED, stages=STAGES)
-
-    assert dot.count("rank=same") == len(STAGES)
-
-
-def test_rank_block_lists_that_stage_members():
-    dot = build_dot(NODES, SOLID, DOTTED, stages=STAGES)
-
-    rank_lines = [line for line in dot.splitlines() if "rank=same" in line]
-
-    assert '"load_cctv_platform";' in rank_lines[0]
-    assert '"generate_word";' in rank_lines[2]
-    assert '"generate_ppt";' in rank_lines[2]
-
-
-def test_without_stages_no_rank_block():
-    """단계를 넘기지 않으면 Graphviz 기본 배치에 맡긴다."""
-    assert "rank=same" not in build_dot(NODES, SOLID, DOTTED)
 
 
 # ------------------------------------------------------------ 하이라이트
@@ -315,8 +287,7 @@ def test_output_is_a_digraph_block():
 
 
 @pytest.mark.parametrize("highlight", [None, HIGHLIGHT])
-@pytest.mark.parametrize("stages", [None, STAGES])
-def test_graphviz_accepts_the_output(highlight, stages):
+def test_graphviz_accepts_the_output(highlight):
     """문법이 깨지면 화면에 아무것도 뜨지 않는다.
 
     프로덕션과 같은 경로(render_svg)로 검증한다. 예전에는 여기서 subprocess 를
@@ -325,7 +296,7 @@ def test_graphviz_accepts_the_output(highlight, stages):
     if not shutil.which("dot"):
         pytest.skip("graphviz 가 설치되어 있지 않다")
 
-    svg = render_svg(build_dot(NODES, SOLID, DOTTED, highlight=highlight, stages=stages))
+    svg = render_svg(build_dot(NODES, SOLID, DOTTED, highlight=highlight))
 
     assert svg.lstrip().startswith("<?xml"), svg[:200]
     assert "<svg" in svg
@@ -337,7 +308,6 @@ def test_graphviz_accepts_the_real_ontology():
         dotted_edges,
         highlight_edges,
         load_ontology,
-        node_stages,
         recipe_nodes,
         solid_edges,
     )
@@ -351,7 +321,6 @@ def test_graphviz_accepts_the_real_ontology():
             solid_edges(),
             dotted_edges(),
             highlight=highlight_edges("recipe_013"),
-            stages=node_stages(),
             highlight_nodes=recipe_nodes("recipe_013"),
         )
     )

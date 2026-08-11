@@ -21,7 +21,6 @@ from ontology.graph import (
     dotted_edges,
     highlight_edges,
     load_ontology,
-    node_stages,
     recipe_nodes,
     solid_edges,
 )
@@ -38,7 +37,6 @@ def layout(**kwargs):
             load_ontology()["nodes"],
             solid_edges(),
             dotted_edges(),
-            stages=node_stages(),
             **kwargs,
         )
     )
@@ -63,17 +61,6 @@ COMBOS = {
     "CLARIFY 후보 2개": {"highlight_paths": [P("recipe_023"), P("recipe_027")]},
     "CLARIFY 후보 4개": {
         "highlight_paths": [P(r) for r in ("recipe_015", "recipe_019", "recipe_023", "recipe_027")]
-    },
-    "정답만": {"expected_paths": [P("recipe_013")]},
-    "실제=정답(겹침)": {
-        "highlight": P("recipe_013"),
-        "highlight_nodes": recipe_nodes("recipe_013"),
-        "expected_paths": [P("recipe_013")],
-    },
-    "실제≠정답(어긋남)": {
-        "highlight": P("recipe_013"),
-        "highlight_nodes": recipe_nodes("recipe_013"),
-        "expected_paths": [P("recipe_020")],
     },
 }
 
@@ -105,7 +92,6 @@ def test_order_uses_xlabel_not_label():
         load_ontology()["nodes"],
         solid_edges(),
         dotted_edges(),
-        stages=node_stages(),
         highlight=P("recipe_013"),
     )
 
@@ -117,14 +103,12 @@ def test_order_uses_xlabel_not_label():
 
 def test_highlight_adds_no_extra_edge():
     """평행 엣지를 추가하면 조합마다 엣지 수가 달라져 레이아웃이 흔들린다."""
-    kwargs = dict(stages=node_stages())
-    plain = build_dot(load_ontology()["nodes"], solid_edges(), dotted_edges(), **kwargs)
+    plain = build_dot(load_ontology()["nodes"], solid_edges(), dotted_edges())
     lit = build_dot(
         load_ontology()["nodes"],
         solid_edges(),
         dotted_edges(),
         highlight=P("recipe_013"),
-        **kwargs,
     )
 
     def edge_count(dot):

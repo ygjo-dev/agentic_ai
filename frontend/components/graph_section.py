@@ -36,7 +36,6 @@ FONT = "Malgun Gothic"
 HIGHLIGHT_COLOR = config.HIGHLIGHT_COLOR
 DOTTED_COLOR = config.DOTTED_COLOR
 PLAIN_COLOR = config.PLAIN_COLOR
-EXPECTED_COLOR = config.EXPECTED_COLOR
 NEW_COLOR = config.NEW_COLOR
 
 # 노드 글씨 크기. model=subset 이 노드를 넓게 벌려서 겹침은 더 이상 제약이 아니다 —
@@ -69,30 +68,13 @@ SOLID_LEN = 4.0
 DOTTED_LEN = 0.7
 
 
-def _pair_color(is_highlight: bool, is_expected: bool) -> str:
-    """엣지/노드 하나에 칠할 색.
-
-    실제와 정답이 겹치면 Graphviz colorList("색1:색2") 로 두 색을 나란히 그린다.
-    엣지를 하나 더 그리는 게 아니라 색 속성만 바뀌므로 레이아웃이 유지된다.
-    """
-    if is_highlight and is_expected:
-        return f"{HIGHLIGHT_COLOR}:{EXPECTED_COLOR}"
-    if is_highlight:
-        return HIGHLIGHT_COLOR
-    if is_expected:
-        return EXPECTED_COLOR
-    return ""
-
-
 def build_dot(
     nodes: dict,
     solid: dict,
     dotted: dict,
     highlight=None,
-    stages=None,
     highlight_nodes=None,
     highlight_paths=None,
-    expected_paths=None,
     *,
     positions=None,
     spring=False,
@@ -116,7 +98,6 @@ def build_dot(
         dotted: {(a, b): ["key: value", ...]} — 특성 관련. 점선, 화살표 없음.
         highlight: [(from, to), ...] — 경로 하나. 굵은 실선, 화살표, 순번.
             리스트 순서가 곧 실행 순서다.
-        stages: [[node_id, ...], ...] — 같은 열에 놓을 묶음.
         highlight_nodes: 테두리를 강조할 노드. 생략하면 강조 엣지의 양 끝에서
             유도한다. 1단 recipe 는 엣지가 없어 유도가 불가능하므로 그때는
             호출하는 쪽이 넘겨야 한다.
@@ -124,9 +105,6 @@ def build_dot(
             엣지 합집합을 강조하고 순번은 붙이지 않는다. 여러 경로가 같은
             엣지를 공유하면 순번이 겹쳐 읽을 수 없기 때문이다.
             경로가 정확히 하나면 highlight 와 똑같이 순번을 붙인다.
-        expected_paths: [[(from, to), ...], ...] — 정답 경로(샘플 실행 시).
-            EXPECTED_COLOR 로 함께 그린다. 실제와 겹치면 colorList 로 두 색을
-            나란히 그려 둘 다 보이게 한다.
         positions: {node_id: (x, y)} — neato 용 고정 좌표. pos="x,y!" 로 붙인다.
             label 뒤에 놓는다 — 테스트가 노드 줄을 '"id" [label=' 로 찾는다.
         spring: neato 용 엣지 길이. 실선보다 점선을 짧게 둬 같은 특성을 공유하는
@@ -166,7 +144,6 @@ def build_dot(
         paths = [path for path in highlight_paths if path]
 
     highlighted = {edge for path in paths for edge in path}
-    expected = {edge for path in (expected_paths or []) for edge in path}
 
     # 경로가 하나로 확정됐을 때만 순번. 같은 엣지를 두 번 지나면 번호를 이어 붙인다.
     orders: dict[tuple[str, str], str] = {}
@@ -179,7 +156,6 @@ def build_dot(
     if highlight_nodes is None:
         highlight_nodes = {node_id for path in paths for edge in path for node_id in edge}
     highlight_nodes = set(highlight_nodes)
-    expected_nodes = {node_id for edge in expected for node_id in edge}
 
     marked_nodes = set(mark_nodes)
     marked_edges = {tuple(edge) for edge in mark_edges}
@@ -224,22 +200,13 @@ def build_dot(
             attrs.append(f'pos="{x},{y}!"')
         # mark 가 걸리면 그것이 이긴다 — 새로 생긴 것이 가장 먼저 눈에 띄어야 한다.
         marked = node_id in marked_nodes
-        color = (
-            marked_color
-            if marked
-            else _pair_color(node_id in highlight_nodes, node_id in expected_nodes)
+        color = marked_color if marked else (
+            HIGHLIGHT_COLOR if node_id in highlight_nodes else ""
         )
         if color:
             width = MARK_NODE_PENWIDTH if marked else 2
             attrs.append(f'penwidth={width}, color="{color}"')
         lines.append(f'  "{node_id}" [{", ".join(attrs)}];')
-
-    # 같은 단계는 같은 열에. 단계는 온톨로지에서 계산한 것을 받는다.
-    if stages:
-        lines.append("")
-        for stage in stages:
-            members = " ".join(f'"{node_id}";' for node_id in stage)
-            lines.append(f"  {{ rank=same; {members} }}")
 
     lines.append("")
 
@@ -250,7 +217,9 @@ def build_dot(
     for frm, to in solid:
         edge = (frm, to)
         is_marked = edge in marked_edges
-        color = marked_color if is_marked else _pair_color(edge in highlighted, edge in expected)
+        color = marked_color if is_marked else (
+            HIGHLIGHT_COLOR if edge in highlighted else ""
+        )
         if not color:
             lines.append(f'  "{frm}" -> "{to}" [dir=none{solid_len}];')
             continue
@@ -269,7 +238,6 @@ def build_dot(
     # 브라우저 WASM Graphviz(st.graphviz_chart 가 쓰는 렌더러)는 레이아웃을
     # 끝내지 못해 화면이 계속 비어있는다. 네이티브 dot 은 즉시 끝내므로
     # 로컬 `dot -Tsvg` 검증만으로는 이 문제가 잡히지 않는다.
-    # 열 정렬은 rank=same 만으로 충분하다.
     # 점선을 실선보다 짧게 둔다(len). 같은 특성을 공유하는 노드끼리 서로
     # 끌어당겨 자연스럽게 모인다 — 열로 강제 정렬하는 것보다 잘 읽힌다.
     dotted_len = f", len={DOTTED_LEN}" if spring else ""
@@ -376,34 +344,6 @@ def layout_positions(dot: str) -> dict[str, tuple[float, float]]:
     return positions
 
 
-def svg_aspect_ratio(svg: str, default: float = 0.5) -> float:
-    """SVG 의 height / width. iframe 높이를 폭에서 계산하는 데 쓴다.
-
-    iframe 은 내용에 맞춰 높이가 늘지 않으므로 폭만으로 높이를 알아야 한다.
-    """
-    match = re.search(r'<svg[^>]*\swidth="([\d.]+)pt"[^>]*\sheight="([\d.]+)pt"', svg)
-    if not match:
-        return default
-    width, height = float(match.group(1)), float(match.group(2))
-    return height / width if width else default
-
-
-def graph_html(svg: str) -> str:
-    """iframe 안에 넣을 문서.
-
-    iframe 배경은 기본 흰색이라 다크 테마에서 흰 카드로 뜬다.
-    DOT 의 bgcolor="transparent" 는 SVG 안쪽만 투명하게 하므로 여기서 한 번 더 덮는다.
-    SVG 는 컨테이너 폭에 맞춰 줄이고, 비율은 height:auto 로 유지한다.
-    """
-    return (
-        "<style>"
-        "html, body { background: transparent; margin: 0; padding: 0; }"
-        "svg { width: 100%; height: auto; display: block; }"
-        "</style>"
-        f"{svg}"
-    )
-
-
 # <svg ...> 여는 태그 하나. 속성 순서는 Graphviz 가 정한다.
 _SVG_OPEN_TAG = re.compile(r"<svg\b[^>]*>", re.S)
 _SVG_SIZE_ATTR = re.compile(r'\s(?:width|height)="[^"]*"')
@@ -478,8 +418,9 @@ g.node [stroke="MARK"], g.edge [stroke="MARK"] {
 def graph_fill_html(svg: str, pulse: bool = False) -> str:
     """고정 높이 패널을 꽉 채우는 iframe 문서.
 
-    graph_html 은 height:auto 라 내용 비율대로 늘어난다(그쪽은 그대로 둔다 —
-    tests/graph_rendering 이 그 동작을 검증한다). 여기서는 상자에 맞춘다.
+    iframe 배경은 기본 흰색이라 다크 테마에서 흰 카드로 뜬다. DOT 의
+    bgcolor="transparent" 는 SVG 안쪽만 투명하게 하므로 여기서 한 번 더 덮는다.
+    SVG 는 비율을 유지한 채 상자에 맞춘다(크기 속성은 fit_svg 가 뺀다).
 
     pulse 는 방금 등록된 것에만 준다. CSS 애니메이션이라 JS 가 없다.
     """
@@ -507,8 +448,6 @@ def to_build_dot_args(payload: dict) -> tuple[dict, dict, dict]:
 
     리스트를 순서 그대로 dict 로 되돌리므로 노드·엣지 순서가 보존된다.
     순서가 흔들리면 Graphviz 레이아웃이 바뀌어 화면이 깜빡인다.
-
-    stages 는 더 이상 받지 않는다. 열 정렬을 그만두고 neato 배치로 갔다.
     """
     nodes = payload["nodes"]
     solid = {(e["from"], e["to"]): e["interface"] for e in payload["solid_edges"]}
@@ -654,7 +593,6 @@ def build_graph_svg(
     발화 해석은 상단 그래프를 강조하지 않는다 — 결과는 하단 경로 패널이
     보여준다. 그래서 후보 조합별로 여러 벌을 만들 이유가 없다.
 
-    stages 를 넘기지 않는다 — rank=same 이 없어야 열이 사라진다.
     모든 노드가 고정된 상태에서 -n 은 배치를 아예 계산하지 않으므로
     좌표가 항상 같다는 것이 구조적으로 보장된다.
 

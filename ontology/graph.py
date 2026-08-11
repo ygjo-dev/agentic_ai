@@ -65,26 +65,6 @@ def dotted_edges() -> dict[tuple[str, str], list[str]]:
     return edges
 
 
-def node_stages() -> list[list[str]]:
-    """같은 열에 놓을 노드 묶음. [시작, 중간, 종료] 순서.
-
-    "소비" 는 타입이 겹치는지가 아니라 recipe 에 그 연결이 실제로 있는지로
-    본다. DocumentData 는 불러오기의 출력이자 생성의 출력이라
-    generate_word -> DocumentData -> summarize_defect_history 처럼
-    타입만 보면 순환이 생기고, 그러면 종료 단계가 비어버린다.
-    """
-    nodes = load_ontology()["nodes"]
-    edges = solid_edges()
-
-    consumed = {frm for frm, _ in edges}  # 뒤로 이어지는 노드
-
-    start = sorted(node_id for node_id, node in nodes.items() if node["inputs"] == [])
-    end = sorted(node_id for node_id in nodes if node_id not in consumed)
-    middle = sorted(set(nodes) - set(start) - set(end))
-
-    return [stage for stage in (start, middle, end) if stage]
-
-
 def highlight_edges(recipe_id: str) -> list[tuple[str, str]]:
     """선택된 recipe 의 실행 경로. [(from, to), ...] 순서 그대로.
 

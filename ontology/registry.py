@@ -257,6 +257,8 @@ def _step_block(node: dict, node_id: str) -> str:
 
 # menu.yaml 크기 상한. 넘으면 num_ctx(8192) 를 넘겨 LLM 이 타임아웃한다.
 # tests/context_loading 의 상한과 같은 값이다.
+# 프로덕션에서 부르는 곳은 없다. 등록 뒤 menu 가 이 선을 넘지 않는지
+# tests/node_registration/test_append_menu.py 가 보는 기준값이라 남긴다.
 MENU_BUDGET = 6000
 
 

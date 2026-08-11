@@ -13,9 +13,7 @@ from frontend.components.graph_section import (
     GraphvizFailed,
     GraphvizNotFound,
     build_dot,
-    graph_html,
     render_svg,
-    svg_aspect_ratio,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -83,46 +81,3 @@ def test_not_found_and_failed_are_distinguishable():
     """설치 문제와 DOT 문법 오류는 사용자가 할 일이 다르다."""
     assert not issubclass(GraphvizNotFound, GraphvizFailed)
     assert not issubclass(GraphvizFailed, GraphvizNotFound)
-
-
-# ------------------------------------------------------------ iframe 높이
-def test_aspect_ratio_read_from_the_svg():
-    """iframe 은 내용에 맞춰 늘지 않는다. 폭에서 높이를 계산해야 한다."""
-    svg = '<svg width="500pt" height="250pt" viewBox="0 0 500 250">'
-
-    assert svg_aspect_ratio(svg) == pytest.approx(0.5)
-
-
-def test_aspect_ratio_falls_back_when_size_is_missing():
-    """크기를 못 읽어도 0 으로 만들면 그래프가 아예 안 보인다."""
-    assert svg_aspect_ratio("<svg>", default=0.75) == 0.75
-
-
-def test_real_graph_ratio_is_sane():
-    svg = render_svg(build_dot(NODES, SOLID, {}))
-
-    ratio = svg_aspect_ratio(svg)
-    assert 0 < ratio < 10, ratio
-
-
-# ------------------------------------------------------------ iframe 문서
-def test_iframe_background_is_transparent():
-    """iframe 배경은 기본 흰색이다. DOT 의 bgcolor 만으로는 다크 테마에서 흰 카드가 남는다."""
-    html = graph_html("<svg></svg>")
-
-    assert "background: transparent" in html
-    assert "margin: 0" in html
-
-
-def test_svg_fits_the_container_width():
-    """전용 페이지는 전체 폭, 메인은 좁은 컬럼이다. 같은 SVG 가 양쪽에 맞아야 한다."""
-    html = graph_html("<svg></svg>")
-
-    assert "width: 100%" in html
-    assert "height: auto" in html, "비율이 깨지면 그래프가 찌그러진다."
-
-
-def test_svg_is_embedded_as_is():
-    svg = render_svg(build_dot(NODES, SOLID, {}))
-
-    assert svg in graph_html(svg)
