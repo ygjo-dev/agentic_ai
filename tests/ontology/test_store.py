@@ -107,17 +107,21 @@ def test_adding_an_edge_appends_one_line(ontology_file):
     before = store.edges(ontology_file)
     body_before = ontology_file.read_text(encoding="utf-8")
 
+    # 관계 이름을 박아두지 않는다. 어휘가 바뀌면(속함 -> about) 여기가 깨지는데,
+    # 이 검사가 지키려는 것은 "한 줄이 같은 형식으로 붙는다" 이지 이름이 아니다.
+    relation = before[0]["type"]
+
     store.append_node("analyze_crack_trend", NEW, ontology_file)
-    store.append_edge("analyze_crack_trend", "group_track", "속함", ontology_file)
+    store.append_edge("analyze_crack_trend", "group_track", relation, ontology_file)
 
     after = store.edges(ontology_file)
     assert after[: len(before)] == before, "기존 관계가 바뀌었다"
     assert after[-1] == {
-        "from": "analyze_crack_trend", "to": "group_track", "type": "속함"
+        "from": "analyze_crack_trend", "to": "group_track", "type": relation
     }
 
     text = ontology_file.read_text(encoding="utf-8")
-    assert store.edge_line("analyze_crack_trend", "group_track", "속함") in text
+    assert store.edge_line("analyze_crack_trend", "group_track", relation) in text
     assert text.startswith(body_before[: body_before.index("version:")])
 
 

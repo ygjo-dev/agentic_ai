@@ -50,7 +50,7 @@ def solid_edges() -> dict[tuple[str, str], str]:
 
 
 def dotted_edges() -> dict[tuple[str, str], list[str]]:
-    """온톨로지에 적힌 관계. {(a, b): ["속함", ...]}.
+    """온톨로지에 적힌 관계. {(a, b): ["about", ...]}.
 
     예전에는 같은 properties 를 가진 노드 쌍을 코드가 찾아냈다. 지금은
     edges 블록에 명시돼 있으므로 읽기만 한다 — 관계를 노드 속성으로 적던
@@ -60,7 +60,7 @@ def dotted_edges() -> dict[tuple[str, str], list[str]]:
     라벨 리스트를 값으로 둔다. 이 형태만 지키면 그리는 쪽(demo/graph_svg)은
     구조가 바뀐 것을 모른다.
 
-    같은 쌍에 관계가 여럿이면 라벨이 쌓인다. 지금은 "속함" 하나뿐이지만
+    같은 쌍에 관계가 여럿이면 라벨이 쌓인다. 지금은 "about" 하나뿐이지만
     나중에 "설치됨" 같은 것이 같은 쌍에 붙을 수 있다.
     """
     edges: dict[tuple[str, str], list[str]] = {}

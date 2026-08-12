@@ -23,7 +23,7 @@ import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
 from ontology import store
 from ontology.registry import (
-    BELONGS_TO,
+    ABOUT,
     MAX_STEPS,
     NODE_REGISTRATION_SCHEMA,
     DuplicateNode,
@@ -407,7 +407,7 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     assert node["inputs"] == FORM["inputs"] and node["outputs"] == FORM["outputs"]
 
     # 고른 대상에 관계 한 줄이 붙는다. 이게 화면에서 점선이 된다.
-    assert {"from": "analyze_crack_trend", "to": "group_track", "type": BELONGS_TO} in (
+    assert {"from": "analyze_crack_trend", "to": "group_track", "type": ABOUT} in (
         edges_now()
     )
 

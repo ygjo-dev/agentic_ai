@@ -13,7 +13,11 @@ from ontology import store
 from orchestrator.route_resolver import resolve_route
 
 # 새 노드가 속할 대상을 가리키는 관계 이름. 지금은 이것 하나뿐이다.
-BELONGS_TO = "속함"
+#
+# "A 는 B 에 관한 것이다" — Dublin Core 의 dcterms:subject 와 같은 뜻이다.
+# is-a(한 종류다) 도 part-of(부분이다) 도 아니다. 궤도 검측 이미지는 궤도의
+# 한 종류도 부분도 아니고, 궤도에 관한 것이다.
+ABOUT = "about"
 
 FUNCTION, GROUP = "function", "group"
 
@@ -134,7 +138,7 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
 
 def _group_of(edges: list[dict]) -> dict[str, str]:
     """기능 노드 -> 속한 group id. 프롬프트에 보여줄 용도다."""
-    return {edge["from"]: edge["to"] for edge in edges if edge.get("type") == BELONGS_TO}
+    return {edge["from"]: edge["to"] for edge in edges if edge.get("type") == ABOUT}
 
 
 def _describe(nodes: dict, belongs: dict[str, str]) -> str:
@@ -369,7 +373,7 @@ def register_node(form: dict, llm_client) -> dict:
     add_node(node_id, node)
 
     if inferred["group"]:
-        store.append_edge(node_id, inferred["group"], BELONGS_TO)
+        store.append_edge(node_id, inferred["group"], ABOUT)
 
     nodes = store.nodes()
     chains = new_recipes_for(node_id, nodes)
