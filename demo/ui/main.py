@@ -28,6 +28,7 @@ from demo.ui.components.graph_section import render_graph_section
 from demo.ui.components.input_section import render_input_section
 from demo.ui.components.node_form import render_node_form
 from demo.ui.components.path_panel import render_band, skeleton_markup
+from demo.ui.components.review_gate import gate_height, render_review_gate
 from demo.ui.components.sample_picker import render_sample_picker
 
 ASK, REGISTER = "사용자 질문", "노드 등록"
@@ -155,6 +156,9 @@ with bottom:
     band = st.container(key="bottom_band")
     with band:
         band_slot = st.empty()
+    # 검토 관문. 등록 직후 pending 이 있을 때만 채워진다 — 체크박스는 백엔드를
+    # 불러야 해서 iframe 안이 아니라 Streamlit 위젯이다.
+    gate = st.container(key="review_gate")
     body = st.container(key="bottom_body")
     with body:
         body_slot = st.empty()
@@ -190,8 +194,16 @@ with bottom:
 
     with band_slot:
         render_band(view)
+    with gate:
+        render_review_gate(view)
+
+    # 관문이 자리를 차지한 만큼 iframe 을 줄인다. 안 줄이면 패널 밖으로 밀려
+    # 아래가 잘린다(overflow: hidden).
+    pending_count = (
+        len(view["result"].get("pending") or []) if _is_registration(view) else 0
+    )
     with body_slot:
-        render_focus_section(rendered, view, ratios)
+        render_focus_section(rendered, view, ratios, height_offset=gate_height(pending_count))
 
     if config.DEBUG and isinstance(view, dict) and view.get("elapsed") is not None:
         st.metric("⏱️ Run Time", format_elapsed(view["elapsed"]))

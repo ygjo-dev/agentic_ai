@@ -21,6 +21,8 @@ from demo.graph_svg.dot import (
     HIGHLIGHT_COLOR,
     NEW_COLOR,
     NODE_ATTRS,
+    REVIEW_COLOR,
+    REVIEW_PENWIDTH,
     SOLID_LEN,
     build_dot,
 )
@@ -108,6 +110,7 @@ def test_defaults_are_byte_identical_to_omitting_the_new_arguments():
         dotted_labels=True, node_attrs=(), group_attrs=(),
         mark_nodes=(), mark_edges=(), mark_dotted=(), mark_color=None,
         edge_color=None, dotted_color=None,
+        review_edges=(), review_color=None,
     )
 
 
@@ -129,6 +132,7 @@ def test_every_keyword_only_argument_is_covered_by_the_identity_test():
         "group_attrs",
         "mark_nodes", "mark_edges", "mark_dotted", "mark_color",
         "edge_color", "dotted_color",
+        "review_edges", "review_color",
     }
 
 
@@ -292,6 +296,96 @@ def test_mark_wins_over_highlight():
 def test_no_marks_means_no_new_colour_anywhere():
     """mark 를 안 넘기면 NEW_COLOR 가 문자열에 아예 없어야 한다."""
     assert NEW_COLOR not in build_dot(NODES, SOLID, DOTTED)
+
+
+# ------------------------------------------------------------ review 레이어
+# 검토 대상(대상이 어긋나는 경로) 표시. 차단이 아니라 분류다 — 사람이 승인할
+# 때까지 recipe 가 아니므로 mark(새로 생긴 것)와 다른 색으로 옅게 보인다.
+def test_review_recolors_an_existing_edge_thinly():
+    """이미 실선이 있는 연결은 색과 굵기만 바꾼다. 선을 더 긋지 않는다."""
+    edge = ("load_cctv_platform", "analyze_congestion")
+
+    dot = build_dot(NODES, SOLID, DOTTED, review_edges=[edge])
+
+    lines = [
+        l for l in dot.splitlines()
+        if '"load_cctv_platform" -> "analyze_congestion"' in l
+    ]
+    assert len(lines) == 1, "평행 엣지가 생겼다 — 레이아웃이 흔들린다"
+    assert REVIEW_COLOR in lines[0]
+    assert f"penwidth={REVIEW_PENWIDTH}" in lines[0]
+    assert "xlabel" not in lines[0], "검토 표시는 실행 순서가 아니다"
+
+
+def test_review_draws_a_line_for_an_edge_no_recipe_has():
+    """어느 recipe 에도 없는 연결은 선이 없으므로 하나 그린다.
+
+    점선(dashed)이 아니다 — 점선은 about 관계다. 검토 대상은 '실행 경로가 될
+    수도 있는 것' 이라 실선 문법을 쓰되 색으로 가른다.
+    """
+    edge = ("analyze_congestion", "detect_structure_crack")  # SOLID 에 없다
+
+    dot = build_dot(NODES, SOLID, DOTTED, review_edges=[edge])
+
+    line = next(
+        l for l in dot.splitlines()
+        if '"analyze_congestion" -> "detect_structure_crack"' in l
+    )
+    assert REVIEW_COLOR in line
+    assert "dir=none" in line
+    assert "dashed" not in line
+
+
+def test_mark_wins_over_review():
+    """같은 연결이 새로 생겼으면서 검토 대상 경로에도 걸리면 새로 생긴 사실이 먼저다."""
+    edge = ("load_cctv_platform", "analyze_congestion")
+
+    dot = build_dot(NODES, SOLID, DOTTED, review_edges=[edge], mark_edges=[edge])
+
+    line = next(
+        l for l in dot.splitlines()
+        if '"load_cctv_platform" -> "analyze_congestion"' in l
+    )
+    assert NEW_COLOR in line
+    assert REVIEW_COLOR not in line
+
+
+def test_no_review_means_no_review_colour_anywhere():
+    assert REVIEW_COLOR not in build_dot(NODES, SOLID, DOTTED)
+
+
+def test_a_review_edge_to_an_undrawn_node_is_skipped():
+    """화면에 없는 노드로는 선을 못 긋는다 — neato -n 은 좌표 없는 노드를
+    놓을 자리를 몰라 그래프 전체가 안 그려질 수 있다."""
+    dot = build_dot(
+        NODES, SOLID, DOTTED, review_edges=[("analyze_congestion", "ghost_node")]
+    )
+
+    assert "ghost_node" not in dot
+
+
+def test_review_never_moves_a_node():
+    """검토 표시는 색이다. 좌표가 움직이면 등록 순간 지도가 튄다."""
+    positions = fresh_positions()
+
+    def draw(review):
+        return render_svg(
+            build_dot(
+                NODES, SOLID, DOTTED,
+                positions=positions, spring=True, review_edges=review,
+            ),
+            "neato",
+            no_layout=True,
+        )
+
+    base = svg_node_coords(draw(()))
+    assert len(base) == len(NODES)
+    # 이미 있는 실선 + 새로 긋는 선을 섞어도 좌표가 같아야 한다.
+    review = [
+        ("load_cctv_platform", "analyze_congestion"),
+        ("analyze_congestion", "detect_structure_crack"),
+    ]
+    assert svg_node_coords(draw(review)) == base
 
 
 # ------------------------------------------------------------ 선택적 점선 라벨

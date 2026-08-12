@@ -69,8 +69,11 @@ def mark_from_registration(result: dict | None) -> dict | None:
     """POST /nodes 응답에서 강조할 것만 뽑는다.
 
     new_solid_edges / new_dotted_edges 는 등록 전후의 차집합이다.
-    이미 줄어든 형태({nodes, solid, dotted})가 들어오면 그대로 돌려준다 —
+    이미 줄어든 형태({nodes, solid, dotted, review})가 들어오면 그대로 돌려준다 —
     UI 가 응답을 통째로 넘겨도, 서버가 두 번 줄여도 같은 값이 나온다.
+
+    review 는 검토 대상(pending) 경로의 연결들이다. 아직 recipe 가 아니라
+    new_solid_edges 에 없다 — 승인되면 pending 이 비고 표시가 사라진다.
     """
     if not result or "error" in result or result.get("reset"):
         return None
@@ -80,13 +83,20 @@ def mark_from_registration(result: dict | None) -> dict | None:
             "nodes": list(result.get("nodes") or []),
             "solid": [tuple(edge) for edge in result.get("solid") or []],
             "dotted": [tuple(pair) for pair in result.get("dotted") or []],
+            "review": [tuple(edge) for edge in result.get("review") or []],
         }
 
     node_id = result.get("node_id")
+    pending_chains = [
+        entry.get("chain") or [] for entry in result.get("pending") or []
+    ]
     return {
         "nodes": [node_id] if node_id else [],
         "solid": [(e["from"], e["to"]) for e in result.get("new_solid_edges") or []],
         "dotted": [(e["a"], e["b"]) for e in result.get("new_dotted_edges") or []],
+        "review": list(dict.fromkeys(
+            edge for chain in pending_chains for edge in zip(chain, chain[1:])
+        )),
     }
 
 
@@ -131,6 +141,9 @@ def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict)
 
     발화 해석은 상단을 강조하지 않는다 — 결과는 하단이 보여준다. 노드를
     등록했을 때만 새로 생긴 것을 표시한다.
+
+    검토 대상(review) 경로도 여기에만 표시한다 — 하단은 확정된 답(recipe)을
+    보여주는 곳이고, 검토 대상은 아직 답이 아니다.
     """
     return fit_svg(stack_nodes_on_top(
         render_svg(
@@ -149,6 +162,7 @@ def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict)
                 mark_nodes=mark.get("nodes") or (),
                 mark_edges=mark.get("solid") or (),
                 mark_dotted=mark.get("dotted") or (),
+                review_edges=mark.get("review") or (),
             ),
             "neato",
             no_layout=True,

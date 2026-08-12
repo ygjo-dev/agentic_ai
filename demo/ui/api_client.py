@@ -115,6 +115,19 @@ def register_node(name: str, description: str, inputs: list[str], outputs: list[
     return result
 
 
+def approve_chains(chains: list[list[str]]) -> dict:
+    """검토 관문 승인. 고른 경로만 recipe 로 승격된다.
+
+    LLM 이 안 낀다 — 파일 몇 개를 쓰는 일이라 render 와 같은 타임아웃이면 된다.
+    recipe 가 늘어 온톨로지 version 이 바뀌므로 그래프 캐시를 버린다.
+    """
+    result = _call(
+        "POST", "/nodes/approve", timeout=RENDER_TIMEOUT, json={"chains": chains}
+    )
+    st.session_state.pop(GRAPH_CACHE_KEY, None)
+    return result
+
+
 def reset_nodes() -> dict:
     """_init 사본으로 되돌린다. 등록과 마찬가지로 캐시를 버린다."""
     result = _call("POST", "/nodes/reset", timeout=NODES_TIMEOUT)

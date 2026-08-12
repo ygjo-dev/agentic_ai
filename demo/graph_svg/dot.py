@@ -43,6 +43,16 @@ NODE_BORDER_TOP = "#5A6474"
 GROUP_COLOR = "#D9A441"
 GROUP_COLOR_TOP = "#8A6B2E"      # 상단용. 대비 3.80 으로 한 단계 낮춘다.
 
+# 검토 대상(대상이 어긋나는 경로) 표시. 등록 직후 상단 지도에 얹는다.
+# "대상이 어긋난다" 는 표시라 대상(group) 노드와 같은 amber 계열로 골랐다 —
+# 새로 생긴 것(NEW_COLOR, 분홍 330°)과는 색상환에서 충분히 떨어져 있고(39°),
+# 그룹 타원과 한 가족으로 읽힌다. 다만 값은 그룹 색과 다르게 둔다 — 같으면
+# 검토 표시가 사라졌는지를 화면에서도 테스트에서도 확인할 수 없다.
+# 대비 4.8 : 상단 그룹(3.80)보다 한 단계 위, 새로 생긴 것(분홍)보다는 아래 —
+# 검토 대상은 아직 결정되지 않은 것이라 새로 생긴 것보다 옅어야 한다.
+REVIEW_COLOR = "#A07A28"
+REVIEW_PENWIDTH = 1.5  # 색이 옅은 만큼 굵기는 새 실선(MARK_SOLID)과 같게.
+
 # /graph 응답에 실어 보낸다. UI 는 이것만 보고 칩 테두리 · 배지 · 안내 문구를 칠한다.
 COLORS = {
     "highlight": HIGHLIGHT_COLOR,
@@ -58,6 +68,7 @@ COLORS = {
     "node_border_top": NODE_BORDER_TOP,
     "group": GROUP_COLOR,
     "group_top": GROUP_COLOR_TOP,
+    "review": REVIEW_COLOR,
 }
 
 # ------------------------------------------------------------ 크기
@@ -132,6 +143,8 @@ def build_dot(
     mark_color=None,
     edge_color=None,
     dotted_color=None,
+    review_edges=(),
+    review_color=None,
 ) -> str:
     """계산 결과를 Graphviz DOT 문자열로 옮긴다.
 
@@ -173,6 +186,13 @@ def build_dot(
             같은 색 조합 규칙에 넣으면 읽는 사람이 헷갈린다.
             둘 다 걸린 대상은 mark 가 이긴다.
         mark_color: mark 에 쓸 색. 생략하면 NEW_COLOR.
+        review_edges: 검토 대상 경로의 실선 [(from, to), ...]. mark 와 다른 색으로
+            옅게 표시한다 — 아직 recipe 가 아니고 사람이 승인해야 하는 경로다.
+            **차단이 아니라 분류다.** 이미 있는 실선은 색만 바꾸고, 어느 recipe
+            에도 없는 연결은 선을 하나 그린다 — 좌표가 전부 핀으로 고정돼
+            있어(neato -n) 선을 더해도 노드는 움직이지 않는다. 둘 다 걸린 대상은
+            mark 가 이긴다 — 새로 생긴 사실이 검토 표시보다 먼저 보여야 한다.
+        review_color: 검토 표시에 쓸 색. 생략하면 REVIEW_COLOR.
         edge_color: 실선 색. 생략하면 PLAIN_COLOR — 노드 테두리와 같은 값이라
             엣지만 옅게 할 수가 없었다. 분리해두면 선을 뒤로 물릴 수 있다.
         dotted_color: 점선 색. 생략하면 DOTTED_COLOR. 실선만 어둡게 하면
@@ -214,6 +234,8 @@ def build_dot(
     marked_color = mark_color or NEW_COLOR
     line_color = edge_color or PLAIN_COLOR
     dash_color = dotted_color or DOTTED_COLOR
+    reviewed = {tuple(edge) for edge in review_edges}
+    review_shade = review_color or REVIEW_COLOR
 
     if dotted_labels is True or dotted_labels is False:
         labelled_dotted = dotted_labels
@@ -271,21 +293,47 @@ def build_dot(
     for frm, to in solid:
         edge = (frm, to)
         is_marked = edge in marked_edges
+        # mark > highlight > review. 검토 표시는 평범했을 실선만 바꾼다 —
+        # 새로 생긴 것(mark)이 검토 대상 경로에 겹쳐 있어도 새로 생긴 사실이 먼저다.
+        is_reviewed = not is_marked and edge not in highlighted and edge in reviewed
         color = marked_color if is_marked else (
-            HIGHLIGHT_COLOR if edge in highlighted else ""
+            HIGHLIGHT_COLOR if edge in highlighted else (
+                review_shade if is_reviewed else ""
+            )
         )
         if not color:
             lines.append(f'  "{frm}" -> "{to}" [dir=none{solid_len}];')
             continue
 
         # 등록으로 생긴 실선은 얇게 — 등록 장면의 주인공은 노드가 어디에 붙었냐다.
-        width = MARK_SOLID_PENWIDTH if is_marked else 3
+        if is_marked:
+            width = MARK_SOLID_PENWIDTH
+        elif is_reviewed:
+            width = REVIEW_PENWIDTH
+        else:
+            width = 3
         attrs = f'penwidth={width}, color="{color}"'
         # 표시된 엣지에는 순번을 붙이지 않는다 — 실행 순서가 아니라 새로 생긴 것이다.
         if edge in orders and not is_marked:
             # xlabel 은 레이아웃에 관여하지 않는다. label 을 쓰면 노드가 밀린다.
             attrs += f', xlabel="{orders[edge]}", fontcolor="{HIGHLIGHT_COLOR}"'
         lines.append(f'  "{frm}" -> "{to}" [{attrs}{solid_len}];')
+
+    # 검토 대상 경로 중 어느 recipe 에도 없는 연결. 그릴 실선이 없으므로 선을
+    # 하나 그린다 — 좌표가 전부 핀으로 고정돼 있어(neato -n) 노드는 안 움직인다.
+    # 순번(xlabel)은 없다. 실행 순서가 아니라 검토 대상이라는 표시다.
+    solid_pairs = {tuple(pair) for pair in solid}
+    for frm, to in dict.fromkeys(tuple(edge) for edge in review_edges):
+        if (frm, to) in solid_pairs:
+            continue
+        if frm not in nodes or to not in nodes:
+            # 화면에 없는 노드로는 선을 못 긋는다. neato -n 은 좌표 없는 노드를
+            # 놓을 자리를 모른다.
+            continue
+        lines.append(
+            f'  "{frm}" -> "{to}" '
+            f'[dir=none, penwidth={REVIEW_PENWIDTH}, color="{review_shade}"{solid_len}];'
+        )
 
     # 특성 관련 — 방향 없는 점선.
     # constraint=false 는 쓰지 않는다. 랭크 제약이 없는 엣지가 늘면

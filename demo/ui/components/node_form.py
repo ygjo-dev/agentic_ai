@@ -176,3 +176,5 @@ def _show_result():
             st.caption(f"속한 대상 : {result.get('group') or '(없음)'}")
             st.caption(f"reason : {result['reason']}")
         st.caption(f"새 recipe {len(result['recipe_ids'])}개 : {', '.join(result['recipe_ids'])}")
+        if result.get("pending"):
+            st.caption(f"검토 대상 {len(result['pending'])}개")

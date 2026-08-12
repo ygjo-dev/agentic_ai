@@ -308,3 +308,30 @@ def test_marking_does_not_move_a_node(client):
     })
 
     assert node_coords(marked["top"]) == node_coords(plain["top"])
+
+
+def test_pending_paths_are_tinted_on_top_without_moving_nodes(client):
+    """검토 대상 경로는 상단에 다른 색으로 옅게 표시된다. 좌표는 그대로다.
+
+    pending 이 비면 표시도 사라진다 — 승인 뒤 화면이 이 상태다.
+    """
+    from demo.graph_svg.dot import NEW_COLOR, REVIEW_COLOR
+
+    mark = {
+        "node_id": "generate_word", "new_solid_edges": [], "new_dotted_edges": [],
+        "pending": [{
+            "chain": ["track_inspection_doc", "find_weak_section", "generate_ppt"],
+            "steps": [],
+        }],
+    }
+    plain = post(client, mode="plain")
+
+    reviewed = post(client, mode="register", mark=mark)
+
+    assert REVIEW_COLOR.lower() in reviewed["top"].lower()
+    assert REVIEW_COLOR.lower() != NEW_COLOR.lower(), "이 검사의 전제가 깨졌다"
+    assert node_coords(reviewed["top"]) == node_coords(plain["top"])
+
+    # 승인이 끝나 pending 이 비면 검토 표시도 사라진다.
+    settled = post(client, mode="register", mark={**mark, "pending": []})
+    assert REVIEW_COLOR.lower() not in settled["top"].lower()
