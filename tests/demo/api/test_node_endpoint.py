@@ -12,9 +12,11 @@ LLM 은 Stub 이다. 실제 Ollama 를 부르지 않는다.
 import json
 
 import pytest
+import yaml
 from fastapi.testclient import TestClient
 
 import demo.api.main as backend_main
+import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
 from demo.api.services.ontology_service import drawn_nodes
 from ontology.graph import dotted_edges, load_ontology, solid_edges
@@ -85,6 +87,8 @@ def test_register_body_has_contract_keys(client, use_llm_client):
         "reason",
         "recipe_ids",
         "paths",
+        "accepted",
+        "pending",
         "new_solid_edges",
         "new_dotted_edges",
         "counts",
@@ -162,6 +166,71 @@ def test_new_dotted_edges_are_the_difference(client, use_llm_client):
 
     reported = {(e["a"], e["b"]) for e in body["new_dotted_edges"]}
     assert reported == set(dotted_edges()) - before
+
+
+# ------------------------------------------------------------ 검토 관문
+def test_pending_paths_come_back_with_display_steps(client, use_llm_client):
+    """검토 대상은 chain(승인 요청용)과 steps(화면용)를 함께 담는다.
+
+    steps 의 about 은 대상 노드의 **이름**이다 — 화면이 어느 노드에서 대상이
+    어긋나는지 보여줄 근거다. id 는 사람이 읽을 것이 아니다.
+    """
+    use_llm_client()
+
+    body = client.post("/nodes", json=FORM).json()
+
+    assert body["pending"], "검토 대상이 없으면 이 검사가 무력하다"
+    for entry in body["pending"]:
+        assert set(entry) == {"chain", "steps"}
+        assert [step["node_id"] for step in entry["steps"]] == entry["chain"]
+        for step in entry["steps"]:
+            assert set(step) == {"node_id", "name", "about"}
+
+    # recipe_ids 는 자동 승격분만이다. 검토 대상은 아직 recipe 가 아니다.
+    assert set(body["recipe_ids"]) == set(body["accepted"]["recipe_ids"])
+    assert body["counts"]["recipes"][1] - body["counts"]["recipes"][0] == len(
+        body["recipe_ids"]
+    )
+
+
+def test_approving_a_subset_promotes_only_that_subset(client, use_llm_client):
+    """고른 경로만 recipe 파일이 되고 counts 가 승인 후 값으로 갱신된다."""
+    use_llm_client()
+    registered = client.post("/nodes", json=FORM).json()
+    pending = [entry["chain"] for entry in registered["pending"]]
+    assert len(pending) >= 2, "후보가 둘은 있어야 '일부만 승인' 을 검사할 수 있다"
+    before_recipes = registered["counts"]["recipes"][1]
+
+    response = client.post("/nodes/approve", json={"chains": [pending[0]]})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["recipe_ids"]) == 1
+    assert set(body["paths"]) == set(body["recipe_ids"])
+    assert body["counts"]["recipes"] == [before_recipes, before_recipes + 1]
+    assert body["version"] != registered["version"]
+
+    # 승인된 경로가 실제 파일이 됐고, 안 고른 것은 파일이 없다.
+    written = {
+        tuple(step["node"] for step in yaml.safe_load(p.read_text(encoding="utf-8"))["steps"])
+        for p in paths.RECIPES_DIR.glob("recipe_*.yaml")
+    }
+    assert tuple(pending[0]) in written
+    assert tuple(pending[1]) not in written
+
+
+def test_an_unproposed_chain_is_422(client, use_llm_client):
+    """제안에 없던 경로는 거부된다. 아무 경로나 승인되면 관문이 뚫린다."""
+    use_llm_client()
+    client.post("/nodes", json=FORM)
+
+    response = client.post(
+        "/nodes/approve",
+        json={"chains": [["platform_cctv_video", "extract_frames"]]},
+    )
+
+    assert response.status_code == 422
+    assert "UnproposedChain" in response.json()["detail"]
 
 
 # ------------------------------------------------------------ 잘못된 입력

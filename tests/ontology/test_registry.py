@@ -4,8 +4,10 @@
 
   1. LLM 이 노드 id 와 무엇에 관한 것인지를 정한다
   2. 온톨로지에 노드를 넣고 관계(hasInput · hasOutput · about)를 붙인다
-  3. 새 노드를 지나는 실행 경로를 만들어 recipe 파일로 쓴다
-  4. menu 에 그 recipe 들의 기능 문장을 더한다
+  3. 새 노드를 지나는 실행 경로를 만들어 대상(about) 기준으로 가른다
+       대상이 통하는 것    -> 조용히 recipe 파일 + menu (자동 승격)
+       대상이 어긋나는 것  -> pending. 사람이 고른 것만 approve 로 승격
+  4. menu 에 승격된 recipe 들의 기능 문장을 더한다
 
 **앞이 실패하면 뒤는 돌지 않는다.** 온톨로지에 못 넣은 노드로 recipe 를 만들면
 존재하지 않는 노드를 가리키게 된다.
@@ -30,15 +32,18 @@ from ontology.registry import (
     DuplicateNode,
     InvalidInference,
     UnknownType,
+    UnproposedChain,
     _describe_groups,
     add_node,
     append_menu,
     append_recipes,
+    approve,
     check_types,
     function_for,
     group_ids,
     infer_node,
     new_recipes_for,
+    propose,
     register_node,
     reset_to_init,
 )
@@ -364,6 +369,147 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     assert set(new) == set(old) == {"steps"}
     assert set(new["steps"][0]) == set(old["steps"][0]) == {"node"}
     assert [step["node"] for step in new["steps"]] == chains[0]
+
+
+# ================================================================ 검토 관문
+#
+# 등록은 제안(propose)과 승인(approve) 두 단계다. 경로 후보를 crosses_groups 로
+# 가른다 — 대상이 통하면 조용히 recipe 로, 어긋나면 사람에게 묻는다.
+# **차단이 아니라 분류다.** 어긋난 경로가 전부 쓰레기는 아니고, 사람이 미처
+# 생각 못 한 조합을 찾아내는 것이 온톨로지를 두는 이유라 자동으로 버리지 않는다.
+
+# 승강장에 관한 노드인데 이미지를 받는다. 궤도 검측차 영상에서 시작하는 경로도
+# 타입상 만들어지고, 그 경로는 대상이 어긋난다(궤도·CCTV vs 승강장) —
+# 검측차는 주행 중 궤도를 내려다보므로 승강장 승객이 화각에 없다.
+CROSSING_FORM = {
+    "name": "승강장 위험 행동 검출",
+    "description": "이미지에서 승강장 승객의 위험 행동을 검출한다.",
+    "inputs": ["image"],
+    "outputs": ["analysis"],
+}
+
+CROSSING_INFERRED = {
+    "node_id": "detect_risky_behavior",
+    "groups": ["group_platform"],
+    "reason": "승강장 승객에 관한 것이다.",
+}
+
+
+def chains_in_recipe_files() -> set[tuple[str, ...]]:
+    return {
+        tuple(step["node"] for step in yaml.safe_load(p.read_text(encoding="utf-8"))["steps"])
+        for p in paths.RECIPES_DIR.glob("recipe_*.yaml")
+    }
+
+
+def test_paths_whose_subjects_agree_are_registered_without_asking():
+    """대상이 통하는 경로는 묻지 않는다. 조용히 recipe 가 되고 menu 에 실린다.
+
+    사람이 보는 것은 애매한 것뿐이어야 한다 — 확실한 것까지 물으면 검토 관문이
+    등록을 느리게 만드는 장치가 되고, 그러면 사람이 관문을 꺼버린다.
+    """
+    from ontology.graph import crosses_groups
+
+    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
+
+    accepted = result["accepted"]
+    assert accepted["chains"], "자동 승격이 하나도 없으면 이 검사가 무력하다"
+    assert len(accepted["recipe_ids"]) == len(accepted["chains"])
+
+    written = chains_in_recipe_files()
+    for chain in accepted["chains"]:
+        assert not crosses_groups(chain), chain
+        assert tuple(chain) in written, f"자동 승격 경로의 파일이 없다: {chain}"
+    assert set(accepted["recipe_ids"]) <= set(menu_now())
+
+
+def test_paths_that_cross_subjects_wait_as_pending_without_files():
+    """대상이 어긋나는 경로는 등록되지 않고 남는다. **파일이 안 생겨야 한다.**
+
+    pending 이 조용히 파일로 쓰이면 검토 관문이 통째로 무의미해진다 — menu 에
+    실린 뒤에는 LLM 이 이미 후보로 보고 있어 사람이 걸러낼 자리가 없다.
+    """
+    from ontology.graph import crosses_groups
+
+    before_files = recipes_now()
+    before_menu = set(menu_now())
+
+    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
+
+    pending = result["pending"]
+    assert pending, "검토 대상이 하나도 없으면 이 검사가 무력하다"
+    for chain in pending:
+        assert crosses_groups(chain), chain
+
+    # 파일은 자동 승격된 것만 늘었다. pending 경로는 어느 파일에도 없다.
+    assert recipes_now() == before_files | set(result["accepted"]["recipe_ids"])
+    written = chains_in_recipe_files()
+    for chain in pending:
+        assert tuple(chain) not in written, f"pending 이 파일로 쓰였다: {chain}"
+
+    # menu 도 마찬가지다. 자동 승격분만 늘어난다.
+    assert set(menu_now()) == before_menu | set(result["accepted"]["recipe_ids"])
+
+
+def test_only_approved_chains_become_recipes():
+    """사람이 고른 경로만 recipe 가 된다. 안 고른 것은 조용히 사라진다.
+
+    버린 후보는 기록하지 않는다 — 다음에 같은 노드를 등록하면 또 나온다.
+    """
+    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
+    pending = result["pending"]
+    assert len(pending) >= 2, "후보가 둘은 있어야 '일부만 승인' 을 검사할 수 있다"
+    picked, dropped = pending[0], pending[1]
+
+    approved = approve([picked])
+
+    assert approved["chains"] == [picked]
+    assert len(approved["recipe_ids"]) == 1
+
+    written = chains_in_recipe_files()
+    assert tuple(picked) in written
+    assert tuple(dropped) not in written, "안 고른 경로가 파일이 됐다"
+    assert set(approved["recipe_ids"]) <= set(menu_now())
+
+    # 버린 후보는 승인 목록에서도 사라졌다. 뒤늦게 승인할 수 없다.
+    with pytest.raises(UnproposedChain):
+        approve([dropped])
+
+
+def test_a_chain_that_was_never_proposed_is_rejected():
+    """제안에 없던 경로는 승인되지 않는다. 검증이 실제로 돌아야 한다.
+
+    아무 경로나 승인되면 관문이 뚫린다 — 온톨로지가 만들지 않은 경로가
+    recipe 파일이 되고, 그 recipe 는 어느 등록에서 왔는지 아무도 모른다.
+    거부할 때는 파일을 한 글자도 건드리지 않는다.
+    """
+    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
+    assert result["pending"], "검토 대상이 없으면 이 검사가 무력하다"
+
+    before = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
+    before_menu = paths.MENU_YAML_PATH.read_bytes()
+
+    # 타입은 이어지는 진짜 경로다. "형식이 맞으니 통과" 로 구현하면 여기서 걸린다.
+    forged = ["platform_cctv_video", "extract_frames", "detect_risky_behavior"]
+    assert forged not in result["pending"], "이 검사의 전제가 깨졌다 — 다른 경로를 골라라"
+
+    with pytest.raises(UnproposedChain):
+        approve([forged])
+
+    # 진짜 후보에 위조 경로를 섞어도 전부 거부한다. 일부만 승인되면
+    # "왜 하나만 됐지" 를 화면에서 알 방법이 없다.
+    with pytest.raises(UnproposedChain):
+        approve([result["pending"][0], forged])
+
+    assert {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")} == before
+    assert paths.MENU_YAML_PATH.read_bytes() == before_menu
+
+    # 초기화하면 대기 중이던 후보도 버려진다 — 노드가 사라졌는데 승인만 남으면
+    # 존재하지 않는 노드를 가리키는 recipe 가 만들어진다.
+    pending = result["pending"]
+    reset_to_init()
+    with pytest.raises(UnproposedChain):
+        approve([pending[0]])
 
 
 # ================================================================ menu

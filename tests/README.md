@@ -4,19 +4,19 @@
 python -m pytest tests -q
 ```
 
-## 리뷰 대상 — 28개
+## 리뷰 대상 — 40개
 
-**이 28개가 이 저장소가 무엇을 하는지에 대한 명세다.** 함수 이름이 요구사항
+**이 40개가 이 저장소가 무엇을 하는지에 대한 명세다.** 함수 이름이 요구사항
 한 문장이고, docstring 에 왜 그런지가 적혀 있다. 위에서 아래로 읽으면 된다.
 
 | 폴더 | 대상 | 개수 | 무엇을 말하는가 |
 |---|---|---:|---|
-| `ontology/test_graph.py` | `ontology/graph.py` | 5 | 온톨로지에서 그래프를 계산한다 |
+| `ontology/test_graph.py` | `ontology/graph.py` | 10 | 온톨로지에서 그래프를 계산한다 |
 | `ontology/test_store.py` | `ontology/store.py` | 5 | 저장소와 맞닿는 유일한 파일 |
-| `ontology/test_registry.py` | `ontology/registry.py` | 13 | 등록하면 시스템이 스스로 확장된다 |
+| `ontology/test_registry.py` | `ontology/registry.py` | 19 | 등록하면 시스템이 스스로 확장된다. 대상이 어긋나는 경로는 사람이 승인한다 |
 | `orchestrator/` | `orchestrator/` | 3 | 발화를 실행 경로로 해석한다 |
 | `llm_engine/` | `llm_engine/` | 3 | LLM 호출을 한 곳에 가둔다 |
-| | **합계** | **28** | |
+| | **합계** | **40** | |
 
 폴더 이름은 소스 패키지 이름과 같다. 각 파일 첫 줄에도 대상 경로가 적혀 있다.
 
@@ -35,15 +35,15 @@ python tools/check_ontology.py
 **구현 세부**도 없다. 함수의 인자가 출력에 그대로 나타나는지, 한국어 조사를
 어떻게 붙이는지 같은 것들이다. 명세로 읽으면 정보가 0이다.
 
-## `demo/` — 리뷰 대상이 아니다 (168개)
+## `demo/` — 리뷰 대상이 아니다 (174개)
 
 시연(Streamlit 화면과 SVG 생성)을 지키는 테스트다. Streamlit 화면은 중간 구현을
 보고하기 위한 것이고 실제 서비스는 소켓과 MCP 로 대체되므로, 검토할 이유가 없다.
 
 | 폴더 | 대상 | 개수 |
 |---|---|---:|
-| `demo/api/` | `demo/api/main.py` · `services/` | 63 |
-| `demo/graph_svg/` | `demo/graph_svg/` | 105 |
+| `demo/api/` | `demo/api/main.py` · `services/` | 67 |
+| `demo/graph_svg/` | `demo/graph_svg/` | 107 |
 
 여기 있는 단언 대부분은 **몇 주에 걸쳐 실측으로 알아낸 배치 성질**이다.
 어떤 강조 조합에서도 좌표가 같다 · 노드를 등록해도 기존 노드가 안 움직인다 ·

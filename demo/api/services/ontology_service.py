@@ -19,6 +19,7 @@ import paths
 from demo.graph_svg.dot import COLORS
 from ontology import store
 from ontology.graph import (
+    about_of,
     dotted_edges,
     group_ids,
     inputs_of,
@@ -86,6 +87,33 @@ def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
     """recipe id 여럿의 경로를 한 번에. 중복은 접고 순서는 유지한다."""
     nodes = load_ontology()["nodes"] if nodes is None else nodes
     return {recipe_id: path_of(recipe_id, nodes) for recipe_id in dict.fromkeys(ids)}
+
+
+def chain_steps(chain: list[str], nodes: dict | None = None) -> list[dict]:
+    """recipe 가 아직 없는 경로 하나의 화면용 단계 목록.
+
+    [{node_id, name, about: [대상 이름, ...]}, ...] 순서 그대로.
+
+    paths_for 는 recipe id 로 파일을 읽으므로 파일이 없는 검토 대상 경로는
+    여기로 온다. about 은 대상 노드의 **이름**이다 — 화면이 어느 노드에서
+    대상이 어긋나는지 보여줄 근거이고, id 는 사람이 읽을 것이 아니다.
+
+    노드는 온톨로지 전부에서 찾는다. 검토 대상 경로의 새 노드는 아직 어느
+    recipe 에도 없어 drawn_nodes 에 빠져 있을 수 있다.
+    """
+    nodes = load_ontology()["nodes"] if nodes is None else nodes
+
+    return [
+        {
+            "node_id": node_id,
+            "name": nodes.get(node_id, {}).get("name", node_id),
+            "about": [
+                nodes.get(group_id, {}).get("name", group_id)
+                for group_id in sorted(about_of(node_id))
+            ],
+        }
+        for node_id in chain
+    ]
 
 
 def drawn_nodes() -> dict:
