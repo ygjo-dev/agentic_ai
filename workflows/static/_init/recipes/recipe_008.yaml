@@ -1,24 +1,7 @@
 steps:
 
-  - node: load_platform_cctv
-    inputs: []
-    outputs:
-      - VideoData
+  - node: track_inspection_doc
 
-  - node: extract_frames
-    inputs:
-      - VideoData
-    outputs:
-      - ImageData
-
-  - node: detect_track_crack
-    inputs:
-      - ImageData
-    outputs:
-      - AnalysisResult
+  - node: find_weak_section
 
   - node: generate_word
-    inputs:
-      - AnalysisResult
-    outputs:
-      - DocumentData

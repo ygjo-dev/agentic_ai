@@ -17,12 +17,11 @@ import yaml
 import paths
 from ontology import store
 
+# 노드에는 name 과 description 뿐이다. 무엇을 받고 내놓는지도, 무엇에 관한
+# 것인지도 관계라서 edges 에 적힌다.
 NEW = {
-    "kind": "function",
     "name": "궤도 결함 이력 요약",
     "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
-    "inputs": ["DocumentData"],
-    "outputs": ["AnalysisResult"],
 }
 
 
@@ -39,15 +38,20 @@ def ontology_file(tmp_path):
 def test_reading_gives_the_ontology_as_written(ontology_file):
     """읽기는 원문 그대로다. 캐시도 변형도 없다 — 등록 직후 읽으면 새 내용이 나와야 한다.
 
-    interfaces 는 원문에서 {이름: {description}} 형태의 dict 인데, 접근자는
-    이름만 순서대로 돌려준다. 그래프가 쓰는 것이 이름뿐이다.
+    **여기에 캐시를 두면 안 된다.** 저장소는 쓰는 쪽이라 "방금 쓴 것이 다음
+    읽기에 보인다" 를 어기면 등록이 조용히 어긋난다. 읽기 전용 계산의 캐시는
+    graph.py 가 파일 내용을 키로 따로 들고 있다.
     """
     raw = yaml.safe_load(ontology_file.read_text(encoding="utf-8"))
 
     assert store.read(ontology_file) == raw
     assert store.nodes(ontology_file) == raw["nodes"]
-    assert store.interfaces(ontology_file) == list(raw["interfaces"])
     assert store.edges(ontology_file) == list(raw["edges"])
+    assert store.raw_bytes(ontology_file) == ontology_file.read_bytes()
+
+    # 쓴 직후 읽으면 바로 보인다.
+    store.append_node("probe_node", NEW, ontology_file)
+    assert "probe_node" in store.nodes(ontology_file)
 
     # 경로를 안 주면 실제 저장소를 본다. 프로덕션이 그렇게 부른다.
     assert store.read() == yaml.safe_load(
@@ -109,7 +113,7 @@ def test_adding_an_edge_appends_one_line(ontology_file):
 
     # 관계 이름을 박아두지 않는다. 어휘가 바뀌면(속함 -> about) 여기가 깨지는데,
     # 이 검사가 지키려는 것은 "한 줄이 같은 형식으로 붙는다" 이지 이름이 아니다.
-    relation = before[0]["type"]
+    relation = before[0]["predicate"]
 
     store.append_node("analyze_crack_trend", NEW, ontology_file)
     store.append_edge("analyze_crack_trend", "group_track", relation, ontology_file)
@@ -117,7 +121,7 @@ def test_adding_an_edge_appends_one_line(ontology_file):
     after = store.edges(ontology_file)
     assert after[: len(before)] == before, "기존 관계가 바뀌었다"
     assert after[-1] == {
-        "from": "analyze_crack_trend", "to": "group_track", "type": relation
+        "from": "analyze_crack_trend", "to": "group_track", "predicate": relation
     }
 
     text = ontology_file.read_text(encoding="utf-8")
@@ -128,31 +132,30 @@ def test_adding_an_edge_appends_one_line(ontology_file):
 def test_an_added_node_reads_back_unchanged(ontology_file):
     """왕복이 어긋나면 화면과 파일이 갈라진다.
 
-    빈 리스트를 `[]` 로 적는 것이 핵심이다. 생략하면 None 으로 되읽혀 엣지
-    계산이 터진다. 불러오기 노드는 입력이 없다.
-
-    group 은 반대다 — inputs / outputs 를 **아예 안 적는다.** 빈 리스트로 적으면
-    "입력이 없는 기능" 으로 읽혀 recipe 시작점이 되어버린다.
+    **어떤 노드든 같은 모양으로 적힌다.** 종류에 따라 필드가 갈리지 않으므로
+    "이건 group 이니 inputs 를 빼야 한다" 같은 분기가 아예 없다 — 예전에는
+    그 분기를 빠뜨리면 대상 노드가 "입력이 없는 기능" 으로 읽혀 recipe
+    시작점이 되어버렸다.
     """
     before = store.nodes(ontology_file)
 
     store.append_node("analyze_crack_trend", NEW, ontology_file)
-    store.append_node("load_something", {**NEW, "inputs": []}, ontology_file)
     store.append_node(
         "group_tunnel",
-        {"kind": "group", "name": "터널", "description": "열차가 지나는 터널 구조물."},
+        {"name": "터널", "description": "열차가 지나는 터널 구조물."},
         ontology_file,
     )
 
     nodes = store.nodes(ontology_file)
     assert nodes["analyze_crack_trend"] == NEW
-    assert nodes["load_something"]["inputs"] == []
-    assert nodes["group_tunnel"]["kind"] == "group"
-    assert "inputs" not in nodes["group_tunnel"]
-    assert "outputs" not in nodes["group_tunnel"]
+    assert set(nodes["group_tunnel"]) == {"name", "description"}
 
-    # 세 번 이어 붙여도 기존 노드가 그대로다.
-    assert len(nodes) == len(before) + 3
+    # 기존 노드와 모양이 같다. 새로 적힌 것만 튀어 보이면 안 된다.
+    for node in nodes.values():
+        assert set(node) == {"name", "description"}
+
+    # 두 번 이어 붙여도 기존 노드가 그대로다.
+    assert len(nodes) == len(before) + 2
     for node_id, node in before.items():
         assert nodes[node_id] == node, node_id
 

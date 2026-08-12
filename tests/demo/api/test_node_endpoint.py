@@ -177,14 +177,14 @@ def test_empty_name_leaves_the_ontology_alone(client, use_llm_client):
 
 
 def test_unknown_interface_is_422(client, use_llm_client):
-    """온톨로지에 없는 인터페이스는 registry 가 막는다 (UnknownInterface)."""
+    """온톨로지에 없는 인터페이스는 registry 가 막는다 (UnknownType)."""
     # 등록이 인터페이스 검사까지 가야 하므로 아직 없는 node_id 를 쓴다.
     use_llm_client({**INFERRED, "node_id": "analyze_unknown_thing"})
 
     response = client.post("/nodes", json={**FORM, "outputs": ["NoSuchData"]})
 
     assert response.status_code == 422
-    assert "UnknownInterface" in response.json()["detail"]
+    assert "UnknownType" in response.json()["detail"]
 
 
 def test_unknown_interface_leaves_the_ontology_alone(client, use_llm_client):

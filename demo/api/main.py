@@ -33,7 +33,7 @@ from ontology.registry import (
     DuplicateNode,
     InvalidInference,
     UnknownGroup,
-    UnknownInterface,
+    UnknownType,
 )
 from orchestrator.route_resolver import RouteResolutionError
 
@@ -51,7 +51,7 @@ app = FastAPI(
 DOMAIN_ERRORS = (
     RouteResolutionError,
     DuplicateNode,
-    UnknownInterface,
+    UnknownType,
     UnknownGroup,
     InvalidInference,
     UnknownRenderMode,

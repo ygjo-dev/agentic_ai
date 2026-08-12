@@ -41,16 +41,21 @@ def raw_bytes(path=None) -> bytes:
 
 
 def nodes(path=None) -> dict:
-    """노드 dict. {node_id: {kind, name, description, inputs, outputs}}
+    """노드 dict. {node_id: {name, description}}
 
-    kind 는 function(실행할 수 있는 것) 또는 group(대상 개념)이다.
-    group 은 inputs / outputs 가 없다 — recipe 에 들어가지 않기 때문이다.
+    **종류를 나누는 필드가 없다.** 노드는 그저 존재할 뿐이고 성격은 관계가
+    말한다 — hasOutput 이 있으면 실행할 수 있는 노드이고, about 의 대상으로
+    등장하면 대상(그룹) 노드다. 판정은 graph.py 가 한다.
     """
     return read(path)["nodes"]
 
 
 def edges(path=None) -> list[dict]:
-    """노드 사이의 관계. [{"from": ..., "to": ..., "type": ...}, ...] 순서 그대로.
+    """노드 사이의 관계. [{"from": ..., "to": ..., "predicate": ...}, ...] 순서 그대로.
+
+    RDF 의 삼항 구조(주어 · 술어 · 목적어)를 그대로 쓴다. predicate 는 넷뿐이고
+    (is-a · about · hasInput · hasOutput) 늘리지 않는다 — 읽는 곳이 없는 관계는
+    파일만 무겁게 하고 맞는지 틀린지 확인할 방법도 없다.
 
     **실행 순서(실선)는 여기 없다.** 그건 recipe 가 정한다 — 두 곳에 적으면
     진실의 원천이 둘이 되고 어긋났을 때 어느 쪽이 맞는지 알 수 없다.
@@ -59,14 +64,6 @@ def edges(path=None) -> list[dict]:
     아니고, 여기서 예외를 올리면 화면이 죽는다.
     """
     return list(read(path).get("edges") or [])
-
-
-def interfaces(path=None) -> list[str]:
-    """인터페이스 이름 목록.
-
-    원문에서는 {이름: {description}} 형태의 dict 다. 이름만 순서대로 뽑는다.
-    """
-    return list(read(path)["interfaces"])
 
 
 # nodes 블록과 edges 블록의 경계. 노드는 이 앞에, edge 는 파일 끝에 붙는다.
@@ -100,7 +97,7 @@ def append_node(node_id: str, node: dict, path=None) -> None:
     path.write_text(body, encoding="utf-8", newline="\n")
 
 
-def append_edge(frm: str, to: str, type_: str, path=None) -> None:
+def append_edge(frm: str, to: str, predicate: str, path=None) -> None:
     """관계 한 줄을 edges 블록 끝에 이어 붙인다.
 
     edges 가 파일 마지막이라 끝에 붙이면 된다. 블록이 없으면 만들어 붙인다.
@@ -109,7 +106,7 @@ def append_edge(frm: str, to: str, type_: str, path=None) -> None:
     """
     path = path or paths.ONTOLOGY_PATH
     text = path.read_text(encoding="utf-8").rstrip("\n")
-    line = edge_line(frm, to, type_)
+    line = edge_line(frm, to, predicate)
 
     if EDGES_MARKER in text:
         body = text + "\n" + line + "\n"
@@ -119,38 +116,22 @@ def append_edge(frm: str, to: str, type_: str, path=None) -> None:
     path.write_text(body, encoding="utf-8", newline="\n")
 
 
-def edge_line(frm: str, to: str, type_: str) -> str:
+def edge_line(frm: str, to: str, predicate: str) -> str:
     """edges 에 적을 한 줄. 기존 항목과 같은 형식."""
-    return f"  - {{ from: {frm}, to: {to}, type: {type_} }}"
+    return f"  - {{ from: {frm}, to: {to}, predicate: {predicate} }}"
 
 
 def node_block(node_id: str, node: dict) -> str:
     """온톨로지에 적을 노드 한 덩어리. 기존 파일과 같은 들여쓰기.
 
-    group 은 inputs / outputs 를 적지 않는다. 실행 대상이 아니라서 "비어 있는
-    것" 과 "없는 것" 의 뜻이 다르다 — 빈 리스트로 적으면 "입력이 없는 기능" 으로
-    읽혀 recipe 시작점이 되어버린다.
+    name 과 description 뿐이다. 무엇을 받고 내놓는지는 노드가 아니라 관계에
+    적힌다 — hasInput / hasOutput edge 로 따로 붙는다.
     """
-    kind = node.get("kind", "function")
-    lines = [
+    return "\n".join([
         f"  {node_id}:",
-        f"    kind: {kind}",
         f"    name: {node['name']}",
         f"    description: {node['description']}",
-    ]
-
-    if kind == "group":
-        return "\n".join(lines)
-
-    for field in ("inputs", "outputs"):
-        values = node[field]
-        if values:
-            lines.append(f"    {field}:")
-            lines += [f"      - {value}" for value in values]
-        else:
-            lines.append(f"    {field}: []")
-
-    return "\n".join(lines)
+    ])
 
 
 def restore_from_init(path=None) -> None:

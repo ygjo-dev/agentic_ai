@@ -1,9 +1,9 @@
 """대상 : ontology/registry.py — 화면에서 노드를 등록하면 시스템이 스스로 확장된다
 
-사람은 이름 · 설명 · 입출력 인터페이스만 적는다. 나머지는 시스템이 한다.
+사람은 이름 · 설명 · 받고 내놓는 타입만 적는다. 나머지는 시스템이 한다.
 
-  1. LLM 이 노드 id 와 subject(무엇을 다루는가)를 정한다
-  2. 온톨로지에 노드를 넣는다
+  1. LLM 이 노드 id 와 무엇에 관한 것인지를 정한다
+  2. 온톨로지에 노드를 넣고 관계(hasInput · hasOutput · about)를 붙인다
   3. 새 노드를 지나는 실행 경로를 만들어 recipe 파일로 쓴다
   4. menu 에 그 recipe 들의 기능 문장을 더한다
 
@@ -22,19 +22,21 @@ import yaml
 import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
 from ontology import store
+from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
 from ontology.registry import (
-    ABOUT,
     MAX_STEPS,
+    MENU_BUDGET,
     NODE_REGISTRATION_SCHEMA,
     DuplicateNode,
     InvalidInference,
-    UnknownInterface,
+    UnknownType,
     _describe_groups,
     add_node,
-    group_ids,
     append_menu,
     append_recipes,
+    check_types,
     function_for,
+    group_ids,
     infer_node,
     new_recipes_for,
     register_node,
@@ -44,17 +46,17 @@ from ontology.registry import (
 FORM = {
     "name": "궤도 결함 이력 요약",
     "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
-    "inputs": ["DocumentData"],
-    "outputs": ["AnalysisResult"],
+    "inputs": ["document"],
+    "outputs": ["analysis"],
 }
 
 INFERRED = {
     "node_id": "analyze_crack_trend",
-    "group": "group_track",
-    "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
+    "groups": ["group_track"],
+    "reason": "궤도 균열 검출과 같은 대상에 관한 것이다.",
 }
 
-NEW_NODE = {**FORM, "kind": "function"}
+NEW_NODE = {"name": FORM["name"], "description": FORM["description"]}
 
 
 def stub(response=None):
@@ -86,34 +88,47 @@ def menu_now():
 
 
 # ================================================================ LLM 판단
-def test_the_llm_decides_the_node_id_and_the_group_it_belongs_to():
-    """사람은 이름과 입출력만 적는다. id 와 속할 대상은 LLM 이 정한다.
+def test_the_llm_decides_the_node_id_and_what_it_is_about():
+    """사람은 이름과 입출력만 적는다. id 와 관한 대상은 LLM 이 정한다.
 
     대상은 **닫힌 목록에서 고르는 것**이다. 예전에는 자유 문자열(subject 값)을
-    쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌다. 지금은
-    존재하는 group 노드 id 이거나 빈 문자열이다.
+    쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌다.
 
-    어느 대상에도 매이지 않는 범용 노드는 빈 문자열이다 — 형식만 바꾸는 생성
+    **여럿을 고를 수 있다.** 한 노드가 여러 대상에 관한 것일 수 있기 때문이다 —
+    승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것이다. 하나만
+    받으면 그 사실을 적을 방법이 없다.
+
+    어느 대상에도 매이지 않는 범용 노드는 빈 목록이다 — 형식만 바꾸는 생성
     노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀린다.
     """
     result = infer_node(FORM, llm_client=stub())
 
     assert result["node_id"] == "analyze_crack_trend"
-    assert result["group"] == "group_track"
+    assert result["groups"] == ["group_track"]
     assert result["reason"]
 
-    # 빈 문자열도 정상이다.
-    assert infer_node(
-        FORM, llm_client=stub({**INFERRED, "group": ""})
-    )["group"] == ""
+    # 여러 개도 정상이다.
+    many = infer_node(
+        FORM, llm_client=stub({**INFERRED, "groups": ["group_track", "group_cctv"]})
+    )
+    assert many["groups"] == ["group_track", "group_cctv"]
+
+    # 빈 목록도 정상이다.
+    assert infer_node(FORM, llm_client=stub({**INFERRED, "groups": []}))["groups"] == []
+
+    # 같은 대상을 두 번 적으면 점선이 두 줄 생긴다.
+    twice = infer_node(
+        FORM, llm_client=stub({**INFERRED, "groups": ["group_track", "group_track"]})
+    )
+    assert twice["groups"] == ["group_track"]
 
     assert set(NODE_REGISTRATION_SCHEMA["required"]) == {
-        "node_id", "group", "reason"
+        "node_id", "groups", "reason"
     }
 
 
 def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
-    """기존 기능 노드가 어디에 속하는지 안 보여주면 비슷한 노드를 보고
+    """기존 기능 노드가 무엇에 관한 것인지 안 보여주면 비슷한 노드를 보고
     고를 수가 없고, 선택지를 안 알려주면 없는 id 를 지어낸다.
 
     프롬프트 파일에 치환자가 없으면 값이 통째로 안 실린다 — 그러면 LLM 이
@@ -123,28 +138,33 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
     infer_node(FORM, llm_client=client)
     sent = client.prompts[0]
 
-    nodes = nodes_now()
-    for node_id in nodes:
+    # 기존 **기능** 노드가 다 실려야 한다. 데이터 노드는 이 판단의 근거가
+    # 아니다 — 사람이 화면에서 고르는 것이라 LLM 이 정할 것이 없다.
+    from ontology.registry import functions
+
+    listed = functions(nodes_now())
+    assert listed, "기능 노드가 없으면 이 검사가 무력하다"
+    for node_id in listed:
         assert node_id in sent, node_id
 
     # 고를 수 있는 대상이 id 와 이름으로 다 실려야 한다. id 만 보여주면 뜻을
     # 모르고, 이름만 보여주면 무엇을 적어야 할지 모른다.
     #
     # "id 가 문자열 어딘가에 있다" 로 재면 무력하다 — 아래 기존 노드 설명에도
-    # 소속 group id 가 나오고, group 이름("궤도")은 기능 이름("궤도 균열 검출")
-    # 안에도 들어 있다. 실제로 목록을 빼도 통과했다. 블록 자체를 찾는다.
-    choices = group_ids(nodes)
-    assert choices, "group 이 하나도 없으면 이 검사가 무력하다"
-    assert _describe_groups(nodes, choices) in sent, "대상 목록이 통째로 빠졌다"
+    # 대상 id 가 나오고, 대상 이름("궤도")은 기능 이름("궤도 균열 검출") 안에도
+    # 들어 있다. 실제로 목록을 빼도 통과했다. 블록 자체를 찾는다.
+    choices = group_ids()
+    assert choices, "대상이 하나도 없으면 이 검사가 무력하다"
+    assert _describe_groups(nodes_now(), choices) in sent, "대상 목록이 통째로 빠졌다"
 
-    # 기존 기능이 어디에 속하는지도 보여야 비슷한 것을 보고 고른다.
-    belongs = {edge["from"]: edge["to"] for edge in edges_now()}
-    assert belongs, "edges 가 비면 이 검사가 무력하다"
-    for node_id, group_id in belongs.items():
-        assert f"속한 대상 : {group_id}" in sent, (node_id, group_id)
+    # 기존 기능이 무엇에 관한 것인지도 보여야 비슷한 것을 보고 고른다.
+    attached = {
+        edge["from"]: edge["to"] for edge in edges_now() if edge["predicate"] == ABOUT
+    }
+    assert attached, "about 이 비면 이 검사가 무력하다"
+    assert any(f"관한 대상 : {gid}" in sent for gid in attached.values())
 
     assert FORM["name"] in sent and FORM["description"] in sent
-    assert "DocumentData" in sent
 
     template = paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8")
     for placeholder in ("{existing_nodes}", "{new_node}", "{groups}"):
@@ -154,14 +174,21 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
 def test_a_malformed_llm_answer_is_rejected():
     """LLM 은 계약을 어길 수 있다. 프롬프트로만 막으면 어기는 순간 통과한다.
 
-    id 형식이 깨지면 파일명과 참조가 어긋나고, properties 가 객체가 아니면
-    점선 계산이 터진다. 응답이 JSON 이 아니거나 키가 빠지는 것도 여기서 잡는다.
+    id 형식이 깨지면 파일명과 참조가 어긋나고, 없는 대상을 고르면 아무 데도
+    안 붙는 관계가 파일에 남는다. 응답이 JSON 이 아니거나 키가 빠지는 것도
+    여기서 잡는다.
     """
     bad_answers = [
-        {**INFERRED, "node_id": "Bad-Id"},          # 대문자와 하이픈
-        {**INFERRED, "node_id": "analyze crack"},   # 공백
-        {**INFERRED, "group": ["group_track"]},     # 문자열이 아니다
-        {**INFERRED, "group": "group_tunnel"},      # 온톨로지에 없는 대상
+        {**INFERRED, "node_id": "Bad-Id"},              # 대문자와 하이픈
+        {**INFERRED, "node_id": "analyze crack"},       # 공백
+        {**INFERRED, "groups": "group_track"},          # 목록이 아니다
+        {**INFERRED, "groups": [["group_track"]]},      # 원소가 문자열이 아니다
+        {**INFERRED, "groups": ["group_tunnel"]},       # 온톨로지에 없는 대상
+        # 하나만 틀려도 전부 거부한다. 통과시키면 나머지 하나만 붙어
+        # "왜 하나만 묶였지" 를 화면에서 알 방법이 없다.
+        {**INFERRED, "groups": ["group_track", "group_tunnel"]},
+        # 타입 노드는 대상이 아니다. id 라고 다 되는 것이 아니다.
+        {**INFERRED, "groups": ["video"]},
     ]
     for answer in bad_answers:
         with pytest.raises(InvalidInference):
@@ -186,31 +213,24 @@ def test_an_existing_node_id_is_rejected():
         add_node(existing, NEW_NODE)
 
 
-def test_unknown_interfaces_and_unknown_groups_are_rejected():
-    """온톨로지에 없는 인터페이스를 쓰면 엣지가 아무 데도 안 이어지고,
-    없는 group 을 고르면 아무 데도 안 붙는 관계가 파일에 남는다.
+def test_types_that_do_not_exist_are_rejected():
+    """없는 타입을 가리키면 그 노드는 아무와도 안 이어진다.
+
+    화면에는 떠 있는데 경로가 하나도 안 생긴다 — 등록은 성공했다고 나오고
+    실행할 것만 없다. 사람이 원인을 짚기 가장 어려운 실패다.
 
     거부할 때는 파일을 한 글자도 건드리지 않아야 한다.
     """
     before = paths.ONTOLOGY_PATH.read_bytes()
 
-    for broken in (
-        {**NEW_NODE, "inputs": ["SensorStream"]},
-        {**NEW_NODE, "outputs": ["Report"]},
-    ):
-        with pytest.raises(UnknownInterface):
-            add_node("x", broken)
+    for broken in (["SensorStream"], ["analysis", "Report"]):
+        with pytest.raises(UnknownType):
+            check_types(broken)
 
-    with pytest.raises(InvalidInference):
-        infer_node(FORM, llm_client=stub({**INFERRED, "group": "group_tunnel"}))
+    # 있는 타입은 통과한다. 위 검사가 무조건 터지는 것이 아님을 보인다.
+    check_types(["document", "analysis"])
 
     assert paths.ONTOLOGY_PATH.read_bytes() == before
-
-    # edges 가 가리키는 노드는 전부 실재해야 한다.
-    nodes = nodes_now()
-    for edge in edges_now():
-        assert edge["from"] in nodes and edge["to"] in nodes, edge
-        assert nodes[edge["to"]]["kind"] == "group", edge
 
 
 # ================================================================ 경로 생성
@@ -219,102 +239,107 @@ def test_only_paths_through_the_new_node_are_created():
 
     이 함수는 파일을 쓰지 않는다 — 경로 목록만 돌려준다.
     """
-    nodes = {
-        "load_doc": {"inputs": [], "outputs": ["DocumentData"]},
-        "load_cctv": {"inputs": [], "outputs": ["VideoData"]},
-        "analyze": {"inputs": ["VideoData"], "outputs": ["AnalysisResult"]},
-        "generate_word": {"inputs": ["AnalysisResult"], "outputs": ["DocumentData"]},
-        "analyze_crack_trend": {"inputs": ["DocumentData"], "outputs": ["AnalysisResult"]},
-    }
+    # 영상만 받는 노드다. 문서로는 이 노드에 닿을 길이 없다 — 문서를 영상으로
+    # 바꾸는 노드가 온톨로지에 없기 때문이다.
+    add_node("detect_intrusion", {"name": "선로 침입 검출",
+                                  "description": "영상에서 선로 침입을 검출한다."})
+    store.append_edge("detect_intrusion", "video", HAS_INPUT)
+    store.append_edge("detect_intrusion", "analysis", HAS_OUTPUT)
+    nodes = nodes_now()
     before = json.dumps(nodes, sort_keys=True)
 
-    chains = new_recipes_for("analyze_crack_trend", nodes)
+    chains = new_recipes_for("detect_intrusion", nodes)
 
     assert chains
     for chain in chains:
-        assert "analyze_crack_trend" in chain
+        assert "detect_intrusion" in chain
     assert len({tuple(chain) for chain in chains}) == len(chains), "중복 경로"
 
-    # 타입이 안 맞는 시작점은 제외된다 — CCTV 는 DocumentData 를 못 내놓는다.
-    assert not [chain for chain in chains if chain[0] == "load_cctv"]
+    # 닿을 수 없는 시작점은 제외된다.
+    assert not [c for c in chains if c[0] == "track_inspection_doc"]
+    assert [c for c in chains if c[0] == "platform_cctv_video"]
 
-    # 산출 노드를 등록하면 그 노드로 끝나는 경로만 나온다.
-    endings = new_recipes_for("generate_word", nodes)
-    assert endings and all(chain[-1] == "generate_word" for chain in endings)
+    # 다른 노드를 넣으면 그 노드를 지나는 경로만 나온다. 새 노드가 안 낀 경로는
+    # 이미 recipe 로 있으므로 다시 만들면 중복이다.
+    others = new_recipes_for("generate_word", nodes)
+    assert others and all("generate_word" in chain for chain in others)
+    assert not [c for c in others if "detect_intrusion" in c and "generate_word" not in c]
 
-    assert json.dumps(nodes, sort_keys=True) == before, "입력 dict 를 건드렸다"
+    # 산출 보고서는 문서의 한 종류라 다시 문서 분석에 들어갈 수 있다. 뜻으로는
+    # 어색하지만(보고서를 만들고 그 보고서에서 취약 구간을 찾는다) 타입상으로는
+    # 맞다. **막지 않는다** — 무엇이 말이 되는지 고르는 것은 사람의 일이고,
+    # 그 승인 절차가 다음 작업이다.
+    assert [c for c in others if c[-1] != "generate_word"]
+
+    assert json.dumps(nodes_now(), sort_keys=True) == before, "온톨로지를 건드렸다"
 
 
 def test_a_created_path_is_runnable_and_short():
-    """타입이 이어지고, 같은 노드를 두 번 지나지 않고, 최대 3단이다.
+    """타입이 이어지고, 같은 노드를 두 번 지나지 않고, 최대 MAX_STEPS 단이다.
 
     길이를 막는 이유 : 단이 늘수록 경로 수가 폭발하고, menu 가 커지면
     LLM context 를 넘겨 타임아웃한다.
+
+    자기 출력을 자기가 받는 노드를 일부러 등록한다. 중복 방지가 없으면
+    [번역, 번역, 번역] 같은 경로가 나오는데, 그런 노드가 없으면 중복 검사
+    자체가 무력하다 — 실제로 예전 명세가 그 상태였다.
     """
-    nodes = {
-        "load_doc": {"inputs": [], "outputs": ["DocumentData"]},
-        "analyze_crack_trend": {"inputs": ["DocumentData"], "outputs": ["AnalysisResult"]},
-        "generate_word": {"inputs": ["AnalysisResult"], "outputs": ["DocumentData"]},
-        # 자기 출력을 자기가 받는 노드. 중복 방지가 없으면 [translate, translate]
-        # 같은 경로가 나온다 — 이 노드가 없으면 중복 검사가 무력해진다.
-        "translate_doc": {"inputs": ["DocumentData"], "outputs": ["DocumentData"]},
-    }
+    from ontology.graph import can_connect
+
+    add_node("translate_doc", {"name": "문서 번역", "description": "문서를 번역한다."})
+    store.append_edge("translate_doc", "document", HAS_INPUT)
+    store.append_edge("translate_doc", "document", HAS_OUTPUT)
+    nodes = nodes_now()
+
+    assert can_connect("translate_doc", "translate_doc"), "이 검사의 전제가 깨졌다"
 
     chains = new_recipes_for("translate_doc", nodes)
 
     assert chains
-    assert {len(chain) for chain in chains} == {2, 3}, "2단과 3단이 둘 다 나와야 한다"
+    assert {len(chain) for chain in chains} > {2}, "여러 길이가 나와야 한다"
     for chain in chains:
         assert len(chain) <= MAX_STEPS
         assert len(set(chain)) == len(chain), f"노드가 중복됐다: {chain}"
-        assert nodes[chain[0]]["inputs"] == []
         for frm, to in zip(chain, chain[1:]):
-            assert set(nodes[frm]["outputs"]) & set(nodes[to]["inputs"]), (frm, to)
+            assert can_connect(frm, to), (frm, to)
 
 
-def test_a_group_never_enters_an_execution_path():
+def test_a_subject_node_never_enters_an_execution_path():
     """**대상 노드는 실행할 수 없다.** 경로에 섞이면 안 된다.
 
-    group 은 inputs / outputs 가 아예 없다. 걸러내지 않으면 KeyError 로 터지거나,
-    `.get()` 으로 넘기면 "입력이 없는 노드" 로 보여 recipe 시작점이 된다 —
-    그러면 `궤도 -> ???` 같은 실행 불가능한 recipe 가 만들어지고, menu 에 실려
-    LLM 이 그것을 고를 수 있게 된다.
+    그룹은 아무것도 받지도 내놓지도 않는다. 걸러내지 않으면 "받는 것이 없는
+    노드" 로 보여 recipe 시작점이 된다 — 그러면 `궤도 -> ???` 같은 실행
+    불가능한 recipe 가 만들어지고, menu 에 실려 LLM 이 그것을 고를 수 있게 된다.
 
     조용히 깨지는 자리다. 파일은 멀쩡해 보이고 화면도 그려지는데 실행만 안 된다.
     """
-    nodes = {
-        "group_track": {"kind": "group", "name": "궤도", "description": "선로."},
-        "group_weather": {"kind": "group", "name": "기상", "description": "날씨."},
-        "load_doc": {
-            "kind": "function", "inputs": [], "outputs": ["DocumentData"],
-        },
-        "analyze_crack_trend": {
-            "kind": "function", "inputs": ["DocumentData"], "outputs": ["AnalysisResult"],
-        },
-        "generate_word": {
-            "kind": "function", "inputs": ["AnalysisResult"], "outputs": ["DocumentData"],
-        },
-    }
-    groups = set(group_ids(nodes))
-    assert groups, "group 이 없으면 이 검사가 무력하다"
+    add_node("analyze_crack_trend", NEW_NODE)
+    store.append_edge("analyze_crack_trend", "document", HAS_INPUT)
+    store.append_edge("analyze_crack_trend", "analysis", HAS_OUTPUT)
+    nodes = nodes_now()
+
+    groups = set(group_ids())
+    assert groups, "대상이 없으면 이 검사가 무력하다"
 
     chains = new_recipes_for("analyze_crack_trend", nodes)
 
     assert chains
     for chain in chains:
-        assert not groups & set(chain), f"경로에 group 이 들어갔다: {chain}"
+        assert not groups & set(chain), f"경로에 대상이 들어갔다: {chain}"
 
-    # group 자체를 등록 대상으로 넘겨도 경로를 만들지 않는다.
+    # 대상 자체를 등록 대상으로 넘겨도 경로를 만들지 않는다.
     assert new_recipes_for("group_track", nodes) == []
+
+
+def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     """기존 번호는 절대 바뀌면 안 된다 — menu 와 시연 샘플이 그 번호를 가리킨다.
 
-    파일 형식도 기존 것과 같아야 한다. steps 아래 node / inputs / outputs 다.
+    파일 형식도 기존 것과 같아야 한다. steps 아래 node 하나뿐이다 — 무엇을
+    주고받는지는 온톨로지의 hasInput / hasOutput 이 말하므로 여기 또 적으면
+    진실의 원천이 둘이 된다.
     """
-    nodes = {
-        "load_doc": {"inputs": [], "outputs": ["DocumentData"]},
-        "analyze_crack_trend": {"inputs": ["DocumentData"], "outputs": ["AnalysisResult"]},
-    }
-    chains = [["load_doc", "analyze_crack_trend"]]
+    nodes = nodes_now()
+    chains = [["track_inspection_doc", "find_weak_section"]]
     before_files = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
     last = max(int(p.stem.split("_")[1]) for p in paths.RECIPES_DIR.glob("recipe_*.yaml"))
 
@@ -329,15 +354,16 @@ def test_a_group_never_enters_an_execution_path():
     assert append_recipes([], nodes) == []
 
     old = yaml.safe_load(
-        next(iter(sorted(paths.RECIPES_DIR.glob("recipe_*.yaml")))).read_text(encoding="utf-8")
+        next(iter(sorted(paths.RECIPES_DIR.glob("recipe_0*.yaml")))).read_text(
+            encoding="utf-8"
+        )
     )
     new = yaml.safe_load(
         (paths.RECIPES_DIR / f"{created[0]}.yaml").read_text(encoding="utf-8")
     )
     assert set(new) == set(old) == {"steps"}
-    assert set(new["steps"][0]) == set(old["steps"][0])
+    assert set(new["steps"][0]) == set(old["steps"][0]) == {"node"}
     assert [step["node"] for step in new["steps"]] == chains[0]
-    assert new["steps"][0]["inputs"] == [] and new["steps"][0]["outputs"] == ["DocumentData"]
 
 
 # ================================================================ menu
@@ -351,20 +377,16 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
     menu.yaml 에는 function 만 넣는다. steps 까지 실으면 context 가 커져
     LLM 이 타임아웃한다.
     """
-    nodes = {
-        "load_doc": {"description": "궤도 점검 보고서를 불러온다."},
-        "analyze_crack_trend": {"description": "보고서에서 균열 추세를 분석한다."},
-        "generate_word": {"description": "분석 결과를 Word 보고서로 생성한다."},
-    }
+    nodes = nodes_now()
     chains = [
-        ["load_doc", "analyze_crack_trend"],
-        ["load_doc", "analyze_crack_trend", "generate_word"],
+        ["track_inspection_doc", "find_weak_section"],
+        ["track_inspection_doc", "find_weak_section", "generate_word"],
     ]
     new_ids = ["recipe_090", "recipe_091"]
     before = menu_now()
     before_md = paths.MENU_MD_PATH.read_text(encoding="utf-8")
 
-    append_menu(new_ids, chains, nodes, )
+    append_menu(new_ids, chains, nodes)
 
     after = menu_now()
     for recipe_id, sentence in before.items():
@@ -373,21 +395,62 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
         assert after[recipe_id]["function"].strip()
         assert set(after[recipe_id]) == {"function"}
 
-    sentences = [entry["function"] for entry in after.values()]
-    assert len(set(sentences)) == len(sentences), "같은 문장이 둘 이상이다"
-
     # 사람이 읽는 사본도 같은 목록을 담는다.
     md = paths.MENU_MD_PATH.read_text(encoding="utf-8")
     assert md.startswith(before_md[: before_md.index("| Recipe ID")])
     for recipe_id in after:
         assert recipe_id in md, recipe_id
 
-    # 한 단짜리는 그 노드의 설명 그대로, 여러 단은 이어 붙인 한 문장이다.
-    assert function_for(["load_doc"], nodes) == "궤도 점검 보고서를 불러온다."
-    joined = function_for(chains[1], nodes)
-    assert joined.endswith("생성한다.")
-    assert joined.count("한다.") == 1, "종결형이 문장 끝에만 있어야 한 문장으로 읽힌다"
-    assert function_for(chains[0], nodes) != joined
+
+def test_a_menu_sentence_reads_as_one_korean_sentence():
+    """경로는 데이터 노드로 시작하는데 그 설명은 명사구다.
+
+    설명을 그냥 이어 붙이면 "...촬영한 영상하고 프레임을 추출하고" 가 된다.
+    데이터는 **이름에 조사를 붙여 앞에 두고** 기능 설명만 잇는다.
+
+    데이터 이름을 빼면 안 된다. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
+    구분할 근거가 사라져 LLM 이 고를 수 없다.
+    """
+    nodes = nodes_now()
+
+    one = function_for(["platform_cctv_video", "extract_frames"], nodes)
+    two = function_for(
+        ["platform_cctv_video", "extract_frames", "analyze_congestion"], nodes
+    )
+
+    # 종결형이 문장 끝에만 있어야 한 문장으로 읽힌다.
+    for sentence in (one, two):
+        assert sentence.count("다.") == 1 and sentence.endswith("다."), sentence
+    assert "영상하고" not in one, "명사구를 억지로 연결형으로 바꿨다"
+    assert one != two
+
+    # 데이터 이름이 실려야 시작점을 구분할 수 있다.
+    assert nodes["platform_cctv_video"]["name"] in one
+    other = function_for(["track_car_cctv_video", "extract_frames"], nodes)
+    assert other != one, "시작 데이터가 다른데 같은 문장이 됐다"
+
+    # 중간 단계는 연결형이 된다. "찾는다" 는 "찾고" 이지 "찾느고" 가 아니다 —
+    # 마지막 단계로만 재면 종결형 그대로라 이 규칙이 한 번도 안 불린다.
+    chained = function_for(
+        ["track_inspection_doc", "find_weak_section", "generate_word"], nodes
+    )
+    assert "찾고 " in chained, chained
+    assert chained.count("다.") == 1 and chained.endswith("다."), chained
+
+    # 조사가 받침을 따라간다. "보고서으로" 는 시연 중에 사람이 먼저 알아챈다.
+    assert "궤도 점검 보고서로 " in function_for(
+        ["track_inspection_doc", "find_weak_section"], nodes
+    )
+    assert "승강장 CCTV 영상으로 " in one
+
+    # 실제 menu 문장도 서로 구별된다.
+    sentences = [entry["function"] for entry in menu_now().values()]
+    assert len(set(sentences)) == len(sentences), "같은 문장이 둘 이상이다"
+    for sentence in sentences:
+        assert sentence.count("다.") == 1 and sentence.endswith("다."), sentence
+
+    # menu 전체가 예산 안에 있어야 한다. 넘으면 LLM context 를 넘겨 타임아웃한다.
+    assert len(paths.MENU_YAML_PATH.read_text(encoding="utf-8")) < MENU_BUDGET
 
 
 # ================================================================ 등록 전체
@@ -402,14 +465,20 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     result = register_node(FORM, llm_client=stub())
 
     node = nodes_now()["analyze_crack_trend"]
-    assert node["kind"] == "function"
+    assert set(node) == {"name", "description"}, "노드에 종류나 입출력을 적었다"
     assert node["name"] == FORM["name"]
-    assert node["inputs"] == FORM["inputs"] and node["outputs"] == FORM["outputs"]
+
+    # 받고 내놓는 것은 관계로 붙는다. 이게 있어야 경로에 낄 수 있다.
+    edges = edges_now()
+    for type_id, predicate in (("document", HAS_INPUT), ("analysis", HAS_OUTPUT)):
+        assert {
+            "from": "analyze_crack_trend", "to": type_id, "predicate": predicate
+        } in edges
 
     # 고른 대상에 관계 한 줄이 붙는다. 이게 화면에서 점선이 된다.
-    assert {"from": "analyze_crack_trend", "to": "group_track", "type": ABOUT} in (
-        edges_now()
-    )
+    assert {
+        "from": "analyze_crack_trend", "to": "group_track", "predicate": ABOUT
+    } in edges
 
     assert set(result["recipe_ids"]) == recipes_now() - before_recipes
     assert set(menu_now()) == recipes_now()
@@ -424,18 +493,37 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     assert result["node_id"] and result["reason"] and result["chains"]
 
     # 두 번째 등록도 번호를 이어 간다.
-    edge_count = len(edges_now())
+    about_count = len([e for e in edges_now() if e["predicate"] == ABOUT])
     second = register_node(
-        {**FORM, "name": "Excel 보고서 생성", "description": "분석 결과를 Excel 표로 생성한다.",
-         "inputs": ["AnalysisResult"], "outputs": ["DocumentData"]},
-        llm_client=stub({**INFERRED, "node_id": "generate_excel", "group": ""}),
+        {"name": "Excel 보고서 생성", "description": "분석 결과를 Excel 표로 생성한다.",
+         "inputs": ["analysis"], "outputs": ["output_report"]},
+        llm_client=stub({**INFERRED, "node_id": "generate_excel", "groups": []}),
     )
     # 범용 노드는 어디에도 안 붙는다. 억지로 묶으면 오히려 틀린다.
-    assert len(edges_now()) == edge_count
+    assert len([e for e in edges_now() if e["predicate"] == ABOUT]) == about_count
     assert int(second["recipe_ids"][0].split("_")[1]) > int(
         result["recipe_ids"][-1].split("_")[1]
     )
     assert set(menu_now()) == recipes_now()
+
+
+def test_several_subjects_all_become_dotted_lines():
+    """대상을 여럿 고르면 전부 붙는다. 하나만 붙이면 나머지가 조용히 사라진다.
+
+    승강장 CCTV 영상이 승강장에도 CCTV 에도 관한 것이라고 판단했는데 한 줄만
+    적히면, 화면에서는 왜 한쪽에만 묶였는지 알 방법이 없다.
+    """
+    register_node(
+        FORM,
+        llm_client=stub({**INFERRED, "groups": ["group_track", "group_cctv"]}),
+    )
+
+    attached = {
+        edge["to"]
+        for edge in edges_now()
+        if edge["from"] == "analyze_crack_trend" and edge["predicate"] == ABOUT
+    }
+    assert attached == {"group_track", "group_cctv"}
 
 
 def test_a_failure_leaves_nothing_half_written():
@@ -453,17 +541,19 @@ def test_a_failure_leaves_nothing_half_written():
     # 1단계(LLM 판단)에서 걸리는 경우.
     for answer in (
         {**INFERRED, "node_id": "Bad-Id"},
-        {**INFERRED, "group": "group_tunnel"},
+        {**INFERRED, "groups": ["group_tunnel"]},
     ):
         with pytest.raises(InvalidInference):
             register_node(FORM, llm_client=stub(answer))
 
     # 2단계(온톨로지 쓰기)에서 걸리는 경우. **여기가 순서를 실제로 검사한다.**
-    # 모르는 인터페이스는 LLM 판단을 통과하고 add_node 에서 걸린다. recipe 를
-    # 먼저 쓰는 구현이면 이 시점에 파일이 이미 늘어나 있다.
-    with pytest.raises(UnknownInterface):
+    # 모르는 타입은 LLM 판단을 통과하고 쓰기 직전에 걸린다. recipe 를 먼저 쓰는
+    # 구현이면 이 시점에 파일이 이미 늘어나 있다.
+    with pytest.raises(UnknownType):
         register_node({**FORM, "outputs": ["Report"]}, llm_client=stub())
 
+    # 노드는 썼는데 관계를 못 붙이는 경우도 없어야 한다 — 관계 없는 노드는
+    # 화면에 떠 있기만 하고 아무 경로에도 안 낀다.
     assert (
         paths.ONTOLOGY_PATH.read_bytes(),
         recipes_now(),

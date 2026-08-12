@@ -1,18 +1,7 @@
 steps:
 
-  - node: load_platform_cctv
-    inputs: []
-    outputs:
-      - VideoData
+  - node: platform_cctv_video
 
   - node: extract_frames
-    inputs:
-      - VideoData
-    outputs:
-      - ImageData
 
   - node: analyze_congestion
-    inputs:
-      - ImageData
-    outputs:
-      - AnalysisResult
