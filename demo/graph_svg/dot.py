@@ -51,7 +51,6 @@ GROUP_COLOR_TOP = "#8A6B2E"      # 상단용. 대비 3.80 으로 한 단계 낮�
 # 대비 4.8 : 상단 그룹(3.80)보다 한 단계 위, 새로 생긴 것(분홍)보다는 아래 —
 # 검토 대상은 아직 결정되지 않은 것이라 새로 생긴 것보다 옅어야 한다.
 REVIEW_COLOR = "#A07A28"
-REVIEW_PENWIDTH = 1.5  # 색이 옅은 만큼 굵기는 새 실선(MARK_SOLID)과 같게.
 
 # /graph 응답에 실어 보낸다. UI 는 이것만 보고 칩 테두리 · 배지 · 안내 문구를 칠한다.
 COLORS = {
@@ -116,10 +115,34 @@ GROUP_ATTRS_TOP = (
     f'fontcolor="{GROUP_COLOR_TOP}"',
 )
 
+# 실행 경로 굵기. 배경 실선(속성 없음 = 1)보다 확실히 굵어야 "이 길이 켜졌다"
+# 가 읽힌다. 강조 · 자동 승격 · 승인 대기가 **같은 굵기**인 이유 : 하단에서는
+# 셋 다 실행 경로다. 무엇이 다른지는 색이 말한다(teal 해석 결과 · 분홍 자동
+# 승격 · amber 승인 대기).
+PATH_PENWIDTH = 3
+
+# 실행 경로 화살표. 배경 실선은 방향이 없고(dir=none) 강조된 것만 방향을 보여준다 —
+# 하단은 "무엇 다음에 무엇이 오는가" 를 말하는 자리다. **평행 엣지를 추가하지
+# 않는다** — 이미 있는 엣지의 속성만 바꾼다(검증된 제약: 엣지 수가 조합마다
+# 달라지면 레이아웃이 흔들린다).
+# 기본 화살표는 1639pt 캔버스를 화면 폭에 맞춰 줄이면 점처럼 보인다.
+# **화면을 보고 조절할 값이다 — 여기 하나만 고치면 된다.**
+PATH_ARROWSIZE = 1.6
+
+# 순번 글씨 크기. 엣지 기본(fontsize=10)은 축소 후 안 읽힌다.
+# xlabel 은 레이아웃에 관여하지 않으므로(label 과 달리) 키워도 노드가 안 밀린다.
+# 다만 캔버스는 커질 수 있다 — 글자가 그림 밖으로 나가면 bbox 가 따라 넓어진다.
+# **화면을 보고 조절할 값이다 — 여기 하나만 고치면 된다.**
+ORDER_FONTSIZE = 26
+
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.
 MARK_NODE_PENWIDTH = 2
 MARK_DOTTED_PENWIDTH = 2.5  # 관계를 더 또렷하게 (기본 점선 1.6 기준)
-MARK_SOLID_PENWIDTH = 1.5  # 새 recipe 는 조연으로
+# 예전에는 둘 다 1.5 였다 — 상단 지도 위의 조연이라 얇게 둔 값이다. 상단이
+# 실선을 안 그리게 되면서 이 둘은 하단 전용이 됐고, 하단에서는 조연이 아니라
+# 실행 경로 자체다. 배경 실선(1)과 갈리지 않으면 등록해도 화면이 안 변한다.
+MARK_SOLID_PENWIDTH = PATH_PENWIDTH
+REVIEW_PENWIDTH = PATH_PENWIDTH
 # 표시된 점선은 평소 굵기의 이 배수다. 절댓값 하나로 박아두면 상단(4.5)에서
 # **새로 생긴 점선이 평범한 점선보다 가늘어진다** — 등록 장면의 주인공이
 # 배경보다 옅어지는 셈이라 배수로 둔다. 기본 점선에서는 예전 값과 같다.
@@ -206,11 +229,13 @@ def build_dot(
             둘 다 걸린 대상은 mark 가 이긴다.
         mark_color: mark 에 쓸 색. 생략하면 NEW_COLOR.
         review_edges: 검토 대상 경로의 실선 [(from, to), ...]. mark 와 다른 색으로
-            옅게 표시한다 — 아직 recipe 가 아니고 사람이 승인해야 하는 경로다.
+            표시한다 — 아직 recipe 가 아니고 사람이 승인해야 하는 경로다.
             **차단이 아니라 분류다.** 이미 있는 실선은 색만 바꾸고, 어느 recipe
             에도 없는 연결은 선을 하나 그린다 — 좌표가 전부 핀으로 고정돼
             있어(neato -n) 선을 더해도 노드는 움직이지 않는다. 둘 다 걸린 대상은
             mark 가 이긴다 — 새로 생긴 사실이 검토 표시보다 먼저 보여야 한다.
+            실행 경로를 보여주는 자리(하단)에 그린다. 상단은 실선을 안 그리므로
+            (draw_solid=False) 검토 표시도 함께 빠진다.
         review_color: 검토 표시에 쓸 색. 생략하면 REVIEW_COLOR.
         edge_color: 실선 색. 생략하면 PLAIN_COLOR — 노드 테두리와 같은 값이라
             엣지만 옅게 할 수가 없었다. 분리해두면 선을 뒤로 물릴 수 있다.
@@ -325,18 +350,25 @@ def build_dot(
             lines.append(f'  "{frm}" -> "{to}" [dir=none{solid_len}];')
             continue
 
-        # 등록으로 생긴 실선은 얇게 — 등록 장면의 주인공은 노드가 어디에 붙었냐다.
         if is_marked:
             width = MARK_SOLID_PENWIDTH
         elif is_reviewed:
             width = REVIEW_PENWIDTH
         else:
-            width = 3
-        attrs = f'penwidth={width}, color="{color}"'
+            width = PATH_PENWIDTH
+        # 켜진 길에만 화살표. 배경 실선은 dir=none 그대로다 — 방향이 보이는 것이
+        # 곧 "이것이 실행 경로다" 라는 표시이므로 아무 데나 붙이면 뜻이 없어진다.
+        attrs = (
+            f'dir=forward, arrowsize={PATH_ARROWSIZE}, '
+            f'penwidth={width}, color="{color}"'
+        )
         # 표시된 엣지에는 순번을 붙이지 않는다 — 실행 순서가 아니라 새로 생긴 것이다.
         if edge in orders and not is_marked:
             # xlabel 은 레이아웃에 관여하지 않는다. label 을 쓰면 노드가 밀린다.
-            attrs += f', xlabel="{orders[edge]}", fontcolor="{HIGHLIGHT_COLOR}"'
+            attrs += (
+                f', xlabel="{orders[edge]}", fontcolor="{HIGHLIGHT_COLOR}"'
+                f", fontsize={ORDER_FONTSIZE}"
+            )
         lines.append(f'  "{frm}" -> "{to}" [{attrs}{solid_len}];')
 
     # 검토 대상 경로 중 어느 recipe 에도 없는 연결. 그릴 실선이 없으므로 선을
@@ -356,7 +388,8 @@ def build_dot(
             continue
         lines.append(
             f'  "{frm}" -> "{to}" '
-            f'[dir=none, penwidth={REVIEW_PENWIDTH}, color="{review_shade}"{solid_len}];'
+            f"[dir=forward, arrowsize={PATH_ARROWSIZE}, "
+            f'penwidth={REVIEW_PENWIDTH}, color="{review_shade}"{solid_len}];'
         )
 
     # 특성 관련 — 방향 없는 점선.

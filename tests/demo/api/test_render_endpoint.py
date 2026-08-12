@@ -10,6 +10,7 @@ demo/api/main.py 의 /render 엔드포인트 검증.
 화면에서만 드러나므로 여기서 못을 박아둔다.
 """
 
+import math
 import re
 import shutil
 
@@ -341,6 +342,20 @@ def edge_blocks(svg: str) -> list[str]:
     return re.findall(r'<g id="edge\d+" class="edge">(.*?)</g>', svg, re.S)
 
 
+def edge_strokes(svg: str) -> set[str]:
+    """엣지에 쓰인 선 색만. **노드 테두리는 빼야 한다** —
+
+    등록 장면에서는 새 노드 테두리도 NEW_COLOR 라, SVG 전체를 문자열로 뒤지면
+    엣지를 하나도 안 그려도 "분홍이 있다" 가 통과한다(실제로 사보타주에서
+    뚫렸다).
+    """
+    return {
+        stroke.lower()
+        for block in edge_blocks(svg)
+        for stroke in re.findall(r'stroke="([^"]+)"', block)
+    }
+
+
 def test_the_top_graph_draws_only_dotted_edges(client):
     """★ 상단은 관계 지도다 — 점선만 그린다.
 
@@ -387,6 +402,133 @@ def test_the_top_dotted_lines_are_thicker_than_the_bottom_ones(client):
 
     assert len(top) == 1 and len(bottom) == 1, (top, bottom)
     assert min(top) > min(bottom), (top, bottom)
+
+
+# ------------------------------------------------------------ 하단 = 실행 경로
+def test_the_chosen_path_is_drawn_with_arrows(client, recipe_ids):
+    """★ 하단은 "무엇 다음에 무엇이 오는가" 다. 방향이 보여야 그렇게 읽힌다.
+
+    build_dot 만 검사하면 조립부(build.py)가 강조를 안 넘겨도 통과한다.
+    완성된 SVG 에서 화살촉(<polygon>)을 센다.
+
+    배경 실선에는 없어야 한다 — 전부에 붙으면 화살표가 아무것도 말하지 않는다.
+    """
+    payload = post(client, mode="resolve", recipe_ids=recipe_ids[:1])
+    edges = edge_blocks(payload["variants"][""])
+
+    arrowed = [b for b in edges if "<polygon" in b]
+    plain = [b for b in edges if "<polygon" not in b]
+
+    assert arrowed, "강조된 경로에 화살표가 하나도 없다"
+    assert plain, "배경 실선이 사라졌다 — 지도 역할이 없어진다"
+    for block in arrowed:
+        assert "dasharray" not in block, "점선에 화살표가 붙었다"
+
+    # 크기까지 본다. digraph 는 원래 화살촉을 그리므로 "있다" 만으로는
+    # arrowsize 를 빼먹어도 통과한다 — 실측으로 화살촉 span 은 arrowsize 에
+    # 비례한다(1.0 -> 10.6pt · 1.6 -> 16.95pt · 2.4 -> 25.42pt).
+    from demo.graph_svg.dot import PATH_ARROWSIZE
+
+    def span(block):
+        points = re.search(r'<polygon[^>]*points="([^"]+)"', block)
+        pairs = [tuple(map(float, p.split(","))) for p in points.group(1).split()]
+        return max(math.dist(a, b) for a in pairs for b in pairs)
+
+    assert max(span(b) for b in arrowed) > 9 * PATH_ARROWSIZE
+    assert PATH_ARROWSIZE > 1
+
+
+def test_the_order_numbers_are_bigger_than_the_default(client, recipe_ids):
+    """순번은 1639pt 캔버스를 화면 폭에 맞춰 줄인 뒤에도 읽혀야 한다."""
+    from demo.graph_svg.dot import ORDER_FONTSIZE
+
+    payload = post(client, mode="resolve", recipe_ids=recipe_ids[:1])
+
+    # Graphviz 는 "26.00" 처럼 소수 두 자리로 내보낸다. 문자열이 아니라 수로 잰다.
+    sizes = {float(s) for s in re.findall(r'font-size="([\d.]+)"', payload["variants"][""])}
+
+    assert float(ORDER_FONTSIZE) in sizes, sorted(sizes)
+    assert max(sizes) == float(ORDER_FONTSIZE), f"순번이 가장 큰 글씨여야 한다: {sorted(sizes)}"
+    assert ORDER_FONTSIZE > 10
+
+
+def test_registration_paints_accepted_and_pending_in_different_colours(client):
+    """★ 자동 승격(분홍)과 승인 대기(amber)가 하단에 함께 뜬다.
+
+    등록이 무엇을 만들었고 무엇을 묻고 있는지가 경로로 보여야 한다. 색이 같으면
+    사람이 무엇을 승인해야 하는지 화면에서 알 수 없다.
+
+    조립부(build.py)가 accepted / review 중 하나라도 안 넘기면 여기서 잡힌다.
+    """
+    from demo.graph_svg.dot import NEW_COLOR, REVIEW_COLOR
+
+    mark = {
+        "node_id": "find_weak_section",
+        "new_solid_edges": [], "new_dotted_edges": [],
+        "accepted": {
+            "recipe_ids": ["recipe_900"],
+            "chains": [["track_inspection_doc", "find_weak_section", "generate_word"]],
+        },
+        "pending": [{
+            "chain": ["track_inspection_doc", "find_weak_section", "generate_ppt"],
+            "steps": [],
+        }],
+    }
+
+    strokes = edge_strokes(post(client, mode="register", mark=mark)["variants"][""])
+
+    assert NEW_COLOR.lower() in strokes, "자동 승격 경로가 안 그려졌다"
+    assert REVIEW_COLOR.lower() in strokes, "승인 대기 경로가 안 그려졌다"
+    assert NEW_COLOR.lower() != REVIEW_COLOR.lower(), "이 검사의 전제가 깨졌다"
+
+
+def test_approving_turns_amber_into_pink(client):
+    """승인한 경로는 분홍이 되고 안 고른 것은 사라진다.
+
+    화면(review_gate)이 승인 응답을 합칠 때 accepted.chains 로 옮기는 동작을
+    같은 모양으로 흉내낸다 — pending 을 비우고 chain 을 accepted 로 옮긴다.
+    """
+    from demo.graph_svg.dot import NEW_COLOR, REVIEW_COLOR
+
+    chain = ["track_inspection_doc", "find_weak_section", "generate_ppt"]
+    before = post(client, mode="register", mark={
+        "node_id": "find_weak_section",
+        "new_solid_edges": [], "new_dotted_edges": [],
+        "accepted": {"recipe_ids": [], "chains": []},
+        "pending": [{"chain": chain, "steps": []}],
+    })["variants"][""]
+
+    after = post(client, mode="register", mark={
+        "node_id": "find_weak_section",
+        "new_solid_edges": [], "new_dotted_edges": [],
+        "accepted": {"recipe_ids": ["recipe_900"], "chains": [chain]},
+        "pending": [],
+    })["variants"][""]
+
+    assert REVIEW_COLOR.lower() in edge_strokes(before)
+    assert NEW_COLOR.lower() not in edge_strokes(before), "이 검사의 전제가 깨졌다"
+    assert REVIEW_COLOR.lower() not in edge_strokes(after)
+    assert NEW_COLOR.lower() in edge_strokes(after)
+    assert node_coords(after) == node_coords(before), "승인으로 지도가 튀면 안 된다"
+
+
+def test_the_registration_scene_never_moves_a_node(client, recipe_ids):
+    """등록 강조와 검토 표시는 색이다. 좌표가 움직이면 등록 순간 지도가 튄다."""
+    plain = post(client, mode="plain")
+
+    registered = post(client, mode="register", mark={
+        "node_id": "find_weak_section",
+        "new_solid_edges": [], "new_dotted_edges": [],
+        "accepted": {"recipe_ids": [], "chains": [
+            ["track_inspection_doc", "find_weak_section", "generate_word"]]},
+        "pending": [{
+            "chain": ["track_inspection_doc", "find_weak_section", "generate_ppt"],
+            "steps": [],
+        }],
+    })
+
+    assert node_coords(registered["variants"][""]) == node_coords(plain["variants"][""])
+    assert canvas(registered["variants"][""]) == canvas(plain["variants"][""])
 
 
 def test_dropping_the_solid_edges_keeps_the_top_and_bottom_aligned(client):

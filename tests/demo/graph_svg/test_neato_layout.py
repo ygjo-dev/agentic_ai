@@ -303,7 +303,7 @@ def test_no_marks_means_no_new_colour_anywhere():
 # ------------------------------------------------------------ review 레이어
 # 검토 대상(대상이 어긋나는 경로) 표시. 차단이 아니라 분류다 — 사람이 승인할
 # 때까지 recipe 가 아니므로 mark(새로 생긴 것)와 다른 색으로 옅게 보인다.
-def test_review_recolors_an_existing_edge_thinly():
+def test_review_recolors_an_existing_edge():
     """이미 실선이 있는 연결은 색과 굵기만 바꾼다. 선을 더 긋지 않는다."""
     edge = ("load_cctv_platform", "analyze_congestion")
 
@@ -323,7 +323,8 @@ def test_review_draws_a_line_for_an_edge_no_recipe_has():
     """어느 recipe 에도 없는 연결은 선이 없으므로 하나 그린다.
 
     점선(dashed)이 아니다 — 점선은 about 관계다. 검토 대상은 '실행 경로가 될
-    수도 있는 것' 이라 실선 문법을 쓰되 색으로 가른다.
+    수도 있는 것' 이라 실선 문법을 쓰되 색으로 가른다. 방향도 보여준다 —
+    승인되면 그대로 실행 순서가 되는 길이다.
     """
     edge = ("analyze_congestion", "detect_structure_crack")  # SOLID 에 없다
 
@@ -334,7 +335,7 @@ def test_review_draws_a_line_for_an_edge_no_recipe_has():
         if '"analyze_congestion" -> "detect_structure_crack"' in l
     )
     assert REVIEW_COLOR in line
-    assert "dir=none" in line
+    assert "dir=forward" in line
     assert "dashed" not in line
 
 

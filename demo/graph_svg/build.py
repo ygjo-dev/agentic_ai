@@ -66,15 +66,29 @@ def wrap_node_labels(nodes: dict) -> dict:
     }
 
 
+def chain_edges(chains) -> list[tuple[str, str]]:
+    """노드 id 사슬들을 인접 쌍으로. 중복은 접는다.
+
+    /nodes 응답의 accepted.chains · pending[*].chain 이 이 모양이다. 경로 전체를
+    칠하려면 "새로 생긴 연결"(new_solid_edges)만으로는 부족하다 — 이미 있던
+    연결을 지나는 경로가 대부분이라 그것만 칠하면 길이 끊겨 보인다.
+    """
+    return list(dict.fromkeys(
+        edge for chain in chains or () for edge in zip(chain, chain[1:])
+    ))
+
+
 def mark_from_registration(result: dict | None) -> dict | None:
     """POST /nodes 응답에서 강조할 것만 뽑는다.
 
     new_solid_edges / new_dotted_edges 는 등록 전후의 차집합이다.
-    이미 줄어든 형태({nodes, solid, dotted, review})가 들어오면 그대로 돌려준다 —
-    UI 가 응답을 통째로 넘겨도, 서버가 두 번 줄여도 같은 값이 나온다.
+    이미 줄어든 형태({nodes, solid, dotted, accepted, review})가 들어오면 그대로
+    돌려준다 — UI 가 응답을 통째로 넘겨도, 서버가 두 번 줄여도 같은 값이 나온다.
 
-    review 는 검토 대상(pending) 경로의 연결들이다. 아직 recipe 가 아니라
-    new_solid_edges 에 없다 — 승인되면 pending 이 비고 표시가 사라진다.
+    accepted 는 자동 승격된 경로(분홍), review 는 검토 대상(pending) 경로
+    (amber)다. 둘 다 하단에 실행 경로로 그린다 — 등록이 무엇을 만들었고 무엇을
+    묻고 있는지가 경로로 보여야 한다. pending 은 아직 recipe 가 아니라
+    new_solid_edges 에 없고, 승인되면 accepted 로 옮겨가며 색이 바뀐다.
     """
     if not result or "error" in result or result.get("reset"):
         return None
@@ -84,20 +98,19 @@ def mark_from_registration(result: dict | None) -> dict | None:
             "nodes": list(result.get("nodes") or []),
             "solid": [tuple(edge) for edge in result.get("solid") or []],
             "dotted": [tuple(pair) for pair in result.get("dotted") or []],
+            "accepted": [tuple(edge) for edge in result.get("accepted") or []],
             "review": [tuple(edge) for edge in result.get("review") or []],
         }
 
     node_id = result.get("node_id")
-    pending_chains = [
-        entry.get("chain") or [] for entry in result.get("pending") or []
-    ]
     return {
         "nodes": [node_id] if node_id else [],
         "solid": [(e["from"], e["to"]) for e in result.get("new_solid_edges") or []],
         "dotted": [(e["a"], e["b"]) for e in result.get("new_dotted_edges") or []],
-        "review": list(dict.fromkeys(
-            edge for chain in pending_chains for edge in zip(chain, chain[1:])
-        )),
+        "accepted": chain_edges((result.get("accepted") or {}).get("chains")),
+        "review": chain_edges(
+            entry.get("chain") or [] for entry in result.get("pending") or []
+        ),
     }
 
 
@@ -186,9 +199,20 @@ def variant_svgs(
     recipe_ids: list[str],
     mark: dict,
 ) -> dict[str, str]:
-    """하단 해석 그래프. 조합별로 미리 만들어 둔다.
+    """하단 실행 경로 그래프. 조합별로 미리 만들어 둔다.
 
     {"": 후보 전부 강조, "<마지막노드 id>": 그것으로 끝나는 recipe 만}
+
+    배경 실선은 그대로 둔다 — 강조 안 된 경로도 보여야 지도 역할을 한다.
+    그 위에 세 가지가 화살표로 얹힌다.
+
+        발화 해석 결과   HIGHLIGHT (teal)   순번 있음
+        등록 자동 승격   NEW      (분홍)
+        등록 승인 대기   REVIEW   (amber)
+
+    자동 승격은 mark_edges 로 넘긴다 — 색 우선순위가 mark > highlight > review 라
+    등록 장면에서 teal 을 덮는다. 등록 결과는 "고른 경로" 가 아니라 "새로 생긴
+    것" 이므로 그 편이 맞다.
     """
     wrapped = wrap_node_labels(nodes)
 
@@ -210,8 +234,12 @@ def variant_svgs(
                     edge_color=EDGE_COLOR,
                     dotted_color=DOTTED_COLOR_BOTTOM,
                     mark_nodes=mark.get("nodes") or (),
-                    mark_edges=mark.get("solid") or (),
+                    mark_edges=[
+                        *(mark.get("solid") or ()),
+                        *(mark.get("accepted") or ()),
+                    ],
                     mark_dotted=mark.get("dotted") or (),
+                    review_edges=mark.get("review") or (),
                 ),
                 "neato",
                 no_layout=True,

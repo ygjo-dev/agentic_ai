@@ -114,6 +114,14 @@ def _approve(result: dict, picked: list[list[str]]) -> None:
         before = (counts.get("recipes") or [0, 0])[0]
         counts["recipes"] = [before, approved["counts"]["recipes"][1]]
 
+    # 승인한 경로를 자동 승격 쪽으로 옮긴다. 하단에서 amber 였던 길이 분홍이
+    # 되고, 고르지 않은 것은 pending 이 비면서 그대로 사라진다.
+    accepted = dict(result.get("accepted") or {})
+    accepted["recipe_ids"] = [
+        *(accepted.get("recipe_ids") or []), *approved["recipe_ids"]
+    ]
+    accepted["chains"] = [*(accepted.get("chains") or []), *picked]
+
     merged = {
         **result,
         "recipe_ids": [*(result.get("recipe_ids") or []), *approved["recipe_ids"]],
@@ -123,6 +131,7 @@ def _approve(result: dict, picked: list[list[str]]) -> None:
             *(result.get("new_solid_edges") or []),
             *(approved.get("new_solid_edges") or []),
         ],
+        "accepted": accepted,
         "counts": counts,
         "pending": [],
         "version": approved.get("version", result.get("version")),
