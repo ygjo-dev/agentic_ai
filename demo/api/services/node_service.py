@@ -34,17 +34,19 @@ def register(form: dict, llm_client) -> dict:
     return {
         "node_id": result["node_id"],
         "node": result["node"],
-        # 고른 대상(group 노드 id). 어느 대상에도 안 속하면 빈 문자열이다.
-        "group": result["group"],
+        # 고른 대상(그룹 노드 id)들. **여럿일 수 있다** — 승강장 CCTV 영상이
+        # 승강장에도 CCTV 에도 관한 것처럼. 어느 대상에도 안 관하면 빈 목록이다.
+        "groups": result["groups"],
         "reason": result["reason"],
         "recipe_ids": result["recipe_ids"],
         # registry 의 chains 도 같은 내용이지만 모양이 다르다. /graph · /resolve 와
         # 원소 모양을 맞춰 프론트엔드 어댑터가 하나로 끝나게 한다.
         "paths": ontology_service.paths_for(result["recipe_ids"], nodes),
+        # 실선에 라벨이 없다. 무엇이 오가는지는 경로 안에 노드로 들어 있다.
         "new_solid_edges": [
-            {"from": frm, "to": to, "interface": interface}
-            for (frm, to), interface in after_solid.items()
-            if (frm, to) not in before_solid
+            {"from": frm, "to": to}
+            for frm, to in after_solid
+            if (frm, to) not in set(before_solid)
         ],
         "new_dotted_edges": [
             {"a": a, "b": b, "labels": labels}

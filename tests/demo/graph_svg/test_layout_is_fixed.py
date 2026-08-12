@@ -28,13 +28,8 @@ from demo.graph_svg.dot import NODE_ATTRS, build_dot
 from demo.graph_svg.graphviz import render_svg
 from demo.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
 from demo.graph_svg.graphviz import layout_positions
-from ontology.graph import (
-    dotted_edges,
-    highlight_edges,
-    load_ontology,
-    recipe_nodes,
-    solid_edges,
-)
+from demo.api.services.ontology_service import domain_graph
+from ontology.graph import highlight_edges, recipe_nodes
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
@@ -45,9 +40,7 @@ def pinned_positions():
     """실제 온톨로지의 좌표 한 벌. 저장소의 layout.json 은 건드리지 않는다."""
     return layout_positions(
         build_dot(
-            load_ontology()["nodes"],
-            solid_edges(),
-            dotted_edges(),
+            *domain_graph(),
             spring=True,
             graph_attrs=NEATO_FRESH_ATTRS,
         )
@@ -61,9 +54,7 @@ def layout(**kwargs):
     """SVG 에서 노드 중심 좌표와 캔버스 크기를 뽑는다. 프로덕션과 같은 경로다."""
     svg = render_svg(
         build_dot(
-            load_ontology()["nodes"],
-            solid_edges(),
-            dotted_edges(),
+            *domain_graph(),
             positions=POSITIONS,
             spring=True,
             node_attrs=NODE_ATTRS,
@@ -89,12 +80,12 @@ P = highlight_edges
 
 # 실재하는 recipe 만 쓴다. 없는 번호를 넣으면 경로가 빈 리스트가 되어 강조가
 # 하나도 안 걸리고, 검사가 조용히 무력해진다(예전 COMBOS 에 그런 항목이 있었다).
-CANDIDATES = ["recipe_006", "recipe_010", "recipe_012", "recipe_015"]
+CANDIDATES = ["recipe_002", "recipe_003", "recipe_005", "recipe_009"]
 
 COMBOS = {
     "하이라이트 없음": {},
-    "SELECT 3단(순번)": {"highlight": P("recipe_013"), "highlight_nodes": recipe_nodes("recipe_013")},
-    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["load_inspection_doc"]},
+    "SELECT 4단(순번)": {"highlight": P("recipe_002"), "highlight_nodes": recipe_nodes("recipe_002")},
+    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["track_inspection_doc"]},
     "CLARIFY 후보 2개": {"highlight_paths": [P(r) for r in CANDIDATES[:2]]},
     "CLARIFY 후보 4개": {"highlight_paths": [P(r) for r in CANDIDATES]},
 }
@@ -136,12 +127,7 @@ def test_canvas_size_never_changes(baseline, name):
 
 def test_order_uses_xlabel_not_label():
     """label 을 쓰면 Graphviz 가 공간을 확보해 노드가 밀린다."""
-    dot = build_dot(
-        load_ontology()["nodes"],
-        solid_edges(),
-        dotted_edges(),
-        highlight=P("recipe_013"),
-    )
+    dot = build_dot(*domain_graph(), highlight=P("recipe_002"))
 
     highlight_lines = [line for line in dot.splitlines() if "penwidth=3" in line]
     assert highlight_lines
@@ -151,13 +137,8 @@ def test_order_uses_xlabel_not_label():
 
 def test_highlight_adds_no_extra_edge():
     """평행 엣지를 추가하면 조합마다 엣지 수가 달라져 레이아웃이 흔들린다."""
-    plain = build_dot(load_ontology()["nodes"], solid_edges(), dotted_edges())
-    lit = build_dot(
-        load_ontology()["nodes"],
-        solid_edges(),
-        dotted_edges(),
-        highlight=P("recipe_013"),
-    )
+    plain = build_dot(*domain_graph())
+    lit = build_dot(*domain_graph(), highlight=P("recipe_002"))
 
     def edge_count(dot):
         return len([line for line in dot.splitlines() if "->" in line])

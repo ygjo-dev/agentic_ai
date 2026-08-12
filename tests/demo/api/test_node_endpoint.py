@@ -16,22 +16,25 @@ from fastapi.testclient import TestClient
 
 import demo.api.main as backend_main
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
+from demo.api.services.ontology_service import drawn_nodes
 from ontology.graph import dotted_edges, load_ontology, solid_edges
 from ontology.registry import reset_to_init
 
+# 받고 내놓는 것은 **타입 노드 id** 다. 이름이 아니다 — 예전에는 자유 문자열
+# 이라 한 글자만 달라도 아무와도 안 이어졌다.
 FORM = {
-    "name": "궤도 결함 이력 요약",
-    "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
-    "inputs": ["DocumentData"],
-    "outputs": ["AnalysisResult"],
+    "name": "승강장 위험 행동 검출",
+    "description": "이미지에서 승강장 승객의 위험 행동을 검출한다.",
+    "inputs": ["image"],
+    "outputs": ["analysis"],
 }
 
-# 시연의 주력 등록이다. 끊겨 있던 load_inspection_doc(실선 0개)이 이어지고
-# 궤도 그룹에 점선이 붙는다 — subject 값을 글자 그대로 써야 그렇게 된다.
+# 시연의 주력 등록이다. 프레임 추출 뒤에 붙어 승강장 경로가 통째로 하나 더
+# 생기고, 승강장 그룹에 점선이 붙는다.
 INFERRED = {
-    "node_id": "analyze_crack_trend",
-    "group": "group_track",
-    "reason": "궤도 균열 검출과 같은 대상을 다룬다.",
+    "node_id": "detect_risky_behavior",
+    "groups": ["group_platform"],
+    "reason": "혼잡도 분석과 같은 대상에 관한 것이다.",
 }
 
 
@@ -78,7 +81,7 @@ def test_register_body_has_contract_keys(client, use_llm_client):
     assert set(body) == {
         "node_id",
         "node",
-        "group",
+        "groups",
         "reason",
         "recipe_ids",
         "paths",
@@ -94,8 +97,20 @@ def test_registered_node_lands_in_the_ontology(client, use_llm_client):
 
     body = client.post("/nodes", json=FORM).json()
 
-    assert body["node_id"] == "analyze_crack_trend"
-    assert "analyze_crack_trend" in load_ontology()["nodes"]
+    assert body["node_id"] == "detect_risky_behavior"
+    assert "detect_risky_behavior" in load_ontology()["nodes"]
+
+    # 노드에는 이름과 설명뿐이다. 받고 내놓는 것도, 무엇에 관한 것인지도 관계다.
+    assert set(load_ontology()["nodes"]["detect_risky_behavior"]) == {
+        "name", "description"
+    }
+    written = load_ontology()["edges"]
+    for to, predicate in (
+        ("image", "hasInput"), ("analysis", "hasOutput"), ("group_platform", "about")
+    ):
+        assert {
+            "from": "detect_risky_behavior", "to": to, "predicate": predicate
+        } in written
 
 
 def test_paths_cover_every_new_recipe(client, use_llm_client):
@@ -108,18 +123,20 @@ def test_paths_cover_every_new_recipe(client, use_llm_client):
     for steps in body["paths"].values():
         assert steps
         for step in steps:
-            assert set(step) == {"node_id", "name", "out_interface"}
+            assert set(step) == {"node_id", "name", "out_type"}
 
 
 # ------------------------------------------------------------ 증가분
 def test_counts_match_the_actual_increase(client, use_llm_client):
     use_llm_client()
-    before_nodes = len(load_ontology()["nodes"])
+    before_nodes = len(drawn_nodes())
 
     body = client.post("/nodes", json=FORM).json()
 
+    # 세는 것은 **그리는 노드**다. 온톨로지 전부가 아니다 — 화면이 "노드 N개"
+    # 라고 적어놓고 N개가 안 보이면 사람이 세어보고 어긋난 것을 발견한다.
     assert body["counts"]["nodes"] == [before_nodes, before_nodes + 1]
-    assert body["counts"]["nodes"][1] == len(load_ontology()["nodes"])
+    assert body["counts"]["nodes"][1] == len(drawn_nodes())
 
     before_recipes, after_recipes = body["counts"]["recipes"]
     assert after_recipes - before_recipes == len(body["recipe_ids"])
@@ -134,6 +151,7 @@ def test_new_solid_edges_are_the_difference(client, use_llm_client):
 
     reported = {(e["from"], e["to"]) for e in body["new_solid_edges"]}
     assert reported == set(solid_edges()) - before
+    assert reported, "새 실선이 하나도 없으면 이 검사가 무력하다"
 
 
 def test_new_dotted_edges_are_the_difference(client, use_llm_client):
@@ -176,9 +194,9 @@ def test_empty_name_leaves_the_ontology_alone(client, use_llm_client):
     assert len(load_ontology()["nodes"]) == before
 
 
-def test_unknown_interface_is_422(client, use_llm_client):
-    """온톨로지에 없는 인터페이스는 registry 가 막는다 (UnknownType)."""
-    # 등록이 인터페이스 검사까지 가야 하므로 아직 없는 node_id 를 쓴다.
+def test_unknown_type_is_422(client, use_llm_client):
+    """온톨로지에 없는 타입은 registry 가 막는다 (UnknownType)."""
+    # 등록이 타입 검사까지 가야 하므로 아직 없는 node_id 를 쓴다.
     use_llm_client({**INFERRED, "node_id": "analyze_unknown_thing"})
 
     response = client.post("/nodes", json={**FORM, "outputs": ["NoSuchData"]})
@@ -187,7 +205,17 @@ def test_unknown_interface_is_422(client, use_llm_client):
     assert "UnknownType" in response.json()["detail"]
 
 
-def test_unknown_interface_leaves_the_ontology_alone(client, use_llm_client):
+def test_several_subjects_all_come_back(client, use_llm_client):
+    """대상을 여럿 고르면 전부 돌아온다. 하나만 오면 화면에서 점선이 빠진다."""
+    use_llm_client({**INFERRED, "groups": ["group_platform", "group_cctv"]})
+
+    body = client.post("/nodes", json=FORM).json()
+
+    assert body["groups"] == ["group_platform", "group_cctv"]
+    assert len(body["new_dotted_edges"]) == 2
+
+
+def test_unknown_type_leaves_the_ontology_alone(client, use_llm_client):
     use_llm_client({**INFERRED, "node_id": "analyze_unknown_thing"})
     before = len(load_ontology()["nodes"])
 
@@ -220,7 +248,7 @@ def test_reset_undoes_a_registration(client, use_llm_client):
 
     client.post("/nodes/reset")
 
-    assert "analyze_crack_trend" not in load_ontology()["nodes"]
+    assert "detect_risky_behavior" not in load_ontology()["nodes"]
 
 
 # ------------------------------------------------------------ 격리

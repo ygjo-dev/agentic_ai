@@ -94,6 +94,23 @@ def transpose(
     return {node_id: (y, x) for node_id, (x, y) in positions.items()}
 
 
+def is_tall(positions: dict[str, tuple[float, float]]) -> bool:
+    """세로가 가로보다 긴 배치인가. 눕힐지 말지를 정한다.
+
+    좌표의 퍼진 범위로 잰다. 렌더링한 SVG 크기가 아니라 좌표라서 노드 크기와
+    여백은 안 들어가지만, 눕힐지 말지를 가르는 데는 그것으로 충분하다.
+
+    노드가 하나거나 없으면 눕힐 것이 없어 False 다 — 0 으로 나누지도 않는다.
+    """
+    if len(positions) < 2:
+        return False
+
+    xs = [x for x, _ in positions.values()]
+    ys = [y for _, y in positions.values()]
+
+    return (max(ys) - min(ys)) > (max(xs) - min(xs))
+
+
 def resolve(
     nodes: dict, path: Path | None = None
 ) -> tuple[dict[str, tuple[float, float]], list[str]]:
@@ -152,13 +169,18 @@ def ensure_positions(
 
     positions = layout_positions(dot)
 
-    # 최초 배치에서만 눕힌다. model=subset 은 세로로 길게(H/W 1.38) 놓으므로
-    # 축을 바꿔 가로로 만든다.
+    # 최초 배치에서만, 그리고 **세로로 길 때만** 눕힌다. 화면 패널이 가로로
+    # 넓어서(H/W 0.40) 세로로 긴 배치는 높이에 걸려 폭을 못 쓴다.
+    #
+    # 예전에는 조건 없이 눕혔다. 그때 배치가 늘 세로로 길었기 때문인데(H/W 1.38),
+    # 온톨로지를 바꾸자 배치가 이미 가로로 길어졌고(0.83) 거기에 또 회전을 걸어
+    # 1.09 로 되돌려놓고 있었다 — 패널 폭 사용이 49% 에서 37% 로 떨어졌다.
+    # 목적은 "회전한다" 가 아니라 "가로로 눕힌다" 이므로 조건을 붙인다.
     #
     # 증분 배치에서는 절대 하면 안 된다. 거기 들어간 핀 좌표는 이미 눕혀둔
     # 값이라, 또 바꾸면 지도가 통째로 뒤집히고 기존 노드가 전부 움직인다.
     # 한 번은 통과하고 두 번째 등록에서 터지는 자리라 fresh 분기에만 건다.
-    if fresh:
+    if fresh and is_tall(positions):
         positions = transpose(positions)
 
     save(positions)

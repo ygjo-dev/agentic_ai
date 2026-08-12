@@ -128,28 +128,65 @@ def test_transpose_preserves_relative_distances():
     assert distance(positions) == distance(flipped)
 
 
+def test_only_a_tall_layout_is_tipped_over():
+    """목적은 "회전한다" 가 아니라 "가로로 눕힌다" 이다.
+
+    조건 없이 눕히면 이미 가로로 긴 배치를 세로로 세워버린다. 실제로 그랬다 —
+    온톨로지를 바꾸자 최초 배치가 H/W 0.83 으로 나왔는데 거기 또 회전을 걸어
+    1.09 로 만들고 있었고, 패널 폭 사용이 49% 에서 37% 로 떨어졌다.
+    """
+    assert layout_store.is_tall({"a": (0.0, 0.0), "b": (10.0, 100.0)})
+    assert not layout_store.is_tall({"a": (0.0, 0.0), "b": (100.0, 10.0)})
+
+    # 정확히 정방형이면 눕혀도 얻는 것이 없다.
+    assert not layout_store.is_tall({"a": (0.0, 0.0), "b": (50.0, 50.0)})
+
+    # 눕힐 것이 없으면 0 으로 나누지도 않는다.
+    assert not layout_store.is_tall({})
+    assert not layout_store.is_tall({"a": (1.0, 2.0)})
+
+
 # ------------------------------------------------------------ 최초 배치
-def test_fresh_layout_is_transposed(store):
-    """눕히지 않으면 세로로 길어 가로 패널을 못 채운다."""
+def test_a_tall_fresh_layout_is_tipped_over(store, monkeypatch):
+    """배치가 세로로 길게 나오면 눕혀서 저장한다.
+
+    neato 가 어느 방향으로 놓을지는 그래프 모양에 달렸다. 그것에 기대면 검사가
+    온톨로지를 바꿀 때마다 흔들리므로, 배치 결과를 고정해 분기만 본다.
+    """
+    tall = {"a": (0.0, 0.0), "b": (10.0, 300.0), "c": (20.0, 600.0)}
+    monkeypatch.setattr(layout_store, "layout_positions", lambda dot: dict(tall))
+
     saved = ensure_positions(*domain(GRAPH))
 
-    nodes, solid, dotted = domain(GRAPH)
-    raw = layout_positions(
-        build_dot(nodes, solid, dotted, positions={}, spring=True,
-                  graph_attrs=NEATO_FRESH_ATTRS)
-    )
-
-    assert saved == layout_store.transpose(raw)
-    assert saved != raw  # 정방형이면 같아질 수 있다 — 이 fixture 는 아니다
+    assert saved == layout_store.transpose(tall)
+    assert not layout_store.is_tall(saved)
 
 
-def test_fresh_layout_swaps_the_spans(store):
-    """가로 폭과 세로 높이가 맞바뀐다.
+def test_a_wide_fresh_layout_is_left_alone(store, monkeypatch):
+    """이미 가로로 길면 그대로 둔다. 눕히면 오히려 세로로 세워진다.
 
-    "가로로 눕는다" 를 직접 단언하지 않는다 — 그것은 그래프 모양에 달린 것이고
-    코드의 성질이 아니다. 코드가 보장하는 것은 두 축이 바뀐다는 것뿐이다.
+    실제로 그랬다 — 온톨로지를 바꾸자 최초 배치가 H/W 0.83 으로 나왔는데 거기
+    또 회전을 걸어 1.09 로 만들고 있었고, 패널 폭 사용이 49% 에서 37% 로 떨어졌다.
+    """
+    wide = {"a": (0.0, 0.0), "b": (300.0, 10.0), "c": (600.0, 20.0)}
+    monkeypatch.setattr(layout_store, "layout_positions", lambda dot: dict(wide))
+
+    saved = ensure_positions(*domain(GRAPH))
+
+    assert saved == wide
+    assert not layout_store.is_tall(saved)
+
+
+def test_a_fresh_layout_never_ends_up_tall(store):
+    """실제 neato 배치로도 결과가 세로로 길지 않아야 한다.
+
+    위 두 검사는 배치를 고정해 분기만 봤다. 여기서는 진짜 배치를 태운다 —
+    분기 조건과 실제 좌표가 어긋나면 여기서 잡힌다.
     """
     saved = ensure_positions(*domain(GRAPH))
+
+    assert saved
+    assert not layout_store.is_tall(saved)
 
     nodes, solid, dotted = domain(GRAPH)
     raw = layout_positions(
@@ -162,7 +199,8 @@ def test_fresh_layout_swaps_the_spans(store):
         ys = [v[1] for v in p.values()]
         return round(max(xs) - min(xs), 3), round(max(ys) - min(ys), 3)
 
-    assert spans(saved) == spans(raw)[::-1]
+    # 좌표를 새로 지어내지 않는다. 원래 배치의 두 폭 그대로이거나 맞바뀐 것이다.
+    assert sorted(spans(saved)) == sorted(spans(raw))
 
 
 # ------------------------------------------------------------ 증분 배치 (핵심)

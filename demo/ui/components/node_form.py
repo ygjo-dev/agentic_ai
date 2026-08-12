@@ -8,29 +8,31 @@ import streamlit as st
 from demo.ui import api_client, config
 from demo.ui.api_client import ApiError
 
-# 등록 샘플. inputs/outputs 는 온톨로지 인터페이스를 그대로 쓴다.
+# 등록 샘플. inputs/outputs 는 **타입 노드 id** 다. 이름이 아니다 —
+# 예전에는 자유 문자열이라 한 글자만 달라도 아무와도 안 이어졌다.
 NODE_SAMPLES = [
-    # 시연의 주력. 궤도 점검 보고서는 지금 어느 recipe 에도 안 들어가 실선이 0개다 —
-    # 이 노드를 등록하면 그 끊긴 자리가 이어지고 궤도 그룹에 점선이 붙는다.
+    # 시연의 주력. "이미지" 를 받으므로 프레임 추출 뒤에 붙어 승강장 경로가
+    # 통째로 하나 더 생긴다. 승강장 그룹에 점선이 붙는다.
     (
-        "궤도 결함 이력 요약",
-        "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
-        ["DocumentData"],
-        ["AnalysisResult"],
+        "승강장 위험 행동 검출",
+        "이미지에서 승강장 승객의 위험 행동을 검출한다.",
+        ["image"],
+        ["analysis"],
     ),
-    # 기상 도메인 쪽에 붙는 경우.
+    # 대상이 **둘** 붙는 경우. 승강장 것도 검측차 것도 CCTV 가 찍은 것이라
+    # 화질 저하는 CCTV 에 관한 일이다. LLM 이 여럿을 고를 수 있는지 보여준다.
     (
-        "적설 영향 분석",
-        "기상 관측값에서 적설이 운행에 미치는 영향을 분석한다.",
-        ["WeatherData"],
-        ["AnalysisResult"],
+        "CCTV 화질 저하 진단",
+        "영상에서 렌즈 오염으로 인한 화질 저하를 진단한다.",
+        ["video"],
+        ["analysis"],
     ),
-    # 어느 대상에도 매이지 않는 범용 노드. subject 가 비어 점선이 안 생긴다.
+    # 어느 대상에도 매이지 않는 범용 노드. 대상이 비어 점선이 안 생긴다.
     (
         "Excel 보고서 생성",
         "분석 결과를 Excel 표로 생성한다.",
-        ["AnalysisResult"],
-        ["DocumentData"],
+        ["analysis"],
+        ["output_report"],
     ),
 ]
 
@@ -59,7 +61,11 @@ def render_node_form(graph: dict | None = None):
     """
     st.subheader("노드 등록")
 
-    interfaces = list((graph or {}).get("interfaces") or [])
+    # 고르는 것은 타입 노드 id 이고, 화면에 보이는 것은 그 이름이다.
+    # id 를 그대로 보여주면 사람이 못 읽고, 이름을 보내면 백엔드가 못 찾는다.
+    types = list((graph or {}).get("types") or [])
+    type_ids = [entry["id"] for entry in types]
+    type_names = {entry["id"]: entry["name"] for entry in types}
 
     st.selectbox(
         "등록 샘플",
@@ -76,12 +82,18 @@ def render_node_form(graph: dict | None = None):
         height=68,
     )
 
+    def label_of(type_id):
+        return type_names.get(type_id, type_id)
+
     col_in, col_out = st.columns(2)
     with col_in:
-        # 불러오기 노드는 입력이 없다. 비워둘 수 있어야 한다.
-        inputs = st.multiselect("inputs", interfaces, key="node_inputs")
+        inputs = st.multiselect(
+            "받는 것", type_ids, key="node_inputs", format_func=label_of
+        )
     with col_out:
-        outputs = st.multiselect("outputs", interfaces, key="node_outputs")
+        outputs = st.multiselect(
+            "내놓는 것", type_ids, key="node_outputs", format_func=label_of
+        )
 
     col_register, col_reset = st.columns(2)
 

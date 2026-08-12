@@ -8,6 +8,7 @@ import shutil
 
 import pytest
 
+from demo.api.services.ontology_service import domain_graph
 from demo.graph_svg.dot import build_dot
 from demo.graph_svg.graphviz import render_svg
 
@@ -139,26 +140,21 @@ def test_graphviz_accepts_the_output(highlight):
 
 def test_graphviz_accepts_the_real_ontology():
     """실제 데이터로도 파싱되는지 본다. 고정 데이터만 쓰면 놓치는 게 있다."""
-    from ontology.graph import (
-        dotted_edges,
-        highlight_edges,
-        load_ontology,
-        recipe_nodes,
-        solid_edges,
-    )
+    from ontology.graph import highlight_edges, recipe_nodes
 
     if not shutil.which("dot"):
         pytest.skip("graphviz 가 설치되어 있지 않다")
 
+    nodes, solid, dotted = domain_graph()
     svg = render_svg(
         build_dot(
-            load_ontology()["nodes"],
-            solid_edges(),
-            dotted_edges(),
-            highlight=highlight_edges("recipe_013"),
-            highlight_nodes=recipe_nodes("recipe_013"),
+            nodes,
+            solid,
+            dotted,
+            highlight=highlight_edges("recipe_001"),
+            highlight_nodes=recipe_nodes("recipe_001"),
         )
     )
 
     assert "<svg" in svg
-    assert "승강장 CCTV 불러오기" in svg, "한글 라벨이 SVG 에 실리지 않았다."
+    assert nodes["platform_cctv_video"]["name"] in svg, "한글 라벨이 SVG 에 실리지 않았다."

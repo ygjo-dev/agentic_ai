@@ -20,9 +20,14 @@ from demo.graph_svg.dot import COLORS
 from ontology import store
 from ontology.graph import (
     dotted_edges,
+    group_ids,
+    inputs_of,
+    is_executable,
     load_ontology,
+    outputs_of,
     recipe_nodes,
     solid_edges,
+    type_ids,
 )
 
 
@@ -52,10 +57,12 @@ def recipe_ids() -> list[str]:
 
 
 def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
-    """recipe 한 벌의 실행 경로. [{node_id, name, out_interface}, ...] 순서 그대로.
+    """recipe 한 벌의 실행 경로. [{node_id, name, out_type}, ...] 순서 그대로.
 
-    out_interface 는 그 노드의 outputs[0] — 다음 노드로 흘러가는 인터페이스다.
-    outputs 가 비면 None 이다.
+    out_type 은 다음 노드로 흘러가는 것이다. 실행 노드는 hasOutput 이 말하고,
+    **데이터 노드는 자기 자신**이다 — 승강장 CCTV 영상은 무언가를 내놓는 것이
+    아니라 그 자체가 다음 단계로 건네진다. 경로의 마지막 노드도 값이 있지만
+    화면은 마지막 화살표를 안 그리므로 쓰이지 않는다.
 
     없는 recipe 는 빈 리스트다. recipe_nodes 가 그렇게 동작하므로 그대로 따른다.
     """
@@ -64,12 +71,12 @@ def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
     chain = []
     for node_id in recipe_nodes(recipe_id):
         node = nodes.get(node_id) or {}
-        outputs = node.get("outputs") or []
+        handed = outputs_of(node_id) or [node_id]
         chain.append(
             {
                 "node_id": node_id,
                 "name": node.get("name", node_id),
-                "out_interface": outputs[0] if outputs else None,
+                "out_type": nodes.get(handed[0], {}).get("name", handed[0]),
             }
         )
     return chain
@@ -81,6 +88,32 @@ def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
     return {recipe_id: path_of(recipe_id, nodes) for recipe_id in dict.fromkeys(ids)}
 
 
+def drawn_nodes() -> dict:
+    """화면에 그리는 노드. **온톨로지 전부가 아니다.**
+
+    그리는 것은 두 가지다 — 실행할 수 있는 경로(실선에 나오는 노드)와,
+    그것이 무엇에 관한 것인가(그룹).
+
+    형식 노드(영상 · 이미지 · 문서 · 분석결과)는 뺀다. recipe 에 나오지 않아
+    실선이 없고 about 도 안 붙어 점선도 없다 — 그리면 아무 선도 없는 점 다섯
+    개가 떠 있게 되고, 사람은 그것이 무슨 뜻인지 물어보게 된다. 형식 계층은
+    경로를 만들 때 쓰는 것이지 사람이 볼 것이 아니다.
+
+    **kind 를 여기서 만들어 붙인다.** 온톨로지에는 종류가 안 적혀 있고, 그리는
+    쪽은 그룹을 다르게 칠해야 한다. 파일에 되돌려 적지 않는다 — 화면에만 필요한
+    구분이라 파일에 적으면 관계와 어긋날 수 있는 자리가 하나 늘어난다.
+    """
+    nodes = load_ontology()["nodes"]
+    groups = set(group_ids())
+    in_paths = {node_id for pair in solid_edges() for node_id in pair}
+
+    return {
+        node_id: {**node, "kind": "group" if node_id in groups else "function"}
+        for node_id, node in nodes.items()
+        if node_id in groups or node_id in in_paths
+    }
+
+
 def domain_graph() -> tuple[dict, dict, dict]:
     """그리기가 쓰는 도메인 형태 그대로. (nodes, solid, dotted)
 
@@ -90,7 +123,7 @@ def domain_graph() -> tuple[dict, dict, dict]:
 
     온톨로지를 읽는 곳은 이 모듈 하나다. graph_svg 는 여기서 받아 쓰기만 한다.
     """
-    return load_ontology()["nodes"], solid_edges(), dotted_edges()
+    return drawn_nodes(), solid_edges(), dotted_edges()
 
 
 def graph_payload() -> dict:
@@ -100,32 +133,35 @@ def graph_payload() -> dict:
     못 담기도 하지만, 그보다 순서가 중요하다 — 노드와 엣지가 나오는 순서가
     Graphviz 레이아웃을 정하므로 왕복에서 순서가 흔들리면 좌표가 바뀐다.
     """
-    ontology = load_ontology()
-    nodes = ontology["nodes"]
+    all_nodes = load_ontology()["nodes"]
 
     return {
         "version": ontology_version(),
         # 색은 graph_svg 가 정한다. UI 가 자기 팔레트를 따로 들면 두 곳이
         # 조용히 어긋나고, 그때 사람은 화면을 보고 코드를 의심한다.
         "colors": dict(COLORS),
-        # interfaces 는 {이름: {description}} 형태의 dict 다. 이름만 뽑아 순서대로.
-        "interfaces": list(ontology["interfaces"]),
-        # group 은 inputs / outputs 가 없다. 화면은 라벨만 그리므로 빈 리스트로
-        # 채워 형태를 하나로 맞춘다 — 프론트엔드가 kind 로 분기하지 않아도 된다.
+        # 등록 폼의 입출력 선택지. **이름이 아니라 id 를 고르게 한다** —
+        # 예전에는 인터페이스 이름(자유 문자열)이라 한 글자만 달라도 아무와도
+        # 안 이어졌다. 이름은 사람이 읽으라고 같이 보낸다.
+        "types": [
+            {"id": type_id, "name": all_nodes[type_id]["name"]}
+            for type_id in type_ids()
+        ],
+        # 그리는 노드만 담는다. 무엇을 받고 내놓는지는 관계에서 뽑아 넣는다 —
+        # 노드에는 안 적혀 있고, 화면은 칩에 그것을 보여준다.
         "nodes": {
             node_id: {
-                "kind": node.get("kind", "function"),
+                "kind": node["kind"],
                 "name": node["name"],
                 "description": node["description"],
-                "inputs": node.get("inputs") or [],
-                "outputs": node.get("outputs") or [],
+                "inputs": inputs_of(node_id),
+                "outputs": outputs_of(node_id),
+                "executable": is_executable(node_id),
             }
-            for node_id, node in nodes.items()
+            for node_id, node in drawn_nodes().items()
         },
-        "solid_edges": [
-            {"from": frm, "to": to, "interface": interface}
-            for (frm, to), interface in solid_edges().items()
-        ],
+        # 실선에는 라벨이 없다. 무엇이 오가는지는 경로 안에 노드로 들어 있다.
+        "solid_edges": [{"from": frm, "to": to} for frm, to in solid_edges()],
         "dotted_edges": [
             {"a": a, "b": b, "labels": labels}
             for (a, b), labels in dotted_edges().items()

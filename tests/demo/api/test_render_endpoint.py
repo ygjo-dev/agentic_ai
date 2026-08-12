@@ -160,11 +160,13 @@ def test_group_nodes_are_drawn_as_ellipses_in_both_graphs(client):
 
     상단과 하단 둘 다여야 한다. 한쪽만 바뀌면 같은 노드가 위아래에서 달라 보인다.
     """
+    from demo.api.services.ontology_service import drawn_nodes
     from demo.graph_svg.dot import GROUP_COLOR, GROUP_COLOR_TOP
-    from ontology.graph import load_ontology
 
-    nodes = load_ontology()["nodes"]
-    groups = [nid for nid, node in nodes.items() if node.get("kind") == "group"]
+    # kind 는 온톨로지에 없다. 그리는 쪽이 관계를 보고 만들어 붙인다 —
+    # 파일에서 읽으면 이 검사는 영원히 빈 목록을 보고 조용히 통과한다.
+    nodes = drawn_nodes()
+    groups = [nid for nid, node in nodes.items() if node["kind"] == "group"]
     assert groups and len(groups) < len(nodes), "group 이 없거나 전부면 검사가 무력하다"
 
     payload = post(client, mode="plain")
