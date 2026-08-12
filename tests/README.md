@@ -35,15 +35,15 @@ python tools/check_ontology.py
 **구현 세부**도 없다. 함수의 인자가 출력에 그대로 나타나는지, 한국어 조사를
 어떻게 붙이는지 같은 것들이다. 명세로 읽으면 정보가 0이다.
 
-## `demo/` — 리뷰 대상이 아니다 (160개)
+## `demo/` — 리뷰 대상이 아니다 (168개)
 
 시연(Streamlit 화면과 SVG 생성)을 지키는 테스트다. Streamlit 화면은 중간 구현을
 보고하기 위한 것이고 실제 서비스는 소켓과 MCP 로 대체되므로, 검토할 이유가 없다.
 
 | 폴더 | 대상 | 개수 |
 |---|---|---:|
-| `demo/api/` | `demo/api/main.py` · `services/` | 62 |
-| `demo/graph_svg/` | `demo/graph_svg/` | 98 |
+| `demo/api/` | `demo/api/main.py` · `services/` | 63 |
+| `demo/graph_svg/` | `demo/graph_svg/` | 105 |
 
 여기 있는 단언 대부분은 **몇 주에 걸쳐 실측으로 알아낸 배치 성질**이다.
 어떤 강조 조합에서도 좌표가 같다 · 노드를 등록해도 기존 노드가 안 움직인다 ·

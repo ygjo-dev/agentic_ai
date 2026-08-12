@@ -25,12 +25,23 @@ NODE_BORDER = "#A9B1C0"  # 노드 테두리. 선보다 밝아야 앞으로 나�
 NODE_FILL = "#171B26"    # 노드 배경. 배경과 거의 같아(1.10) 카드처럼 뜬다.
 
 # 하단 = 답(주인공), 상단 = 배경 지도(참조용). 상단을 더 흐리게 둔다.
-EDGE_COLOR = "#4A5262"           # 하단 실선
-EDGE_COLOR_TOP = "#2F3542"       # 상단 실선
-DOTTED_COLOR_BOTTOM = "#5B55A0"  # 하단 점선
-DOTTED_COLOR_TOP = "#3E3A6B"     # 상단 점선
+EDGE_COLOR = "#4A5262"           # 하단 실선  (대비 2.41)
+EDGE_COLOR_TOP = "#2F3542"       # 상단 실선  (대비 1.54)
+# 점선은 실선보다 확실히 밝아야 한다. 예전 값(#5B55A0, 대비 2.93)은 실선(2.41)과
+# 거의 같은 밝기라 색상만으로 갈렸고, 다크 배경에서는 그것만으로 부족해 묻혔다.
+# 지금은 2.45배 밝다. 다만 강조(teal 7.59)보다는 아래다 — 점선은 배경 정보이고
+# 선택된 실행 경로가 주인공이라 이 위계가 뒤집히면 안 된다.
+DOTTED_COLOR_BOTTOM = "#8B84E8"  # 하단 점선  (대비 5.91)
+DOTTED_COLOR_TOP = "#615BA8"     # 상단 점선  (대비 3.21, 상단 실선의 2.1배)
 # 상단 노드도 낮춘다 — 선만 흐리게 하면 상단 노드가 하단과 같은 무게로 경쟁한다.
 NODE_BORDER_TOP = "#5A6474"
+
+# 대상(group) 노드. 기능과 한눈에 갈려야 한다 — 실행할 수 있는 것과 개념은
+# 다른 것이다. 색상환에서 기존 넷과 가장 가까운 것이 69°(분홍 330° vs 39°)라
+# 충분히 떨어져 있다. 밝기는 노드 테두리(8.76)와 비슷한 8.40 — group 도 노드라
+# 전경에 있어야 하고, 선(2.4~5.9)보다는 위에 있어야 한다.
+GROUP_COLOR = "#D9A441"
+GROUP_COLOR_TOP = "#8A6B2E"      # 상단용. 대비 3.80 으로 한 단계 낮춘다.
 
 # /graph 응답에 실어 보낸다. UI 는 이것만 보고 칩 테두리 · 배지 · 안내 문구를 칠한다.
 COLORS = {
@@ -45,6 +56,8 @@ COLORS = {
     "dotted_bottom": DOTTED_COLOR_BOTTOM,
     "dotted_top": DOTTED_COLOR_TOP,
     "node_border_top": NODE_BORDER_TOP,
+    "group": GROUP_COLOR,
+    "group_top": GROUP_COLOR_TOP,
 }
 
 # ------------------------------------------------------------ 크기
@@ -65,6 +78,27 @@ NODE_ATTRS = (
 )
 # 상단은 배경 지도라 노드도 한 단계 낮춘다.
 NODE_ATTRS_TOP = NODE_ATTRS[:-1] + (f'color="{NODE_BORDER_TOP}"',)
+
+# 점선 굵기. 예전에는 없어서 기본값 1 이었고 실선도 1 이라 굵기로 안 갈렸다.
+# 밝기 · 굵기 둘을 함께 올려야 다크 배경에서 확실히 구분된다.
+# 파선 간격은 못 바꾼다 — Graphviz 는 style=dashed 에 stroke-dasharray="5,2" 를
+# 고정으로 내보내고 penwidth 를 올려도 그대로다(실측). 그래서 밝기와 굵기로만 간다.
+DOTTED_PENWIDTH = 1.6
+
+# 대상(group) 노드에 얹는 속성. 도형과 굵기로 기능 노드와 갈린다.
+# ellipse 는 Graphviz 기본 도형이라 안전하고, 사각형과 확실히 구분된다.
+GROUP_ATTRS = (
+    "shape=ellipse",
+    "penwidth=2",
+    f'color="{GROUP_COLOR}"',
+    f'fontcolor="{GROUP_COLOR}"',
+)
+GROUP_ATTRS_TOP = (
+    "shape=ellipse",
+    "penwidth=2",
+    f'color="{GROUP_COLOR_TOP}"',
+    f'fontcolor="{GROUP_COLOR_TOP}"',
+)
 
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.
 MARK_NODE_PENWIDTH = 2
@@ -91,6 +125,7 @@ def build_dot(
     graph_attrs=(),
     dotted_labels=True,
     node_attrs=(),
+    group_attrs=(),
     mark_nodes=(),
     mark_edges=(),
     mark_dotted=(),
@@ -127,6 +162,11 @@ def build_dot(
             넓어진다. 레이아웃 자체는 바뀌지 않는다(실측).
         node_attrs: node [...] 기본 줄에 더할 속성들. 폰트·여백을 줄여 박스를
             작게 만드는 데 쓴다.
+        group_attrs: kind == "group" 인 노드에만 더할 속성들. 도형과 색을 바꿔
+            기능 노드와 갈리게 한다. 비워두면 group 도 기능과 똑같이 그려진다 —
+            기본 출력을 바꾸지 않으려는 것이다.
+            강조·마크 색은 이 뒤에 붙으므로 걸리면 그쪽이 이긴다(Graphviz 는
+            같은 속성이 두 번 나오면 나중 것을 쓴다 — 실측).
         mark_nodes / mark_edges / mark_dotted: 새로 생긴 것을 표시한다.
             highlight(실행 경로) 와는 직교하는 별개의 레이어다 — 등록 강조는
             "무엇을 고른 경로인지" 가 아니라 "무엇이 새로 생겼는지" 라서
@@ -209,6 +249,10 @@ def build_dot(
             x, y = positions[node_id]
             attrs.append(f'pos="{x},{y}!"')
         # mark 가 걸리면 그것이 이긴다 — 새로 생긴 것이 가장 먼저 눈에 띄어야 한다.
+        # 대상 노드는 도형부터 다르다. 실행할 수 있는 것과 개념은 다른 것이다.
+        if group_attrs and node.get("kind") == "group":
+            attrs.extend(group_attrs)
+
         marked = node_id in marked_nodes
         color = marked_color if marked else (
             HIGHLIGHT_COLOR if node_id in highlight_nodes else ""
@@ -257,9 +301,8 @@ def build_dot(
         # dir=none 과 style=dashed 는 표시해도 그대로 둔다 — 테스트가 실선과
         # 점선을 이 두 속성으로 가른다.
         color = marked_color if is_marked else dash_color
-        attrs = f'dir=none, style=dashed, color="{color}"'
-        if is_marked:
-            attrs += f", penwidth={MARK_DOTTED_PENWIDTH}"
+        width = MARK_DOTTED_PENWIDTH if is_marked else DOTTED_PENWIDTH
+        attrs = f'dir=none, style=dashed, color="{color}", penwidth={width}'
 
         if labelled_dotted is True:
             show_label = True

@@ -151,6 +151,34 @@ def test_top_and_bottom_share_the_coordinates(client, recipe_ids):
     assert node_coords(payload["top"]) == node_coords(payload["variants"][""])
 
 
+def test_group_nodes_are_drawn_as_ellipses_in_both_graphs(client):
+    """대상 노드가 기능 노드와 한눈에 갈려야 한다.
+
+    build_dot 을 직접 부르는 검사만으로는 부족하다 — 조립하는 쪽(build.py)이
+    group_attrs 를 안 넘기면 화면에는 그대로 사각형이 뜨는데 그 검사들은
+    전부 통과한다(실제로 확인했다). 완성된 SVG 를 본다.
+
+    상단과 하단 둘 다여야 한다. 한쪽만 바뀌면 같은 노드가 위아래에서 달라 보인다.
+    """
+    from demo.graph_svg.dot import GROUP_COLOR, GROUP_COLOR_TOP
+    from ontology.graph import load_ontology
+
+    nodes = load_ontology()["nodes"]
+    groups = [nid for nid, node in nodes.items() if node.get("kind") == "group"]
+    assert groups and len(groups) < len(nodes), "group 이 없거나 전부면 검사가 무력하다"
+
+    payload = post(client, mode="plain")
+
+    for label, svg, color in (
+        ("top", payload["top"], GROUP_COLOR_TOP),
+        ("bottom", payload["variants"][""], GROUP_COLOR),
+    ):
+        # 타원은 정확히 group 수만큼. 기능 노드는 둥근 사각형(<path>)으로 남는다.
+        assert svg.count("<ellipse") == len(groups), label
+        assert svg.count('class="node"') == len(nodes), label
+        assert color.lower() in svg.lower(), label
+
+
 # ------------------------------------------------------------ 변형과 칩
 def test_chips_and_variants_have_the_same_keys(client, recipe_ids):
     """키가 어긋나면 그래프만 좁혀지고 목록은 그대로 남는다."""
