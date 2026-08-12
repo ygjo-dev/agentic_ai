@@ -95,6 +95,11 @@ NODE_ATTRS_TOP = NODE_ATTRS[:-1] + (f'color="{NODE_BORDER_TOP}"',)
 # 파선 간격은 못 바꾼다 — Graphviz 는 style=dashed 에 stroke-dasharray="5,2" 를
 # 고정으로 내보내고 penwidth 를 올려도 그대로다(실측). 그래서 밝기와 굵기로만 간다.
 DOTTED_PENWIDTH = 1.6
+# 상단은 실선이 아예 없다. 점선이 유일한 선이므로 배경 지도가 아니라 주인공이고,
+# 다른 선과 경쟁할 일도 없어 마음껏 굵게 둘 수 있다. 하단(1.6)과 따로 두는 이유 :
+# 하단에는 강조 실행 경로(penwidth=3)가 있어 점선이 그보다 굵으면 위계가 뒤집힌다.
+# **화면을 보고 조절할 값이다. 여기 하나만 고치면 상단 점선 굵기가 전부 바뀐다.**
+DOTTED_PENWIDTH_TOP = 4.5
 
 # 대상(group) 노드에 얹는 속성. 도형과 굵기로 기능 노드와 갈린다.
 # ellipse 는 Graphviz 기본 도형이라 안전하고, 사각형과 확실히 구분된다.
@@ -113,8 +118,12 @@ GROUP_ATTRS_TOP = (
 
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.
 MARK_NODE_PENWIDTH = 2
-MARK_DOTTED_PENWIDTH = 2.5  # 관계를 더 또렷하게
+MARK_DOTTED_PENWIDTH = 2.5  # 관계를 더 또렷하게 (기본 점선 1.6 기준)
 MARK_SOLID_PENWIDTH = 1.5  # 새 recipe 는 조연으로
+# 표시된 점선은 평소 굵기의 이 배수다. 절댓값 하나로 박아두면 상단(4.5)에서
+# **새로 생긴 점선이 평범한 점선보다 가늘어진다** — 등록 장면의 주인공이
+# 배경보다 옅어지는 셈이라 배수로 둔다. 기본 점선에서는 예전 값과 같다.
+MARK_DOTTED_RATIO = MARK_DOTTED_PENWIDTH / DOTTED_PENWIDTH
 
 # 엣지 길이(spring). 실선을 길게 둬 가로로 펴고, 점선을 짧게 둬 같은 특성끼리 모은다.
 # 두 줄 접기로 노드가 작아지면 그래프가 정방형이 되는데, 실선을 늘리면 다시 펴진다
@@ -135,6 +144,8 @@ def build_dot(
     spring=False,
     graph_attrs=(),
     dotted_labels=True,
+    draw_solid=True,
+    dotted_penwidth=None,
     node_attrs=(),
     group_attrs=(),
     mark_nodes=(),
@@ -173,6 +184,14 @@ def build_dot(
         dotted_labels: 점선 라벨을 붙일 범위. True 면 전부, False 면 없음,
             쌍의 집합이면 그것만. 끄면 화면이 깨끗해지고 노드 사이 공간이
             넓어진다. 레이아웃 자체는 바뀌지 않는다(실측).
+        draw_solid: 실선(recipe 파생)을 그릴지. False 면 실선 문장을 아예 넣지
+            않는다 — 상단이 "무엇이 무엇과 관련되는가"(점선)만 말하는 관계
+            지도가 되고, "무엇 다음에 무엇이 오는가"(실선)는 하단이 맡는다.
+            검토 표시(review_edges)가 새로 긋는 선도 실선 문법이므로 함께 빠진다.
+            **좌표는 안 바뀐다** — 전 노드가 핀이고 neato -n 이라 선을 빼도
+            배치를 다시 계산하지 않는다(테스트로 고정).
+        dotted_penwidth: 점선 굵기. 생략하면 DOTTED_PENWIDTH. 상단은 실선이
+            없어 점선이 유일한 선이므로 더 굵게 둔다(DOTTED_PENWIDTH_TOP).
         node_attrs: node [...] 기본 줄에 더할 속성들. 폰트·여백을 줄여 박스를
             작게 만드는 데 쓴다.
         group_attrs: kind == "group" 인 노드에만 더할 속성들. 도형과 색을 바꿔
@@ -236,6 +255,7 @@ def build_dot(
     dash_color = dotted_color or DOTTED_COLOR
     reviewed = {tuple(edge) for edge in review_edges}
     review_shade = review_color or REVIEW_COLOR
+    dash_width = DOTTED_PENWIDTH if dotted_penwidth is None else dotted_penwidth
 
     if dotted_labels is True or dotted_labels is False:
         labelled_dotted = dotted_labels
@@ -290,7 +310,7 @@ def build_dot(
     # 강조는 이 엣지의 색·굵기만 바꾼다. 평행 엣지를 따로 추가하면 엣지 수가
     # 조합마다 달라져 레이아웃이 흔들린다 (실측: height 256 -> 289 -> 293).
     solid_len = f", len={SOLID_LEN}" if spring else ""
-    for frm, to in solid:
+    for frm, to in solid if draw_solid else ():
         edge = (frm, to)
         is_marked = edge in marked_edges
         # mark > highlight > review. 검토 표시는 평범했을 실선만 바꾼다 —
@@ -322,8 +342,12 @@ def build_dot(
     # 검토 대상 경로 중 어느 recipe 에도 없는 연결. 그릴 실선이 없으므로 선을
     # 하나 그린다 — 좌표가 전부 핀으로 고정돼 있어(neato -n) 노드는 안 움직인다.
     # 순번(xlabel)은 없다. 실행 순서가 아니라 검토 대상이라는 표시다.
+    # 실선을 안 그리는 화면(상단)에서는 이것도 안 그린다 — 실선 문법이라
+    # 관계 지도에 실행 순서가 섞여 들어간다.
     solid_pairs = {tuple(pair) for pair in solid}
-    for frm, to in dict.fromkeys(tuple(edge) for edge in review_edges):
+    for frm, to in dict.fromkeys(
+        tuple(edge) for edge in (review_edges if draw_solid else ())
+    ):
         if (frm, to) in solid_pairs:
             continue
         if frm not in nodes or to not in nodes:
@@ -349,7 +373,7 @@ def build_dot(
         # dir=none 과 style=dashed 는 표시해도 그대로 둔다 — 테스트가 실선과
         # 점선을 이 두 속성으로 가른다.
         color = marked_color if is_marked else dash_color
-        width = MARK_DOTTED_PENWIDTH if is_marked else DOTTED_PENWIDTH
+        width = round(dash_width * MARK_DOTTED_RATIO, 2) if is_marked else dash_width
         attrs = f'dir=none, style=dashed, color="{color}", penwidth={width}'
 
         if labelled_dotted is True:

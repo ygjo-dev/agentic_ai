@@ -107,7 +107,8 @@ def test_defaults_are_byte_identical_to_omitting_the_new_arguments():
     assert build_dot(NODES, SOLID, DOTTED) == build_dot(
         NODES, SOLID, DOTTED,
         positions=None, spring=False, graph_attrs=(),
-        dotted_labels=True, node_attrs=(), group_attrs=(),
+        dotted_labels=True, draw_solid=True, dotted_penwidth=None,
+        node_attrs=(), group_attrs=(),
         mark_nodes=(), mark_edges=(), mark_dotted=(), mark_color=None,
         edge_color=None, dotted_color=None,
         review_edges=(), review_color=None,
@@ -128,8 +129,9 @@ def test_every_keyword_only_argument_is_covered_by_the_identity_test():
     }
 
     assert keyword_only == {
-        "positions", "spring", "graph_attrs", "dotted_labels", "node_attrs",
-        "group_attrs",
+        "positions", "spring", "graph_attrs", "dotted_labels",
+        "draw_solid", "dotted_penwidth",
+        "node_attrs", "group_attrs",
         "mark_nodes", "mark_edges", "mark_dotted", "mark_color",
         "edge_color", "dotted_color",
         "review_edges", "review_color",

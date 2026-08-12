@@ -310,28 +310,92 @@ def test_marking_does_not_move_a_node(client):
     assert node_coords(marked["top"]) == node_coords(plain["top"])
 
 
-def test_pending_paths_are_tinted_on_top_without_moving_nodes(client):
-    """검토 대상 경로는 상단에 다른 색으로 옅게 표시된다. 좌표는 그대로다.
+PENDING_MARK = {
+    "node_id": "generate_word", "new_solid_edges": [], "new_dotted_edges": [],
+    "pending": [{
+        "chain": ["track_inspection_doc", "find_weak_section", "generate_ppt"],
+        "steps": [],
+    }],
+}
 
-    pending 이 비면 표시도 사라진다 — 승인 뒤 화면이 이 상태다.
+
+def test_pending_paths_never_reach_the_relation_map(client):
+    """검토 표시는 실선 위에 얹는 것이다. 실선이 없는 상단에는 갈 곳이 없다.
+
+    상단은 "무엇이 무엇과 관련되는가" 만 말한다. 아직 답이 아닌 것은 경로를
+    보여주는 자리(하단)에 있는 편이 맞다.
     """
     from demo.graph_svg.dot import NEW_COLOR, REVIEW_COLOR
 
-    mark = {
-        "node_id": "generate_word", "new_solid_edges": [], "new_dotted_edges": [],
-        "pending": [{
-            "chain": ["track_inspection_doc", "find_weak_section", "generate_ppt"],
-            "steps": [],
-        }],
-    }
     plain = post(client, mode="plain")
 
-    reviewed = post(client, mode="register", mark=mark)
+    reviewed = post(client, mode="register", mark=PENDING_MARK)
 
-    assert REVIEW_COLOR.lower() in reviewed["top"].lower()
     assert REVIEW_COLOR.lower() != NEW_COLOR.lower(), "이 검사의 전제가 깨졌다"
+    assert REVIEW_COLOR.lower() not in reviewed["top"].lower()
     assert node_coords(reviewed["top"]) == node_coords(plain["top"])
 
-    # 승인이 끝나 pending 이 비면 검토 표시도 사라진다.
-    settled = post(client, mode="register", mark={**mark, "pending": []})
-    assert REVIEW_COLOR.lower() not in settled["top"].lower()
+
+# ------------------------------------------------------------ 상단 = 관계 지도
+def edge_blocks(svg: str) -> list[str]:
+    return re.findall(r'<g id="edge\d+" class="edge">(.*?)</g>', svg, re.S)
+
+
+def test_the_top_graph_draws_only_dotted_edges(client):
+    """★ 상단은 관계 지도다 — 점선만 그린다.
+
+    build_dot 만 검사하면 조립부(build.py)가 draw_solid 를 안 넘겨도 통과한다
+    (작업 17·18 에서 두 번 반복된 실패 모드다). 완성된 SVG 를 본다.
+
+    Graphviz 는 style=dashed 를 stroke-dasharray="5,2" 로 내보낸다. 상단의 모든
+    엣지가 그것을 갖고 있어야 하고, 실선 색(EDGE_COLOR_TOP)은 아예 없어야 한다.
+    """
+    from demo.graph_svg.dot import EDGE_COLOR_TOP
+
+    payload = post(client, mode="plain")
+    edges = edge_blocks(payload["top"])
+
+    assert edges, "엣지를 하나도 못 읽었다 — 검사가 무력하다"
+    for block in edges:
+        assert "stroke-dasharray" in block, block[:200]
+    assert EDGE_COLOR_TOP.lower() not in payload["top"].lower()
+
+
+def test_the_bottom_graph_still_draws_the_solid_edges(client):
+    """실선이 하단에서도 사라지면 실행 경로를 그릴 바탕이 없어진다."""
+    payload = post(client, mode="plain")
+
+    solid = [b for b in edge_blocks(payload["variants"][""]) if "dasharray" not in b]
+
+    assert solid, "하단 배경 실선이 사라졌다"
+    assert len(solid) < len(edge_blocks(payload["variants"][""])), "점선도 있어야 한다"
+
+
+def test_the_top_dotted_lines_are_thicker_than_the_bottom_ones(client):
+    """상단은 점선이 유일한 선이라 주인공이다. 하단 점선은 배경이다."""
+    def widths(svg):
+        return {
+            float(found.group(1))
+            for block in edge_blocks(svg)
+            if "dasharray" in block
+            for found in [re.search(r'stroke-width="([\d.]+)"', block)]
+            if found
+        }
+
+    payload = post(client, mode="plain")
+    top, bottom = widths(payload["top"]), widths(payload["variants"][""])
+
+    assert len(top) == 1 and len(bottom) == 1, (top, bottom)
+    assert min(top) > min(bottom), (top, bottom)
+
+
+def test_dropping_the_solid_edges_keeps_the_top_and_bottom_aligned(client):
+    """★ 실선을 빼도 좌표와 캔버스가 그대로여야 한다.
+
+    상단과 하단은 한 화면에 함께 뜨고 같은 좌표 파일을 쓴다. 상단에서만 선을
+    걷어냈는데 배치가 달라지면 위아래가 서로 다른 자리를 가리킨다.
+    """
+    payload = post(client, mode="plain")
+
+    assert node_coords(payload["top"]) == node_coords(payload["variants"][""])
+    assert canvas(payload["top"]) == canvas(payload["variants"][""])

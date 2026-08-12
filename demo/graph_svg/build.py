@@ -22,6 +22,7 @@ from demo.graph_svg import focus
 from demo.graph_svg.dot import (
     DOTTED_COLOR_BOTTOM,
     DOTTED_COLOR_TOP,
+    DOTTED_PENWIDTH_TOP,
     EDGE_COLOR,
     EDGE_COLOR_TOP,
     GROUP_ATTRS,
@@ -137,13 +138,19 @@ def cache_key(version: str, layout: str, mode: str, recipe_ids, mark) -> str:
 
 
 def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict) -> str:
-    """상단 그래프. 온톨로지 전체를 옅게 그린 배경 지도다.
+    """상단 그래프. 온톨로지의 **관계 지도**다 — 점선만 그린다.
+
+    상단은 "무엇이 무엇과 관련되는가", 하단은 "무엇 다음에 무엇이 오는가".
+    둘 다 실선과 점선을 그리면 같은 그림이 두 번 뜨고, 그러면 두 패널이 각각
+    무엇을 말하는지 구분되지 않는다. 실선(실행 순서)은 하단에 넘긴다.
+
+    solid 는 계속 받는다 — 값은 그리지 않지만 노드 목록과 캔버스 계산에
+    쓰이던 인자이고, 인자를 지우면 부르는 쪽이 두 갈래로 갈린다.
 
     발화 해석은 상단을 강조하지 않는다 — 결과는 하단이 보여준다. 노드를
-    등록했을 때만 새로 생긴 것을 표시한다.
-
-    검토 대상(review) 경로도 여기에만 표시한다 — 하단은 확정된 답(recipe)을
-    보여주는 곳이고, 검토 대상은 아직 답이 아니다.
+    등록했을 때만 **새 노드 테두리와 새 점선**을 표시한다. 새 실선(mark_edges)과
+    검토 표시(review_edges)는 실선 위에 얹는 것이라 여기서는 갈 곳이 없다 —
+    둘 다 하단이 맡는다.
     """
     return fit_svg(stack_nodes_on_top(
         render_svg(
@@ -155,14 +162,14 @@ def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict)
                 spring=True,
                 # 라벨은 어느 경우에도 안 그린다. 발표자가 말로 설명한다.
                 dotted_labels=False,
+                draw_solid=False,
+                dotted_penwidth=DOTTED_PENWIDTH_TOP,
                 node_attrs=NODE_ATTRS_TOP,
                 group_attrs=GROUP_ATTRS_TOP,
                 edge_color=EDGE_COLOR_TOP,
                 dotted_color=DOTTED_COLOR_TOP,
                 mark_nodes=mark.get("nodes") or (),
-                mark_edges=mark.get("solid") or (),
                 mark_dotted=mark.get("dotted") or (),
-                review_edges=mark.get("review") or (),
             ),
             "neato",
             no_layout=True,
