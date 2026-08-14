@@ -80,12 +80,12 @@ P = highlight_edges
 
 # 실재하는 recipe 만 쓴다. 없는 번호를 넣으면 경로가 빈 리스트가 되어 강조가
 # 하나도 안 걸리고, 검사가 조용히 무력해진다(예전 COMBOS 에 그런 항목이 있었다).
-CANDIDATES = ["recipe_002", "recipe_003", "recipe_005", "recipe_009"]
+CANDIDATES = ["recipe_002", "recipe_003", "recipe_005", "recipe_006"]
 
 COMBOS = {
     "하이라이트 없음": {},
     "SELECT 4단(순번)": {"highlight": P("recipe_002"), "highlight_nodes": recipe_nodes("recipe_002")},
-    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["track_inspection_doc"]},
+    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["track_car_cctv_video"]},
     "CLARIFY 후보 2개": {"highlight_paths": [P(r) for r in CANDIDATES[:2]]},
     "CLARIFY 후보 4개": {"highlight_paths": [P(r) for r in CANDIDATES]},
 }

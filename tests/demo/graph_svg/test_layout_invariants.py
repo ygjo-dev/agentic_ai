@@ -1,13 +1,25 @@
-"""대상 : demo/graph_svg/ — neato 배치
+"""대상 : demo/graph_svg/ — 배치 불변식. **눈이 못 보는 것을 본다**
 
-neato 배치 검증.
+`demo/` 는 시연용이고 통째로 사라질 계층이라 그 테스트는 대부분 지웠다.
+이 파일만 남는 이유는 하나다 — 여기 있는 것은 **화면을 봐도 확인할 수 없다.**
 
-이 작업의 핵심 성질 두 가지를 고정한다.
-  (1) 모든 노드를 고정하고 -n 으로 그리면 하이라이트가 어떻게 바뀌어도 좌표가 같다.
-  (2) 노드를 하나 추가해도 기존 노드는 움직이지 않는다.
+```
+로직 오염   "말이 안 되는 경로가 등록됐다"   화면을 보면 안다
+배치 오염   "노드가 3pt 움직였다"            화면을 봐도 모른다
+```
 
-(1)은 예전에 시행착오로 지키던 성질인데, -n 은 배치를 아예 계산하지 않으므로
-이제는 구조적으로 보장된다.
+3pt 는 안 보이고 30pt 면 이미 시연이 깨진 뒤다. 그래서 사람의 눈을 대신하는
+장면 테스트는 버리고, 눈이 못 보는 것만 남겼다.
+
+여기 있는 단언 대부분은 **몇 주에 걸쳐 실측으로 알아낸 배치 성질**이다.
+어떤 강조 조합에서도 좌표가 같다 · 노드를 등록해도 기존 노드가 안 움직인다 ·
+`inputscale=72` · 핀이 있으면 `overlap` 금지 · 순번은 `xlabel`.
+**지우면 다시 알아낼 방법이 없다.**
+
+원래 있던 곳 (전부 이 파일로 옮겼고 그 파일들은 지웠다) :
+`test_neato_layout.py` · `test_bottom_flow.py` · `test_top_relations.py` ·
+`test_visual_kinds.py` · `test_build_dot.py`(연기 감지 하나).
+**본문은 옮기기만 했다.** 실측으로 얻은 단언이라 손대면 무엇을 재던 것인지 잃는다.
 """
 
 import re
@@ -15,18 +27,16 @@ import shutil
 
 import pytest
 
-from demo.graph_svg.build import wrap_label
+from demo.api.services.ontology_service import domain_graph
 from demo.graph_svg.dot import (
-    DOTTED_LEN,
-    HIGHLIGHT_COLOR,
-    NEW_COLOR,
+    DOTTED_PENWIDTH,
+    DOTTED_PENWIDTH_TOP,
+    GROUP_ATTRS,
+    GROUP_ATTRS_TOP,
     NODE_ATTRS,
-    REVIEW_COLOR,
-    REVIEW_PENWIDTH,
-    SOLID_LEN,
     build_dot,
 )
-from demo.graph_svg.graphviz import _run_graphviz, layout_positions, render_svg
+from demo.graph_svg.graphviz import layout_positions, render_svg
 from demo.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
 
 pytestmark = pytest.mark.skipif(
@@ -53,6 +63,11 @@ PATH_B = [
     ("load_inspection_car_image", "detect_structure_crack"),
     ("detect_structure_crack", "generate_word"),
 ]
+# test_bottom_flow.py 에서 옮겨온 검사가 이 이름을 쓴다. 그 파일의 PATH 와 같은
+# 사슬이다 — 불러오기 -> 분석 -> 생성.
+PATH = PATH_A
+
+DOTTED_PAIR = ("load_cctv_platform", "load_inspection_car_image")
 
 
 def fresh_positions(nodes=NODES, solid=SOLID, dotted=DOTTED):
@@ -97,321 +112,6 @@ def test_pos_comes_after_label():
 
 def test_without_positions_no_pos():
     assert "pos=" not in build_dot(NODES, SOLID, DOTTED)
-
-
-def test_defaults_are_byte_identical_to_omitting_the_new_arguments():
-    """새 인자를 안 넘겼을 때 출력이 예전과 완전히 같아야 한다.
-
-    tests/graph_rendering 의 40여 개가 기존 출력 문자열에 의존한다.
-    """
-    assert build_dot(NODES, SOLID, DOTTED) == build_dot(
-        NODES, SOLID, DOTTED,
-        positions=None, spring=False, graph_attrs=(),
-        dotted_labels=True, draw_solid=True, dotted_penwidth=None,
-        node_attrs=(), group_attrs=(),
-        mark_nodes=(), mark_edges=(), mark_dotted=(), mark_color=None,
-        edge_color=None, dotted_color=None,
-        review_edges=(), review_color=None,
-    )
-
-
-def test_every_keyword_only_argument_is_covered_by_the_identity_test():
-    """위 테스트가 새 인자를 빠뜨리면 회귀 방어가 뚫린다.
-
-    인자를 더하고 위 테스트에 열거하는 것을 잊으면 여기서 잡힌다.
-    """
-    import inspect
-
-    keyword_only = {
-        name
-        for name, param in inspect.signature(build_dot).parameters.items()
-        if param.kind is inspect.Parameter.KEYWORD_ONLY
-    }
-
-    assert keyword_only == {
-        "positions", "spring", "graph_attrs", "dotted_labels",
-        "draw_solid", "dotted_penwidth",
-        "node_attrs", "group_attrs",
-        "mark_nodes", "mark_edges", "mark_dotted", "mark_color",
-        "edge_color", "dotted_color",
-        "review_edges", "review_color",
-    }
-
-
-# ------------------------------------------------------------ 노드 축소
-def test_dotted_labels_off_removes_the_label():
-    """점선 라벨이 화면을 어지럽히고 노드 사이 공간을 잡아먹는다."""
-    dot = build_dot(NODES, SOLID, DOTTED, dotted_labels=False)
-
-    assert "source: cctv" not in dot
-    assert "label=" not in next(l for l in dot.splitlines() if "dashed" in l)
-
-
-def test_dotted_labels_on_by_default():
-    assert "source: cctv" in build_dot(NODES, SOLID, DOTTED)
-
-
-def test_node_attrs_land_on_the_node_line():
-    """값을 박아두지 않는다 — 글씨 크기는 화면을 재서 바뀌는 값이고,
-    여기서 지키려는 성질은 "넘긴 것이 전부 node 줄에 실린다" 뿐이다."""
-    dot = build_dot(NODES, SOLID, DOTTED, node_attrs=NODE_ATTRS)
-
-    node_line = next(l for l in dot.splitlines() if l.strip().startswith("node ["))
-    for attr in NODE_ATTRS:
-        assert attr in node_line
-
-
-def test_wrap_label_folds_at_the_middle_space():
-    assert wrap_label("승강장 CCTV 불러오기") == "승강장 CCTV\\n불러오기"
-
-
-def test_wrap_label_leaves_names_without_spaces_alone():
-    assert wrap_label("Word생성") == "Word생성"
-
-
-def test_wrap_label_never_splits_inside_a_word():
-    """글자 중간에서 자르면 한글이 안 읽힌다."""
-    for name in (node["name"] for node in NODES.values()):
-        for part in wrap_label(name).split("\\n"):
-            assert part in name
-
-
-# penwidth= 안의 "width=" 에 걸리면 안 된다. 강조된 노드를 잴 때 실제로 물렸다.
-_WIDTH_ATTR = re.compile(r"(?<![a-zA-Z])width=([\d.]+)")
-
-
-def max_node_width(dot: str) -> float:
-    """neato 가 계산한 가장 넓은 노드의 폭(pt)."""
-    out = _run_graphviz(dot, "neato", ["-Tdot"])
-    flat = re.sub(r'"?[\w]+"?\s*->\s*"?[\w]+"?\s*\[[^\]]*\];', " ", re.sub(r"\s+", " ", out))
-    widths = [
-        float(m.group(1))
-        for block in re.finditer(r'"?[A-Za-z_]\w*"?\s*\[([^\]]*)\]\s*;', flat)
-        for m in [_WIDTH_ATTR.search(block.group(1))]
-        if m
-    ]
-    return max(widths) * 72  # 인치 -> 포인트
-
-
-def test_width_helper_is_not_fooled_by_penwidth():
-    """penwidth=2 를 width=2 로 잘못 읽으면 강조된 노드가 144pt 로 잡힌다.
-
-    실측 스크립트에서 실제로 물렸던 함정이라 헬퍼에 테스트를 붙여 둔다.
-    """
-    plain = max_node_width(build_dot(NODES, SOLID, DOTTED))
-    marked = max_node_width(build_dot(NODES, SOLID, DOTTED, mark_nodes=set(NODES)))
-
-    assert plain == marked
-
-
-def test_shrinking_makes_nodes_narrower():
-    """가로 폭이 줄어야 새 노드가 들어갈 자리가 생긴다."""
-    plain = max_node_width(
-        build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
-    )
-    shrunk = max_node_width(
-        build_dot(
-            {k: {**v, "name": wrap_label(v["name"])} for k, v in NODES.items()},
-            SOLID, DOTTED,
-            spring=True, graph_attrs=NEATO_FRESH_ATTRS,
-            node_attrs=NODE_ATTRS, dotted_labels=False,
-        )
-    )
-
-    assert shrunk < plain * 0.75, f"{plain:.0f} -> {shrunk:.0f}"
-
-
-def test_spring_sets_edge_lengths():
-    """점선이 실선보다 짧아야 같은 특성끼리 서로 끌어당겨 모인다."""
-    dot = build_dot(NODES, SOLID, DOTTED, spring=True)
-
-    solid_lines = [l for l in dot.splitlines() if "dir=none" in l and "dashed" not in l]
-    dotted_lines = [l for l in dot.splitlines() if "dashed" in l]
-
-    assert solid_lines and all(f"len={SOLID_LEN}" in l for l in solid_lines)
-    assert dotted_lines and all(f"len={DOTTED_LEN}" in l for l in dotted_lines)
-
-
-def test_solid_edges_are_longer_than_dotted():
-    """실선이 길어야 가로로 펴지고, 점선이 짧아야 같은 특성끼리 모인다."""
-    assert SOLID_LEN > DOTTED_LEN
-
-
-def test_without_spring_no_len():
-    assert "len=" not in build_dot(NODES, SOLID, DOTTED)
-
-
-def test_graph_attrs_land_on_the_graph_line():
-    dot = build_dot(NODES, SOLID, DOTTED, graph_attrs=NEATO_FRESH_ATTRS)
-
-    graph_line = next(l for l in dot.splitlines() if l.strip().startswith("graph ["))
-    assert "inputscale=72" in graph_line
-    assert "overlap=voronoi" in graph_line
-
-
-def test_no_stages_means_no_rank_block():
-    """열 정렬을 그만뒀다. rank=same 이 남으면 여전히 열이 생긴다."""
-    assert "rank=same" not in build_dot(NODES, SOLID, DOTTED, spring=True)
-
-
-# ------------------------------------------------------------ mark 레이어
-DOTTED_PAIR = ("load_cctv_platform", "load_inspection_car_image")
-
-
-def test_mark_edges_get_no_order_label():
-    """등록 강조는 실행 순서가 아니라 '새로 생긴 것' 이다."""
-    edge = ("load_cctv_platform", "analyze_congestion")
-    dot = build_dot(NODES, SOLID, DOTTED, highlight=[edge], mark_edges={edge})
-
-    line = next(l for l in dot.splitlines() if '"load_cctv_platform" -> "analyze_congestion"' in l)
-    assert "xlabel" not in line, line
-
-
-def test_mark_dotted_accepts_either_order():
-    """점선은 방향이 없다. 어느 순서로 받아도 같은 쌍이어야 한다."""
-    forward = build_dot(NODES, SOLID, DOTTED, mark_dotted={DOTTED_PAIR})
-    backward = build_dot(NODES, SOLID, DOTTED, mark_dotted={DOTTED_PAIR[::-1]})
-
-    assert forward == backward
-
-
-def test_mark_colour_can_be_overridden():
-    dot = build_dot(NODES, SOLID, DOTTED, mark_nodes={"generate_word"}, mark_color="#123456")
-
-    line = next(l for l in dot.splitlines() if '"generate_word" [label=' in l)
-    assert "#123456" in line
-    assert NEW_COLOR not in line
-
-
-def test_mark_wins_over_highlight():
-    """둘 다 걸리면 새로 생긴 것이 먼저 눈에 띄어야 한다."""
-    dot = build_dot(
-        NODES, SOLID, DOTTED,
-        highlight_nodes={"generate_word"}, mark_nodes={"generate_word"},
-    )
-
-    line = next(l for l in dot.splitlines() if '"generate_word" [label=' in l)
-    assert NEW_COLOR in line
-    assert HIGHLIGHT_COLOR not in line
-
-
-def test_no_marks_means_no_new_colour_anywhere():
-    """mark 를 안 넘기면 NEW_COLOR 가 문자열에 아예 없어야 한다."""
-    assert NEW_COLOR not in build_dot(NODES, SOLID, DOTTED)
-
-
-# ------------------------------------------------------------ review 레이어
-# 검토 대상(대상이 어긋나는 경로) 표시. 차단이 아니라 분류다 — 사람이 승인할
-# 때까지 recipe 가 아니므로 mark(새로 생긴 것)와 다른 색으로 옅게 보인다.
-def test_review_recolors_an_existing_edge():
-    """이미 실선이 있는 연결은 색과 굵기만 바꾼다. 선을 더 긋지 않는다."""
-    edge = ("load_cctv_platform", "analyze_congestion")
-
-    dot = build_dot(NODES, SOLID, DOTTED, review_edges=[edge])
-
-    lines = [
-        l for l in dot.splitlines()
-        if '"load_cctv_platform" -> "analyze_congestion"' in l
-    ]
-    assert len(lines) == 1, "평행 엣지가 생겼다 — 레이아웃이 흔들린다"
-    assert REVIEW_COLOR in lines[0]
-    assert f"penwidth={REVIEW_PENWIDTH}" in lines[0]
-    assert "xlabel" not in lines[0], "검토 표시는 실행 순서가 아니다"
-
-
-def test_review_draws_a_line_for_an_edge_no_recipe_has():
-    """어느 recipe 에도 없는 연결은 선이 없으므로 하나 그린다.
-
-    점선(dashed)이 아니다 — 점선은 about 관계다. 검토 대상은 '실행 경로가 될
-    수도 있는 것' 이라 실선 문법을 쓰되 색으로 가른다. 방향도 보여준다 —
-    승인되면 그대로 실행 순서가 되는 길이다.
-    """
-    edge = ("analyze_congestion", "detect_structure_crack")  # SOLID 에 없다
-
-    dot = build_dot(NODES, SOLID, DOTTED, review_edges=[edge])
-
-    line = next(
-        l for l in dot.splitlines()
-        if '"analyze_congestion" -> "detect_structure_crack"' in l
-    )
-    assert REVIEW_COLOR in line
-    assert "dir=forward" in line
-    assert "dashed" not in line
-
-
-def test_mark_wins_over_review():
-    """같은 연결이 새로 생겼으면서 검토 대상 경로에도 걸리면 새로 생긴 사실이 먼저다."""
-    edge = ("load_cctv_platform", "analyze_congestion")
-
-    dot = build_dot(NODES, SOLID, DOTTED, review_edges=[edge], mark_edges=[edge])
-
-    line = next(
-        l for l in dot.splitlines()
-        if '"load_cctv_platform" -> "analyze_congestion"' in l
-    )
-    assert NEW_COLOR in line
-    assert REVIEW_COLOR not in line
-
-
-def test_no_review_means_no_review_colour_anywhere():
-    assert REVIEW_COLOR not in build_dot(NODES, SOLID, DOTTED)
-
-
-def test_a_review_edge_to_an_undrawn_node_is_skipped():
-    """화면에 없는 노드로는 선을 못 긋는다 — neato -n 은 좌표 없는 노드를
-    놓을 자리를 몰라 그래프 전체가 안 그려질 수 있다."""
-    dot = build_dot(
-        NODES, SOLID, DOTTED, review_edges=[("analyze_congestion", "ghost_node")]
-    )
-
-    assert "ghost_node" not in dot
-
-
-def test_review_never_moves_a_node():
-    """검토 표시는 색이다. 좌표가 움직이면 등록 순간 지도가 튄다."""
-    positions = fresh_positions()
-
-    def draw(review):
-        return render_svg(
-            build_dot(
-                NODES, SOLID, DOTTED,
-                positions=positions, spring=True, review_edges=review,
-            ),
-            "neato",
-            no_layout=True,
-        )
-
-    base = svg_node_coords(draw(()))
-    assert len(base) == len(NODES)
-    # 이미 있는 실선 + 새로 긋는 선을 섞어도 좌표가 같아야 한다.
-    review = [
-        ("load_cctv_platform", "analyze_congestion"),
-        ("analyze_congestion", "detect_structure_crack"),
-    ]
-    assert svg_node_coords(draw(review)) == base
-
-
-# ------------------------------------------------------------ 선택적 점선 라벨
-def test_only_the_named_dotted_pair_gets_a_label():
-    two_dotted = {
-        DOTTED_PAIR: ["source: cctv"],
-        ("analyze_congestion", "detect_structure_crack"): ["target: 승강장"],
-    }
-
-    dot = build_dot(NODES, SOLID, two_dotted, dotted_labels={DOTTED_PAIR})
-
-    assert "source: cctv" in dot
-    assert "target: 승강장" not in dot
-
-
-def test_selective_labels_accept_either_order():
-    dot = build_dot(NODES, SOLID, DOTTED, dotted_labels={DOTTED_PAIR[::-1]})
-
-    assert "source: cctv" in dot
-
-
-def test_empty_label_set_shows_nothing():
-    assert "source: cctv" not in build_dot(NODES, SOLID, DOTTED, dotted_labels=set())
 
 
 # ------------------------------------------------------------ 좌표 왕복
@@ -695,3 +395,217 @@ def test_dense_graph_would_move_if_overlap_removal_were_used():
     before, after = dense_after_adding(BARE_FRESH_ATTRS)
 
     assert worst_drift(before, after) > 1.0
+
+
+# ------------------------------------------------------------ 화살표와 순번
+# test_bottom_flow.py 에서 옮겨왔다.
+@pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
+def test_arrows_and_bigger_numbers_never_move_a_node():
+    """화살표와 순번은 그리기지 배치가 아니다.
+
+    xlabel 은 레이아웃에 관여하지 않는다(label 과 달리). 캔버스는 커질 수 있다 —
+    글자가 그림 밖으로 나가면 bbox 가 따라 넓어진다. 그것은 재서 보고한다.
+    """
+    positions = layout_positions(
+        build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
+    )
+
+    def coords(**kwargs):
+        svg = render_svg(
+            build_dot(NODES, SOLID, DOTTED, positions=positions, spring=True, **kwargs),
+            "neato",
+            no_layout=True,
+        )
+        found = {}
+        for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
+            title = re.search(r"<title>([a-z_]+)</title>", block)
+            pos = re.search(r'text-anchor="middle" x="([-\d.]+)" y="([-\d.]+)"', block)
+            if title and pos:
+                found[title.group(1)] = (float(pos.group(1)), float(pos.group(2)))
+        return found
+
+    base = coords()
+    assert len(base) == len(NODES), "노드 좌표를 못 읽었다 — 검사가 무력하다"
+    assert coords(highlight=PATH) == base
+    assert coords(
+        mark_edges=[PATH[0]]
+    ) == base
+
+
+# ------------------------------------------------------------ 실선 · 점선 굵기
+# test_top_relations.py 에서 옮겨왔다. 그 파일의 그래프 대신 이 파일의 그래프로
+# 잰다 — 두 검사가 보는 것은 "실선을 빼도 · 점선을 굵혀도 좌표가 같다" 이고,
+# 어느 그래프든 실선과 점선이 하나씩 있으면 그대로 성립한다.
+@pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
+def test_removing_the_solid_edges_never_moves_a_node():
+    """★ 전 노드가 핀이고 neato -n 이라 선을 빼도 배치를 다시 계산하지 않는다.
+
+    이 성질이 없으면 상단에서 실선을 걷어내는 순간 지도가 통째로 재배치되고,
+    위아래가 서로 다른 자리를 가리키게 된다. 캔버스까지 함께 본다 — 좌표가
+    같아도 캔버스가 달라지면 축소 배율이 갈려 위아래 크기가 어긋난다.
+    """
+    positions = layout_positions(
+        build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
+    )
+
+    def drawn(**kwargs):
+        svg = render_svg(
+            build_dot(NODES, SOLID, DOTTED, positions=positions, spring=True, **kwargs),
+            "neato",
+            no_layout=True,
+        )
+        coords = {}
+        for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
+            title = re.search(r"<title>([a-z_]+)</title>", block)
+            pos = re.search(r'text-anchor="middle" x="([-\d.]+)" y="([-\d.]+)"', block)
+            if title and pos:
+                coords[title.group(1)] = (float(pos.group(1)), float(pos.group(2)))
+        return coords, re.search(r'viewBox="([^"]+)"', svg).group(1)
+
+    with_solid, box = drawn()
+    assert len(with_solid) == len(NODES), "노드 좌표를 못 읽었다 — 검사가 무력하다"
+
+    without_solid, box_without = drawn(draw_solid=False)
+
+    assert without_solid == with_solid
+    assert box_without == box
+
+
+@pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
+def test_a_thicker_dotted_line_never_moves_a_node():
+    """굵기는 색과 같다 — 그리기지 배치가 아니다."""
+    positions = layout_positions(
+        build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
+    )
+
+    def coords(width):
+        svg = render_svg(
+            build_dot(NODES, SOLID, DOTTED, positions=positions, spring=True,
+                      draw_solid=False, dotted_penwidth=width),
+            "neato",
+            no_layout=True,
+        )
+        return re.findall(r'text-anchor="middle" x="([-\d.]+)" y="([-\d.]+)"', svg)
+
+    assert coords(DOTTED_PENWIDTH_TOP) == coords(DOTTED_PENWIDTH)
+
+
+# ------------------------------------------------------------ 시각 스타일
+# test_visual_kinds.py 에서 옮겨왔다. **대상(group) 노드가 있는 그래프가
+# 필요하다** — 위 그래프에는 group 이 없어 group_attrs 를 켜도 아무 일이 안 일어나
+# 검사가 무력해진다. 그래서 그 파일의 데이터를 이름만 GROUP_ 접두로 바꿔 함께
+# 옮겼다(같은 파일에 NODES 가 둘일 수 없다). 단언은 한 글자도 안 고쳤다.
+GROUP_NODES = {
+    "group_track": {"kind": "group", "name": "궤도"},
+    "load_track_image": {
+        "kind": "function", "name": "궤도 검측 이미지 불러오기",
+        "inputs": [], "outputs": ["ImageData"],
+    },
+    "detect_track_crack": {
+        "kind": "function", "name": "궤도 균열 검출",
+        "inputs": ["ImageData"], "outputs": ["AnalysisResult"],
+    },
+    "generate_word": {
+        "kind": "function", "name": "Word 보고서 생성",
+        "inputs": ["AnalysisResult"], "outputs": ["DocumentData"],
+    },
+}
+GROUP_SOLID = {
+    ("load_track_image", "detect_track_crack"): "ImageData",
+    ("detect_track_crack", "generate_word"): "AnalysisResult",
+}
+GROUP_DOTTED = {("detect_track_crack", "group_track"): ["about"]}
+GROUP_PATH = [("load_track_image", "detect_track_crack"),
+              ("detect_track_crack", "generate_word")]
+
+
+@pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
+def test_the_visual_style_never_moves_a_node():
+    """도형과 색을 바꿔도 좌표와 캔버스가 그대로여야 한다.
+
+    노드를 눌러 좁히거나 등록 강조가 켜질 때 지도가 흔들리면 보던 자리를 잃는다.
+    좌표를 전부 고정하고 neato -n 으로 그려 구조적으로 보장하지만, 그 보장이
+    깨지면 화면에서만 드러나므로 여기서 못을 박는다.
+    """
+    positions = layout_positions(
+        build_dot(GROUP_NODES, GROUP_SOLID, GROUP_DOTTED, spring=True,
+                  graph_attrs=NEATO_FRESH_ATTRS)
+    )
+
+    def drawn(**kwargs):
+        svg = render_svg(
+            build_dot(GROUP_NODES, GROUP_SOLID, GROUP_DOTTED, positions=positions,
+                      spring=True, node_attrs=NODE_ATTRS, graph_attrs=NEATO_ATTRS,
+                      **kwargs),
+            "neato", no_layout=True,
+        )
+        coords = {}
+        for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
+            title = re.search(r"<title>([a-z_]+)</title>", block)
+            pos = re.search(r'text-anchor="middle" x="([-\d.]+)" y="([-\d.]+)"', block)
+            if title and pos:
+                coords[title.group(1)] = (
+                    round(float(pos.group(1)), 1), round(float(pos.group(2)), 1)
+                )
+        size = re.search(r'viewBox="([^"]+)"', svg)
+        return coords, size.group(1)
+
+    # 스타일은 고정하고 강조만 바꾼다. 프로덕션이 그렇게 부른다 — 한 화면 안의
+    # 변형들은 전부 같은 group_attrs 로 그려지고, 달라지는 것은 강조뿐이다.
+    base_coords, base_box = drawn(group_attrs=GROUP_ATTRS)
+    assert base_coords, "노드 좌표를 하나도 못 읽었다 — 검사가 무력하다"
+
+    for name, kwargs in (
+        ("경로 강조", {"highlight": GROUP_PATH}),
+        ("노드 강조", {"highlight_nodes": ["detect_track_crack"]}),
+        ("등록 강조", {"mark_nodes": {"group_track"}}),
+        ("점선 강조", {"mark_dotted": [("detect_track_crack", "group_track")]}),
+    ):
+        coords, box = drawn(group_attrs=GROUP_ATTRS, **kwargs)
+        assert coords == base_coords, f"{name} 에서 노드가 움직였다"
+        assert box == base_box, f"{name} 에서 캔버스가 달라졌다"
+
+
+@pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
+def test_the_top_and_bottom_styles_have_the_same_geometry():
+    """상단과 하단은 색만 다르고 크기는 같아야 한다.
+
+    둘은 한 화면에 함께 뜨고 같은 좌표 파일을 쓴다. 도형이나 굵기가 갈리면
+    노드 크기가 달라져 위아래가 미묘하게 어긋나 보인다.
+
+    실측으로 알아낸 것 : ellipse 는 box 보다 크다. group 스타일을 켜고 끄면
+    캔버스가 커지면서 모든 노드가 통째로 5pt 씩 밀린다(화면에는 평행이동이라
+    안 보이지만, 위아래가 서로 다른 도형을 쓰면 진짜로 어긋난다).
+    """
+    geometry = lambda attrs: [  # noqa: E731 — 색만 지운 속성 목록
+        attr for attr in attrs if not attr.startswith(("color=", "fontcolor="))
+    ]
+
+    assert geometry(GROUP_ATTRS) == geometry(GROUP_ATTRS_TOP)
+    assert GROUP_ATTRS != GROUP_ATTRS_TOP, "색은 달라야 한다 — 상단이 한 단계 옅다"
+
+
+# ------------------------------------------------------------ 연기 감지
+# test_build_dot.py 에서 옮겨왔다. 그 파일의 나머지(DOT 문법 · 색 · 강조)는
+# 지웠지만 이것만 남긴다 — 온톨로지를 손보다 DOT 이 깨지면 시연이 백지가 되는데,
+# 실제 데이터를 한 번 통과시키는 이것 하나면 잡힌다.
+def test_graphviz_accepts_the_real_ontology():
+    """실제 데이터로도 파싱되는지 본다. 고정 데이터만 쓰면 놓치는 게 있다."""
+    from ontology.graph import highlight_edges, recipe_nodes
+
+    if not shutil.which("dot"):
+        pytest.skip("graphviz 가 설치되어 있지 않다")
+
+    nodes, solid, dotted = domain_graph()
+    svg = render_svg(
+        build_dot(
+            nodes,
+            solid,
+            dotted,
+            highlight=highlight_edges("recipe_001"),
+            highlight_nodes=recipe_nodes("recipe_001"),
+        )
+    )
+
+    assert "<svg" in svg
+    assert nodes["platform_cctv_video"]["name"] in svg, "한글 라벨이 SVG 에 실리지 않았다."
