@@ -620,20 +620,27 @@ def test_the_top_and_bottom_styles_have_the_same_geometry():
 # 지웠지만 이것만 남긴다 — 온톨로지를 손보다 DOT 이 깨지면 시연이 백지가 되는데,
 # 실제 데이터를 한 번 통과시키는 이것 하나면 잡힌다.
 def test_graphviz_accepts_the_real_ontology():
-    """실제 데이터로도 파싱되는지 본다. 고정 데이터만 쓰면 놓치는 게 있다."""
+    """실제 데이터로도 파싱되는지 본다. 고정 데이터만 쓰면 놓치는 게 있다.
+
+    **어느 recipe 든 상관없다.** 보는 것은 "실제 데이터로 DOT 이 파싱되는가"
+    하나뿐이라 첫 번째를 쓴다 — 번호를 적어 두면 온톨로지가 바뀌어 번호가
+    밀렸을 때 없는 recipe 를 가리키게 된다.
+    """
+    from demo.api.services.ontology_service import recipe_ids
     from ontology.graph import highlight_edges, recipe_nodes
 
     if not shutil.which("dot"):
         pytest.skip("graphviz 가 설치되어 있지 않다")
 
+    sample = recipe_ids()[0]
     nodes, solid, dotted = domain_graph()
     svg = render_svg(
         build_dot(
             nodes,
             solid,
             dotted,
-            highlight=highlight_edges("recipe_001"),
-            highlight_nodes=recipe_nodes("recipe_001"),
+            highlight=highlight_edges(sample),
+            highlight_nodes=recipe_nodes(sample),
         )
     )
 

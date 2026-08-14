@@ -32,17 +32,41 @@ from demo.graph_svg.dot import (
     PATH_NEW,
     PATH_NEW_DIM,
 )
+from demo.api.services.ontology_service import recipe_ids
 from ontology.graph import recipe_nodes
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
 )
 
+
 # 끝노드가 갈리는 조합을 고른다. 셋 다 같은 곳에서 끝나면 변형이 한 벌뿐이라
 # "좁히면 나머지가 옅어진다" 를 검사할 수 없다.
-#   recipe_002 · recipe_005 -> generate_word
-#   recipe_003              -> generate_ppt
-REGISTERED = ["recipe_002", "recipe_003", "recipe_005"]
+#
+# **번호를 적지 않는다.** 여기 필요한 성질은 "끝나는 곳이 서로 다른 recipe 셋"
+# 하나뿐인데, 번호는 온톨로지가 바뀌면 통째로 밀린다. 밀린 번호를 그대로 두면
+# 끝노드가 겹쳐 변형이 줄고 검사가 조용히 무력해진다.
+#
+# 이 값들은 진짜로 등록한 결과가 아니라 /render 에 넘길 mark 를 짓는 재료다.
+# 다만 recipe 자체는 실재해야 한다 — recipe_nodes 와 /render 가 파일을 읽는다.
+def _by_endpoint(count: int) -> dict[str, str]:
+    """끝노드 -> recipe id. 끝노드가 겹치는 것은 첫 번째만 남기고 count 개까지."""
+    found: dict[str, str] = {}
+    for recipe_id in recipe_ids():
+        chain = recipe_nodes(recipe_id)
+        if chain and chain[-1] not in found:
+            found[chain[-1]] = recipe_id
+        if len(found) == count:
+            break
+    return found
+
+
+BY_ENDPOINT = _by_endpoint(3)
+REGISTERED = list(BY_ENDPOINT.values())
+
+# 좁힐 때 누를 끝노드. 가장 짧은 경로의 끝을 고른다 — 좁히면 짙은 엣지가
+# 반드시 줄어드는 것이 보장된다.
+NARROW_TO = min(BY_ENDPOINT, key=lambda node: len(recipe_nodes(BY_ENDPOINT[node])))
 
 # 등록 응답에서 그리기가 쓰는 것만 줄인 형태. render_service 가 그대로 받는다.
 MARK = {
@@ -124,7 +148,8 @@ def test_the_registration_actually_draws_paths(registered):
     """변형이 여러 벌이고 경로가 실제로 칠해져야 아래 검사들이 뜻을 가진다."""
     variants = registered["variants"]
 
-    assert set(variants) >= {"", "generate_word", "generate_ppt"}
+    assert len(BY_ENDPOINT) == 3, f"끝노드가 갈리는 recipe 가 셋이 안 된다: {BY_ENDPOINT}"
+    assert set(variants) >= {"", *BY_ENDPOINT}
     assert edges_of_colour(variants[""], PATH_NEW)
 
 
@@ -140,7 +165,7 @@ def test_every_new_path_starts_bright(registered):
 def test_narrowing_dims_the_other_recipes(registered):
     """끝노드를 누르면 그것으로 끝나는 경로만 짙게 남는다."""
     variants = registered["variants"]
-    narrowed = variants["generate_ppt"]
+    narrowed = variants[NARROW_TO]
 
     assert used(PATH_NEW, narrowed)
     assert used(PATH_NEW_DIM, narrowed)
