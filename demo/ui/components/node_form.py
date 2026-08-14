@@ -23,8 +23,8 @@ NODE_SAMPLES = [
     # 화질 저하는 CCTV 에 관한 일이다. LLM 이 여럿을 고를 수 있는지 보여준다.
     (
         "CCTV 화질 저하 진단",
-        "영상에서 렌즈 오염으로 인한 화질 저하를 진단한다.",
-        ["video"],
+        "이미지에서 오염으로 인한 화질 저하를 진단한다.",
+        ["image"],
         ["analysis"],
     ),
     # 어느 대상에도 매이지 않는 범용 노드. 대상이 비어 점선이 안 생긴다.
@@ -176,5 +176,3 @@ def _show_result():
             st.caption(f"속한 대상 : {result.get('group') or '(없음)'}")
             st.caption(f"reason : {result['reason']}")
         st.caption(f"새 recipe {len(result['recipe_ids'])}개 : {', '.join(result['recipe_ids'])}")
-        if result.get("pending"):
-            st.caption(f"검토 대상 {len(result['pending'])}개")

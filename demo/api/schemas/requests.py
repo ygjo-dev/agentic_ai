@@ -25,19 +25,6 @@ class NodeRegisterRequest(BaseModel):
     outputs: list[str] = Field(min_length=1)
 
 
-class NodeApproveRequest(BaseModel):
-    """검토 관문에서 사람이 고른 경로들. 노드 id 목록의 목록이다.
-
-    POST /nodes 응답의 pending[*].chain 을 그대로 되돌려 보내는 형태다.
-    제안에 없던 경로는 registry 가 거부한다(UnproposedChain) — 형식 검증은
-    여기서 하고, 내용 검증은 도메인이 한다.
-
-    빈 목록도 유효하다. 아무것도 승인하지 않으면 후보는 그냥 버려진다.
-    """
-
-    chains: list[list[str]] = []
-
-
 class RenderRequest(BaseModel):
     """무엇을 강조해 그릴지.
 

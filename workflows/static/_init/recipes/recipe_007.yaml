@@ -1,5 +1,0 @@
-steps:
-
-  - node: track_inspection_doc
-
-  - node: find_weak_section

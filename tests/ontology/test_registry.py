@@ -4,10 +4,9 @@
 
   1. LLM 이 노드 id 와 무엇에 관한 것인지를 정한다
   2. 온톨로지에 노드를 넣고 관계(hasInput · hasOutput · about)를 붙인다
-  3. 새 노드를 지나는 실행 경로를 만들어 대상(about) 기준으로 가른다
-       대상이 통하는 것    -> 조용히 recipe 파일 + menu (자동 승격)
-       대상이 어긋나는 것  -> pending. 사람이 고른 것만 approve 로 승격
-  4. menu 에 승격된 recipe 들의 기능 문장을 더한다
+  3. 새 노드를 지나는 실행 경로를 만든다. **대상이 어긋나는 것은 버린다**
+       궤도 검측차 영상으로 승강장 승객을 보는 경로 같은 것들이다
+  4. 남은 경로를 recipe 파일로 쓰고 menu 에 기능 문장을 더한다
 
 **앞이 실패하면 뒤는 돌지 않는다.** 온톨로지에 못 넣은 노드로 recipe 를 만들면
 존재하지 않는 노드를 가리키게 된다.
@@ -32,31 +31,28 @@ from ontology.registry import (
     DuplicateNode,
     InvalidInference,
     UnknownType,
-    UnproposedChain,
     _describe_groups,
     add_node,
     append_menu,
     append_recipes,
-    approve,
     check_types,
     function_for,
     group_ids,
     infer_node,
     new_recipes_for,
-    propose,
     register_node,
     reset_to_init,
 )
 
 FORM = {
-    "name": "궤도 결함 이력 요약",
-    "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
-    "inputs": ["document"],
+    "name": "궤도 침하 검출",
+    "description": "이미지에서 궤도 노반의 침하를 검출한다.",
+    "inputs": ["image"],
     "outputs": ["analysis"],
 }
 
 INFERRED = {
-    "node_id": "analyze_crack_trend",
+    "node_id": "detect_track_settlement",
     "groups": ["group_track"],
     "reason": "궤도 균열 검출과 같은 대상에 관한 것이다.",
 }
@@ -108,7 +104,7 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
     """
     result = infer_node(FORM, llm_client=stub())
 
-    assert result["node_id"] == "analyze_crack_trend"
+    assert result["node_id"] == "detect_track_settlement"
     assert result["groups"] == ["group_track"]
     assert result["reason"]
 
@@ -233,7 +229,7 @@ def test_types_that_do_not_exist_are_rejected():
             check_types(broken)
 
     # 있는 타입은 통과한다. 위 검사가 무조건 터지는 것이 아님을 보인다.
-    check_types(["document", "analysis"])
+    check_types(["image", "analysis"])
 
     assert paths.ONTOLOGY_PATH.read_bytes() == before
 
@@ -244,8 +240,8 @@ def test_only_paths_through_the_new_node_are_created():
 
     이 함수는 파일을 쓰지 않는다 — 경로 목록만 돌려준다.
     """
-    # 영상만 받는 노드다. 문서로는 이 노드에 닿을 길이 없다 — 문서를 영상으로
-    # 바꾸는 노드가 온톨로지에 없기 때문이다.
+    # 영상만 받는 노드다. 분석결과로는 이 노드에 닿을 길이 없다 — 분석결과를
+    # 영상으로 바꾸는 노드가 온톨로지에 없기 때문이다.
     add_node("detect_intrusion", {"name": "선로 침입 검출",
                                   "description": "영상에서 선로 침입을 검출한다."})
     store.append_edge("detect_intrusion", "video", HAS_INPUT)
@@ -260,8 +256,9 @@ def test_only_paths_through_the_new_node_are_created():
         assert "detect_intrusion" in chain
     assert len({tuple(chain) for chain in chains}) == len(chains), "중복 경로"
 
-    # 닿을 수 없는 시작점은 제외된다.
-    assert not [c for c in chains if c[0] == "track_inspection_doc"]
+    # 닿을 수 없는 자리는 제외된다. 이 노드는 영상만 받으므로 분석결과를
+    # 내놓는 노드 뒤에는 절대 붙지 않는다.
+    assert not [c for c in chains if "analyze_congestion" in c]
     assert [c for c in chains if c[0] == "platform_cctv_video"]
 
     # 다른 노드를 넣으면 그 노드를 지나는 경로만 나온다. 새 노드가 안 낀 경로는
@@ -270,11 +267,9 @@ def test_only_paths_through_the_new_node_are_created():
     assert others and all("generate_word" in chain for chain in others)
     assert not [c for c in others if "detect_intrusion" in c and "generate_word" not in c]
 
-    # 산출 보고서는 문서의 한 종류라 다시 문서 분석에 들어갈 수 있다. 뜻으로는
-    # 어색하지만(보고서를 만들고 그 보고서에서 취약 구간을 찾는다) 타입상으로는
-    # 맞다. **막지 않는다** — 무엇이 말이 되는지 고르는 것은 사람의 일이고,
-    # 그 승인 절차가 다음 작업이다.
-    assert [c for c in others if c[-1] != "generate_word"]
+    # 문서를 받는 노드가 없어 산출물이 다시 입력으로 되먹임되지 않는다.
+    # 생성 노드는 경로의 끝이다.
+    assert all(c[-1] == "generate_word" for c in others)
 
     assert json.dumps(nodes_now(), sort_keys=True) == before, "온톨로지를 건드렸다"
 
@@ -291,17 +286,18 @@ def test_a_created_path_is_runnable_and_short():
     """
     from ontology.graph import can_connect
 
-    add_node("translate_doc", {"name": "문서 번역", "description": "문서를 번역한다."})
-    store.append_edge("translate_doc", "document", HAS_INPUT)
-    store.append_edge("translate_doc", "document", HAS_OUTPUT)
+    add_node("enhance_image", {"name": "이미지 보정",
+                               "description": "이미지의 품질을 보정한다."})
+    store.append_edge("enhance_image", "image", HAS_INPUT)
+    store.append_edge("enhance_image", "image", HAS_OUTPUT)
     nodes = nodes_now()
 
-    assert can_connect("translate_doc", "translate_doc"), "이 검사의 전제가 깨졌다"
+    assert can_connect("enhance_image", "enhance_image"), "이 검사의 전제가 깨졌다"
 
-    chains = new_recipes_for("translate_doc", nodes)
+    chains = new_recipes_for("enhance_image", nodes)
 
     assert chains
-    assert {len(chain) for chain in chains} > {2}, "여러 길이가 나와야 한다"
+    assert len({len(chain) for chain in chains}) > 1, "여러 길이가 나와야 한다"
     for chain in chains:
         assert len(chain) <= MAX_STEPS
         assert len(set(chain)) == len(chain), f"노드가 중복됐다: {chain}"
@@ -318,15 +314,15 @@ def test_a_subject_node_never_enters_an_execution_path():
 
     조용히 깨지는 자리다. 파일은 멀쩡해 보이고 화면도 그려지는데 실행만 안 된다.
     """
-    add_node("analyze_crack_trend", NEW_NODE)
-    store.append_edge("analyze_crack_trend", "document", HAS_INPUT)
-    store.append_edge("analyze_crack_trend", "analysis", HAS_OUTPUT)
+    add_node("detect_track_settlement", NEW_NODE)
+    store.append_edge("detect_track_settlement", "image", HAS_INPUT)
+    store.append_edge("detect_track_settlement", "analysis", HAS_OUTPUT)
     nodes = nodes_now()
 
     groups = set(group_ids())
     assert groups, "대상이 없으면 이 검사가 무력하다"
 
-    chains = new_recipes_for("analyze_crack_trend", nodes)
+    chains = new_recipes_for("detect_track_settlement", nodes)
 
     assert chains
     for chain in chains:
@@ -344,7 +340,7 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     진실의 원천이 둘이 된다.
     """
     nodes = nodes_now()
-    chains = [["track_inspection_doc", "find_weak_section"]]
+    chains = [["track_car_cctv_video", "extract_frames"]]
     before_files = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
     last = max(int(p.stem.split("_")[1]) for p in paths.RECIPES_DIR.glob("recipe_*.yaml"))
 
@@ -371,16 +367,20 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     assert [step["node"] for step in new["steps"]] == chains[0]
 
 
-# ================================================================ 검토 관문
+# ================================================================ 말이 안 되는 경로
 #
-# 등록은 제안(propose)과 승인(approve) 두 단계다. 경로 후보를 crosses_groups 로
-# 가른다 — 대상이 통하면 조용히 recipe 로, 어긋나면 사람에게 묻는다.
-# **차단이 아니라 분류다.** 어긋난 경로가 전부 쓰레기는 아니고, 사람이 미처
-# 생각 못 한 조합을 찾아내는 것이 온톨로지를 두는 이유라 자동으로 버리지 않는다.
+# 등록은 한 번에 끝난다. 만들어진 경로 중 **대상(about)이 어긋나는 것은 버린다** —
+# 궤도 검측차 영상으로 승강장 승객의 위험 행동을 찾는 경로 같은 것들이다.
+# 화각이 안 맞아 실행할 수 없다.
+#
+# 예전에는 그런 경로를 화면에 올려 사람이 승인하게 했다(propose/approve).
+# 관문이 시연 화면의 절반을 먹었고 걸러지는 것이 전부 진짜 쓰레기였다.
+# **사람이 검토하는 절차는 이 화면 밖에 제대로 들어간다** — 그때 crosses_groups 가
+# 차단에서 분류로 돌아간다.
 
 # 승강장에 관한 노드인데 이미지를 받는다. 궤도 검측차 영상에서 시작하는 경로도
-# 타입상 만들어지고, 그 경로는 대상이 어긋난다(궤도·CCTV vs 승강장) —
-# 검측차는 주행 중 궤도를 내려다보므로 승강장 승객이 화각에 없다.
+# 타입상 만들어지고, 그것이 어긋나는 경로다 — 검측차는 주행 중 궤도를
+# 내려다보므로 승강장 승객이 화각에 없다.
 CROSSING_FORM = {
     "name": "승강장 위험 행동 검출",
     "description": "이미지에서 승강장 승객의 위험 행동을 검출한다.",
@@ -402,114 +402,65 @@ def chains_in_recipe_files() -> set[tuple[str, ...]]:
     }
 
 
-def test_paths_whose_subjects_agree_are_registered_without_asking():
-    """대상이 통하는 경로는 묻지 않는다. 조용히 recipe 가 되고 menu 에 실린다.
+def test_paths_that_cross_subjects_are_never_registered():
+    """★ 대상이 어긋나는 경로는 파일이 되지 않는다. 응답에도 안 담긴다.
 
-    사람이 보는 것은 애매한 것뿐이어야 한다 — 확실한 것까지 물으면 검토 관문이
-    등록을 느리게 만드는 장치가 되고, 그러면 사람이 관문을 꺼버린다.
-    """
-    from ontology.graph import crosses_groups
+    타입만 보면 이어지지만 실행할 수 없는 경로다. 그것이 menu 에 실리면 LLM 이
+    후보로 보게 되고, 사람이 그걸 고르는 순간 시연이 멈춘다.
 
-    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
-
-    accepted = result["accepted"]
-    assert accepted["chains"], "자동 승격이 하나도 없으면 이 검사가 무력하다"
-    assert len(accepted["recipe_ids"]) == len(accepted["chains"])
-
-    written = chains_in_recipe_files()
-    for chain in accepted["chains"]:
-        assert not crosses_groups(chain), chain
-        assert tuple(chain) in written, f"자동 승격 경로의 파일이 없다: {chain}"
-    assert set(accepted["recipe_ids"]) <= set(menu_now())
-
-
-def test_paths_that_cross_subjects_wait_as_pending_without_files():
-    """대상이 어긋나는 경로는 등록되지 않고 남는다. **파일이 안 생겨야 한다.**
-
-    pending 이 조용히 파일로 쓰이면 검토 관문이 통째로 무의미해진다 — menu 에
-    실린 뒤에는 LLM 이 이미 후보로 보고 있어 사람이 걸러낼 자리가 없다.
+    **차단이지 표시가 아니다.** 버린 경로를 돌려주지도 않는다 — 화면이 안 쓰는
+    키를 만들지 않는다. 몇 개를 버렸는지는 이 테스트가 재서 보여준다.
     """
     from ontology.graph import crosses_groups
 
     before_files = recipes_now()
     before_menu = set(menu_now())
 
-    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
+    result = register_node(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
 
-    pending = result["pending"]
-    assert pending, "검토 대상이 하나도 없으면 이 검사가 무력하다"
-    for chain in pending:
-        assert crosses_groups(chain), chain
+    made = new_recipes_for("detect_risky_behavior", nodes_now())
+    dropped = [chain for chain in made if crosses_groups(chain)]
+    assert dropped, "버려지는 경로가 없으면 이 검사가 무력하다"
+    assert result["chains"] == [c for c in made if not crosses_groups(c)]
+    assert len(result["chains"]) < len(made)
 
-    # 파일은 자동 승격된 것만 늘었다. pending 경로는 어느 파일에도 없다.
-    assert recipes_now() == before_files | set(result["accepted"]["recipe_ids"])
+    # 남은 것만 파일이 됐다. 버린 것은 어느 파일에도 없다.
     written = chains_in_recipe_files()
-    for chain in pending:
-        assert tuple(chain) not in written, f"pending 이 파일로 쓰였다: {chain}"
+    for chain in result["chains"]:
+        assert tuple(chain) in written, chain
+        assert not crosses_groups(chain), chain
+    for chain in dropped:
+        assert tuple(chain) not in written, f"어긋나는 경로가 파일이 됐다: {chain}"
 
-    # menu 도 마찬가지다. 자동 승격분만 늘어난다.
-    assert set(menu_now()) == before_menu | set(result["accepted"]["recipe_ids"])
+    assert recipes_now() - before_files == set(result["recipe_ids"])
+    assert set(menu_now()) - before_menu == set(result["recipe_ids"])
+
+    # 승인 관문의 흔적이 없다. 버린 경로도 돌려주지 않는다.
+    assert "pending" not in result and "dropped" not in result
 
 
-def test_only_approved_chains_become_recipes():
-    """사람이 고른 경로만 recipe 가 된다. 안 고른 것은 조용히 사라진다.
+def test_a_node_that_agrees_with_everything_loses_no_path():
+    """어긋날 상대가 없으면 **하나도 안 버린다.** 차단이 과하면 여기서 잡힌다.
 
-    버린 후보는 기록하지 않는다 — 다음에 같은 노드를 등록하면 또 나온다.
+    CCTV 화질 저하 진단은 두 영상 모두에 관한 것(group_cctv)이라 어느 시작점에서
+    출발해도 대상이 통한다. 이런 등록에서 경로가 하나라도 사라지면 차단 조건이
+    너무 넓은 것이고, 그러면 시연에서 "왜 이 길은 안 생겼지" 가 된다.
     """
-    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
-    pending = result["pending"]
-    assert len(pending) >= 2, "후보가 둘은 있어야 '일부만 승인' 을 검사할 수 있다"
-    picked, dropped = pending[0], pending[1]
+    from ontology.graph import crosses_groups
 
-    approved = approve([picked])
+    result = register_node(
+        {"name": "CCTV 화질 저하 진단", "description": "영상에서 CCTV 화질 저하를 진단한다.",
+         "inputs": ["video"], "outputs": ["analysis"]},
+        llm_client=stub({**INFERRED, "node_id": "analyze_image_quality",
+                         "groups": ["group_cctv"]}),
+    )
 
-    assert approved["chains"] == [picked]
-    assert len(approved["recipe_ids"]) == 1
-
-    written = chains_in_recipe_files()
-    assert tuple(picked) in written
-    assert tuple(dropped) not in written, "안 고른 경로가 파일이 됐다"
-    assert set(approved["recipe_ids"]) <= set(menu_now())
-
-    # 버린 후보는 승인 목록에서도 사라졌다. 뒤늦게 승인할 수 없다.
-    with pytest.raises(UnproposedChain):
-        approve([dropped])
-
-
-def test_a_chain_that_was_never_proposed_is_rejected():
-    """제안에 없던 경로는 승인되지 않는다. 검증이 실제로 돌아야 한다.
-
-    아무 경로나 승인되면 관문이 뚫린다 — 온톨로지가 만들지 않은 경로가
-    recipe 파일이 되고, 그 recipe 는 어느 등록에서 왔는지 아무도 모른다.
-    거부할 때는 파일을 한 글자도 건드리지 않는다.
-    """
-    result = propose(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
-    assert result["pending"], "검토 대상이 없으면 이 검사가 무력하다"
-
-    before = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
-    before_menu = paths.MENU_YAML_PATH.read_bytes()
-
-    # 타입은 이어지는 진짜 경로다. "형식이 맞으니 통과" 로 구현하면 여기서 걸린다.
-    forged = ["platform_cctv_video", "extract_frames", "detect_risky_behavior"]
-    assert forged not in result["pending"], "이 검사의 전제가 깨졌다 — 다른 경로를 골라라"
-
-    with pytest.raises(UnproposedChain):
-        approve([forged])
-
-    # 진짜 후보에 위조 경로를 섞어도 전부 거부한다. 일부만 승인되면
-    # "왜 하나만 됐지" 를 화면에서 알 방법이 없다.
-    with pytest.raises(UnproposedChain):
-        approve([result["pending"][0], forged])
-
-    assert {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")} == before
-    assert paths.MENU_YAML_PATH.read_bytes() == before_menu
-
-    # 초기화하면 대기 중이던 후보도 버려진다 — 노드가 사라졌는데 승인만 남으면
-    # 존재하지 않는 노드를 가리키는 recipe 가 만들어진다.
-    pending = result["pending"]
-    reset_to_init()
-    with pytest.raises(UnproposedChain):
-        approve([pending[0]])
+    made = new_recipes_for("analyze_image_quality", nodes_now())
+    assert made, "경로가 없으면 이 검사가 무력하다"
+    assert not [chain for chain in made if crosses_groups(chain)]
+    assert result["chains"] == made
+    assert len(result["recipe_ids"]) == len(made)
+    assert set(result["recipe_ids"]) <= set(menu_now())
 
 
 # ================================================================ menu
@@ -525,8 +476,8 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
     """
     nodes = nodes_now()
     chains = [
-        ["track_inspection_doc", "find_weak_section"],
-        ["track_inspection_doc", "find_weak_section", "generate_word"],
+        ["track_car_cctv_video", "extract_frames"],
+        ["track_car_cctv_video", "extract_frames", "detect_track_crack"],
     ]
     new_ids = ["recipe_090", "recipe_091"]
     before = menu_now()
@@ -575,17 +526,19 @@ def test_a_menu_sentence_reads_as_one_korean_sentence():
     other = function_for(["track_car_cctv_video", "extract_frames"], nodes)
     assert other != one, "시작 데이터가 다른데 같은 문장이 됐다"
 
-    # 중간 단계는 연결형이 된다. "찾는다" 는 "찾고" 이지 "찾느고" 가 아니다 —
+    # 중간 단계는 연결형이 된다. "검출한다" 는 "검출하고" 다 —
     # 마지막 단계로만 재면 종결형 그대로라 이 규칙이 한 번도 안 불린다.
     chained = function_for(
-        ["track_inspection_doc", "find_weak_section", "generate_word"], nodes
+        ["track_car_cctv_video", "extract_frames", "detect_track_crack"], nodes
     )
-    assert "찾고 " in chained, chained
+    assert "검출하고 " not in chained, "마지막 단계는 종결형이어야 한다"
+    assert "추출하고 " in chained, chained
     assert chained.count("다.") == 1 and chained.endswith("다."), chained
 
-    # 조사가 받침을 따라간다. "보고서으로" 는 시연 중에 사람이 먼저 알아챈다.
-    assert "궤도 점검 보고서로 " in function_for(
-        ["track_inspection_doc", "find_weak_section"], nodes
+    # 조사가 받침을 따라간다. "영상으로" 와 "이미지로" 가 갈린다 —
+    # 받침을 안 보면 시연 중에 사람이 먼저 알아챈다.
+    assert "궤도 검측차 CCTV 영상으로 " in function_for(
+        ["track_car_cctv_video", "extract_frames"], nodes
     )
     assert "승강장 CCTV 영상으로 " in one
 
@@ -610,20 +563,20 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
 
     result = register_node(FORM, llm_client=stub())
 
-    node = nodes_now()["analyze_crack_trend"]
+    node = nodes_now()["detect_track_settlement"]
     assert set(node) == {"name", "description"}, "노드에 종류나 입출력을 적었다"
     assert node["name"] == FORM["name"]
 
     # 받고 내놓는 것은 관계로 붙는다. 이게 있어야 경로에 낄 수 있다.
     edges = edges_now()
-    for type_id, predicate in (("document", HAS_INPUT), ("analysis", HAS_OUTPUT)):
+    for type_id, predicate in (("image", HAS_INPUT), ("analysis", HAS_OUTPUT)):
         assert {
-            "from": "analyze_crack_trend", "to": type_id, "predicate": predicate
+            "from": "detect_track_settlement", "to": type_id, "predicate": predicate
         } in edges
 
     # 고른 대상에 관계 한 줄이 붙는다. 이게 화면에서 점선이 된다.
     assert {
-        "from": "analyze_crack_trend", "to": "group_track", "predicate": ABOUT
+        "from": "detect_track_settlement", "to": "group_track", "predicate": ABOUT
     } in edges
 
     assert set(result["recipe_ids"]) == recipes_now() - before_recipes
@@ -633,7 +586,7 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
         data = yaml.safe_load(
             (paths.RECIPES_DIR / f"{recipe_id}.yaml").read_text(encoding="utf-8")
         )
-        assert "analyze_crack_trend" in [step["node"] for step in data["steps"]]
+        assert "detect_track_settlement" in [step["node"] for step in data["steps"]]
 
     # 화면이 쓰는 것들.
     assert result["node_id"] and result["reason"] and result["chains"]
@@ -667,7 +620,7 @@ def test_several_subjects_all_become_dotted_lines():
     attached = {
         edge["to"]
         for edge in edges_now()
-        if edge["from"] == "analyze_crack_trend" and edge["predicate"] == ABOUT
+        if edge["from"] == "detect_track_settlement" and edge["predicate"] == ABOUT
     }
     assert attached == {"group_track", "group_cctv"}
 
@@ -724,7 +677,7 @@ def test_resetting_removes_everything_a_registration_added():
     reset_to_init()
     reset_to_init()  # 두 번 돌려도 같아야 한다
 
-    assert "analyze_crack_trend" not in nodes_now()
+    assert "detect_track_settlement" not in nodes_now()
     assert paths.ONTOLOGY_PATH.read_bytes() == paths.INIT_ONTOLOGY_PATH.read_bytes()
     assert paths.MENU_YAML_PATH.read_bytes() == paths.INIT_MENU_YAML_PATH.read_bytes()
     assert paths.MENU_MD_PATH.read_bytes() == paths.INIT_MENU_MD_PATH.read_bytes()

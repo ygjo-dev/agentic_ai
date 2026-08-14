@@ -6,7 +6,7 @@
 
 관계는 넷뿐이고 저마다 읽는 곳이 있다.
   is-a       경로 생성의 타입 매칭 (상위 타입만 적어도 하위 타입을 받는다)
-  about      후보 분류 · 화면 점선
+  about      대상(그룹) 판정 · 말이 안 되는 경로 차단 · 화면 점선
   hasInput   경로 생성
   hasOutput  경로 생성 · 실행 가능 판정
 
@@ -150,7 +150,7 @@ def test_only_concrete_data_can_start_a_path():
     assert not [nid for nid in starts if is_executable(nid)]
 
     # 형식은 실제로 존재하는 노드들이다 — 없는 것을 뺐다고 통과하면 안 된다.
-    assert {"video", "image", "document"} <= types
+    assert {"video", "image", "analysis"} <= types
     assert "platform_cctv_video" in starts
 
 
@@ -259,20 +259,22 @@ def test_a_recipe_becomes_an_ordered_path():
             assert can_connect(frm, to), (recipe_id, frm, to)
 
 
-def test_a_path_that_crosses_subjects_is_marked_not_blocked():
-    """대상을 넘나드는 경로는 표시만 하고 막지 않는다.
+def test_a_path_that_crosses_subjects_is_blocked():
+    """★ 대상을 넘나드는 경로는 등록되지 않는다. 이것이 그 판정이다.
 
     승강장 CCTV 로 궤도 균열을 찾는 경로는 타입상 만들 수 있지만 화각이 맞지
-    않는다. 그걸 막는 것은 온톨로지가 아니라 사람이다 — 현장 사정이 너무 많고,
-    막아버리면 왜 안 되는지도 안 보인다.
+    않는다. registry 가 이 판정으로 그런 경로를 버린다 — 파일이 안 생기고
+    화면에도 안 나온다.
 
     **넘나든다의 정의** : 대상이 붙은 노드가 둘 이상인데 공통 대상이 하나도 없다.
+    하나 이하면 거짓이다 — 어긋날 상대가 없다. 이 조건이 넓어지면 멀쩡한 경로가
+    조용히 사라지므로 양쪽을 다 못 박는다.
     """
     assert crosses_groups(
         ["platform_cctv_video", "extract_frames", "detect_track_crack"]
     )
 
-    # 실제 recipe 는 하나도 넘나들지 않는다.
+    # 실제 recipe 는 하나도 넘나들지 않는다. 넘나드는 것은 등록되지 않기 때문이다.
     for recipe_id in recipe_ids():
         assert not crosses_groups(recipe_nodes(recipe_id)), recipe_id
 
@@ -283,6 +285,9 @@ def test_a_path_that_crosses_subjects_is_marked_not_blocked():
     # 한 노드가 여러 대상에 관한 것일 수 있다. 승강장 CCTV 영상은 승강장에도
     # CCTV 에도 관한 것이라, 그 교집합으로 걸러진다.
     assert len(about_of("platform_cctv_video")) > 1
+    assert not crosses_groups(["platform_cctv_video", "track_car_cctv_video"]), (
+        "둘 다 CCTV 에 관한 것이라 통해야 한다"
+    )
 
 
 def test_an_unknown_recipe_is_empty_not_an_error():

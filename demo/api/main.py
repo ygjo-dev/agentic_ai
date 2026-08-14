@@ -19,11 +19,7 @@ REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-from demo.api.schemas.requests import (
-    NodeApproveRequest,
-    NodeRegisterRequest,
-    RenderRequest,
-)
+from demo.api.schemas.requests import NodeRegisterRequest, RenderRequest
 from demo.api.services import (
     node_service,
     ontology_service,
@@ -38,7 +34,6 @@ from ontology.registry import (
     InvalidInference,
     UnknownGroup,
     UnknownType,
-    UnproposedChain,
 )
 from orchestrator.route_resolver import RouteResolutionError
 
@@ -59,12 +54,11 @@ DOMAIN_ERRORS = (
     UnknownType,
     UnknownGroup,
     InvalidInference,
-    UnproposedChain,
     UnknownRenderMode,
 )
 
 # 이 경로만 예외 이름을 detail 에 남긴다.
-NAMED_ERROR_PATHS = ("/nodes", "/nodes/approve")
+NAMED_ERROR_PATHS = ("/nodes",)
 
 
 @app.middleware("http")
@@ -135,26 +129,17 @@ async def resolve_endpoint(utterance: str) -> dict:
 
 @app.post("/nodes")
 async def register_node_endpoint(form: NodeRegisterRequest) -> dict:
-    """노드 등록(제안). 온톨로지 · recipe · menu 가 함께 갱신된다.
+    """노드 등록. 온톨로지 · recipe · menu 가 함께 갱신된다.
 
-    새로 생긴 것(node_id · node · recipe_ids · paths · new_solid_edges ·
-    new_dotted_edges)과 등록 전후 개수(counts), 갱신된 version 을 돌려준다.
+    새로 생긴 것(node_id · node · recipe_ids · paths · accepted ·
+    new_solid_edges · new_dotted_edges)과 등록 전후 개수(counts), 갱신된
+    version 을 돌려준다.
 
-    경로 후보는 둘로 갈린다 — 대상이 통하는 것은 accepted 로 이미 recipe 가
-    됐고, 대상이 어긋나는 것은 pending 으로 돌아온다(파일이 없다). counts 는
-    승인 전 값이다. 사람이 고른 chain 들을 /nodes/approve 로 보낸다.
+    **대상이 어긋나는 경로는 등록하지 않는다.** 만들어진 경로 중 화각이 안 맞는
+    것(궤도 검측차 영상으로 승강장 승객을 보는 식)은 recipe 가 되지 않고 응답에도
+    안 담긴다. 버렸다는 사실을 화면이 쓰지 않으므로 키를 만들지 않는다.
     """
     return node_service.register(form.model_dump(), llm_client=OllamaClient())
-
-
-@app.post("/nodes/approve")
-async def approve_nodes_endpoint(form: NodeApproveRequest) -> dict:
-    """검토 관문 통과. 직전 등록의 pending 에 있던 경로만 recipe 로 승격한다.
-
-    제안에 없던 경로는 422 다. 승인으로 생긴 recipe_ids · paths ·
-    new_solid_edges 와 승인 전후 counts, 갱신된 version 을 돌려준다.
-    """
-    return node_service.approve(form.chains)
 
 
 @app.post("/nodes/reset")

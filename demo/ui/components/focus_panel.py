@@ -49,6 +49,7 @@ html, body {{
 #list {{ flex: 1 1 auto; height: 100%; overflow-y: auto; padding-right: 4px; min-width: 0; }}
 
 .chain {{ display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; padding: 0.22rem 0; }}
+.chain + .chain {{ margin-top: 0.8rem; }}
 .chip {{
   display: inline-block; padding: 0.2rem 0.6rem;
   border: 1px solid {theme.plain()}; border-radius: 999px;
@@ -160,7 +161,6 @@ def render_focus_section(
     rendered: dict | None = None,
     view: dict | None = None,
     ratios: dict | None = None,
-    height_offset: int = 0,
 ):
     """하단 본문. 해석 그래프와 recipe 칩 목록을 한 iframe 에 담는다.
 
@@ -171,23 +171,20 @@ def render_focus_section(
     Args:
         rendered: POST /render 응답. variants · chips · focus 가 들어 있다.
         view: 지금 장면. 칩 색을 고르는 데만 쓴다.
-        height_offset: 위에서 검토 관문이 차지한 픽셀. iframe 은 height 속성으로
-            고정되므로 CSS flex 로는 못 줄인다 — 여기서 빼 준다.
     """
     if not rendered or not rendered.get("variants"):
         return
 
     color = chip_color(view)
     chips = rendered.get("chips") or {}
+    ratios = ratios or config.LAYOUT
 
     st.components.v1.html(
         focus_html(
             rendered["variants"],
             {key: path_panel.chips_markup(chains, color) for key, chains in chips.items()},
-            (ratios or config.LAYOUT)["bottom_left_ratio"],
+            ratios["bottom_left_ratio"],
             (rendered.get("focus") or {}).get("last_nodes") or [],
         ),
-        height=max(
-            styles.panel_heights(ratios or config.LAYOUT)["bottom"] - height_offset, 200
-        ),
+        height=styles.panel_heights(ratios)["bottom"],
     )

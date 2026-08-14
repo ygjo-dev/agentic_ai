@@ -12,8 +12,8 @@ import streamlit as st
 
 # (발화, 기대 status, 기대 recipe_id, 기대 후보)
 #
-# recipe 9개가 세 갈래다 — 승강장 CCTV(001~003) · 궤도 검측차(004~006) ·
-# 궤도 점검 보고서(007~009). 각 갈래 안에서는 분석까지냐 Word 냐 PPT 냐로 갈린다.
+# recipe 6개가 두 갈래다 — 승강장 CCTV(001~003) · 궤도 검측차(004~006).
+# 각 갈래 안에서는 분석까지냐 Word 냐 PPT 냐로 갈린다.
 # 그래서 **무엇으로 시작하는가** 와 **어디서 끝나는가** 를 둘 다 밝혀야 하나로 좁혀진다.
 SAMPLES = [
     # SELECT : 발화가 Recipe 하나로 유일하게 결정.
@@ -21,13 +21,12 @@ SAMPLES = [
     ("승강장 CCTV 영상으로 혼잡도를 분석해줘", "SELECT", "recipe_001", ["recipe_001"]),
     # 시작(검측차)과 산출 형식(PPT)을 둘 다 밝혀 하나로 좁혀진다.
     ("궤도 검측차 영상으로 균열을 찾아서 PPT 로 만들어줘", "SELECT", "recipe_006", ["recipe_006"]),
-    ("궤도 점검 보고서에서 취약 구간을 찾아 Word 로 만들어줘", "SELECT", "recipe_008", ["recipe_008"]),
     # CLARIFY : Recipe 후보가 2개 이상으로 갈린다.
     # 산출 형식이 갈림 (Word / PPT)
     ("승강장 혼잡도를 분석하고 보고서로 만들어줘", "CLARIFY", None, ["recipe_002", "recipe_003"]),
-    # 궤도의 무엇을 보는지가 갈림 (균열 / 취약 구간) — 시작 데이터부터 다르다.
+    # 산출 형식이 갈림 (Word / PPT)
     ("궤도 상태를 분석해서 보고서로 만들어줘", "CLARIFY", None,
-     ["recipe_005", "recipe_006", "recipe_008", "recipe_009"]),
+     ["recipe_005", "recipe_006"]),
     # NO_MATCH : Menu 에 없는 기능
     ("승객 민원 추세를 분석해줘", "NO_MATCH", None, []),
     ("오늘 지하철 요금 알려줘", "NO_MATCH", None, []),

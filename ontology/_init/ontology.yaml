@@ -52,16 +52,8 @@ nodes:
     name: 이미지
     description: 한 장의 정지 화상.
 
-  document:
-    name: 문서
-    description: 사람이 읽는 형태의 기록.
-
-  track_inspection_doc:
-    name: 궤도 점검 보고서
-    description: 점검원이 궤도 상태를 기록한 문서.
-
   output_report:
-    name: 산출 보고서
+    name: 문서
     description: 분석 결과를 정리해 만든 문서.
 
   analysis:
@@ -96,10 +88,6 @@ nodes:
     name: 궤도 균열 검출
     description: 이미지에서 궤도 표면의 균열을 검출한다.
 
-  find_weak_section:
-    name: 궤도 취약 구간 도출
-    description: 점검 보고서에서 결함이 반복된 취약 구간을 찾는다.
-
   generate_word:
     name: Word 보고서 생성
     description: 분석 결과를 Word 문서로 생성한다.
@@ -114,8 +102,6 @@ edges:
   # ---------------------------------------------------------- is-a : 형식 계층
   - { from: platform_cctv_video,  to: video,         predicate: is-a }
   - { from: track_car_cctv_video, to: video,         predicate: is-a }
-  - { from: track_inspection_doc, to: document,      predicate: is-a }
-  - { from: output_report,        to: document,      predicate: is-a }
 
   # ---------------------------------------------------------- hasInput / hasOutput
   - { from: extract_frames,     to: video,         predicate: hasInput }
@@ -124,8 +110,6 @@ edges:
   - { from: analyze_congestion, to: analysis,      predicate: hasOutput }
   - { from: detect_track_crack, to: image,         predicate: hasInput }
   - { from: detect_track_crack, to: analysis,      predicate: hasOutput }
-  - { from: find_weak_section,  to: document,      predicate: hasInput }
-  - { from: find_weak_section,  to: analysis,      predicate: hasOutput }
   - { from: generate_word,      to: analysis,      predicate: hasInput }
   - { from: generate_word,      to: output_report, predicate: hasOutput }
   - { from: generate_ppt,       to: analysis,      predicate: hasInput }
@@ -136,7 +120,5 @@ edges:
   - { from: platform_cctv_video,  to: group_cctv,     predicate: about }
   - { from: track_car_cctv_video, to: group_track,    predicate: about }
   - { from: track_car_cctv_video, to: group_cctv,     predicate: about }
-  - { from: track_inspection_doc, to: group_track,    predicate: about }
   - { from: analyze_congestion,   to: group_platform, predicate: about }
   - { from: detect_track_crack,   to: group_track,    predicate: about }
-  - { from: find_weak_section,    to: group_track,    predicate: about }

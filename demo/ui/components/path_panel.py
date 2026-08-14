@@ -82,30 +82,6 @@ def utterance_markup(utterance: str | None) -> str:
     return f'<div class="utterance">“{html.escape(utterance)}”</div>'
 
 
-def counts_markup(counts: dict | None) -> str:
-    """노드 9 → 10, Recipe 21 → 27.
-
-    이 숫자가 비전공자에게 "시스템이 스스로 확장됐다" 를 보여주는 장치다.
-    """
-    if not counts:
-        return ""
-
-    stats = []
-    for label, key in (("노드", "nodes"), ("Recipe", "recipes")):
-        pair = counts.get(key) or []
-        if len(pair) != 2:
-            continue
-        before, after = pair
-        stats.append(
-            f'<span class="stat"><span class="stat-label">{label}</span>'
-            f'<span class="stat-before">{before}</span>'
-            f'<span class="stat-arrow">→</span>'
-            f'<span class="stat-after">{after}</span></span>'
-        )
-
-    return f'<div class="stats">{"".join(stats)}</div>' if stats else ""
-
-
 def registration_header(result: dict) -> str:
     """등록 결과의 머리말. 새 노드 이름과 스탯."""
     node = result.get("node") or {}
@@ -113,8 +89,6 @@ def registration_header(result: dict) -> str:
 
     return (
         f'<div class="utterance">'
-        f'<span class="new-badge" style="background:{theme.new()}">새 노드</span> '
-        f"{html.escape(str(name))}</div>" + counts_markup(result.get("counts"))
     )
 
 

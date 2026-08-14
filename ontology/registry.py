@@ -212,7 +212,7 @@ def _describe_form(form: dict) -> str:
 #         5     44~52        5764~6923자   <- 예산 초과
 #
 # **임시방편이다.** 경로 길이가 문제인 것이 아니라 말이 안 되는 조합이 섞이는
-# 것이 문제이고, 그것은 about 분류(crosses_groups)가 푼다. 온톨로지가 촘촘해지고
+# 것이 문제이고, 그것은 about 차단(crosses_groups)이 푼다. 온톨로지가 촘촘해지고
 # 범용 노드가 줄면 이 상수는 의미가 없어진다.
 MAX_STEPS = 4
 
@@ -420,42 +420,27 @@ def append_menu(
     md_path.write_text(md.rstrip("\n") + sections + "\n", encoding="utf-8", newline="\n")
 
 
-class UnproposedChain(ValueError):
-    """제안(propose)에 없던 경로를 승인하려 했다.
+def register_node(form: dict, llm_client) -> dict:
+    """노드 등록 전체. 한 번에 끝난다.
 
-    아무 경로나 승인되면 검토 관문이 뚫린다 — 온톨로지가 만들지 않은 경로가
-    recipe 파일이 되고, 그 recipe 는 어느 등록에서 왔는지 아무도 모른다.
-    """
+    LLM 판단 -> 온톨로지 -> 경로 생성 -> recipe · menu. 앞 단계가 실패하면 뒤는
+    실행되지 않는다. 온톨로지에 못 넣은 노드로 recipe 를 만들면 존재하지 않는
+    노드를 가리키게 된다.
 
-
-# propose 가 돌려준 검토 대상. approve 는 이 목록에 있는 것만 승격한다.
-# 파일에 적지 않는다 — 승인 안 한 후보는 버리는 것이 규칙이라 상태가 프로세스보다
-# 오래 살 이유가 없다. 다음에 같은 노드를 등록하면 또 나온다.
-_pending_chains: list[list[str]] = []
-
-
-def propose(form: dict, llm_client) -> dict:
-    """등록 1단계. 노드를 쓰고, 경로 후보를 대상(about) 기준으로 가른다.
-
-    LLM 판단 -> 온톨로지 -> 경로 분류. 앞 단계가 실패하면 뒤는 실행되지 않는다.
-    온톨로지에 못 넣은 노드로 recipe 를 만들면 존재하지 않는 노드를 가리키게 된다.
-
-    **노드와 관계는 여기서 이미 쓴다.** 노드가 온톨로지에 들어가는 것과 경로를
-    승인하는 것은 다른 일이고, 노드가 없으면 경로를 보여줄 수도 없다.
     관계는 노드를 쓴 **뒤에** 잇는다. 순서가 바뀌면 아직 없는 노드를 가리키는
     edge 가 파일에 남는다.
 
-    경로는 crosses_groups() 로 가른다. **차단이 아니라 분류다.**
+    **대상이 어긋나는 경로는 등록하지 않는다.** `crosses_groups` 가 참인 경로는
+    파일이 되지 않고 응답에도 안 담긴다 — 궤도 검측차 영상으로 승강장 승객의
+    위험 행동을 찾는 경로 같은 것들이다. 화각이 안 맞아 실행할 수 없다.
 
-      대상이 통하는 것    -> accepted. 여기서 조용히 recipe 로 승격한다
-      대상이 어긋나는 것  -> pending. 돌려주기만 한다 — **파일을 쓰지 않는다**
+    예전에는 그런 경로를 화면에 올려 사람이 승인하게 했다(propose/approve).
+    관문이 시연 화면의 절반을 먹었고, 걸러지는 것이 전부 진짜 쓰레기라 사람이
+    건질 조합이 하나도 없었다. **사람이 검토하는 절차는 이 화면이 아닌 곳에
+    제대로 들어간다** — 그때 `crosses_groups` 가 차단에서 분류로 돌아간다.
 
-    대상이 어긋난 경로가 전부 쓰레기는 아니다. 사람이 미처 생각 못 한 조합이
-    섞여 있고, 그것을 찾아내는 것이 온톨로지를 두는 이유다. 그래서 자동으로
-    버리지 않고 사람에게 올린다 — 판단은 approve() 에서 사람이 한다.
+    버린 경로는 돌려주지 않는다. 화면이 안 쓰는 키를 만들지 않는다.
     """
-    global _pending_chains
-
     inferred = infer_node(form, llm_client=llm_client)
     node_id = inferred["node_id"]
 
@@ -472,76 +457,21 @@ def propose(form: dict, llm_client) -> dict:
         store.append_edge(node_id, group, ABOUT)
 
     nodes = store.nodes()
-    chains = new_recipes_for(node_id, nodes)
+    chains = [
+        chain
+        for chain in new_recipes_for(node_id, nodes)
+        if not graph.crosses_groups(chain)
+    ]
 
-    # about 이 붙은 노드가 하나 이하인 경로는 crosses_groups 가 거짓이다.
-    # 즉 범용 노드만으로 된 경로는 자동 승격된다 — 어긋날 대상이 없다.
-    accepted = [chain for chain in chains if not graph.crosses_groups(chain)]
-    pending = [chain for chain in chains if graph.crosses_groups(chain)]
-
-    recipe_ids = append_recipes(accepted, nodes)
+    recipe_ids = append_recipes(chains, nodes)
     if recipe_ids:
-        append_menu(recipe_ids, accepted, nodes)
-
-    _pending_chains = [list(chain) for chain in pending]
+        append_menu(recipe_ids, chains, nodes)
 
     return {
         **inferred,
         "node": node,
-        "accepted": {"recipe_ids": recipe_ids, "chains": accepted},
-        "pending": pending,
-    }
-
-
-def approve(chains: list[list[str]]) -> dict:
-    """등록 2단계. 사람이 고른 경로만 recipe 로 승격하고 menu 를 갱신한다.
-
-    직전 propose 가 돌려준 pending 에 있던 경로만 받는다. 그 밖의 경로는
-    UnproposedChain 으로 거부한다 — 아무 경로나 승인되면 안 된다.
-
-    고르지 않은 후보는 버린다. 기록하지 않는다 — 다음에 같은 노드를 등록하면
-    또 나온다.
-
-    Raises:
-        UnproposedChain: 제안에 없던 경로가 섞여 있다. 파일은 안 건드린다.
-    """
-    global _pending_chains
-
-    proposed = {tuple(chain) for chain in _pending_chains}
-    picked = [list(chain) for chain in dict.fromkeys(tuple(c) for c in chains)]
-    unknown = [chain for chain in picked if tuple(chain) not in proposed]
-    if unknown:
-        raise UnproposedChain(
-            f"제안에 없던 경로다: {unknown}\n"
-            f"  승인할 수 있는 것 : {_pending_chains or '(없음)'}"
-        )
-
-    nodes = store.nodes()
-    recipe_ids = append_recipes(picked, nodes)
-    if recipe_ids:
-        append_menu(recipe_ids, picked, nodes)
-
-    _pending_chains = []
-
-    return {"recipe_ids": recipe_ids, "chains": picked}
-
-
-def register_node(form: dict, llm_client) -> dict:
-    """노드 등록 전체 — propose + 전부 approve.
-
-    검토 관문이 없던 시절의 단일 흐름이다. 남겨둔 이유 : 관문 없이 끝까지
-    등록하는 동작 자체가 여전히 유효한 명세라(사보타주 검증 · 스크립트 · 옛
-    호출부) 두 단계 함수의 합으로 표현해 둔다. 새 코드는 propose / approve 를
-    직접 쓴다.
-    """
-    proposal = propose(form, llm_client=llm_client)
-    approved = approve(proposal["pending"])
-
-    accepted = proposal["accepted"]
-    return {
-        **{k: proposal[k] for k in ("node_id", "groups", "reason", "node")},
-        "recipe_ids": accepted["recipe_ids"] + approved["recipe_ids"],
-        "chains": accepted["chains"] + approved["chains"],
+        "recipe_ids": recipe_ids,
+        "chains": chains,
     }
 
 
@@ -551,10 +481,6 @@ def reset_to_init() -> None:
     등록으로 늘어난 recipe 도 사라져야 하므로 디렉터리를 통째로 갈아끼운다.
     _init 사본 자체는 절대 건드리지 않는다 — 그것이 망가지면 되돌릴 곳이 없다.
     """
-    global _pending_chains
-    # 검토 대기 중이던 후보도 버린다. 노드가 사라졌는데 승인만 남으면
-    # 존재하지 않는 노드를 가리키는 recipe 가 만들어질 수 있다.
-    _pending_chains = []
     store.restore_from_init()
     shutil.copy2(paths.INIT_MENU_YAML_PATH, paths.MENU_YAML_PATH)
     shutil.copy2(paths.INIT_MENU_MD_PATH, paths.MENU_MD_PATH)

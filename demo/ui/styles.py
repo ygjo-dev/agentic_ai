@@ -210,35 +210,6 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
   to   {{ transform: scaleX(1); }}
 }}
 
-/* ---------------------------------------------- 검토 관문 */
-/* 등록 직후 pending 이 있을 때만 채워진다. 줄이 많아지면 스크롤로 접는다 —
-   지금은 몇 개 안 되지만 온톨로지가 커지면 관문이 화면을 다 먹으면 안 된다. */
-.st-key-review_gate {{ flex: 0 0 auto; max-height: 300px; overflow-y: auto; }}
-.st-key-review_gate [data-testid="stVerticalBlock"] {{ gap: 0.1rem; }}
-.st-key-review_gate [data-testid="stHorizontalBlock"] {{
-  gap: 0.3rem;
-  align-items: center;
-}}
-/* 칩 안의 대상 이름. 그룹 노드와 같은 색으로 칠해 상단 타원과 이어 읽힌다. */
-.chip-about {{ font-size: 0.72rem; margin-left: 0.35rem; }}
-
-/* ---------------------------------------------- 등록 스탯 */
-.stats {{ display: flex; gap: 1.4rem; margin: 0.15rem 0 0.5rem 0; }}
-.stat {{ display: inline-flex; align-items: baseline; gap: 0.35rem; }}
-.stat-label {{ color: {theme.plain()}; font-size: 0.8rem; }}
-.stat-before {{ color: {theme.plain()}; font-size: 1.05rem; }}
-.stat-arrow {{ color: {theme.plain()}; font-size: 0.9rem; }}
-.stat-after {{
-  color: {theme.new()};
-  font-size: 1.32rem;
-  font-weight: 700;
-  animation: pop-in 0.32s ease-out;
-}}
-@keyframes pop-in {{
-  from {{ transform: scale(0.7); opacity: 0; }}
-  to   {{ transform: none; opacity: 1; }}
-}}
-
 /* ---------------------------------------------- 대기 스켈레톤 */
 .skeleton {{ padding: 0.4rem 0; }}
 .skel-row {{

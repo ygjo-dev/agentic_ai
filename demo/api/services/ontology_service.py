@@ -19,7 +19,6 @@ import paths
 from demo.graph_svg.dot import COLORS
 from ontology import store
 from ontology.graph import (
-    about_of,
     dotted_edges,
     group_ids,
     inputs_of,
@@ -89,43 +88,23 @@ def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
     return {recipe_id: path_of(recipe_id, nodes) for recipe_id in dict.fromkeys(ids)}
 
 
-def chain_steps(chain: list[str], nodes: dict | None = None) -> list[dict]:
-    """recipe 가 아직 없는 경로 하나의 화면용 단계 목록.
-
-    [{node_id, name, about: [대상 이름, ...]}, ...] 순서 그대로.
-
-    paths_for 는 recipe id 로 파일을 읽으므로 파일이 없는 검토 대상 경로는
-    여기로 온다. about 은 대상 노드의 **이름**이다 — 화면이 어느 노드에서
-    대상이 어긋나는지 보여줄 근거이고, id 는 사람이 읽을 것이 아니다.
-
-    노드는 온톨로지 전부에서 찾는다. 검토 대상 경로의 새 노드는 아직 어느
-    recipe 에도 없어 drawn_nodes 에 빠져 있을 수 있다.
-    """
-    nodes = load_ontology()["nodes"] if nodes is None else nodes
-
-    return [
-        {
-            "node_id": node_id,
-            "name": nodes.get(node_id, {}).get("name", node_id),
-            "about": [
-                nodes.get(group_id, {}).get("name", group_id)
-                for group_id in sorted(about_of(node_id))
-            ],
-        }
-        for node_id in chain
-    ]
-
-
 def drawn_nodes() -> dict:
     """화면에 그리는 노드. **온톨로지 전부가 아니다.**
 
-    그리는 것은 두 가지다 — 실행할 수 있는 경로(실선에 나오는 노드)와,
-    그것이 무엇에 관한 것인가(그룹).
+    그리는 것은 셋이다 — 실행할 수 있는 경로(실선에 나오는 노드), 그것이 무엇에
+    관한 것인가(그룹과 점선에 나오는 노드), 그리고 **실행할 수 있는 노드 전부**.
 
-    형식 노드(영상 · 이미지 · 문서 · 분석결과)는 뺀다. recipe 에 나오지 않아
-    실선이 없고 about 도 안 붙어 점선도 없다 — 그리면 아무 선도 없는 점 다섯
-    개가 떠 있게 되고, 사람은 그것이 무슨 뜻인지 물어보게 된다. 형식 계층은
-    경로를 만들 때 쓰는 것이지 사람이 볼 것이 아니다.
+    마지막 조건이 실선 조건과 따로 필요하다. **등록한 노드의 경로가 전부
+    버려질 수 있다** — 대상이 어긋나는 경로는 등록되지 않으므로(crosses_groups)
+    그런 노드는 어느 recipe 에도 안 들어간다. 빼면 그 노드가 화면에서 사라지고,
+    새 점선이 좌표 없는 노드를 가리켜 neato -n 이 그림을 통째로 거부한다
+    (실측: "node ... has no position as required by the -n flag").
+    등록 직후에 그 노드를 보여주는 것이 등록 장면 자체다.
+
+    형식 노드(영상 · 이미지 · 문서 · 분석결과)는 뺀다. 실행하지 않고, recipe 에
+    나오지 않아 실선이 없고, about 도 안 붙어 점선도 없다 — 그리면 아무 선도
+    없는 점 다섯 개가 떠 있게 되고, 사람은 그것이 무슨 뜻인지 물어보게 된다.
+    형식 계층은 경로를 만들 때 쓰는 것이지 사람이 볼 것이 아니다.
 
     **kind 를 여기서 만들어 붙인다.** 온톨로지에는 종류가 안 적혀 있고, 그리는
     쪽은 그룹을 다르게 칠해야 한다. 파일에 되돌려 적지 않는다 — 화면에만 필요한
@@ -134,11 +113,15 @@ def drawn_nodes() -> dict:
     nodes = load_ontology()["nodes"]
     groups = set(group_ids())
     in_paths = {node_id for pair in solid_edges() for node_id in pair}
+    in_dotted = {node_id for pair in dotted_edges() for node_id in pair}
 
     return {
         node_id: {**node, "kind": "group" if node_id in groups else "function"}
         for node_id, node in nodes.items()
-        if node_id in groups or node_id in in_paths
+        if node_id in groups
+        or node_id in in_paths
+        or node_id in in_dotted
+        or is_executable(node_id)
     }
 
 
