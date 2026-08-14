@@ -14,8 +14,10 @@ FONT = "Malgun Gothic"
 HIGHLIGHT_COLOR = "#14B8A6"  # 선택된 경로. 노드 테두리와 엣지에만 쓴다.
 DOTTED_COLOR = "#7F77DD"  # 특성 관련. 실선과 확실히 구분되어야 한다.
 PLAIN_COLOR = "#8C93A1"  # 그 밖의 모든 것.
-# 새로 등록된 노드. 위 둘과 충분히 떨어진 분홍 계열로 골랐다 —
+# 새로 등록된 **노드 테두리**. 위 둘과 충분히 떨어진 분홍 계열로 골랐다 —
 # teal(180°) · 보라(245°) 사이에서 330° 가 가장 멀다.
+# 예전에는 새 점선과 새 실선도 이 색이었다. 지금은 노드 테두리 하나뿐이라
+# 분홍이 "이번에 생긴 노드" 를 가리키는 유일한 신호다 (아래 등록 장면의 색).
 NEW_COLOR = "#F2589D"
 
 # 선이 뒤로 물러나고 노드가 앞으로 나오게 값을 배경(#0E1117) 대비비로 골랐다.
@@ -43,14 +45,30 @@ NODE_BORDER_TOP = "#5A6474"
 GROUP_COLOR = "#D9A441"
 GROUP_COLOR_TOP = "#8A6B2E"      # 상단용. 대비 3.80 으로 한 단계 낮춘다.
 
-# 검토 대상(대상이 어긋나는 경로) 표시. 등록 직후 상단 지도에 얹는다.
-# "대상이 어긋난다" 는 표시라 대상(group) 노드와 같은 amber 계열로 골랐다 —
-# 새로 생긴 것(NEW_COLOR, 분홍 330°)과는 색상환에서 충분히 떨어져 있고(39°),
-# 그룹 타원과 한 가족으로 읽힌다. 다만 값은 그룹 색과 다르게 둔다 — 같으면
-# 검토 표시가 사라졌는지를 화면에서도 테스트에서도 확인할 수 없다.
-# 대비 4.8 : 상단 그룹(3.80)보다 한 단계 위, 새로 생긴 것(분홍)보다는 아래 —
-# 검토 대상은 아직 결정되지 않은 것이라 새로 생긴 것보다 옅어야 한다.
-REVIEW_COLOR = "#A07A28"
+# ------------------------------------------------------------ 등록 장면의 색
+# **색 하나가 뜻 하나다.** 예전에는 새 노드 · 새 점선 · 새 실행 경로 셋을 전부
+# NEW_COLOR(분홍) 하나로 칠했다. 그래서 "무엇이 새로 생겼나" 와 "어떤 실행
+# 경로가 생겼나" 가 겹쳐 보였고, 경로가 3~6개면 서로 뒤엉켜 읽히지 않았다.
+#
+#   분홍  새 노드 테두리  (NEW_COLOR, 위)
+#   보라  새로 생긴 관계(점선)
+#   주황  새로 생긴 실행 경로. 고른 것은 짙게 · 빠진 것은 옅게
+#
+# 새 점선은 보라 계열을 유지한다(249° — 하단 점선 244° · 상단 점선 245°).
+# 관계는 점선이 말하는 것이라 같은 계열이어야 "같은 종류의 선" 으로 읽히고,
+# 새 것과 헌 것은 밝기와 굵기로만 가른다. 대비 8.51 로 하단 점선(5.91)의
+# 1.44배다. 강조 teal(7.59)보다 위인데 위계가 뒤집힌 것은 아니다 —
+# **등록 장면에는 teal 이 아예 없다**(해석 결과와 한 화면에 뜨지 않는다).
+NEW_DOTTED_COLOR = "#B0A2FF"
+# 새 실행 경로. 대비 7.09 로 강조 teal(7.59)과 거의 같은 무게다 — 둘 다
+# 하단의 실행 경로이고 장면이 달라 한 화면에서 경쟁하지 않는다.
+# 대상(group) 노드의 금색(39°)과 색상이 가깝지만(29°) 그쪽은 타원 노드이고
+# 이쪽은 선이라 도형부터 갈린다.
+PATH_NEW = "#E8862A"
+# 선택에서 빠진 경로. 같은 색상(32°)이라 "같은 종류인데 꺼진 것" 으로 읽힌다.
+# 대비 3.49 — 짙은 주황(7.09)의 절반이라 확실히 물러나면서도 배경 실선(2.41)
+# 보다는 위라 사라지지는 않는다. 옅어도 실행 경로다.
+PATH_NEW_DIM = "#8A6234"
 
 # /graph 응답에 실어 보낸다. UI 는 이것만 보고 칩 테두리 · 배지 · 안내 문구를 칠한다.
 COLORS = {
@@ -67,7 +85,6 @@ COLORS = {
     "node_border_top": NODE_BORDER_TOP,
     "group": GROUP_COLOR,
     "group_top": GROUP_COLOR_TOP,
-    "review": REVIEW_COLOR,
 }
 
 # ------------------------------------------------------------ 크기
@@ -116,9 +133,8 @@ GROUP_ATTRS_TOP = (
 )
 
 # 실행 경로 굵기. 배경 실선(속성 없음 = 1)보다 확실히 굵어야 "이 길이 켜졌다"
-# 가 읽힌다. 강조 · 자동 승격 · 승인 대기가 **같은 굵기**인 이유 : 하단에서는
-# 셋 다 실행 경로다. 무엇이 다른지는 색이 말한다(teal 해석 결과 · 분홍 자동
-# 승격 · amber 승인 대기).
+# 가 읽힌다. 강조와 등록이 **같은 굵기**인 이유 : 하단에서는 둘 다 실행 경로다.
+# 무엇이 다른지는 색이 말한다(teal 해석 결과 · 분홍 새로 등록된 경로).
 PATH_PENWIDTH = 3
 
 # 실행 경로 화살표. 배경 실선은 방향이 없고(dir=none) 강조된 것만 방향을 보여준다 —
@@ -137,12 +153,14 @@ ORDER_FONTSIZE = 26
 
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.
 MARK_NODE_PENWIDTH = 2
-MARK_DOTTED_PENWIDTH = 2.5  # 관계를 더 또렷하게 (기본 점선 1.6 기준)
+# 새 관계(점선) 굵기. 2.5 에서 올렸다 — 새 점선(#B0A2FF, 대비 8.51)과 하단의
+# 평범한 점선(#8B84E8, 5.91)은 같은 보라 계열이라 색상만으로는 잘 안 갈린다.
+# 밝기 1.44배에 굵기 2.5배를 더해 갈리게 한다 (기본 점선 1.6 기준).
+MARK_DOTTED_PENWIDTH = 4.0
 # 예전에는 둘 다 1.5 였다 — 상단 지도 위의 조연이라 얇게 둔 값이다. 상단이
 # 실선을 안 그리게 되면서 이 둘은 하단 전용이 됐고, 하단에서는 조연이 아니라
 # 실행 경로 자체다. 배경 실선(1)과 갈리지 않으면 등록해도 화면이 안 변한다.
 MARK_SOLID_PENWIDTH = PATH_PENWIDTH
-REVIEW_PENWIDTH = PATH_PENWIDTH
 # 표시된 점선은 평소 굵기의 이 배수다. 절댓값 하나로 박아두면 상단(4.5)에서
 # **새로 생긴 점선이 평범한 점선보다 가늘어진다** — 등록 장면의 주인공이
 # 배경보다 옅어지는 셈이라 배수로 둔다. 기본 점선에서는 예전 값과 같다.
@@ -174,11 +192,10 @@ def build_dot(
     mark_nodes=(),
     mark_edges=(),
     mark_dotted=(),
+    dim_edges=(),
     mark_color=None,
     edge_color=None,
     dotted_color=None,
-    review_edges=(),
-    review_color=None,
 ) -> str:
     """계산 결과를 Graphviz DOT 문자열로 옮긴다.
 
@@ -210,7 +227,6 @@ def build_dot(
         draw_solid: 실선(recipe 파생)을 그릴지. False 면 실선 문장을 아예 넣지
             않는다 — 상단이 "무엇이 무엇과 관련되는가"(점선)만 말하는 관계
             지도가 되고, "무엇 다음에 무엇이 오는가"(실선)는 하단이 맡는다.
-            검토 표시(review_edges)가 새로 긋는 선도 실선 문법이므로 함께 빠진다.
             **좌표는 안 바뀐다** — 전 노드가 핀이고 neato -n 이라 선을 빼도
             배치를 다시 계산하지 않는다(테스트로 고정).
         dotted_penwidth: 점선 굵기. 생략하면 DOTTED_PENWIDTH. 상단은 실선이
@@ -227,23 +243,28 @@ def build_dot(
             "무엇을 고른 경로인지" 가 아니라 "무엇이 새로 생겼는지" 라서
             같은 색 조합 규칙에 넣으면 읽는 사람이 헷갈린다.
             둘 다 걸린 대상은 mark 가 이긴다.
-        mark_color: mark 에 쓸 색. 생략하면 NEW_COLOR.
-        review_edges: 검토 대상 경로의 실선 [(from, to), ...]. mark 와 다른 색으로
-            표시한다 — 아직 recipe 가 아니고 사람이 승인해야 하는 경로다.
-            **차단이 아니라 분류다.** 이미 있는 실선은 색만 바꾸고, 어느 recipe
-            에도 없는 연결은 선을 하나 그린다 — 좌표가 전부 핀으로 고정돼
-            있어(neato -n) 선을 더해도 노드는 움직이지 않는다. 둘 다 걸린 대상은
-            mark 가 이긴다 — 새로 생긴 사실이 검토 표시보다 먼저 보여야 한다.
-            실행 경로를 보여주는 자리(하단)에 그린다. 상단은 실선을 안 그리므로
-            (draw_solid=False) 검토 표시도 함께 빠진다.
-        review_color: 검토 표시에 쓸 색. 생략하면 REVIEW_COLOR.
+            **셋이 서로 다른 색이다.** 하나가 뜻 하나이기 때문이다.
+                mark_nodes   NEW_COLOR         (mark_color 로 덮을 수 있다)
+                mark_dotted  NEW_DOTTED_COLOR  (상수)
+                mark_edges   PATH_NEW          (상수)
+            뒤의 둘을 상수로 고정하는 이유 : 이 인자들은 등록 장면에서만 쓰인다.
+            해석 장면은 highlight_paths 를 쓴다.
+        dim_edges: [(from, to), ...] — 선택에서 빠진 실행 경로. PATH_NEW_DIM 으로
+            칠하고 굵기와 화살표는 짙은 경로와 같다(옅어도 실행 경로다).
+            순번은 안 붙인다.
+            **색 우선순위는 mark > highlight > dim 이다.** dim 이 가장 낮은
+            이유 : 경로들이 앞 구간을 공유하므로, 같은 엣지가 짙은 경로에도
+            걸려 있으면 짙은 쪽이 이겨야 앞 구간이 끊겨 보이지 않는다.
+            실선이 없는 쌍은 조용히 건너뛴다 — 여기서 선을 새로 긋지 않는다.
+        mark_color: mark_nodes 에 쓸 색. 생략하면 NEW_COLOR.
         edge_color: 실선 색. 생략하면 PLAIN_COLOR — 노드 테두리와 같은 값이라
             엣지만 옅게 할 수가 없었다. 분리해두면 선을 뒤로 물릴 수 있다.
         dotted_color: 점선 색. 생략하면 DOTTED_COLOR. 실선만 어둡게 하면
             밝은 점선이 화면에서 가장 튀어 위계가 뒤집히므로 함께 조절한다.
 
-    mark_edges 에는 순번(xlabel)을 붙이지 않는다. 실행 순서가 아니라
-    새로 생겼다는 표시일 뿐이다.
+    mark_edges 와 dim_edges 에는 순번(xlabel)을 붙이지 않는다. 등록 장면은
+    highlight_paths 를 쓰지 않으므로 순번 규칙(경로가 정확히 하나일 때)에
+    아예 걸리지 않는다.
 
     새 인자는 모두 키워드 전용이고 기본값에서는 출력이 한 글자도 달라지지 않는다.
     tests/graph_rendering 의 40여 개가 기존 출력 문자열에 의존한다.
@@ -275,11 +296,10 @@ def build_dot(
     marked_edges = {tuple(edge) for edge in mark_edges}
     # 점선은 방향이 없다. 어느 순서로 받아도 같은 쌍으로 본다.
     marked_dotted = {frozenset(pair) for pair in mark_dotted}
+    dimmed_edges = {tuple(edge) for edge in dim_edges}
     marked_color = mark_color or NEW_COLOR
     line_color = edge_color or PLAIN_COLOR
     dash_color = dotted_color or DOTTED_COLOR
-    reviewed = {tuple(edge) for edge in review_edges}
-    review_shade = review_color or REVIEW_COLOR
     dash_width = DOTTED_PENWIDTH if dotted_penwidth is None else dotted_penwidth
 
     if dotted_labels is True or dotted_labels is False:
@@ -338,24 +358,22 @@ def build_dot(
     for frm, to in solid if draw_solid else ():
         edge = (frm, to)
         is_marked = edge in marked_edges
-        # mark > highlight > review. 검토 표시는 평범했을 실선만 바꾼다 —
-        # 새로 생긴 것(mark)이 검토 대상 경로에 겹쳐 있어도 새로 생긴 사실이 먼저다.
-        is_reviewed = not is_marked and edge not in highlighted and edge in reviewed
-        color = marked_color if is_marked else (
-            HIGHLIGHT_COLOR if edge in highlighted else (
-                review_shade if is_reviewed else ""
-            )
-        )
+        # mark > highlight > dim. 새로 생긴 것이 고른 경로보다 먼저 보이고,
+        # 물러난 경로가 가장 낮다 — 경로들이 앞 구간을 공유하므로 그 구간은
+        # 짙은 쪽이 이겨야 길이 끊겨 보이지 않는다.
+        if is_marked:
+            color = PATH_NEW
+        elif edge in highlighted:
+            color = HIGHLIGHT_COLOR
+        elif edge in dimmed_edges:
+            color = PATH_NEW_DIM
+        else:
+            color = ""
         if not color:
             lines.append(f'  "{frm}" -> "{to}" [dir=none{solid_len}];')
             continue
 
-        if is_marked:
-            width = MARK_SOLID_PENWIDTH
-        elif is_reviewed:
-            width = REVIEW_PENWIDTH
-        else:
-            width = PATH_PENWIDTH
+        width = MARK_SOLID_PENWIDTH if is_marked else PATH_PENWIDTH
         # 켜진 길에만 화살표. 배경 실선은 dir=none 그대로다 — 방향이 보이는 것이
         # 곧 "이것이 실행 경로다" 라는 표시이므로 아무 데나 붙이면 뜻이 없어진다.
         attrs = (
@@ -371,27 +389,6 @@ def build_dot(
             )
         lines.append(f'  "{frm}" -> "{to}" [{attrs}{solid_len}];')
 
-    # 검토 대상 경로 중 어느 recipe 에도 없는 연결. 그릴 실선이 없으므로 선을
-    # 하나 그린다 — 좌표가 전부 핀으로 고정돼 있어(neato -n) 노드는 안 움직인다.
-    # 순번(xlabel)은 없다. 실행 순서가 아니라 검토 대상이라는 표시다.
-    # 실선을 안 그리는 화면(상단)에서는 이것도 안 그린다 — 실선 문법이라
-    # 관계 지도에 실행 순서가 섞여 들어간다.
-    solid_pairs = {tuple(pair) for pair in solid}
-    for frm, to in dict.fromkeys(
-        tuple(edge) for edge in (review_edges if draw_solid else ())
-    ):
-        if (frm, to) in solid_pairs:
-            continue
-        if frm not in nodes or to not in nodes:
-            # 화면에 없는 노드로는 선을 못 긋는다. neato -n 은 좌표 없는 노드를
-            # 놓을 자리를 모른다.
-            continue
-        lines.append(
-            f'  "{frm}" -> "{to}" '
-            f"[dir=forward, arrowsize={PATH_ARROWSIZE}, "
-            f'penwidth={REVIEW_PENWIDTH}, color="{review_shade}"{solid_len}];'
-        )
-
     # 특성 관련 — 방향 없는 점선.
     # constraint=false 는 쓰지 않는다. 랭크 제약이 없는 엣지가 늘면
     # 브라우저 WASM Graphviz(st.graphviz_chart 가 쓰는 렌더러)는 레이아웃을
@@ -405,7 +402,7 @@ def build_dot(
         is_marked = pair in marked_dotted
         # dir=none 과 style=dashed 는 표시해도 그대로 둔다 — 테스트가 실선과
         # 점선을 이 두 속성으로 가른다.
-        color = marked_color if is_marked else dash_color
+        color = NEW_DOTTED_COLOR if is_marked else dash_color
         width = round(dash_width * MARK_DOTTED_RATIO, 2) if is_marked else dash_width
         attrs = f'dir=none, style=dashed, color="{color}", penwidth={width}'
 

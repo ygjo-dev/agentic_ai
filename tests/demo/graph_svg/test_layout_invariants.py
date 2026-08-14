@@ -219,6 +219,36 @@ def test_marking_never_moves_a_node():
     assert size(base) == size(marked)
 
 
+def test_dimming_never_moves_a_node():
+    """좁히면 빠진 경로가 옅어진다. 그때 지도가 흔들리면 보던 자리를 잃는다.
+
+    옅은 경로도 화살표를 달고 굵기가 배경 실선과 다르다 — 색만 바꾸는 것이
+    아니므로 좌표와 캔버스를 함께 본다.
+    """
+    positions = fresh_positions()
+
+    def draw(**kwargs):
+        return render_svg(
+            build_dot(
+                NODES, SOLID, DOTTED,
+                positions=positions, spring=True, node_attrs=NODE_ATTRS,
+                dotted_labels=False, **kwargs,
+            ),
+            "neato",
+            no_layout=True,
+        )
+
+    def size(svg):
+        return re.search(r'<svg width="(\d+)pt" height="(\d+)pt"', svg).groups()
+
+    base = draw(mark_edges=PATH_A)
+    narrowed = draw(mark_edges=PATH_B, dim_edges=PATH_A)
+
+    assert len(svg_node_coords(base)) == len(NODES)
+    assert svg_node_coords(narrowed) == svg_node_coords(base)
+    assert size(narrowed) == size(base)
+
+
 def test_positions_actually_pin_the_layout():
     """좌표를 넘기면 그 좌표대로 그려져야 한다.
 

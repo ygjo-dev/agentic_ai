@@ -69,9 +69,13 @@ def wrap_node_labels(nodes: dict) -> dict:
 def chain_edges(chains) -> list[tuple[str, str]]:
     """노드 id 사슬들을 인접 쌍으로. 중복은 접는다.
 
-    /nodes 응답의 accepted.chains · pending[*].chain 이 이 모양이다. 경로 전체를
-    칠하려면 "새로 생긴 연결"(new_solid_edges)만으로는 부족하다 — 이미 있던
-    연결을 지나는 경로가 대부분이라 그것만 칠하면 길이 끊겨 보인다.
+    /nodes 응답의 accepted.chains 가 이 모양이다. 등록으로 만들어진 경로가
+    지나는 엣지 전부다 — "새로 생긴 연결"(new_solid_edges)만으로는 이미 있던
+    연결을 지나는 구간이 빠져 길이 끊겨 보인다.
+
+    **그리는 데 직접 쓰지는 않는다.** 변형마다 어느 recipe 를 짙게 하고 어느
+    것을 옅게 할지가 달라서, 엣지는 변형별로 paths 에서 뽑는다(variant_svgs).
+    여기서 만든 값은 "이 장면은 등록이다" 는 표시이자 캐시 키의 재료다.
     """
     return list(dict.fromkeys(
         edge for chain in chains or () for edge in zip(chain, chain[1:])
@@ -82,13 +86,12 @@ def mark_from_registration(result: dict | None) -> dict | None:
     """POST /nodes 응답에서 강조할 것만 뽑는다.
 
     new_solid_edges / new_dotted_edges 는 등록 전후의 차집합이다.
-    이미 줄어든 형태({nodes, solid, dotted, accepted, review})가 들어오면 그대로
+    이미 줄어든 형태({nodes, solid, dotted, accepted})가 들어오면 그대로
     돌려준다 — UI 가 응답을 통째로 넘겨도, 서버가 두 번 줄여도 같은 값이 나온다.
 
-    accepted 는 자동 승격된 경로(분홍), review 는 검토 대상(pending) 경로
-    (amber)다. 둘 다 하단에 실행 경로로 그린다 — 등록이 무엇을 만들었고 무엇을
-    묻고 있는지가 경로로 보여야 한다. pending 은 아직 recipe 가 아니라
-    new_solid_edges 에 없고, 승인되면 accepted 로 옮겨가며 색이 바뀐다.
+    accepted 는 등록으로 만들어진 경로다. **이 키가 있으면 등록 장면이다** —
+    하단이 teal 대신 주황 실행 경로를 그린다(variant_svgs). 경로가 하나도
+    안 만들어져 값이 비어도 키는 남는다.
     """
     if not result or "error" in result or result.get("reset"):
         return None
@@ -99,7 +102,6 @@ def mark_from_registration(result: dict | None) -> dict | None:
             "solid": [tuple(edge) for edge in result.get("solid") or []],
             "dotted": [tuple(pair) for pair in result.get("dotted") or []],
             "accepted": [tuple(edge) for edge in result.get("accepted") or []],
-            "review": [tuple(edge) for edge in result.get("review") or []],
         }
 
     node_id = result.get("node_id")
@@ -108,9 +110,6 @@ def mark_from_registration(result: dict | None) -> dict | None:
         "solid": [(e["from"], e["to"]) for e in result.get("new_solid_edges") or []],
         "dotted": [(e["a"], e["b"]) for e in result.get("new_dotted_edges") or []],
         "accepted": chain_edges((result.get("accepted") or {}).get("chains")),
-        "review": chain_edges(
-            entry.get("chain") or [] for entry in result.get("pending") or []
-        ),
     }
 
 
@@ -161,9 +160,8 @@ def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict)
     쓰이던 인자이고, 인자를 지우면 부르는 쪽이 두 갈래로 갈린다.
 
     발화 해석은 상단을 강조하지 않는다 — 결과는 하단이 보여준다. 노드를
-    등록했을 때만 **새 노드 테두리와 새 점선**을 표시한다. 새 실선(mark_edges)과
-    검토 표시(review_edges)는 실선 위에 얹는 것이라 여기서는 갈 곳이 없다 —
-    둘 다 하단이 맡는다.
+    등록했을 때만 **새 노드 테두리와 새 점선**을 표시한다. 새 실선(mark_edges)은
+    실선 위에 얹는 것이라 여기서는 갈 곳이 없다 — 그것은 하단이 맡는다.
     """
     return fit_svg(stack_nodes_on_top(
         render_svg(
@@ -204,19 +202,40 @@ def variant_svgs(
     {"": 후보 전부 강조, "<마지막노드 id>": 그것으로 끝나는 recipe 만}
 
     배경 실선은 그대로 둔다 — 강조 안 된 경로도 보여야 지도 역할을 한다.
-    그 위에 세 가지가 화살표로 얹힌다.
+    그 위에 얹히는 것이 **장면마다 다르다.**
 
-        발화 해석 결과   HIGHLIGHT (teal)   순번 있음
-        등록 자동 승격   NEW      (분홍)
-        등록 승인 대기   REVIEW   (amber)
+        발화 해석   highlight_paths   teal    순번 있음
+        노드 등록   mark_edges        짙은 주황
+                    dim_edges         옅은 주황   선택에서 빠진 recipe
 
-    자동 승격은 mark_edges 로 넘긴다 — 색 우선순위가 mark > highlight > review 라
-    등록 장면에서 teal 을 덮는다. 등록 결과는 "고른 경로" 가 아니라 "새로 생긴
-    것" 이므로 그 편이 맞다.
+    두 장면을 가르는 값은 mark 의 "accepted" 키다 — 등록 응답에만 있다.
+    (값이 아니라 키의 유무로 가른다. 등록했는데 경로가 하나도 안 만들어지면
+    값이 비지만 그래도 등록 장면이고, 그때 teal 이 뜨면 안 된다.)
+
+    **등록 장면에는 teal 이 없다.** 예전에는 등록도 highlight_paths 를 함께
+    넘기고 mark 가 그 위를 덮게 했는데, 그러면 mark 에 안 걸린 노드 테두리가
+    teal 로 남아 "해석 결과" 와 같은 색이 등록 화면에 섞였다.
+
+    좁혀도 안 변하는 것이 있다 — 새 노드 테두리(mark_nodes)와 새 점선
+    (mark_dotted)이다. "무엇이 새로 생겼는가" 는 어느 후보를 보든 같은 사실이다.
+
+    새로 생긴 실선(mark["solid"])은 따로 칠하지 않는다. 어느 recipe 에도 안
+    들어간 연결은 실행 경로가 아니므로 배경 실선으로 남는 편이 맞다 — 주황은
+    "실행할 수 있는 길" 하나만 뜻한다.
     """
     wrapped = wrap_node_labels(nodes)
+    registering = "accepted" in mark
+    all_ids = list(recipe_ids)
+
+    def path_edges(ids):
+        """recipe 들이 지나는 엣지를 한 줄로. 중복은 접는다."""
+        return list(dict.fromkeys(
+            edge for path in focus.edges_of(paths, ids) for edge in path
+        ))
 
     def svg_for(ids):
+        chosen = set(ids)
+        rest = [recipe_id for recipe_id in all_ids if recipe_id not in chosen]
         return fit_svg(stack_nodes_on_top(
             render_svg(
                 build_dot(
@@ -224,8 +243,8 @@ def variant_svgs(
                     solid,
                     dotted,
                     # 경로가 정확히 하나면 build_dot 이 순번을 붙인다. 규칙은 한곳뿐이다.
-                    highlight_paths=focus.edges_of(paths, ids),
-                    highlight_nodes=focus.nodes_of(paths, ids),
+                    highlight_paths=() if registering else focus.edges_of(paths, ids),
+                    highlight_nodes=() if registering else focus.nodes_of(paths, ids),
                     positions=positions,
                     spring=True,
                     dotted_labels=False,
@@ -234,12 +253,11 @@ def variant_svgs(
                     edge_color=EDGE_COLOR,
                     dotted_color=DOTTED_COLOR_BOTTOM,
                     mark_nodes=mark.get("nodes") or (),
-                    mark_edges=[
-                        *(mark.get("solid") or ()),
-                        *(mark.get("accepted") or ()),
-                    ],
+                    mark_edges=path_edges(ids) if registering else (),
+                    # 나머지 recipe 를 통째로 넘긴다. 겹치는 앞 구간은
+                    # build_dot 의 우선순위(mark > dim)가 짙은 쪽으로 정리한다.
+                    dim_edges=path_edges(rest) if registering else (),
                     mark_dotted=mark.get("dotted") or (),
-                    review_edges=mark.get("review") or (),
                 ),
                 "neato",
                 no_layout=True,
