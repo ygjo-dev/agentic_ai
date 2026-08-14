@@ -51,9 +51,3 @@ desktop.ini
 node_modules/
 npm-debug.log*
 yarn-error.log*
-
-# 무인 실행 결과 메모. 사람이 읽고 지운다.
-NOTES.md
-
-# 배치 실험 결과. 사람이 눈으로 고르는 용도라 커밋하지 않는다.
-tmp/
