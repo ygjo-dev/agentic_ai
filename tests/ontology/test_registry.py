@@ -33,6 +33,7 @@ from ontology.registry import (
     UnknownType,
     _describe_groups,
     add_node,
+    all_recipes,
     append_menu,
     append_recipes,
     check_types,
@@ -235,6 +236,45 @@ def test_types_that_do_not_exist_are_rejected():
 
 
 # ================================================================ 경로 생성
+def test_a_new_node_gets_exactly_its_share_of_all_the_paths():
+    """등록이 만드는 경로 = 온톨로지 전체 경로 중 그 노드를 지나는 것.
+
+    두 함수가 갈라지면 안 된다. `_init` 의 recipe 는 `all_recipes` 로 만들고
+    (tools/rebuild_init.py) 등록은 `new_recipes_for` 로 만드는데, 규칙이 두
+    벌이 되면 menu 문장이 미묘하게 갈린다 — 그 문장이 발화 매칭의 유일한
+    근거라 "초기 recipe 는 되는데 등록한 건 안 되는" 상황이 나오고 원인을
+    찾기도 어렵다.
+    """
+    add_node("detect_track_settlement", NEW_NODE)
+    store.append_edge("detect_track_settlement", "image", HAS_INPUT)
+    store.append_edge("detect_track_settlement", "analysis", HAS_OUTPUT)
+    nodes = nodes_now()
+
+    every = all_recipes(nodes)
+    mine = new_recipes_for("detect_track_settlement", nodes)
+
+    assert mine, "새 노드를 지나는 경로가 없으면 이 검사가 무력하다"
+    assert len(mine) < len(every), "전부가 새 노드를 지나면 비교가 뜻이 없다"
+    assert mine == [c for c in every if "detect_track_settlement" in c]
+
+
+def test_all_recipes_does_not_drop_paths_that_cross_subjects():
+    """**거르는 것은 부르는 쪽의 일이다.** 여기서 함께 거르면 안 된다.
+
+    `all_recipes` 가 crosses_groups 까지 걸러 버리면 부르는 쪽이 필터를
+    빼먹어도 결과가 멀쩡해 보인다. 그러다 조건이 바뀌면 말이 안 되는 경로가
+    조용히 `_init` 에 깔린다 — 승강장 CCTV 로 궤도 균열을 찾는 것 같은.
+    "무엇이 만들어질 수 있는가" 와 "무엇을 남길 것인가" 는 갈라 둔다.
+    """
+    from ontology.graph import crosses_groups
+
+    every = all_recipes(nodes_now())
+
+    assert [chain for chain in every if crosses_groups(chain)], (
+        "어긋나는 경로가 하나도 없으면 이 검사가 무력하다"
+    )
+
+
 def test_only_paths_through_the_new_node_are_created():
     """기존 노드끼리의 조합은 이미 recipe 로 있다. 다시 만들면 중복이다.
 

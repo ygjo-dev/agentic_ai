@@ -217,15 +217,28 @@ def _describe_form(form: dict) -> str:
 MAX_STEPS = 4
 
 
-def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
-    """새 노드를 지나는 경로만 만든다. 파일은 쓰지 않는다.
+def all_recipes(nodes: dict) -> list[list[str]]:
+    """온톨로지 전체의 경로 후보. 길이 2 이상, MAX_STEPS 이하. 파일은 안 쓴다.
 
-    기존 노드끼리의 조합은 이미 recipe 로 있으니 다시 만들면 중복이다.
-    연결 규칙은 ontology/graph.py 의 solid_edges 와 같다 —
-    앞 노드 outputs 와 뒤 노드 inputs 에 교집합이 있으면 이어진다.
+    데이터 노드에서 출발해 `can_connect` 로 이어 붙인다. 규칙은
+    `ontology/graph.py` 의 solid_edges 와 같다 — 앞 노드가 건네는 것을 뒤
+    노드가 받을 수 있으면 이어진다.
+
+    **대상(about)이 어긋나는 것을 여기서 거르지 않는다** — 거르는 것은 부르는
+    쪽의 일이다(`register_node` · `tools/rebuild_init.py`). 그래야 "무엇이
+    만들어질 수 있는가" 와 "무엇을 남길 것인가" 가 갈린다. 여기서 함께 걸러
+    버리면 등록이 무엇을 버렸는지 셀 수 없어진다.
+
+    **길이 1 은 안 만든다.** "승강장 CCTV 영상" 하나도 그 자체로 건넬 수 있는
+    것이 맞지만, 그것을 recipe 로 삼으려면 `start_ids` 와 `function_for` 의
+    "데이터만 있는 경로" 분기를 건드려야 한다. 지금은 안 한다.
+
+    **순서가 결정적이다.** 짧은 것부터(BFS), 같은 길이 안에서는 `start_ids` 와
+    `nodes` 의 순서를 따르고 그것은 ontology.yaml 에 적힌 순서다. 그래서 같은
+    온톨로지로 두 번 돌리면 같은 번호가 나온다 — `tools/rebuild_init.py` 가
+    그것에 기댄다.
     """
-
-    # 그룹을 여기서 따로 거르지 않는다. **거를 필요가 없어졌다** — 그룹은
+    # 그룹을 여기서 따로 거르지 않는다. **거를 필요가 없다** — 그룹은
     # hasInput 이 없어 `can_connect` 가 누구 뒤에도 세우지 않고, `start_ids` 도
     # 그룹을 빼므로 첫 칸에도 못 온다. 관계가 이미 막고 있는 것을 여기서 또
     # 막으면 진짜로 막는 곳이 어디인지 흐려진다.
@@ -233,9 +246,6 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
     # (예전에는 노드에 kind 가 적혀 있어서 그것을 보고 걸렀다. 지금은 성격이
     #  관계에서 나오므로 관계가 그대로 규칙이 된다.)
     usable = list(nodes)
-
-    if node_id not in usable or node_id in set(group_ids()):
-        return []
 
     # 시작점은 **손에 잡히는 구체적인 데이터**다. 승강장 CCTV 영상처럼 그
     # 자체로 존재하는 것이 경로의 첫 단계가 된다. "영상" 같은 형식은 시작점이
@@ -245,7 +255,7 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
     chains = [[start] for start in starts]
     found = []
     for _ in range(MAX_STEPS):
-        found += [chain for chain in chains if node_id in chain]
+        found += [chain for chain in chains if len(chain) >= 2]
         chains = [
             [*chain, nxt]
             for chain in chains
@@ -257,6 +267,21 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
         ]
 
     return found
+
+
+def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
+    """새 노드를 지나는 경로만 만든다. 파일은 쓰지 않는다.
+
+    기존 노드끼리의 조합은 이미 recipe 로 있으니 다시 만들면 중복이다.
+    경로 자체는 `all_recipes` 가 만든다 — **등록으로 생기는 recipe 와 _init 의
+    recipe 가 같은 함수에서 나와야 한다.** 규칙이 두 벌이 되면 menu 문장이
+    미묘하게 갈리고, 그 문장이 발화 매칭의 유일한 근거라 "초기 recipe 는 되는데
+    등록한 건 안 되는" 상황이 나온다.
+    """
+    if node_id not in nodes or node_id in set(group_ids()):
+        return []
+
+    return [chain for chain in all_recipes(nodes) if node_id in chain]
 
 
 def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list[str]:
