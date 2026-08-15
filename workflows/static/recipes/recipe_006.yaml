@@ -1,9 +1,9 @@
 steps:
 
-  - node: platform_cctv_video
+  - node: track_car_cctv_video
 
   - node: extract_frames
 
-  - node: analyze_congestion
+  - node: detect_track_crack
 
   - node: generate_ppt

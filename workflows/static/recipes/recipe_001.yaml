@@ -3,3 +3,5 @@ steps:
   - node: platform_cctv_video
 
   - node: extract_frames
+
+  - node: analyze_congestion

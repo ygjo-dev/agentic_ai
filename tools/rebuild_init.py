@@ -10,15 +10,15 @@
 "초기 recipe 는 되는데 등록한 건 안 되는" 상황이 나오고,
 menu 문장이 발화 매칭의 유일한 근거라 원인을 찾기도 어렵다.
 
-이 파일이 직접 정하는 것은 "무엇을 거를 것인가"(crosses_groups) 하나뿐이다.
+이 파일이 직접 정하는 것은 "무엇을 거를 것인가"(crosses_groups · MIN_STEPS)뿐이다.
 
 **`_init` 만 만든다. 작업본은 안 건드린다.** 작업본은 화면의 초기화 버튼
 (`registry.reset_to_init`)이 `_init` 에서 복사한다. 도구가 작업본을 직접 쓰면
 리허설 중에 돌렸을 때 화면과 어긋난다.
 
 `_init` 의 recipe 는 원래 손으로 골라 만든 것이었다. 그래서 온톨로지가 만들 수
-있는 경로 여덟 중 둘(데이터 → 프레임 추출)이 빠져 있었다. 둘 다 실행할 수 있고
-결과물(이미지)도 나오므로 recipe 가 아닐 이유가 없다.
+있는 경로 여덟 중 둘(데이터 → 프레임 추출)이 빠져 있었다. 그 둘을 넣어 봤다가
+발화 해석이 무너져 되돌렸다 — 아래 `MIN_STEPS` 를 본다.
 """
 
 import argparse
@@ -41,6 +41,19 @@ from ontology.registry import (  # noqa: E402
 
 # menu.yaml 에서 항목 앞까지 남길 부분. 이 뒤를 잘라내고 append_menu 로 다시 채운다.
 MENU_YAML_HEAD_MARKER = "recipes:"
+
+# 2단 경로(데이터 → 프레임 추출)는 recipe 로 삼지 않는다.
+#
+# 실행할 수는 있다. 다만 image 는 중간 산출물이라 사용자가 그것을 달라고 하지
+# 않고, 무엇보다 **다른 모든 recipe 의 앞토막**이라 menu 에 있으면 발화 해석이
+# "어디서 끝나는가" 를 못 가른다 — 실측으로 35/35 가 5/35 가 됐다(작업 32).
+# 프롬프트를 절차형으로 바꿔 25/45 까지 올렸으나 나머지를 못 채웠고, 고칠수록
+# 시연에 안 쓰는 발화가 대신 무너졌다.
+#
+# **지금은 길이로 자르지만 진짜 기준은 끝점이다.** analysis · output_report 는
+# 사용자가 원하는 것이고 image 는 재료다. 온톨로지가 그것을 말하게 하려면
+# deliverable 같은 타입이 필요하고, 그때 이 조건이 사라진다.
+MIN_STEPS = 3
 
 # menu.md 에서 목차 표 머리까지 남길 부분. append_menu 는 이 표 끝에 행을 넣고
 # 본문 섹션은 "\n\n---\n\n# Recipe " 마커 앞을 갈라 붙인다 — 마커가 없으면 끝에
@@ -109,7 +122,10 @@ def rebuild(write: bool) -> int:
     nodes = _load_init_nodes()
 
     every = all_recipes(nodes)
-    chains = [chain for chain in every if not crosses_groups(chain)]
+    chains = [
+        chain for chain in every
+        if not crosses_groups(chain) and len(chain) >= MIN_STEPS
+    ]
 
     before = _current_chains(paths.INIT_RECIPES_DIR)
     _table(before, chains, nodes)
@@ -122,7 +138,12 @@ def rebuild(write: bool) -> int:
         for chain in crossing:
             print(f"        {chain}")
     else:
-        print(f"  대상이 어긋나는 것 0개 (전체 {len(every)}개 중 {len(every) - len(chains)}개 버림)")
+        short = sum(1 for chain in every if len(chain) < MIN_STEPS)
+        print(
+            f"  대상이 어긋나는 것 0개 "
+            f"(전체 {len(every)}개 중 {len(every) - len(chains)}개 버림"
+            f" — 그중 {short}개는 {MIN_STEPS}단 미만)"
+        )
 
     sentences = [function_for(chain, nodes) for chain in chains]
     # menu.yaml 은 "  recipe_00N:\n    function: <문장>\n" 한 덩어리씩이다.
