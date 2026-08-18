@@ -111,7 +111,7 @@ def used(colour: str, svg: str) -> bool:
 
 
 def edges_of_colour(svg: str, colour: str) -> set[str]:
-    """그 색으로 칠해진 엣지 이름들. 화살표 폴리곤은 같은 이름이라 접힌다."""
+    """그 색으로 칠해진 엣지 이름들. 화살표 폴리곤은 같은 이름이라 접힘."""
     found = set()
     for block in re.findall(r'<g id="edge\d+" class="edge">(.*?)</g>', svg, re.S):
         title = re.search(r"<title>(.*?)</title>", block, re.S)
@@ -145,7 +145,7 @@ def canvas(svg: str) -> str:
 
 # ------------------------------------------------------------ 검사가 무력하지 않은지
 def test_the_registration_actually_draws_paths(registered):
-    """변형이 여러 벌이고 경로가 실제로 칠해져야 아래 검사들이 뜻을 가진다."""
+    """변형이 여러 벌이고 경로가 실제로 칠해져야 아래 검사들이 뜻을 가짐."""
     variants = registered["variants"]
 
     assert len(BY_ENDPOINT) == 3, f"끝노드가 갈리는 recipe 가 셋이 안 된다: {BY_ENDPOINT}"
@@ -155,7 +155,7 @@ def test_the_registration_actually_draws_paths(registered):
 
 # ------------------------------------------------------------ 등록 직후
 def test_every_new_path_starts_bright(registered):
-    """아무것도 안 누른 상태다. 전부 짙은 주황이어야 한다."""
+    """아무것도 안 누른 상태. 전부 짙은 주황이어야 함."""
     whole = registered["variants"][""]
 
     assert used(PATH_NEW, whole)
@@ -163,7 +163,7 @@ def test_every_new_path_starts_bright(registered):
 
 
 def test_narrowing_dims_the_other_recipes(registered):
-    """끝노드를 누르면 그것으로 끝나는 경로만 짙게 남는다."""
+    """끝노드를 누르면 그것으로 끝나는 경로만 짙게 남음."""
     variants = registered["variants"]
     narrowed = variants[NARROW_TO]
 
@@ -175,7 +175,7 @@ def test_narrowing_dims_the_other_recipes(registered):
 
 
 def test_what_is_new_never_changes_between_variants(registered):
-    """"무엇이 새로 생겼는가" 는 어느 후보를 보든 같은 사실이다."""
+    """"무엇이 새로 생겼는가" 는 어느 후보를 보든 같은 사실."""
     variants = list(registered["variants"].values())
 
     marked_nodes = [nodes_of_colour(svg, NEW_COLOR) for svg in variants]
@@ -188,14 +188,14 @@ def test_what_is_new_never_changes_between_variants(registered):
 
 
 def test_the_register_scene_has_no_teal(registered):
-    """teal 은 발화 해석 결과의 색이다. 등록 화면에 섞이면 뜻이 흐려진다."""
+    """teal 은 발화 해석 결과의 색. 등록 화면에 섞이면 뜻이 흐려짐."""
     for name, svg in [("top", registered["top"]), *registered["variants"].items()]:
         assert not used(HIGHLIGHT_COLOR, svg), f"{name or '전체'} 변형에 teal 이 있다"
 
 
 # ------------------------------------------------------------ 해석 장면은 그대로
 def test_the_resolve_scene_still_uses_teal(resolved):
-    """장면이 갈렸을 뿐 발화 해석은 예전과 똑같이 그린다."""
+    """장면이 갈렸을 뿐 발화 해석은 예전과 똑같이 그림."""
     whole = resolved["variants"][""]
 
     assert used(HIGHLIGHT_COLOR, whole)
@@ -205,7 +205,7 @@ def test_the_resolve_scene_still_uses_teal(resolved):
 
 # ------------------------------------------------------------ 배치
 def test_all_variants_share_the_layout(registered):
-    """좁혀도 노드가 움직이거나 캔버스가 달라지면 안 된다."""
+    """좁혀도 노드가 움직이거나 캔버스가 달라지면 안 됨."""
     variants = list(registered["variants"].values())
     base = coordinates(variants[0])
 

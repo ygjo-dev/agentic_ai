@@ -27,7 +27,7 @@ NEW = {
 
 @pytest.fixture
 def ontology_file(tmp_path):
-    """실제 온톨로지를 복사해 임시 파일로 쓴다. 저장소를 건드리지 않는다."""
+    """실제 온톨로지를 복사해 임시 파일로 씀. 저장소를 안 건드림."""
     path = tmp_path / "ontology.yaml"
     path.write_text(
         paths.ONTOLOGY_PATH.read_text(encoding="utf-8"), encoding="utf-8", newline="\n"
@@ -36,11 +36,11 @@ def ontology_file(tmp_path):
 
 
 def test_reading_gives_the_ontology_as_written(ontology_file):
-    """읽기는 원문 그대로다. 캐시도 변형도 없다 — 등록 직후 읽으면 새 내용이 나와야 한다.
+    """읽기는 원문 그대로. 캐시도 변형도 없음. 등록 직후 읽으면 새 내용이 나와야 함.
 
-    **여기에 캐시를 두면 안 된다.** 저장소는 쓰는 쪽이라 "방금 쓴 것이 다음
-    읽기에 보인다" 를 어기면 등록이 조용히 어긋난다. 읽기 전용 계산의 캐시는
-    graph.py 가 파일 내용을 키로 따로 들고 있다.
+    여기에 캐시를 두면 안 됨. 저장소는 쓰는 쪽이라 "방금 쓴 것이 다음
+    읽기에 보인다" 를 어기면 등록이 조용히 어긋남. 읽기 전용 계산의 캐시는
+    graph.py 가 파일 내용을 키로 따로 들고 있음.
     """
     raw = yaml.safe_load(ontology_file.read_text(encoding="utf-8"))
 
@@ -69,13 +69,13 @@ def test_reading_gives_the_ontology_as_written(ontology_file):
 
 
 def test_adding_a_node_preserves_the_existing_file(ontology_file):
-    """상단 구조 원칙 주석 · 기존 본문 · edges 블록 · 들여쓰기가 그대로여야 한다.
+    """상단 구조 원칙 주석 · 기존 본문 · edges 블록 · 들여쓰기가 그대로여야 함.
 
-    yaml.dump 로 다시 쓰면 주석과 손으로 맞춘 들여쓰기가 통째로 날아간다.
+    yaml.dump 로 다시 쓰면 주석과 손으로 맞춘 들여쓰기가 통째로 날아감.
 
-    **새 노드는 edges 앞에 끼워 넣는다.** 예전에는 nodes: 가 파일 마지막이라
-    그냥 끝에 붙였는데, edges: 가 뒤에 생기면서 그 전제가 깨졌다 — 그대로 두면
-    새 노드가 edge 목록의 일부로 읽힌다.
+    새 노드는 edges 앞에 끼워 넣음. 예전에는 nodes: 가 파일 마지막이라
+    그냥 끝에 붙였는데, edges: 가 뒤에 생기면서 그 전제가 깨졌음. 그대로 두면
+    새 노드가 edge 목록의 일부로 읽힘.
     """
     before = ontology_file.read_text(encoding="utf-8")
     head = before[: before.index("version:")]
@@ -103,10 +103,10 @@ def test_adding_a_node_preserves_the_existing_file(ontology_file):
 
 
 def test_adding_an_edge_appends_one_line(ontology_file):
-    """관계는 edges 끝에 한 줄로 붙는다. 형식이 기존 항목과 같아야 한다.
+    """관계는 edges 끝에 한 줄로 붙음. 형식이 기존 항목과 같아야 함.
 
-    노드를 쓴 뒤에 붙인다 — 순서가 바뀌면 아직 없는 노드를 가리키는 edge 가
-    파일에 남는다.
+    노드를 쓴 뒤에 붙임. 순서가 바뀌면 아직 없는 노드를 가리키는 edge 가
+    파일에 남음.
     """
     before = store.edges(ontology_file)
     body_before = ontology_file.read_text(encoding="utf-8")
@@ -130,12 +130,12 @@ def test_adding_an_edge_appends_one_line(ontology_file):
 
 
 def test_an_added_node_reads_back_unchanged(ontology_file):
-    """왕복이 어긋나면 화면과 파일이 갈라진다.
+    """왕복이 어긋나면 화면과 파일이 갈라짐.
 
-    **어떤 노드든 같은 모양으로 적힌다.** 종류에 따라 필드가 갈리지 않으므로
-    "이건 group 이니 inputs 를 빼야 한다" 같은 분기가 아예 없다 — 예전에는
+    어떤 노드든 같은 모양으로 적힘. 종류에 따라 필드가 갈리지 않으므로
+    "이건 group 이니 inputs 를 빼야 한다" 같은 분기가 아예 없음. 예전에는
     그 분기를 빠뜨리면 대상 노드가 "입력이 없는 기능" 으로 읽혀 recipe
-    시작점이 되어버렸다.
+    시작점이 되어버렸음.
     """
     before = store.nodes(ontology_file)
 
@@ -161,7 +161,7 @@ def test_an_added_node_reads_back_unchanged(ontology_file):
 
 
 def test_restoring_brings_back_the_init_copy(ontology_file):
-    """_init 사본은 절대 건드리지 않는다. 그것이 망가지면 되돌릴 곳이 없다."""
+    """_init 사본은 절대 안 건드림. 그것이 망가지면 되돌릴 곳이 없음."""
     init_before = paths.INIT_ONTOLOGY_PATH.read_bytes()
     store.append_node("analyze_crack_trend", NEW, ontology_file)
 

@@ -46,7 +46,7 @@ GRAPH = {
 
 
 def graph_with_extra_node(node_id: str, feeder: str = "analyze") -> dict:
-    """노드를 하나 더한 그래프. 등록을 흉내낸다."""
+    """노드를 하나 더한 그래프. 등록을 흉내냄."""
     return {
         **GRAPH,
         "nodes": {
@@ -64,9 +64,9 @@ def graph_with_extra_node(node_id: str, feeder: str = "analyze") -> dict:
 def domain(graph: dict) -> tuple[dict, dict, dict]:
     """fixture 를 ensure_positions 가 받는 도메인 형태로.
 
-    예전에는 프로덕션의 to_build_dot_args 가 하던 일이다. 그리기가 서버로
+    예전에는 프로덕션의 to_build_dot_args 가 하던 일. 그리기가 서버로
     들어가면서 JSON 왕복이 사라져 어댑터도 없어졌고, 여기서는 fixture 를
-    쓰기 좋게 펴는 용도로만 남는다.
+    쓰기 좋게 펴는 용도로만 남음.
     """
     return (
         graph["nodes"],
@@ -77,7 +77,7 @@ def domain(graph: dict) -> tuple[dict, dict, dict]:
 
 @pytest.fixture
 def store(tmp_path, monkeypatch):
-    """저장소의 layout.json 을 건드리지 않는다."""
+    """저장소의 layout.json 을 안 건드림."""
     monkeypatch.setattr(layout_store, "LAYOUT_PATH", tmp_path / "layout.json")
     return tmp_path / "layout.json"
 
@@ -85,8 +85,8 @@ def store(tmp_path, monkeypatch):
 def anchored(positions: dict, keys: list[str]) -> dict:
     """첫 노드를 원점으로 옮긴 상대 좌표.
 
-    neato 는 배치를 캔버스에 맞춰 평행이동시킨다. 절대 좌표로 비교하면 그
-    평행이동까지 "움직였다" 로 세는데, 화면에는 안 보이는 차이다(작업 2에서 확인).
+    neato 는 배치를 캔버스에 맞춰 평행이동시킴. 절대 좌표로 비교하면 그
+    평행이동까지 "움직였다" 로 세는데, 화면에는 안 보이는 차이임(실측으로 확인).
     """
     ox, oy = positions[keys[0]]
     return {k: (positions[k][0] - ox, positions[k][1] - oy) for k in keys}
@@ -117,7 +117,7 @@ def test_transpose_of_nothing_is_nothing():
 
 
 def test_transpose_preserves_relative_distances():
-    """교차 · 간격 · 겹침이 보존되는 근거다."""
+    """교차 · 간격 · 겹침이 보존되는 근거."""
     positions = {"a": (0.0, 0.0), "b": (30.0, 40.0)}
     flipped = layout_store.transpose(positions)
 
@@ -129,11 +129,11 @@ def test_transpose_preserves_relative_distances():
 
 
 def test_only_a_tall_layout_is_tipped_over():
-    """목적은 "회전한다" 가 아니라 "가로로 눕힌다" 이다.
+    """목적은 "회전한다" 가 아니라 "가로로 눕힌다" 임.
 
-    조건 없이 눕히면 이미 가로로 긴 배치를 세로로 세워버린다. 실제로 그랬다 —
+    조건 없이 눕히면 이미 가로로 긴 배치를 세로로 세워버림. 실제로 그랬음.
     온톨로지를 바꾸자 최초 배치가 H/W 0.83 으로 나왔는데 거기 또 회전을 걸어
-    1.09 로 만들고 있었고, 패널 폭 사용이 49% 에서 37% 로 떨어졌다.
+    1.09 로 만들고 있었고, 패널 폭 사용이 49% 에서 37% 로 떨어졌음.
     """
     assert layout_store.is_tall({"a": (0.0, 0.0), "b": (10.0, 100.0)})
     assert not layout_store.is_tall({"a": (0.0, 0.0), "b": (100.0, 10.0)})
@@ -148,10 +148,10 @@ def test_only_a_tall_layout_is_tipped_over():
 
 # ------------------------------------------------------------ 최초 배치
 def test_a_tall_fresh_layout_is_tipped_over(store, monkeypatch):
-    """배치가 세로로 길게 나오면 눕혀서 저장한다.
+    """배치가 세로로 길게 나오면 눕혀서 저장함.
 
-    neato 가 어느 방향으로 놓을지는 그래프 모양에 달렸다. 그것에 기대면 검사가
-    온톨로지를 바꿀 때마다 흔들리므로, 배치 결과를 고정해 분기만 본다.
+    neato 가 어느 방향으로 놓을지는 그래프 모양에 달렸음. 그것에 기대면 검사가
+    온톨로지를 바꿀 때마다 흔들리므로, 배치 결과를 고정해 분기만 봄.
     """
     tall = {"a": (0.0, 0.0), "b": (10.0, 300.0), "c": (20.0, 600.0)}
     monkeypatch.setattr(layout_store, "layout_positions", lambda dot: dict(tall))
@@ -163,10 +163,10 @@ def test_a_tall_fresh_layout_is_tipped_over(store, monkeypatch):
 
 
 def test_a_wide_fresh_layout_is_left_alone(store, monkeypatch):
-    """이미 가로로 길면 그대로 둔다. 눕히면 오히려 세로로 세워진다.
+    """이미 가로로 길면 그대로 둠. 눕히면 오히려 세로로 세워짐.
 
-    실제로 그랬다 — 온톨로지를 바꾸자 최초 배치가 H/W 0.83 으로 나왔는데 거기
-    또 회전을 걸어 1.09 로 만들고 있었고, 패널 폭 사용이 49% 에서 37% 로 떨어졌다.
+    실제로 그랬음. 온톨로지를 바꾸자 최초 배치가 H/W 0.83 으로 나왔는데 거기
+    또 회전을 걸어 1.09 로 만들고 있었고, 패널 폭 사용이 49% 에서 37% 로 떨어졌음.
     """
     wide = {"a": (0.0, 0.0), "b": (300.0, 10.0), "c": (600.0, 20.0)}
     monkeypatch.setattr(layout_store, "layout_positions", lambda dot: dict(wide))
@@ -178,10 +178,10 @@ def test_a_wide_fresh_layout_is_left_alone(store, monkeypatch):
 
 
 def test_a_fresh_layout_never_ends_up_tall(store):
-    """실제 neato 배치로도 결과가 세로로 길지 않아야 한다.
+    """실제 neato 배치로도 결과가 세로로 길지 않아야 함.
 
-    위 두 검사는 배치를 고정해 분기만 봤다. 여기서는 진짜 배치를 태운다 —
-    분기 조건과 실제 좌표가 어긋나면 여기서 잡힌다.
+    위 두 검사는 배치를 고정해 분기만 봤음. 여기서는 진짜 배치를 태움.
+    분기 조건과 실제 좌표가 어긋나면 여기서 잡힘.
     """
     saved = ensure_positions(*domain(GRAPH))
 
@@ -205,7 +205,7 @@ def test_a_fresh_layout_never_ends_up_tall(store):
 
 # ------------------------------------------------------------ 증분 배치 (핵심)
 def test_incremental_layout_does_not_transpose(store):
-    """증분에서 또 눕히면 지도가 뒤집히고 기존 노드가 전부 움직인다."""
+    """증분에서 또 눕히면 지도가 뒤집히고 기존 노드가 전부 움직임."""
     before = ensure_positions(*domain(GRAPH))
 
     after = ensure_positions(*domain(graph_with_extra_node("new_one")))
@@ -214,11 +214,11 @@ def test_incremental_layout_does_not_transpose(store):
 
 
 def test_two_registrations_in_a_row_keep_the_map(store):
-    """연달아 등록해도 지도가 그대로여야 한다.
+    """연달아 등록해도 지도가 그대로여야 함.
 
-    중간 상태도 함께 본다. 회전이 매번 걸리는 버그는 **홀수 번째에서만** 드러난다 —
-    두 번 걸리면 서로 상쇄돼 처음과 같은 방향으로 돌아온다. 마지막만 비교하면
-    그 상쇄 때문에 통과해 버린다(실측으로 확인했다).
+    중간 상태도 함께 봄. 회전이 매번 걸리는 버그는 홀수 번째에서만 드러남.
+    두 번 걸리면 서로 상쇄돼 처음과 같은 방향으로 돌아옴. 마지막만 비교하면
+    그 상쇄 때문에 통과해 버림(실측으로 확인했음).
     """
     first = ensure_positions(*domain(GRAPH))
 
@@ -244,7 +244,7 @@ def test_two_registrations_in_a_row_keep_the_map(store):
 
 
 def test_nothing_missing_means_no_layout_run(store):
-    """좌표가 다 있으면 neato 를 부르지 않는다 — 부르면 회전이 또 걸릴 위험이 있다."""
+    """좌표가 다 있으면 neato 를 부르지 않음. 부르면 회전이 또 걸릴 위험이 있음."""
     first = ensure_positions(*domain(GRAPH))
 
     assert ensure_positions(*domain(GRAPH)) == first

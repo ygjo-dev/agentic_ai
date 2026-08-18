@@ -71,14 +71,14 @@ DOTTED_PAIR = ("load_cctv_platform", "load_inspection_car_image")
 
 
 def fresh_positions(nodes=NODES, solid=SOLID, dotted=DOTTED):
-    """핀 없는 최초 배치. 겹침 제거를 쓸 수 있는 유일한 경우다."""
+    """핀 없는 최초 배치. 겹침 제거를 쓸 수 있는 유일한 경우."""
     return layout_positions(
         build_dot(nodes, solid, dotted, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
     )
 
 
 def svg_node_coords(svg: str) -> dict[str, tuple[float, float]]:
-    """SVG 에서 노드 중심 좌표를 뽑는다."""
+    """SVG 에서 노드 중심 좌표를 뽑음."""
     coords = {}
     for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
         title = re.search(r"<title>([a-z_]+)</title>", block)
@@ -89,7 +89,7 @@ def svg_node_coords(svg: str) -> dict[str, tuple[float, float]]:
 
 
 def anchored(positions, keys):
-    """첫 노드를 원점으로 옮긴 상대 좌표. 평행이동은 화면에 안 보인다."""
+    """첫 노드를 원점으로 옮긴 상대 좌표. 평행이동은 화면에 안 보임."""
     ox, oy = positions[keys[0]]
     return {k: (positions[k][0] - ox, positions[k][1] - oy) for k in keys}
 
@@ -102,7 +102,7 @@ def test_positions_emit_pinned_pos():
 
 
 def test_pos_comes_after_label():
-    """테스트들이 노드 줄을 '"id" [label=' 로 찾는다. 순서가 바뀌면 깨진다."""
+    """테스트들이 노드 줄을 '"id" [label=' 로 찾음. 순서가 바뀌면 깨짐."""
     dot = build_dot(NODES, SOLID, DOTTED, positions={"generate_word": (1.0, 2.0)})
 
     line = next(l for l in dot.splitlines() if '"generate_word" [' in l)
@@ -116,7 +116,7 @@ def test_without_positions_no_pos():
 
 # ------------------------------------------------------------ 좌표 왕복
 def test_inputscale_makes_the_round_trip_an_identity():
-    """inputscale=72 가 없으면 좌표가 72배로 어긋나 배치가 폭발한다."""
+    """inputscale=72 가 없으면 좌표가 72배로 어긋나 배치가 폭발함."""
     first = fresh_positions()
 
     second = layout_positions(
@@ -129,7 +129,7 @@ def test_inputscale_makes_the_round_trip_an_identity():
 
 
 def test_fresh_layout_is_deterministic():
-    """어느 기계에서 처음 켜도 같은 지도가 나와야 한다."""
+    """어느 기계에서 처음 켜도 같은 지도가 나와야 함."""
     assert fresh_positions() == fresh_positions()
 
 
@@ -144,7 +144,7 @@ def test_every_node_gets_a_position():
     ids=["없음", "후보1개", "다른후보1개", "후보2개"],
 )
 def test_highlight_never_moves_a_node(highlight_paths):
-    """모든 노드가 고정된 상태에서 -n 은 배치를 계산하지 않는다."""
+    """모든 노드가 고정된 상태에서 -n 은 배치를 계산하지 않음."""
     positions = fresh_positions()
 
     def draw(paths):
@@ -180,15 +180,15 @@ def test_highlight_never_changes_the_canvas():
 
 
 def test_marking_never_moves_a_node():
-    """등록 강조를 켜도 좌표와 캔버스가 그대로여야 한다.
+    """등록 강조를 켜도 좌표와 캔버스가 그대로여야 함.
 
-    이 테스트는 회귀를 잡는 장치가 아니라 우리가 기대는 성질을 기록해 둔 것이다.
+    이 테스트는 회귀를 잡는 장치가 아니라 우리가 기대는 성질을 기록해 둔 것.
     실측해 보니 neato 는 핀이 없고 배치를 실제로 계산할 때조차 엣지 라벨이
-    노드 위치에 영향을 주지 않는다(9노드 · 점선 4개로 확인, 0/9 이동).
-    라벨이 공간을 확보해 노드를 밀어내는 것은 dot 엔진의 성질이다.
+    노드 위치에 영향을 주지 않음(9노드 · 점선 4개로 확인, 0/9 이동).
+    라벨이 공간을 확보해 노드를 밀어내는 것은 dot 엔진의 성질임.
 
-    따라서 이 테스트는 어떤 구현으로도 실패시키기 어렵다. 판별력이 있는 것은
-    아래 test_positions_actually_pin_the_layout 이다.
+    따라서 이 테스트는 어떤 구현으로도 실패시키기 어려움. 판별력이 있는 것은
+    아래 test_positions_actually_pin_the_layout 임.
     """
     positions = fresh_positions()
 
@@ -220,10 +220,10 @@ def test_marking_never_moves_a_node():
 
 
 def test_dimming_never_moves_a_node():
-    """좁히면 빠진 경로가 옅어진다. 그때 지도가 흔들리면 보던 자리를 잃는다.
+    """좁히면 빠진 경로가 옅어짐. 그때 지도가 흔들리면 보던 자리를 잃음.
 
-    옅은 경로도 화살표를 달고 굵기가 배경 실선과 다르다 — 색만 바꾸는 것이
-    아니므로 좌표와 캔버스를 함께 본다.
+    옅은 경로도 화살표를 달고 굵기가 배경 실선과 다름. 색만 바꾸는 것이
+    아니므로 좌표와 캔버스를 함께 봄.
     """
     positions = fresh_positions()
 
@@ -250,14 +250,14 @@ def test_dimming_never_moves_a_node():
 
 
 def test_positions_actually_pin_the_layout():
-    """좌표를 넘기면 그 좌표대로 그려져야 한다.
+    """좌표를 넘기면 그 좌표대로 그려져야 함.
 
-    판별력 확인 : 서로 다른 좌표를 주면 결과도 달라야 한다. positions 를
-    무시하는 구현(예: build_graph_svg 에서 positions= 를 빠뜨림)이면 두 결과가
-    같아져 여기서 잡힌다.
+    판별력 확인 : 서로 다른 좌표를 주면 결과도 달라야 함. positions 를
+    무시하는 구현(예 : build_graph_svg 에서 positions= 를 빠뜨림)이면 두 결과가
+    같아져 여기서 잡힘.
 
-    노드 하나만 옮긴다. 전부 같은 만큼 옮기면 캔버스 정규화가 흡수해 버려
-    화면상 차이가 없다 — 그러면 이 테스트가 아무것도 판별하지 못한다.
+    노드 하나만 옮김. 전부 같은 만큼 옮기면 캔버스 정규화가 흡수해 버려
+    화면상 차이가 없음. 그러면 이 테스트가 아무것도 판별하지 못함.
     """
     positions = fresh_positions()
     one = sorted(positions)[0]
@@ -275,7 +275,7 @@ def test_positions_actually_pin_the_layout():
 
 
 def test_reviving_dotted_labels_never_moves_a_node():
-    """3A 에서 숨긴 라벨을 되살려도 노드가 밀리면 안 된다."""
+    """3A 에서 숨긴 라벨을 되살려도 노드가 밀리면 안 됨."""
     positions = fresh_positions()
 
     def draw(dotted_labels):
@@ -293,7 +293,7 @@ def test_reviving_dotted_labels_never_moves_a_node():
 
 
 def test_order_labels_survive_no_layout():
-    """후보가 하나로 좁혀지면 순번이 보여야 한다. -n 에서도 살아있어야 한다."""
+    """후보가 하나로 좁혀지면 순번이 보여야 함. -n 에서도 살아있어야 함."""
     positions = fresh_positions()
 
     svg = render_svg(
@@ -310,7 +310,7 @@ def test_order_labels_survive_no_layout():
 
 # ------------------------------------------------------------ 핵심 성질 (2)
 def test_adding_a_node_does_not_move_the_existing_ones():
-    """시연의 핵심 장면. 지도가 재배치되면 "화면이 리셋됐다" 로 보인다."""
+    """시연의 핵심 장면. 지도가 재배치되면 "화면이 리셋됐다" 로 보임."""
     before = fresh_positions()
 
     nodes = {**NODES, "analyze_crack_trend": {"name": "구조물 균열 추세 분석"}}
@@ -331,20 +331,20 @@ def test_adding_a_node_does_not_move_the_existing_ones():
 
 
 def test_both_configs_use_the_same_layout_model():
-    """최초와 증분이 다른 모델이면 새 노드가 다른 규칙으로 놓여 어색해진다."""
+    """최초와 증분이 다른 모델이면 새 노드가 다른 규칙으로 놓여 어색해짐."""
     assert "model=subset" in NEATO_ATTRS
     assert "model=subset" in NEATO_FRESH_ATTRS
 
 
 def test_fresh_layout_is_deterministic_under_subset():
-    """어느 기계에서 처음 켜도 같은 지도가 나와야 한다."""
+    """어느 기계에서 처음 켜도 같은 지도가 나와야 함."""
     assert fresh_positions() == fresh_positions()
 
 
 def test_overlap_removal_is_not_used_when_pinning():
-    """overlap 은 고정(!)을 무시하고 재배치한다 — 핀이 있으면 쓰면 안 된다.
+    """overlap 은 고정(!)을 무시하고 재배치함. 핀이 있으면 쓰면 안 됨.
 
-    실측으로 388~710pt 씩 움직였다. 이 테스트는 그 설정이 되살아나는 것을 막는다.
+    실측으로 388~710pt 씩 움직였음. 이 테스트는 그 설정이 되살아나는 것을 막음.
     """
     assert "overlap" not in " ".join(NEATO_ATTRS)
     assert "overlap=voronoi" in " ".join(NEATO_FRESH_ATTRS)
@@ -379,9 +379,9 @@ BARE_FRESH_ATTRS = ("inputscale=72", "overlap=voronoi")
 def dense_after_adding(graph_attrs):
     """조밀한 그래프에 노드를 하나 더한 뒤의 (이전 좌표, 이후 좌표).
 
-    spring 을 끈다. 엣지 길이를 주면 노드가 넓게 퍼져 겹칠 일이 없어지고,
-    그러면 overlap 제거가 할 일이 없어 이 검증이 무의미해진다.
-    좁게 붙여 놓아야 "overlap 은 고정을 무시한다" 를 실제로 드러낼 수 있다.
+    spring 을 끔. 엣지 길이를 주면 노드가 넓게 퍼져 겹칠 일이 없어지고,
+    그러면 overlap 제거가 할 일이 없어 이 검증이 무의미해짐.
+    좁게 붙여 놓아야 "overlap 은 고정을 무시한다" 를 실제로 드러낼 수 있음.
     """
     before = layout_positions(
         build_dot(
@@ -410,17 +410,17 @@ def worst_drift(before, after):
 
 
 def test_dense_graph_keeps_pinned_nodes_still():
-    """겹침이 생길 만큼 조밀해도 고정한 노드는 움직이지 않아야 한다."""
+    """겹침이 생길 만큼 조밀해도 고정한 노드는 움직이지 않아야 함."""
     before, after = dense_after_adding(BARE_ATTRS)
 
     assert worst_drift(before, after) < 0.51
 
 
 def test_dense_graph_would_move_if_overlap_removal_were_used():
-    """위 테스트가 판별력이 있음을 증명한다.
+    """위 테스트가 판별력이 있음을 증명함.
 
-    잘못된 설정(핀이 있는데 overlap 제거)을 쓰면 실제로 노드가 움직인다.
-    이 테스트가 깨지면 위 테스트는 무엇이든 통과시키는 셈이 된다.
+    잘못된 설정(핀이 있는데 overlap 제거)을 쓰면 실제로 노드가 움직임.
+    이 테스트가 깨지면 위 테스트는 무엇이든 통과시키는 셈이 됨.
     """
     before, after = dense_after_adding(BARE_FRESH_ATTRS)
 
@@ -431,10 +431,10 @@ def test_dense_graph_would_move_if_overlap_removal_were_used():
 # test_bottom_flow.py 에서 옮겨왔다.
 @pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
 def test_arrows_and_bigger_numbers_never_move_a_node():
-    """화살표와 순번은 그리기지 배치가 아니다.
+    """화살표와 순번은 그리기지 배치가 아님.
 
-    xlabel 은 레이아웃에 관여하지 않는다(label 과 달리). 캔버스는 커질 수 있다 —
-    글자가 그림 밖으로 나가면 bbox 가 따라 넓어진다. 그것은 재서 보고한다.
+    xlabel 은 레이아웃에 관여하지 않음(label 과 달리). 캔버스는 커질 수 있음.
+    글자가 그림 밖으로 나가면 bbox 가 따라 넓어짐. 그것은 재서 보고함.
     """
     positions = layout_positions(
         build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
@@ -468,11 +468,11 @@ def test_arrows_and_bigger_numbers_never_move_a_node():
 # 어느 그래프든 실선과 점선이 하나씩 있으면 그대로 성립한다.
 @pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
 def test_removing_the_solid_edges_never_moves_a_node():
-    """★ 전 노드가 핀이고 neato -n 이라 선을 빼도 배치를 다시 계산하지 않는다.
+    """★ 전 노드가 핀이고 neato -n 이라 선을 빼도 배치를 다시 계산하지 않음.
 
     이 성질이 없으면 상단에서 실선을 걷어내는 순간 지도가 통째로 재배치되고,
-    위아래가 서로 다른 자리를 가리키게 된다. 캔버스까지 함께 본다 — 좌표가
-    같아도 캔버스가 달라지면 축소 배율이 갈려 위아래 크기가 어긋난다.
+    위아래가 서로 다른 자리를 가리키게 됨. 캔버스까지 함께 봄. 좌표가
+    같아도 캔버스가 달라지면 축소 배율이 갈려 위아래 크기가 어긋남.
     """
     positions = layout_positions(
         build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
@@ -503,7 +503,7 @@ def test_removing_the_solid_edges_never_moves_a_node():
 
 @pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
 def test_a_thicker_dotted_line_never_moves_a_node():
-    """굵기는 색과 같다 — 그리기지 배치가 아니다."""
+    """굵기는 색과 같음. 그리기지 배치가 아님."""
     positions = layout_positions(
         build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
     )
@@ -551,11 +551,11 @@ GROUP_PATH = [("load_track_image", "detect_track_crack"),
 
 @pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
 def test_the_visual_style_never_moves_a_node():
-    """도형과 색을 바꿔도 좌표와 캔버스가 그대로여야 한다.
+    """도형과 색을 바꿔도 좌표와 캔버스가 그대로여야 함.
 
-    노드를 눌러 좁히거나 등록 강조가 켜질 때 지도가 흔들리면 보던 자리를 잃는다.
+    노드를 눌러 좁히거나 등록 강조가 켜질 때 지도가 흔들리면 보던 자리를 잃음.
     좌표를 전부 고정하고 neato -n 으로 그려 구조적으로 보장하지만, 그 보장이
-    깨지면 화면에서만 드러나므로 여기서 못을 박는다.
+    깨지면 화면에서만 드러나므로 여기서 못을 박음.
     """
     positions = layout_positions(
         build_dot(GROUP_NODES, GROUP_SOLID, GROUP_DOTTED, spring=True,
@@ -598,14 +598,14 @@ def test_the_visual_style_never_moves_a_node():
 
 @pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
 def test_the_top_and_bottom_styles_have_the_same_geometry():
-    """상단과 하단은 색만 다르고 크기는 같아야 한다.
+    """상단과 하단은 색만 다르고 크기는 같아야 함.
 
-    둘은 한 화면에 함께 뜨고 같은 좌표 파일을 쓴다. 도형이나 굵기가 갈리면
-    노드 크기가 달라져 위아래가 미묘하게 어긋나 보인다.
+    둘은 한 화면에 함께 뜨고 같은 좌표 파일을 씀. 도형이나 굵기가 갈리면
+    노드 크기가 달라져 위아래가 미묘하게 어긋나 보임.
 
-    실측으로 알아낸 것 : ellipse 는 box 보다 크다. group 스타일을 켜고 끄면
-    캔버스가 커지면서 모든 노드가 통째로 5pt 씩 밀린다(화면에는 평행이동이라
-    안 보이지만, 위아래가 서로 다른 도형을 쓰면 진짜로 어긋난다).
+    실측으로 알아낸 것 : ellipse 는 box 보다 큼. group 스타일을 켜고 끄면
+    캔버스가 커지면서 모든 노드가 통째로 5pt 씩 밀림(화면에는 평행이동이라
+    안 보이지만, 위아래가 서로 다른 도형을 쓰면 진짜로 어긋남).
     """
     geometry = lambda attrs: [  # noqa: E731 — 색만 지운 속성 목록
         attr for attr in attrs if not attr.startswith(("color=", "fontcolor="))
@@ -620,11 +620,11 @@ def test_the_top_and_bottom_styles_have_the_same_geometry():
 # 지웠지만 이것만 남긴다 — 온톨로지를 손보다 DOT 이 깨지면 시연이 백지가 되는데,
 # 실제 데이터를 한 번 통과시키는 이것 하나면 잡힌다.
 def test_graphviz_accepts_the_real_ontology():
-    """실제 데이터로도 파싱되는지 본다. 고정 데이터만 쓰면 놓치는 게 있다.
+    """실제 데이터로도 파싱되는지 봄. 고정 데이터만 쓰면 놓치는 게 있음.
 
-    **어느 recipe 든 상관없다.** 보는 것은 "실제 데이터로 DOT 이 파싱되는가"
-    하나뿐이라 첫 번째를 쓴다 — 번호를 적어 두면 온톨로지가 바뀌어 번호가
-    밀렸을 때 없는 recipe 를 가리키게 된다.
+    어느 recipe 든 상관없음. 보는 것은 "실제 데이터로 DOT 이 파싱되는가"
+    하나뿐이라 첫 번째를 씀. 번호를 적어 두면 온톨로지가 바뀌어 번호가
+    밀렸을 때 없는 recipe 를 가리키게 됨.
     """
     from demo.api.services.ontology_service import recipe_ids
     from ontology.graph import highlight_edges, recipe_nodes

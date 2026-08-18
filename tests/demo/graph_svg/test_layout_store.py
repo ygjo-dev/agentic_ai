@@ -18,7 +18,7 @@ POSITIONS = {
 
 
 def nodes_of(*node_ids):
-    """resolve 가 받는 노드 dict. 이름만 있으면 된다."""
+    """resolve 가 받는 노드 dict. 이름만 있으면 됨."""
     return {node_id: {"name": node_id} for node_id in node_ids}
 
 
@@ -85,7 +85,7 @@ def test_resolve_returns_stored_positions(tmp_path):
 
 
 def test_resolve_drops_nodes_that_are_gone(tmp_path):
-    """초기화하거나 노드가 사라지면 남은 좌표가 새 노드 자리를 잘못 잡는다."""
+    """초기화하거나 노드가 사라지면 남은 좌표가 새 노드 자리를 잘못 잡음."""
     path = tmp_path / "layout.json"
     layout_store.save(POSITIONS, path=path)
 

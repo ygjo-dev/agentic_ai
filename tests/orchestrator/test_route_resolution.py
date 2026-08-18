@@ -38,11 +38,11 @@ def resolve(stub_llm_client, raw: str, utterance: str = UTTERANCE):
 
 
 def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file_paths):
-    """Context 로딩은 LLM 호출보다 먼저 일어난다.
+    """Context 로딩은 LLM 호출보다 먼저 일어남.
 
-    menu 를 실제 파일에서 읽어야 한다 — 코드에 박아두면 recipe 를 등록해도
-    LLM 이 새 recipe 를 영영 못 고른다. 발화도 그대로 실려야 하고,
-    LLM 은 정확히 한 번만 부른다.
+    menu 를 실제 파일에서 읽어야 함. 코드에 박아두면 recipe 를 등록해도
+    LLM 이 새 recipe 를 영영 못 고름. 발화도 그대로 실려야 하고,
+    LLM 은 정확히 한 번만 부름.
     """
     read_file_paths.clear()
     menu = load_menu()
@@ -88,10 +88,10 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
 def test_only_the_contracted_keys_survive(
     stub_llm_client, answer, status, recipe_id, candidates
 ):
-    """세 상태 모두 같은 형태로 나온다. 호출하는 쪽이 분기하지 않아도 되게.
+    """세 상태 모두 같은 형태로 나옴. 호출하는 쪽이 분기하지 않아도 되게.
 
-    스키마에 없는 key 는 버린다 — LLM 이 덧붙인 것을 그대로 흘리면 계약이
-    조용히 넓어지고, 나중에 그것에 기대는 코드가 생긴다.
+    스키마에 없는 key 는 버림. LLM 이 덧붙인 것을 그대로 흘리면 계약이
+    조용히 넓어지고, 나중에 그것에 기대는 코드가 생김.
     """
     result, _ = resolve(stub_llm_client, json.dumps({**answer, "군더더기": "버려야 한다"}))
 
@@ -116,11 +116,11 @@ def test_only_the_contracted_keys_survive(
 def test_a_broken_answer_raises_with_the_original_text(
     stub_llm_client, raw, cause, fragment
 ):
-    """LLM 은 계약을 어긴다. 코드 블록으로 감싸거나 키를 빠뜨린다.
+    """LLM 은 계약을 어김. 코드 블록으로 감싸거나 키를 빠뜨림.
 
-    조용히 넘기면 화면에 빈 결과가 뜨고 원인을 못 찾는다. 예외로 올리되
-    **원문과 저수준 예외를 남긴다** — 그게 없으면 무엇이 잘못됐는지 알 수 없다.
-    호출자가 RouteResolutionError 를 몰라도 RuntimeError 로 잡을 수 있어야 한다.
+    조용히 넘기면 화면에 빈 결과가 뜨고 원인을 못 찾음. 예외로 올리되
+    원문과 저수준 예외를 남김. 그게 없으면 무엇이 잘못됐는지 알 수 없음.
+    호출자가 RouteResolutionError 를 몰라도 RuntimeError 로 잡을 수 있어야 함.
     """
     assert issubclass(RouteResolutionError, RuntimeError)
 

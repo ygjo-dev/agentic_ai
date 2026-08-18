@@ -67,7 +67,7 @@ def stub(response=None):
 
 @pytest.fixture(autouse=True)
 def isolated(isolated_workspace):
-    """등록이 건드리는 파일을 임시 사본으로 바꾼다. 앞뒤로 저장소를 확인한다."""
+    """등록이 건드리는 파일을 임시 사본으로 바꿈. 앞뒤로 저장소를 확인함."""
     before = workspace_digest()
     yield
     assert workspace_digest() == before, "진짜 저장소가 바뀌었다"
@@ -91,17 +91,17 @@ def menu_now():
 
 # ================================================================ LLM 판단
 def test_the_llm_decides_the_node_id_and_what_it_is_about():
-    """사람은 이름과 입출력만 적는다. id 와 관한 대상은 LLM 이 정한다.
+    """사람은 이름과 입출력만 적음. id 와 관한 대상은 LLM 이 정함.
 
-    대상은 **닫힌 목록에서 고르는 것**이다. 예전에는 자유 문자열(subject 값)을
-    쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌다.
+    대상은 닫힌 목록에서 고르는 것. 예전에는 자유 문자열(subject 값)을
+    쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌음.
 
-    **여럿을 고를 수 있다.** 한 노드가 여러 대상에 관한 것일 수 있기 때문이다 —
-    승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것이다. 하나만
-    받으면 그 사실을 적을 방법이 없다.
+    여럿을 고를 수 있음. 한 노드가 여러 대상에 관한 것일 수 있기 때문.
+    승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것. 하나만
+    받으면 그 사실을 적을 방법이 없음.
 
-    어느 대상에도 매이지 않는 범용 노드는 빈 목록이다 — 형식만 바꾸는 생성
-    노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀린다.
+    어느 대상에도 매이지 않는 범용 노드는 빈 목록. 형식만 바꾸는 생성
+    노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀림.
     """
     result = infer_node(FORM, llm_client=stub())
 
@@ -131,10 +131,10 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
 
 def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
     """기존 기능 노드가 무엇에 관한 것인지 안 보여주면 비슷한 노드를 보고
-    고를 수가 없고, 선택지를 안 알려주면 없는 id 를 지어낸다.
+    고를 수가 없고, 선택지를 안 알려주면 없는 id 를 지어냄.
 
-    프롬프트 파일에 치환자가 없으면 값이 통째로 안 실린다 — 그러면 LLM 이
-    아무 근거 없이 답하게 되고, 그 사실이 화면에서는 안 보인다.
+    프롬프트 파일에 치환자가 없으면 값이 통째로 안 실림. 그러면 LLM 이
+    아무 근거 없이 답하게 되고, 그 사실이 화면에서는 안 보임.
     """
     client = stub()
     infer_node(FORM, llm_client=client)
@@ -174,11 +174,11 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
 
 
 def test_a_malformed_llm_answer_is_rejected():
-    """LLM 은 계약을 어길 수 있다. 프롬프트로만 막으면 어기는 순간 통과한다.
+    """LLM 은 계약을 어길 수 있음. 프롬프트로만 막으면 어기는 순간 통과함.
 
     id 형식이 깨지면 파일명과 참조가 어긋나고, 없는 대상을 고르면 아무 데도
-    안 붙는 관계가 파일에 남는다. 응답이 JSON 이 아니거나 키가 빠지는 것도
-    여기서 잡는다.
+    안 붙는 관계가 파일에 남음. 응답이 JSON 이 아니거나 키가 빠지는 것도
+    여기서 잡음.
     """
     bad_answers = [
         {**INFERRED, "node_id": "Bad-Id"},              # 대문자와 하이픈
@@ -205,7 +205,7 @@ def test_a_malformed_llm_answer_is_rejected():
 
 
 def test_an_existing_node_id_is_rejected():
-    """이미 있는 id 를 주면 온톨로지가 덮어써진다. 원래 노드가 조용히 사라진다."""
+    """이미 있는 id 를 주면 온톨로지가 덮어써짐. 원래 노드가 조용히 사라짐."""
     existing = next(iter(nodes_now()))
 
     with pytest.raises(InvalidInference):
@@ -216,12 +216,12 @@ def test_an_existing_node_id_is_rejected():
 
 
 def test_types_that_do_not_exist_are_rejected():
-    """없는 타입을 가리키면 그 노드는 아무와도 안 이어진다.
+    """없는 타입을 가리키면 그 노드는 아무와도 안 이어짐.
 
-    화면에는 떠 있는데 경로가 하나도 안 생긴다 — 등록은 성공했다고 나오고
-    실행할 것만 없다. 사람이 원인을 짚기 가장 어려운 실패다.
+    화면에는 떠 있는데 경로가 하나도 안 생김. 등록은 성공했다고 나오고
+    실행할 것만 없음. 사람이 원인을 짚기 가장 어려운 실패.
 
-    거부할 때는 파일을 한 글자도 건드리지 않아야 한다.
+    거부할 때는 파일을 한 글자도 건드리지 않아야 함.
     """
     before = paths.ONTOLOGY_PATH.read_bytes()
 
@@ -239,11 +239,11 @@ def test_types_that_do_not_exist_are_rejected():
 def test_a_new_node_gets_exactly_its_share_of_all_the_paths():
     """등록이 만드는 경로 = 온톨로지 전체 경로 중 그 노드를 지나는 것.
 
-    두 함수가 갈라지면 안 된다. `_init` 의 recipe 는 `all_recipes` 로 만들고
-    (tools/rebuild_init.py) 등록은 `new_recipes_for` 로 만드는데, 규칙이 두
-    벌이 되면 menu 문장이 미묘하게 갈린다 — 그 문장이 발화 매칭의 유일한
+    두 함수가 갈라지면 안 됨. _init 의 recipe 는 all_recipes 로 만들고
+    (tools/rebuild_init.py) 등록은 new_recipes_for 로 만드는데, 규칙이 두
+    벌이 되면 menu 문장이 미묘하게 갈림. 그 문장이 발화 매칭의 유일한
     근거라 "초기 recipe 는 되는데 등록한 건 안 되는" 상황이 나오고 원인을
-    찾기도 어렵다.
+    찾기도 어려움.
     """
     add_node("detect_track_settlement", NEW_NODE)
     store.append_edge("detect_track_settlement", "image", HAS_INPUT)
@@ -259,12 +259,12 @@ def test_a_new_node_gets_exactly_its_share_of_all_the_paths():
 
 
 def test_all_recipes_does_not_drop_paths_that_cross_subjects():
-    """**거르는 것은 부르는 쪽의 일이다.** 여기서 함께 거르면 안 된다.
+    """거르는 것은 부르는 쪽의 일. 여기서 함께 거르면 안 됨.
 
-    `all_recipes` 가 crosses_groups 까지 걸러 버리면 부르는 쪽이 필터를
-    빼먹어도 결과가 멀쩡해 보인다. 그러다 조건이 바뀌면 말이 안 되는 경로가
-    조용히 `_init` 에 깔린다 — 승강장 CCTV 로 궤도 균열을 찾는 것 같은.
-    "무엇이 만들어질 수 있는가" 와 "무엇을 남길 것인가" 는 갈라 둔다.
+    all_recipes 가 crosses_groups 까지 걸러 버리면 부르는 쪽이 필터를
+    빼먹어도 결과가 멀쩡해 보임. 그러다 조건이 바뀌면 말이 안 되는 경로가
+    조용히 _init 에 깔림. 승강장 CCTV 로 궤도 균열을 찾는 것 같은.
+    "무엇이 만들어질 수 있는가" 와 "무엇을 남길 것인가" 는 갈라 둠.
     """
     from ontology.graph import crosses_groups
 
@@ -276,9 +276,9 @@ def test_all_recipes_does_not_drop_paths_that_cross_subjects():
 
 
 def test_only_paths_through_the_new_node_are_created():
-    """기존 노드끼리의 조합은 이미 recipe 로 있다. 다시 만들면 중복이다.
+    """기존 노드끼리의 조합은 이미 recipe 로 있음. 다시 만들면 중복.
 
-    이 함수는 파일을 쓰지 않는다 — 경로 목록만 돌려준다.
+    이 함수는 파일을 쓰지 않음. 경로 목록만 돌려줌.
     """
     # 영상만 받는 노드다. 분석결과로는 이 노드에 닿을 길이 없다 — 분석결과를
     # 영상으로 바꾸는 노드가 온톨로지에 없기 때문이다.
@@ -315,14 +315,14 @@ def test_only_paths_through_the_new_node_are_created():
 
 
 def test_a_created_path_is_runnable_and_short():
-    """타입이 이어지고, 같은 노드를 두 번 지나지 않고, 최대 MAX_STEPS 단이다.
+    """타입이 이어지고, 같은 노드를 두 번 지나지 않고, 최대 MAX_STEPS 단임.
 
     길이를 막는 이유 : 단이 늘수록 경로 수가 폭발하고, menu 가 커지면
-    LLM context 를 넘겨 타임아웃한다.
+    LLM context 를 넘겨 타임아웃함.
 
-    자기 출력을 자기가 받는 노드를 일부러 등록한다. 중복 방지가 없으면
+    자기 출력을 자기가 받는 노드를 일부러 등록함. 중복 방지가 없으면
     [번역, 번역, 번역] 같은 경로가 나오는데, 그런 노드가 없으면 중복 검사
-    자체가 무력하다 — 실제로 예전 명세가 그 상태였다.
+    자체가 무력함. 실제로 예전 명세가 그 상태였음.
     """
     from ontology.graph import can_connect
 
@@ -346,13 +346,13 @@ def test_a_created_path_is_runnable_and_short():
 
 
 def test_a_subject_node_never_enters_an_execution_path():
-    """**대상 노드는 실행할 수 없다.** 경로에 섞이면 안 된다.
+    """대상 노드는 실행할 수 없음. 경로에 섞이면 안 됨.
 
-    그룹은 아무것도 받지도 내놓지도 않는다. 걸러내지 않으면 "받는 것이 없는
-    노드" 로 보여 recipe 시작점이 된다 — 그러면 `궤도 -> ???` 같은 실행
-    불가능한 recipe 가 만들어지고, menu 에 실려 LLM 이 그것을 고를 수 있게 된다.
+    그룹은 아무것도 받지도 내놓지도 않음. 걸러내지 않으면 "받는 것이 없는
+    노드" 로 보여 recipe 시작점이 됨. 그러면 궤도 -> ??? 같은 실행
+    불가능한 recipe 가 만들어지고, menu 에 실려 LLM 이 그것을 고를 수 있게 됨.
 
-    조용히 깨지는 자리다. 파일은 멀쩡해 보이고 화면도 그려지는데 실행만 안 된다.
+    조용히 깨지는 자리. 파일은 멀쩡해 보이고 화면도 그려지는데 실행만 안 됨.
     """
     add_node("detect_track_settlement", NEW_NODE)
     store.append_edge("detect_track_settlement", "image", HAS_INPUT)
@@ -373,11 +373,11 @@ def test_a_subject_node_never_enters_an_execution_path():
 
 
 def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
-    """기존 번호는 절대 바뀌면 안 된다 — menu 와 시연 샘플이 그 번호를 가리킨다.
+    """기존 번호는 절대 바뀌면 안 됨. menu 와 시연 샘플이 그 번호를 가리킴.
 
-    파일 형식도 기존 것과 같아야 한다. steps 아래 node 하나뿐이다 — 무엇을
+    파일 형식도 기존 것과 같아야 함. steps 아래 node 하나뿐. 무엇을
     주고받는지는 온톨로지의 hasInput / hasOutput 이 말하므로 여기 또 적으면
-    진실의 원천이 둘이 된다.
+    진실의 원천이 둘이 됨.
     """
     nodes = nodes_now()
     chains = [["track_car_cctv_video", "extract_frames"]]
@@ -443,13 +443,13 @@ def chains_in_recipe_files() -> set[tuple[str, ...]]:
 
 
 def test_paths_that_cross_subjects_are_never_registered():
-    """★ 대상이 어긋나는 경로는 파일이 되지 않는다. 응답에도 안 담긴다.
+    """★ 대상이 어긋나는 경로는 파일이 되지 않음. 응답에도 안 담김.
 
-    타입만 보면 이어지지만 실행할 수 없는 경로다. 그것이 menu 에 실리면 LLM 이
-    후보로 보게 되고, 사람이 그걸 고르는 순간 시연이 멈춘다.
+    타입만 보면 이어지지만 실행할 수 없는 경로. 그것이 menu 에 실리면 LLM 이
+    후보로 보게 되고, 사람이 그걸 고르는 순간 시연이 멈춤.
 
-    **차단이지 표시가 아니다.** 버린 경로를 돌려주지도 않는다 — 화면이 안 쓰는
-    키를 만들지 않는다. 몇 개를 버렸는지는 이 테스트가 재서 보여준다.
+    차단이지 표시가 아님. 버린 경로를 돌려주지도 않음. 화면이 안 쓰는
+    키를 만들지 않음. 몇 개를 버렸는지는 이 테스트가 재서 보여줌.
     """
     from ontology.graph import crosses_groups
 
@@ -480,11 +480,11 @@ def test_paths_that_cross_subjects_are_never_registered():
 
 
 def test_a_node_that_agrees_with_everything_loses_no_path():
-    """어긋날 상대가 없으면 **하나도 안 버린다.** 차단이 과하면 여기서 잡힌다.
+    """어긋날 상대가 없으면 하나도 안 버림. 차단이 과하면 여기서 잡힘.
 
     CCTV 화질 저하 진단은 두 영상 모두에 관한 것(group_cctv)이라 어느 시작점에서
-    출발해도 대상이 통한다. 이런 등록에서 경로가 하나라도 사라지면 차단 조건이
-    너무 넓은 것이고, 그러면 시연에서 "왜 이 길은 안 생겼지" 가 된다.
+    출발해도 대상이 통함. 이런 등록에서 경로가 하나라도 사라지면 차단 조건이
+    너무 넓은 것이고, 그러면 시연에서 "왜 이 길은 안 생겼지" 가 됨.
     """
     from ontology.graph import crosses_groups
 
@@ -505,14 +505,14 @@ def test_a_node_that_agrees_with_everything_loses_no_path():
 
 # ================================================================ menu
 def test_menu_gains_sentences_without_touching_the_old_ones():
-    """function 문장은 LLM 이 recipe 를 고르는 유일한 근거다.
+    """function 문장은 LLM 이 recipe 를 고르는 유일한 근거.
 
     기존 문장이 한 글자라도 바뀌면 이미 검증한 발화들이 다른 recipe 로 갈 수
-    있다. 그래서 텍스트째로 두고 뒤에 이어 붙인다.
+    있음. 그래서 텍스트째로 두고 뒤에 이어 붙임.
 
-    문장은 서로 구별돼야 한다 — 같은 문장이 둘이면 LLM 이 고를 근거가 없다.
-    menu.yaml 에는 function 만 넣는다. steps 까지 실으면 context 가 커져
-    LLM 이 타임아웃한다.
+    문장은 서로 구별돼야 함. 같은 문장이 둘이면 LLM 이 고를 근거가 없음.
+    menu.yaml 에는 function 만 넣음. steps 까지 실으면 context 가 커져
+    LLM 이 타임아웃함.
     """
     nodes = nodes_now()
     chains = [
@@ -540,13 +540,13 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
 
 
 def test_a_menu_sentence_reads_as_one_korean_sentence():
-    """경로는 데이터 노드로 시작하는데 그 설명은 명사구다.
+    """경로는 데이터 노드로 시작하는데 그 설명은 명사구.
 
-    설명을 그냥 이어 붙이면 "...촬영한 영상하고 프레임을 추출하고" 가 된다.
-    데이터는 **이름에 조사를 붙여 앞에 두고** 기능 설명만 잇는다.
+    설명을 그냥 이어 붙이면 "...촬영한 영상하고 프레임을 추출하고" 가 됨.
+    데이터는 이름에 조사를 붙여 앞에 두고 기능 설명만 이음.
 
-    데이터 이름을 빼면 안 된다. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
-    구분할 근거가 사라져 LLM 이 고를 수 없다.
+    데이터 이름을 빼면 안 됨. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
+    구분할 근거가 사라져 LLM 이 고를 수 없음.
     """
     nodes = nodes_now()
 
@@ -594,10 +594,10 @@ def test_a_menu_sentence_reads_as_one_korean_sentence():
 
 # ================================================================ 등록 전체
 def test_registration_updates_the_ontology_recipes_and_menu_together():
-    """셋 중 하나만 바뀌면 화면과 실행이 어긋난다.
+    """셋 중 하나만 바뀌면 화면과 실행이 어긋남.
 
     menu 에 있는데 recipe 파일이 없으면 실행 단계에서 깨지고, recipe 는 있는데
-    menu 에 없으면 LLM 이 그 경로를 영영 못 고른다.
+    menu 에 없으면 LLM 이 그 경로를 영영 못 고름.
     """
     before_recipes = recipes_now()
 
@@ -647,10 +647,10 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
 
 
 def test_several_subjects_all_become_dotted_lines():
-    """대상을 여럿 고르면 전부 붙는다. 하나만 붙이면 나머지가 조용히 사라진다.
+    """대상을 여럿 고르면 전부 붙음. 하나만 붙이면 나머지가 조용히 사라짐.
 
     승강장 CCTV 영상이 승강장에도 CCTV 에도 관한 것이라고 판단했는데 한 줄만
-    적히면, 화면에서는 왜 한쪽에만 묶였는지 알 방법이 없다.
+    적히면, 화면에서는 왜 한쪽에만 묶였는지 알 방법이 없음.
     """
     register_node(
         FORM,
@@ -666,10 +666,10 @@ def test_several_subjects_all_become_dotted_lines():
 
 
 def test_a_failure_leaves_nothing_half_written():
-    """앞 단계가 실패하면 뒤는 실행되지 않는다.
+    """앞 단계가 실패하면 뒤는 실행되지 않음.
 
     온톨로지에 못 넣은 노드로 recipe 를 만들면 존재하지 않는 노드를 가리키고,
-    그 recipe 를 LLM 이 고르면 실행 단계에서 터진다.
+    그 recipe 를 LLM 이 고르면 실행 단계에서 터짐.
     """
     before = (
         paths.ONTOLOGY_PATH.read_bytes(),
@@ -701,10 +701,10 @@ def test_a_failure_leaves_nothing_half_written():
 
 
 def test_resetting_removes_everything_a_registration_added():
-    """시연에서 여러 번 등록해 보려면 되돌릴 수 있어야 한다.
+    """시연에서 여러 번 등록해 보려면 되돌릴 수 있어야 함.
 
-    개수를 세지 않는다. 초기화의 정의는 "_init 사본과 같아진다" 이다.
-    _init 자체는 절대 건드리지 않는다 — 그것이 망가지면 되돌릴 곳이 없다.
+    개수를 세지 않음. 초기화의 정의는 "_init 사본과 같아진다" 임.
+    _init 자체는 절대 안 건드림. 그것이 망가지면 되돌릴 곳이 없음.
     """
     init_before = (
         paths.INIT_ONTOLOGY_PATH.read_bytes(),

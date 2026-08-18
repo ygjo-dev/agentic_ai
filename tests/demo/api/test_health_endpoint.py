@@ -50,7 +50,7 @@ def test_health_reports_the_model_name(client):
 
 # ------------------------------------------------------------ LLM 도달 실패
 def test_unreachable_llm_is_still_200(client, unreachable_llm):
-    """못 닿는다는 사실 자체가 응답이다. 500 을 내면 점검이 되지 않는다."""
+    """못 닿는다는 사실 자체가 응답. 500 을 내면 점검이 되지 않음."""
     assert client.get("/health").status_code == 200
 
 

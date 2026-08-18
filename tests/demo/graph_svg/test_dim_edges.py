@@ -33,7 +33,7 @@ TAIL = ("analyze_congestion", "generate_word")
 
 
 def edge_line(dot: str, edge: tuple[str, str]) -> str:
-    """실선 한 줄. 점선도 같은 쌍을 쓸 수 있으므로 style=dashed 는 뺀다."""
+    """실선 한 줄. 점선도 같은 쌍을 쓸 수 있으므로 style=dashed 는 뺌."""
     frm, to = edge
     return next(
         line
@@ -44,7 +44,7 @@ def edge_line(dot: str, edge: tuple[str, str]) -> str:
 
 # ------------------------------------------------------------ 기본값
 def test_omitting_dim_edges_changes_nothing():
-    """새 인자는 기본값에서 출력이 한 글자도 달라지지 않아야 한다."""
+    """새 인자는 기본값에서 출력이 한 글자도 달라지지 않아야 함."""
     assert build_dot(NODES, SOLID, DOTTED, dim_edges=()) == build_dot(
         NODES, SOLID, DOTTED
     )
@@ -54,9 +54,9 @@ def test_omitting_dim_edges_changes_nothing():
 
 
 def test_dim_edges_is_keyword_only():
-    """키워드 전용이어야 위치 인자에 기대는 호출이 조용히 어긋나지 않는다.
+    """키워드 전용이어야 위치 인자에 기대는 호출이 조용히 어긋나지 않음.
 
-    목록 전체를 박아둔다 — 인자가 늘거나 이름이 바뀌면 여기가 먼저 알려준다.
+    목록 전체를 박아둠. 인자가 늘거나 이름이 바뀌면 여기가 먼저 알려줌.
     """
     params = inspect.signature(build_dot).parameters
 
@@ -84,7 +84,7 @@ def test_dim_edges_is_keyword_only():
 
 # ------------------------------------------------------------ 우선순위
 def test_mark_beats_dim_on_the_same_edge():
-    """경로들이 앞 구간을 공유한다. 짙은 쪽이 이겨야 길이 끊겨 보이지 않는다."""
+    """경로들이 앞 구간을 공유함. 짙은 쪽이 이겨야 길이 끊겨 보이지 않음."""
     dot = build_dot(NODES, SOLID, DOTTED, mark_edges=[SHARED], dim_edges=[SHARED, TAIL])
 
     assert PATH_NEW in edge_line(dot, SHARED)
@@ -94,10 +94,10 @@ def test_mark_beats_dim_on_the_same_edge():
 
 # ------------------------------------------------------------ 그리기
 def test_dim_edges_keep_the_arrow_and_get_no_order():
-    """옅어도 실행 경로다 — 방향은 보이고 순번은 안 붙는다.
+    """옅어도 실행 경로. 방향은 보이고 순번은 안 붙음.
 
     순번은 highlight_paths 가 정확히 하나일 때의 규칙이고, 등록 장면은
-    highlight_paths 를 아예 쓰지 않는다.
+    highlight_paths 를 아예 쓰지 않음.
     """
     dot = build_dot(NODES, SOLID, DOTTED, dim_edges=[TAIL])
     line = edge_line(dot, TAIL)

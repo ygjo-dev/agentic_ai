@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(
 
 
 def pinned_positions():
-    """실제 온톨로지의 좌표 한 벌. 저장소의 layout.json 은 건드리지 않는다."""
+    """실제 온톨로지의 좌표 한 벌. 저장소의 layout.json 은 안 건드림."""
     return layout_positions(
         build_dot(
             *domain_graph(),
@@ -52,7 +52,7 @@ POSITIONS = pinned_positions() if shutil.which("neato") else {}
 
 
 def layout(**kwargs):
-    """SVG 에서 노드 중심 좌표와 캔버스 크기를 뽑는다. 프로덕션과 같은 경로다."""
+    """SVG 에서 노드 중심 좌표와 캔버스 크기를 뽑음. 프로덕션과 같은 경로."""
     svg = render_svg(
         build_dot(
             *domain_graph(),
@@ -98,19 +98,19 @@ COMBOS = {
 
 
 def test_the_fixture_recipes_exist():
-    """4단 recipe 가 없으면 아래 검사가 전부 무력해진다.
+    """4단 recipe 가 없으면 아래 검사가 전부 무력해짐.
 
-    예전에 없는 번호를 가리켜 강조가 하나도 안 걸린 적이 있다.
-    번호가 아니라 성질로 고르므로 이제 recipe 가 바뀌어도 따라간다.
+    예전에 없는 번호를 가리켜 강조가 하나도 안 걸린 적이 있음.
+    번호가 아니라 성질로 고르므로 이제 recipe 가 바뀌어도 따라감.
     """
     assert len(CANDIDATES) >= 2, CANDIDATES
 
 
 def test_every_combo_actually_highlights_something():
-    """COMBOS 가 무력하지 않은지 먼저 본다.
+    """COMBOS 가 무력하지 않은지 먼저 봄.
 
     없는 recipe 를 가리키면 경로가 비어 강조가 하나도 안 걸리고, 그러면
-    "좌표가 안 움직인다" 는 단언이 아무것도 검증하지 못한다.
+    "좌표가 안 움직인다" 는 단언이 아무것도 검증하지 못함.
     """
     for name, kwargs in COMBOS.items():
         if name == "하이라이트 없음":
@@ -141,7 +141,7 @@ def test_canvas_size_never_changes(baseline, name):
 
 
 def test_order_uses_xlabel_not_label():
-    """label 을 쓰면 Graphviz 가 공간을 확보해 노드가 밀린다."""
+    """label 을 쓰면 Graphviz 가 공간을 확보해 노드가 밀림."""
     dot = build_dot(*domain_graph(), highlight=P(FOUR_STEP))
 
     highlight_lines = [line for line in dot.splitlines() if "penwidth=3" in line]
@@ -151,7 +151,7 @@ def test_order_uses_xlabel_not_label():
 
 
 def test_highlight_adds_no_extra_edge():
-    """평행 엣지를 추가하면 조합마다 엣지 수가 달라져 레이아웃이 흔들린다."""
+    """평행 엣지를 추가하면 조합마다 엣지 수가 달라져 레이아웃이 흔들림."""
     plain = build_dot(*domain_graph())
     lit = build_dot(*domain_graph(), highlight=P(FOUR_STEP))
 

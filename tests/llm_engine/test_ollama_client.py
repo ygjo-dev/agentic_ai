@@ -55,7 +55,7 @@ class FakeHTTPResponse:
 
 @pytest.fixture
 def sent_request(monkeypatch):
-    """call_ollama() 가 보낸 urllib Request 를 가로챈다."""
+    """call_ollama() 가 보낸 urllib Request 를 가로챔."""
     captured = {}
 
     def fake_urlopen(request, *args, **kwargs):
@@ -68,14 +68,14 @@ def sent_request(monkeypatch):
 
 
 def test_the_request_forces_a_structured_deterministic_answer(sent_request):
-    """세 가지가 없으면 시연이 무너진다.
+    """세 가지가 없으면 시연이 무너짐.
 
-    format(schema) — 없으면 LLM 이 자유 문장을 돌려주고 파싱이 깨진다.
-    temperature/seed 0 — 없으면 같은 발화가 실행할 때마다 다른 Recipe 로 간다.
-    think=False — 켜지면 응답에 사고 과정이 섞여 JSON 이 아니게 된다.
+    format(schema)     없으면 LLM 이 자유 문장을 돌려주고 파싱이 깨짐
+    temperature/seed 0 없으면 같은 발화가 실행할 때마다 다른 Recipe 로 감
+    think=False        켜지면 응답에 사고 과정이 섞여 JSON 이 아니게 됨
 
-    num_ctx 는 menu 전체가 들어갈 만큼이어야 한다. 넘치면 응답이 잘려
-    타임아웃처럼 보인다.
+    num_ctx 는 menu 전체가 들어갈 만큼이어야 함. 넘치면 응답이 잘려
+    타임아웃처럼 보임.
     """
     call_ollama("발화", RESPONSE_SCHEMA)
 
@@ -100,10 +100,10 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
 
 
 def test_the_raw_answer_comes_back_untouched(sent_request):
-    """봉투에서 ["response"] 원문만 꺼낸다. 파싱은 route_resolver 가 한다.
+    """봉투에서 ["response"] 원문만 꺼냄. 파싱은 route_resolver 가 함.
 
     Protocol 을 벗어나면 orchestrator 가 구현을 갈아끼울 수 없고, 테스트의
-    Stub 도 실제와 다른 것을 검증하게 된다. 그래서 실물과 Stub 둘 다 본다.
+    Stub 도 실제와 다른 것을 검증하게 됨. 그래서 실물과 Stub 둘 다 봄.
     """
     assert call_ollama("발화", RESPONSE_SCHEMA) == ANSWER
     assert OllamaClient().generate("발화", RESPONSE_SCHEMA) == ANSWER
@@ -121,12 +121,12 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
 
 
 def test_reachability_is_checked_without_raising(monkeypatch):
-    """시연 직전 점검용. 못 닿아도 예외를 올리지 않는다.
+    """시연 직전 점검용. 못 닿아도 예외를 올리지 않음.
 
     LLM 이 꺼져 있다는 것은 화면이 보여줘야 할 정보이지 서버가 죽을 이유가
-    아니다. 이유도 묻지 않는다 — 연결 거부든 타임아웃이든 답은 "못 닿는다" 하나다.
+    아님. 이유도 묻지 않음. 연결 거부든 타임아웃이든 답은 "못 닿는다" 하나.
 
-    타임아웃이 짧다. 오래 걸리는 점검은 점검이 아니다.
+    타임아웃이 짧음. 오래 걸리는 점검은 점검이 아님.
     """
     calls = {}
 

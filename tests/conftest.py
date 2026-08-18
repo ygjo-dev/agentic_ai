@@ -31,7 +31,7 @@ REAL_RECIPES_DIR = paths.RECIPES_DIR.resolve()
 def workspace_digest() -> str:
     """진짜 저장소의 온톨로지 + recipe 내용 해시.
 
-    등록 테스트가 저장소를 건드리지 않았는지 확인하는 데 쓴다.
+    등록 테스트가 저장소를 건드리지 않았는지 확인하는 데 씀.
     """
     digest = hashlib.sha1()
     digest.update(REAL_ONTOLOGY_PATH.read_bytes())
@@ -105,14 +105,14 @@ def stub_llm_client():
 
 @pytest.fixture
 def isolated_workspace(monkeypatch, tmp_path):
-    """등록이 건드리는 파일을 전부 임시 디렉터리 사본으로 바꾼다.
+    """등록이 건드리는 파일을 전부 임시 디렉터리 사본으로 바꿈.
 
-    등록 테스트는 원래 진짜 저장소에 쓰고 reset_to_init() 으로 되돌렸다.
+    등록 테스트는 원래 진짜 저장소에 쓰고 reset_to_init() 으로 되돌렸음.
     동작에 버그는 없었지만, 리허설로 시연 상태를 만들어둔 뒤 누가 pytest 를
-    돌리면 등록해둔 노드가 전부 날아간다. 시연 당일 사고가 될 수 있어 격리한다.
+    돌리면 등록해둔 노드가 전부 날아감. 시연 당일 사고가 될 수 있어 격리함.
 
-    register_node 는 paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 된다.
-    프롬프트 경로는 읽기만 하므로 그대로 둔다.
+    register_node 는 paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 됨.
+    프롬프트 경로는 읽기만 하므로 그대로 둠.
     """
     work = tmp_path / "work"
     init = tmp_path / "init"
