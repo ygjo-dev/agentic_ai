@@ -26,14 +26,18 @@ _SCRIPT_CLOSE_SAFE = "<\\/"
 
 
 def embed_json(payload) -> str:
-    """<script> 안에 넣어도 안전한 JSON 문자열."""
+    """<script> 안에 넣어도 안전한 JSON 문자열.
+
+    제약  값 안의 "</" 를 그대로 두지 않는다. "</script>" 가 섞이면 문서가
+          거기서 끊김
+    """
     return json.dumps(payload, ensure_ascii=False).replace(
         _SCRIPT_CLOSE, _SCRIPT_CLOSE_SAFE
     )
 
 
 def focus_css(left_ratio: float) -> str:
-    """iframe 안 스타일. 바깥 styles.py 와 별개다 — 문서가 분리돼 있다."""
+    """iframe 안 스타일. 바깥 styles.py 와 별개. 문서가 분리돼 있음."""
     left = round(left_ratio * 100, 2)
     return f"""
 html, body {{
@@ -95,15 +99,17 @@ def focus_html(
     left_ratio: float | None = None,
     clickable: list[str] | None = None,
 ) -> str:
-    """그래프와 칩 목록을 나란히 둔 문서. 마지막 노드를 누르면 함께 좁혀진다.
+    """그래프와 칩 목록을 나란히 둔 문서. 마지막 노드를 누르면 함께 좁혀짐.
 
-    Args:
-        svgs: {"": 전체, "<마지막노드 id>": 좁힌 것} — 파이썬이 미리 만든 변형.
-        chips: 같은 키의 칩 목록 마크업.
-        clickable: 클릭할 수 있는 노드 id. 후보들의 마지막 노드뿐이다.
-
-    JS 는 고르기만 한다. 다시 칠하지 않는다 — 그리는 규칙이 build_dot 한 곳에만
-    남아야 엣지 굵기·색·순번이 두 곳으로 갈라지지 않는다.
+    입력  svgs       {"": 전체, "<마지막노드 id>": 좁힌 것}.
+                     파이썬이 미리 만든 변형
+          chips      같은 키의 칩 목록 마크업
+          left_ratio 그래프가 차지할 폭 비율
+          clickable  클릭할 수 있는 노드 id. 후보들의 마지막 노드뿐
+    출력  iframe 에 넣을 HTML 문서
+    제약  JS 가 다시 칠하지 않는다. 고르기만 함.
+          그리는 규칙이 build_dot 한 곳에만 남아야 엣지 굵기 · 색 · 순번이
+          두 곳으로 갈라지지 않음
     """
     if left_ratio is None:
         left_ratio = config.LAYOUT["bottom_left_ratio"]
@@ -151,7 +157,11 @@ draw();
 
 
 def chip_color(view: dict | None) -> str:
-    """칩 색. 등록 장면만 다른 색을 쓴다 — 무엇이 새로 생겼는지가 주인공이다."""
+    """칩 색.
+
+    출력  등록 장면이면 theme.new(), 그 밖에는 theme.highlight()
+    규칙  등록 장면만 다른 색을 씀. 무엇이 새로 생겼는지가 주인공
+    """
     if isinstance(view, dict) and view.get("kind") == "register":
         return theme.new()
     return theme.highlight()
@@ -162,15 +172,15 @@ def render_focus_section(
     view: dict | None = None,
     ratios: dict | None = None,
 ):
-    """하단 본문. 해석 그래프와 recipe 칩 목록을 한 iframe 에 담는다.
+    """하단 본문. 해석 그래프와 recipe 칩 목록을 한 iframe 에 담음.
 
-    후보가 없어도 그린다. 실행 전에는 위아래가 같은 지도로 채워진 채 시작하고,
-    NO_MATCH 에서는 지도는 떠 있는데 켜지는 길이 하나도 없다 — 문구 없이
-    그림으로 읽힌다. iframe 이 항상 있어야 결과가 생길 때 화면이 안 튄다.
-
-    Args:
-        rendered: POST /render 응답. variants · chips · focus 가 들어 있다.
-        view: 지금 장면. 칩 색을 고르는 데만 쓴다.
+    입력  rendered  POST /render 응답. variants · chips · focus 가 들어 있음
+          view      지금 장면. 칩 색을 고르는 데만 씀
+          ratios    config.layout_ratios() 결과
+    규칙  후보가 없어도 그림. 실행 전에는 위아래가 같은 지도로 채워진 채
+          시작하고, NO_MATCH 에서는 지도는 떠 있는데 켜지는 길이 하나도 없음.
+          문구 없이 그림으로 읽힘
+    제약  iframe 을 없애지 않는다. 항상 있어야 결과가 생길 때 화면이 안 튐
     """
     if not rendered or not rendered.get("variants"):
         return

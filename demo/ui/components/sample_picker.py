@@ -57,7 +57,7 @@ EXPECTED_BY_UTTERANCE = {
 
 
 def use_sample():
-    """콤보박스 선택 콜백. 발화를 입력란에 넣는다."""
+    """콤보박스 선택 콜백. 발화를 입력란에 넣음."""
     choice = st.session_state.get("sample_choice")
 
     if choice == PLACEHOLDER:
@@ -67,7 +67,7 @@ def use_sample():
 
 
 def render_sample_picker():
-    """샘플 콤보박스. 발화 문자열만 노출한다."""
+    """샘플 콤보박스. 발화 문자열만 노출함."""
     st.selectbox(
         "Sample",
         [PLACEHOLDER, *(utterance for utterance, *_ in SAMPLES)],

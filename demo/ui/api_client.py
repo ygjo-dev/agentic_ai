@@ -35,7 +35,7 @@ class ApiError(RuntimeError):
 
 
 def _detail_of(response) -> str:
-    """오류 응답 본문의 detail. 백엔드가 원인을 적어 보낸다."""
+    """오류 응답 본문의 detail. 백엔드가 원인을 적어 보냄."""
     try:
         detail = response.json().get("detail")
     except Exception:  # noqa: BLE001 — 본문이 JSON 이 아닐 수도 있다.
@@ -60,10 +60,12 @@ def _call(method: str, path: str, *, timeout: float, **kwargs) -> dict:
 
 
 def get_graph() -> tuple[dict, bool]:
-    """그래프 한 벌. (payload, is_stale).
+    """그래프 한 벌.
 
-    호출이 실패하면 마지막으로 성공한 응답을 is_stale=True 로 돌려준다 —
-    기다리는 동안 화면이 비면 곤란하다. 캐시조차 없으면 그때는 올린다.
+    출력  (payload, is_stale)
+    규칙  호출이 실패하면 마지막으로 성공한 응답을 is_stale=True 로 돌려줌.
+          기다리는 동안 화면이 비면 곤란함
+          캐시조차 없으면 그때는 ApiError 를 올림
     """
     try:
         payload = _call("GET", "/graph", timeout=GRAPH_TIMEOUT)
@@ -80,8 +82,11 @@ def get_graph() -> tuple[dict, bool]:
 def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> dict:
     """화면 한 장에 필요한 SVG 와 칩 데이터.
 
-    그리기는 전부 백엔드가 한다 — 여기는 무엇을 강조할지만 말한다.
-    mark 는 POST /nodes 응답을 그대로 넘긴다. 줄이는 일은 서버가 한다.
+    입력  모드 · 강조할 recipe · mark(POST /nodes 응답 그대로)
+    출력  POST /render 응답
+    제약  여기서 그리지 않는다. 그리기는 전부 백엔드가 하고 여기는 무엇을
+          강조할지만 말함
+          mark 를 여기서 줄이지 않는다. 줄이는 일은 서버가 함
     """
     return _call(
         "POST",
@@ -92,14 +97,14 @@ def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> di
 
 
 def resolve(utterance: str) -> dict:
-    """발화 → Recipe 선택. 경로(paths)까지 함께 온다."""
+    """발화 → Recipe 선택. 경로(paths)까지 함께 옴."""
     return _call(
         "POST", "/resolve", timeout=RESOLVE_TIMEOUT, params={"utterance": utterance}
     )
 
 
 def register_node(name: str, description: str, inputs: list[str], outputs: list[str]) -> dict:
-    """노드 등록. 온톨로지가 바뀌므로 그래프 캐시를 버린다."""
+    """노드 등록. 온톨로지가 바뀌므로 그래프 캐시를 버림."""
     result = _call(
         "POST",
         "/nodes",
@@ -116,7 +121,7 @@ def register_node(name: str, description: str, inputs: list[str], outputs: list[
 
 
 def reset_nodes() -> dict:
-    """_init 사본으로 되돌린다. 등록과 마찬가지로 캐시를 버린다."""
+    """_init 사본으로 되돌림. 등록과 마찬가지로 캐시를 버림."""
     result = _call("POST", "/nodes/reset", timeout=NODES_TIMEOUT)
     st.session_state.pop(GRAPH_CACHE_KEY, None)
     return result

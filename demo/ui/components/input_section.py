@@ -4,11 +4,9 @@ import streamlit as st
 
 
 def render_input_section():
-    """
-    사용자 입력을 받는 영역을 렌더링.
+    """사용자 입력을 받는 영역.
 
-    Returns:
-        tuple: (utterance, run_clicked)
+    출력  (utterance, run_clicked)
     """
     st.subheader("User Input")
 

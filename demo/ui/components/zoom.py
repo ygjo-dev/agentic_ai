@@ -136,11 +136,11 @@ _TEMPLATE = """
 
 
 def zoom_script(storage_key: str, selector: str = "#graph") -> str:
-    """줌·팬 스크립트 한 벌. `<script>` 태그까지 포함한다.
+    """줌 · 팬 스크립트 한 벌.
 
-    Args:
-        storage_key: 배율을 기억할 키. 상단·하단이 서로 달라야 한다.
-        selector: 줌을 걸 컨테이너. 그 안의 첫 `<svg>` 에 transform 이 붙는다.
+    입력  storage_key  배율을 기억할 키. 상단 · 하단이 서로 달라야 함
+          selector     줌을 걸 컨테이너. 그 안의 첫 <svg> 에 transform 이 붙음
+    출력  <script> 태그까지 포함한 문자열
     """
     body = (
         _TEMPLATE.replace("__KEY__", storage_key)

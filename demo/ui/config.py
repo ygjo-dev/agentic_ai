@@ -39,10 +39,12 @@ _RATIO_KEYS = {
 
 
 def _as_ratio(raw) -> float | None:
-    """쿼리 파라미터 한 개를 비율로. 쓸 수 없는 값이면 None.
+    """쿼리 파라미터 한 개를 비율로.
 
-    시연 중에 주소창을 잘못 건드려도 화면이 죽으면 안 된다. 어떤 입력에도
-    예외를 올리지 않고 None 을 돌려 기본값으로 떨어지게 한다.
+    출력  0 초과 1 미만의 float. 쓸 수 없는 값이면 None
+    제약  어떤 입력에도 예외를 올리지 않는다.
+          시연 중에 주소창을 잘못 건드려도 화면이 죽으면 안 됨.
+          None 을 돌려 기본값으로 떨어지게 함
     """
     try:
         value = float(raw)
@@ -60,7 +62,11 @@ MIN_VIEWPORT, MAX_VIEWPORT = 400, 8000
 
 
 def _as_pixels(raw) -> int | None:
-    """쿼리 파라미터 한 개를 픽셀 높이로. 쓸 수 없는 값이면 None."""
+    """쿼리 파라미터 한 개를 픽셀 높이로.
+
+    출력  MIN_VIEWPORT ~ MAX_VIEWPORT 의 int. 쓸 수 없는 값이면 None
+    규칙  픽셀은 비율과 검증 규칙이 다름. 0~1 이 아니라 상식적인 화면 높이 범위
+    """
     try:
         value = int(float(raw))
     except (TypeError, ValueError):
@@ -72,7 +78,10 @@ def _as_pixels(raw) -> int | None:
 
 
 def layout_ratios() -> dict:
-    """LAYOUT 에 쿼리 파라미터(?top=0.7&left=0.28&vh=900)를 얹은 값."""
+    """LAYOUT 에 쿼리 파라미터(?top=0.7&left=0.28&vh=900)를 얹은 값.
+
+    규칙  Streamlit 런타임 밖에서도 부를 수 있어야 해 예외는 삼키고 기본값을 씀
+    """
     ratios = dict(LAYOUT)
 
     try:

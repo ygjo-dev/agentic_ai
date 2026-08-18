@@ -16,11 +16,13 @@ from demo.ui import config, theme
 
 
 def note_markup(message: str) -> str:
-    """구석에 작게 남기는 한 줄. 오류 전용이다.
+    """구석에 작게 남기는 한 줄. 오류 전용.
 
-    큰 박스로 띄우지 않는다. 정상일 때는 아예 안 나오므로 화면을 안 어지럽히고,
-    나왔을 때는 "서버가 죽은 화면" 과 "NO_MATCH 화면" 을 구분해준다 —
-    그 둘이 똑같이 보이는 것이 시연에서 가장 나쁜 사고다.
+    출력  .note div 마크업
+    제약  큰 박스로 띄우지 않는다.
+          정상일 때는 아예 안 나와 화면을 안 어지럽히고, 나왔을 때는 "서버가
+          죽은 화면" 과 "NO_MATCH 화면" 을 구분해줌. 그 둘이 똑같이 보이는
+          것이 시연에서 가장 나쁜 사고임
     """
     return f'<div class="note">{html.escape(str(message))}</div>'
 
@@ -32,15 +34,17 @@ PAGE_PADDING = 30     # block-container 위아래 패딩
 
 
 def panel_heights(ratios: dict) -> dict:
-    """iframe 에 넘길 픽셀 높이. {"top": px, "bottom": px}.
+    """iframe 에 넘길 픽셀 높이.
 
-    st.components.v1.html 은 iframe 을 height 속성으로 고정해 만든다. 바깥
-    컨테이너에 height:100% 를 줘도 iframe 자신의 높이는 안 바뀐다 — 그래서
-    예전에는 그래프가 420px 에 갇혔고, 종횡비가 걸려 폭까지 눌렸다.
-    높이 하나가 폭까지 죽이고 있었다. 그래서 여기서 픽셀을 직접 계산한다.
-
-    상단 + 하단 + 크롬 + 여백의 합이 뷰포트를 넘으면 페이지에 세로 스크롤이
-    생긴다. 그것을 막는 것이 이 계산의 목적이다.
+    입력  config.layout_ratios() 결과
+    출력  {"top": px, "bottom": px}. 화면이 아주 작아도 최소 200
+    규칙  상단 + 하단 + 크롬 + 여백의 합이 뷰포트를 넘으면 페이지에 세로
+          스크롤이 생김. 그것을 막는 것이 이 계산의 목적
+    제약  높이를 CSS 로 늘리지 않는다.
+          st.components.v1.html 은 iframe 을 height 속성으로 고정해 만듦.
+          바깥 컨테이너에 height:100% 를 줘도 iframe 자신의 높이는 안 바뀜.
+          예전에는 그래프가 420px 에 갇혔고 종횡비가 걸려 폭까지 눌렸음.
+          높이 하나가 폭까지 죽이고 있었음
     """
     viewport = ratios["viewport_height"]
     chrome = viewport * ratios["chrome_vh"] / 100
@@ -60,7 +64,11 @@ FONT_STACK = (
 
 
 def page_css(ratios: dict) -> str:
-    """화면 전체 CSS. ratios 는 config.layout_ratios() 결과."""
+    """화면 전체 CSS.
+
+    입력  config.layout_ratios() 결과
+    출력  <style> 블록
+    """
     top_vh = round(ratios["top_ratio"] * 100 - ratios["chrome_vh"], 2)
     bottom_vh = round((1 - ratios["top_ratio"]) * 100 - 2, 2)
 

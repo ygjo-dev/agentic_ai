@@ -18,10 +18,12 @@ _COLORS: dict[str, str] = {}
 
 
 def set_colors(colors: dict | None) -> None:
-    """`/graph` 응답의 colors 를 받아 둔다. 없으면 이전 값을 유지한다.
+    """/graph 응답의 colors 를 받아 둠.
 
-    백엔드가 잠깐 끊겼을 때 색까지 사라지면 화면이 통째로 회색이 된다.
-    마지막으로 받은 값을 그대로 쓰는 편이 낫다.
+    입력  colors dict. 없으면 이전 값을 유지
+    제약  못 받았다고 색을 비우지 않는다.
+          백엔드가 잠깐 끊겼을 때 색까지 사라지면 화면이 통째로 회색이 됨.
+          마지막으로 받은 값을 그대로 쓰는 편이 나음
     """
     if colors:
         _COLORS.update(colors)

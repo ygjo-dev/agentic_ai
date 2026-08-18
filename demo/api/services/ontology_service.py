@@ -34,12 +34,12 @@ from ontology.graph import (
 def ontology_version() -> str:
     """ontology.yaml + recipes/*.yaml 내용의 sha1.
 
-    mtime 이 아니라 내용으로 계산한다 — reset_to_init 은 파일을 복사하므로
-    내용이 같아도 mtime 이 바뀐다. 그러면 프론트엔드 SVG 캐시가 헛돌고
-    그래프가 깜빡인다.
-
-    파일명도 해시에 넣는다. 내용이 같은 recipe 가 다른 번호로 늘어나는 경우를
-    내용만으로는 구분할 수 없다.
+    출력  16진 해시 문자열
+    규칙  파일명도 해시에 넣음. 내용이 같은 recipe 가 다른 번호로 늘어나는
+          경우를 내용만으로는 구분할 수 없음
+    제약  mtime 으로 계산하지 않는다.
+          reset_to_init 은 파일을 복사하므로 내용이 같아도 mtime 이 바뀜.
+          프론트엔드 SVG 캐시가 헛돌고 그래프가 깜빡임
     """
     digest = hashlib.sha1()
     digest.update(store.raw_bytes())
@@ -57,14 +57,17 @@ def recipe_ids() -> list[str]:
 
 
 def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
-    """recipe 한 벌의 실행 경로. [{node_id, name, out_type}, ...] 순서 그대로.
+    """recipe 한 벌의 실행 경로.
 
-    out_type 은 다음 노드로 흘러가는 것이다. 실행 노드는 hasOutput 이 말하고,
-    **데이터 노드는 자기 자신**이다 — 승강장 CCTV 영상은 무언가를 내놓는 것이
-    아니라 그 자체가 다음 단계로 건네진다. 경로의 마지막 노드도 값이 있지만
-    화면은 마지막 화살표를 안 그리므로 쓰이지 않는다.
-
-    없는 recipe 는 빈 리스트다. recipe_nodes 가 그렇게 동작하므로 그대로 따른다.
+    입력  recipe id · 노드 전체(없으면 온톨로지에서 읽음)
+    출력  [{node_id, name, out_type}, ...] 순서 그대로.
+          없는 recipe 는 빈 리스트. recipe_nodes 가 그렇게 동작하므로 따름
+    규칙  out_type 은 다음 노드로 흘러가는 것
+            실행 노드   hasOutput 이 말함
+            데이터 노드 자기 자신. 승강장 CCTV 영상은 무언가를 내놓는 것이
+                        아니라 그 자체가 다음 단계로 건네짐
+          경로의 마지막 노드도 값이 있지만 화면은 마지막 화살표를 안 그려
+          쓰이지 않음
     """
     nodes = load_ontology()["nodes"] if nodes is None else nodes
 
@@ -83,32 +86,36 @@ def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
 
 
 def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
-    """recipe id 여럿의 경로를 한 번에. 중복은 접고 순서는 유지한다."""
+    """recipe id 여럿의 경로를 한 번에. 중복은 접고 순서는 유지함."""
     nodes = load_ontology()["nodes"] if nodes is None else nodes
     return {recipe_id: path_of(recipe_id, nodes) for recipe_id in dict.fromkeys(ids)}
 
 
 def drawn_nodes() -> dict:
-    """화면에 그리는 노드. **온톨로지 전부가 아니다.**
+    """화면에 그리는 노드. 온톨로지 전부가 아님.
 
-    그리는 것은 셋이다 — 실행할 수 있는 경로(실선에 나오는 노드), 그것이 무엇에
-    관한 것인가(그룹과 점선에 나오는 노드), 그리고 **실행할 수 있는 노드 전부**.
-
-    마지막 조건이 실선 조건과 따로 필요하다. **등록한 노드의 경로가 전부
-    버려질 수 있다** — 대상이 어긋나는 경로는 등록되지 않으므로(crosses_groups)
-    그런 노드는 어느 recipe 에도 안 들어간다. 빼면 그 노드가 화면에서 사라지고,
-    새 점선이 좌표 없는 노드를 가리켜 neato -n 이 그림을 통째로 거부한다
-    (실측: "node ... has no position as required by the -n flag").
-    등록 직후에 그 노드를 보여주는 것이 등록 장면 자체다.
-
-    형식 노드(영상 · 이미지 · 문서 · 분석결과)는 뺀다. 실행하지 않고, recipe 에
-    나오지 않아 실선이 없고, about 도 안 붙어 점선도 없다 — 그리면 아무 선도
-    없는 점 다섯 개가 떠 있게 되고, 사람은 그것이 무슨 뜻인지 물어보게 된다.
-    형식 계층은 경로를 만들 때 쓰는 것이지 사람이 볼 것이 아니다.
-
-    **kind 를 여기서 만들어 붙인다.** 온톨로지에는 종류가 안 적혀 있고, 그리는
-    쪽은 그룹을 다르게 칠해야 한다. 파일에 되돌려 적지 않는다 — 화면에만 필요한
-    구분이라 파일에 적으면 관계와 어긋날 수 있는 자리가 하나 늘어난다.
+    출력  {node_id: {name, description, kind}}
+    규칙  그리는 것은 셋
+            실행할 수 있는 경로   실선에 나오는 노드
+            무엇에 관한 것인가    그룹과 점선에 나오는 노드
+            실행할 수 있는 노드   전부
+          kind 를 여기서 만들어 붙임. 온톨로지에는 종류가 안 적혀 있고,
+          그리는 쪽은 그룹을 다르게 칠해야 함
+    제약  실행할 수 있는 노드를 실선 조건에 맡기지 않는다.
+          등록한 노드의 경로가 전부 버려질 수 있음. 대상이 어긋나는 경로는
+          등록되지 않으므로(crosses_groups) 그런 노드는 어느 recipe 에도
+          안 들어감. 빼면 그 노드가 화면에서 사라지고, 새 점선이 좌표 없는
+          노드를 가리켜 neato -n 이 그림을 통째로 거부함
+          (실측 : "node ... has no position as required by the -n flag").
+          등록 직후에 그 노드를 보여주는 것이 등록 장면 자체임
+          형식 노드(영상 · 이미지 · 문서 · 분석결과)를 그리지 않는다.
+          실행하지 않고, recipe 에 나오지 않아 실선이 없고, about 도 안 붙어
+          점선도 없음. 그리면 아무 선도 없는 점 다섯 개가 떠 있게 되고 사람은
+          그것이 무슨 뜻인지 물어보게 됨. 형식 계층은 경로를 만들 때 쓰는
+          것이지 사람이 볼 것이 아님
+          kind 를 파일에 되돌려 적지 않는다.
+          화면에만 필요한 구분이라 파일에 적으면 관계와 어긋날 수 있는 자리가
+          하나 늘어남
     """
     nodes = load_ontology()["nodes"]
     groups = set(group_ids())
@@ -126,23 +133,25 @@ def drawn_nodes() -> dict:
 
 
 def domain_graph() -> tuple[dict, dict, dict]:
-    """그리기가 쓰는 도메인 형태 그대로. (nodes, solid, dotted)
+    """그리기가 쓰는 도메인 형태 그대로.
 
-    solid / dotted 는 튜플 키 dict 다. JSON 은 튜플 키를 못 담아 graph_payload 는
-    리스트로 펴는데, 서버 안에서 그릴 때는 펼 이유가 없다 — 예전에는 프론트엔드가
-    받아서 다시 튜플로 되돌렸다(to_build_dot_args). 그 왕복이 사라졌다.
-
-    온톨로지를 읽는 곳은 이 모듈 하나다. graph_svg 는 여기서 받아 쓰기만 한다.
+    출력  (nodes, solid, dotted). solid / dotted 는 튜플 키 dict
+    규칙  온톨로지를 읽는 곳은 이 모듈 하나. graph_svg 는 여기서 받아 쓰기만 함
+    이력  JSON 은 튜플 키를 못 담아 graph_payload 는 리스트로 펴지만, 서버
+          안에서 그릴 때는 펼 이유가 없음. 예전에는 프론트엔드가 받아서 다시
+          튜플로 되돌렸음(to_build_dot_args). 그 왕복이 사라졌음
     """
     return drawn_nodes(), solid_edges(), dotted_edges()
 
 
 def graph_payload() -> dict:
-    """그래프 한 벌 전체. 프론트엔드가 그리는 데 필요한 것만 담는다.
+    """그래프 한 벌 전체. 프론트엔드가 그리는 데 필요한 것만 담음.
 
-    엣지는 객체(dict)가 아니라 순서 있는 리스트로 담는다. JSON 은 튜플 키를
-    못 담기도 하지만, 그보다 순서가 중요하다 — 노드와 엣지가 나오는 순서가
-    Graphviz 레이아웃을 정하므로 왕복에서 순서가 흔들리면 좌표가 바뀐다.
+    출력  version · colors · types · nodes · solid_edges · dotted_edges
+    제약  엣지를 객체(dict)로 담지 않는다.
+          JSON 이 튜플 키를 못 담기도 하지만 그보다 순서가 중요함. 노드와
+          엣지가 나오는 순서가 Graphviz 레이아웃을 정하므로 왕복에서 순서가
+          흔들리면 좌표가 바뀜
     """
     all_nodes = load_ontology()["nodes"]
 

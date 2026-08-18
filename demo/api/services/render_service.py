@@ -24,16 +24,16 @@ def render(
 ) -> dict:
     """화면 한 장에 필요한 SVG 와 칩 데이터.
 
-    Args:
-        mode: "plain" 실행 전 · "resolve" 발화 해석 결과 · "register" 노드 등록 직후.
-            모드는 캐시 키에만 쓰인다. 그림을 다르게 만드는 것은 recipe_ids 와
-            mark 이고, 모드는 같은 후보라도 장면이 다르면 다른 칸에 담기게 한다.
-        recipe_ids: 강조할 recipe. plain 이면 비어 있다.
-        mark: POST /nodes 응답(또는 이미 줄어든 {nodes, solid, dotted}).
-            register 가 아니면 None.
-
-    Raises:
-        UnknownRenderMode: 모르는 모드. 422 로 나간다.
+    입력  mode        "plain" 실행 전 · "resolve" 발화 해석 결과 ·
+                      "register" 노드 등록 직후
+                      캐시 키에만 쓰임. 그림을 다르게 만드는 것은 recipe_ids 와
+                      mark 이고, 모드는 같은 후보라도 장면이 다르면 다른 칸에
+                      담기게 함
+          recipe_ids  강조할 recipe. plain 이면 비어 있음
+          mark        POST /nodes 응답(또는 이미 줄어든
+                      {nodes, solid, dotted}). register 가 아니면 None
+    출력  build.render_payload 한 벌
+    규칙  모르는 모드면 UnknownRenderMode. 422 로 나감
     """
     if mode not in MODES:
         raise UnknownRenderMode(

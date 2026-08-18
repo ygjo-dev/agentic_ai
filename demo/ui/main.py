@@ -37,7 +37,8 @@ ASK, REGISTER = "사용자 질문", "노드 등록"
 def _is_registration(view) -> bool:
     """지금 화면이 등록 결과를 보여주는 중인가.
 
-    강조는 그동안만 켜진다 — 상단과 하단이 같은 장면을 말하게 하려는 것이다.
+    출력  참이면 등록 장면
+    규칙  강조는 그동안만 켜짐. 상단과 하단이 같은 장면을 말하게 하려는 것
     """
     return isinstance(view, dict) and view.get("kind") == "register" and "result" in view
 
@@ -45,8 +46,9 @@ def _is_registration(view) -> bool:
 def render_mode(view) -> tuple[str, dict | None]:
     """지금 장면의 render 모드와 강조 원본.
 
-    등록 결과일 때만 mark 를 넘긴다. 무엇을 강조로 바꿀지는 서버가 정한다 —
-    화면이 new_solid_edges 같은 도메인 형태를 알 필요가 없다.
+    출력  (mode, mark). 등록 결과일 때만 mark 가 있음
+    제약  무엇을 강조로 바꿀지 여기서 정하지 않는다.
+          서버가 정함. 화면이 new_solid_edges 같은 도메인 형태를 알 필요가 없음
     """
     if _is_registration(view):
         return "register", view["result"]
@@ -69,7 +71,10 @@ def recipe_ids_to_show(view) -> list[str]:
 
 
 def format_elapsed(seconds: float) -> str:
-    """Run 클릭부터 응답까지 걸린 시간을 초단위로 표시. 60초 이상이면 분:초로 표시."""
+    """Run 클릭부터 응답까지 걸린 시간.
+
+    출력  60초 미만이면 "N.N초", 그 이상이면 "N분 N.N초"
+    """
     if seconds < 60:
         return f"{seconds:.1f}초"
     minutes, rest = divmod(seconds, 60)

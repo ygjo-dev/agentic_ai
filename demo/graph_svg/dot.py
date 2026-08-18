@@ -197,81 +197,82 @@ def build_dot(
     edge_color=None,
     dotted_color=None,
 ) -> str:
-    """계산 결과를 Graphviz DOT 문자열로 옮긴다.
+    """계산 결과를 Graphviz DOT 문자열로 옮김.
 
-    Args:
-        nodes: {node_id: {"name": 표시명, ...}}
-        solid: {(from, to): 인터페이스} — 레시피 연결. 화살표 없음.
-            인터페이스 값은 받되 그리지 않는다. 열 위치만 봐도 무엇이
-            흐르는지 읽히고, 같은 이름이 16번 반복되면 노이즈다.
-        dotted: {(a, b): ["key: value", ...]} — 특성 관련. 점선, 화살표 없음.
-        highlight: [(from, to), ...] — 경로 하나. 굵은 실선, 화살표, 순번.
-            리스트 순서가 곧 실행 순서다.
-        highlight_nodes: 테두리를 강조할 노드. 생략하면 강조 엣지의 양 끝에서
-            유도한다. 1단 recipe 는 엣지가 없어 유도가 불가능하므로 그때는
-            호출하는 쪽이 넘겨야 한다.
-        highlight_paths: [[(from, to), ...], ...] — 경로 여러 개(CLARIFY 후보).
-            엣지 합집합을 강조하고 순번은 붙이지 않는다. 여러 경로가 같은
-            엣지를 공유하면 순번이 겹쳐 읽을 수 없기 때문이다.
-            경로가 정확히 하나면 highlight 와 똑같이 순번을 붙인다.
-        positions: {node_id: (x, y)} — neato 용 고정 좌표. pos="x,y!" 로 붙인다.
-            label 뒤에 놓는다 — 테스트가 노드 줄을 '"id" [label=' 로 찾는다.
-        spring: neato 용 엣지 길이. 실선보다 점선을 짧게 둬 같은 특성을 공유하는
-            노드끼리 서로 끌어당겨 모이게 한다. len 은 dot 엔진에서는 무시된다.
-        graph_attrs: graph [...] 에 더할 속성들. neato 는 inputscale=72 가
-            있어야 좌표 왕복이 항등이고(없으면 72배로 어긋난다), 최초 배치에는
-            overlap 제거가 필요하다.
-        dotted_labels: 점선 라벨을 붙일 범위. True 면 전부, False 면 없음,
-            쌍의 집합이면 그것만. 끄면 화면이 깨끗해지고 노드 사이 공간이
-            넓어진다. 레이아웃 자체는 바뀌지 않는다(실측).
-        draw_solid: 실선(recipe 파생)을 그릴지. False 면 실선 문장을 아예 넣지
-            않는다 — 상단이 "무엇이 무엇과 관련되는가"(점선)만 말하는 관계
-            지도가 되고, "무엇 다음에 무엇이 오는가"(실선)는 하단이 맡는다.
-            **좌표는 안 바뀐다** — 전 노드가 핀이고 neato -n 이라 선을 빼도
-            배치를 다시 계산하지 않는다(테스트로 고정).
-        dotted_penwidth: 점선 굵기. 생략하면 DOTTED_PENWIDTH. 상단은 실선이
-            없어 점선이 유일한 선이므로 더 굵게 둔다(DOTTED_PENWIDTH_TOP).
-        node_attrs: node [...] 기본 줄에 더할 속성들. 폰트·여백을 줄여 박스를
-            작게 만드는 데 쓴다.
-        group_attrs: kind == "group" 인 노드에만 더할 속성들. 도형과 색을 바꿔
-            기능 노드와 갈리게 한다. 비워두면 group 도 기능과 똑같이 그려진다 —
-            기본 출력을 바꾸지 않으려는 것이다.
-            강조·마크 색은 이 뒤에 붙으므로 걸리면 그쪽이 이긴다(Graphviz 는
-            같은 속성이 두 번 나오면 나중 것을 쓴다 — 실측).
-        mark_nodes / mark_edges / mark_dotted: 새로 생긴 것을 표시한다.
-            highlight(실행 경로) 와는 직교하는 별개의 레이어다 — 등록 강조는
-            "무엇을 고른 경로인지" 가 아니라 "무엇이 새로 생겼는지" 라서
-            같은 색 조합 규칙에 넣으면 읽는 사람이 헷갈린다.
-            둘 다 걸린 대상은 mark 가 이긴다.
-            **셋이 서로 다른 색이다.** 하나가 뜻 하나이기 때문이다.
-                mark_nodes   NEW_COLOR         (mark_color 로 덮을 수 있다)
-                mark_dotted  NEW_DOTTED_COLOR  (상수)
-                mark_edges   PATH_NEW          (상수)
-            뒤의 둘을 상수로 고정하는 이유 : 이 인자들은 등록 장면에서만 쓰인다.
-            해석 장면은 highlight_paths 를 쓴다.
-        dim_edges: [(from, to), ...] — 선택에서 빠진 실행 경로. PATH_NEW_DIM 으로
-            칠하고 굵기와 화살표는 짙은 경로와 같다(옅어도 실행 경로다).
-            순번은 안 붙인다.
-            **색 우선순위는 mark > highlight > dim 이다.** dim 이 가장 낮은
-            이유 : 경로들이 앞 구간을 공유하므로, 같은 엣지가 짙은 경로에도
-            걸려 있으면 짙은 쪽이 이겨야 앞 구간이 끊겨 보이지 않는다.
-            실선이 없는 쌍은 조용히 건너뛴다 — 여기서 선을 새로 긋지 않는다.
-        mark_color: mark_nodes 에 쓸 색. 생략하면 NEW_COLOR.
-        edge_color: 실선 색. 생략하면 PLAIN_COLOR — 노드 테두리와 같은 값이라
-            엣지만 옅게 할 수가 없었다. 분리해두면 선을 뒤로 물릴 수 있다.
-        dotted_color: 점선 색. 생략하면 DOTTED_COLOR. 실선만 어둡게 하면
-            밝은 점선이 화면에서 가장 튀어 위계가 뒤집히므로 함께 조절한다.
-
-    mark_edges 와 dim_edges 에는 순번(xlabel)을 붙이지 않는다. 등록 장면은
-    highlight_paths 를 쓰지 않으므로 순번 규칙(경로가 정확히 하나일 때)에
-    아예 걸리지 않는다.
-
-    새 인자는 모두 키워드 전용이고 기본값에서는 출력이 한 글자도 달라지지 않는다.
-    tests/graph_rendering 의 40여 개가 기존 출력 문자열에 의존한다.
-
-    레이아웃은 어떤 조합에서도 같다. 강조는 엣지를 새로 추가하지 않고 이미
-    있는 실선의 색·굵기만 바꾸며, 순번은 label 이 아니라 xlabel 로 붙인다.
-    (label 은 Graphviz 가 공간을 확보해 노드가 밀린다 — 실측으로 확인했다.)
+    입력  nodes  {node_id: {"name": 표시명, ...}}
+          solid  {(from, to): 인터페이스}. recipe 연결. 화살표 없음
+                 인터페이스 값은 받되 그리지 않음. 열 위치만 봐도 무엇이
+                 흐르는지 읽히고, 같은 이름이 16번 반복되면 노이즈임
+          dotted  {(a, b): ["key: value", ...]}. 특성 관련. 점선, 화살표 없음
+          highlight  [(from, to), ...] 경로 하나. 굵은 실선 · 화살표 · 순번.
+                 리스트 순서가 곧 실행 순서
+          highlight_nodes  테두리를 강조할 노드. 생략하면 강조 엣지의 양 끝에서
+                 유도함. 1단 recipe 는 엣지가 없어 유도가 불가능하므로 그때는
+                 호출하는 쪽이 넘겨야 함
+          highlight_paths  [[(from, to), ...], ...] 경로 여러 개(CLARIFY 후보).
+                 엣지 합집합을 강조하고 순번은 안 붙임. 여러 경로가 같은 엣지를
+                 공유하면 순번이 겹쳐 읽을 수 없음.
+                 경로가 정확히 하나면 highlight 와 똑같이 순번을 붙임
+          positions  {node_id: (x, y)} neato 용 고정 좌표. pos="x,y!" 로 붙임.
+                 label 뒤에 놓음. 테스트가 노드 줄을 '"id" [label=' 로 찾음
+          spring  neato 용 엣지 길이. 실선보다 점선을 짧게 둬 같은 특성을
+                 공유하는 노드끼리 서로 끌어당겨 모이게 함.
+                 len 은 dot 엔진에서는 무시됨
+          graph_attrs  graph [...] 에 더할 속성들. neato 는 inputscale=72 가
+                 있어야 좌표 왕복이 항등이고(없으면 72배로 어긋남), 최초 배치에는
+                 overlap 제거가 필요함
+          dotted_labels  점선 라벨을 붙일 범위. True 면 전부, False 면 없음,
+                 쌍의 집합이면 그것만. 끄면 화면이 깨끗해지고 노드 사이 공간이
+                 넓어짐. 레이아웃 자체는 안 바뀜(실측)
+          draw_solid  실선(recipe 파생)을 그릴지. False 면 실선 문장을 아예 안
+                 넣음. 상단이 "무엇이 무엇과 관련되는가"(점선)만 말하는 관계
+                 지도가 되고, "무엇 다음에 무엇이 오는가"(실선)는 하단이 맡음.
+                 좌표는 안 바뀜. 전 노드가 핀이고 neato -n 이라 선을 빼도
+                 배치를 다시 계산하지 않음(테스트로 고정)
+          dotted_penwidth  점선 굵기. 생략하면 DOTTED_PENWIDTH. 상단은 실선이
+                 없어 점선이 유일한 선이므로 더 굵게 둠(DOTTED_PENWIDTH_TOP)
+          node_attrs  node [...] 기본 줄에 더할 속성들. 폰트 · 여백을 줄여
+                 박스를 작게 만드는 데 씀
+          group_attrs  kind == "group" 인 노드에만 더할 속성들. 도형과 색을
+                 바꿔 기능 노드와 갈리게 함. 비워두면 group 도 기능과 똑같이
+                 그려짐. 기본 출력을 바꾸지 않으려는 것.
+                 강조 · 마크 색은 이 뒤에 붙으므로 걸리면 그쪽이 이김
+                 (Graphviz 는 같은 속성이 두 번 나오면 나중 것을 씀. 실측)
+          mark_nodes / mark_edges / mark_dotted  새로 생긴 것을 표시.
+                 highlight(실행 경로)와는 직교하는 별개의 레이어. 등록 강조는
+                 "무엇을 고른 경로인지" 가 아니라 "무엇이 새로 생겼는지" 라서
+                 같은 색 조합 규칙에 넣으면 읽는 사람이 헷갈림.
+                 둘 다 걸린 대상은 mark 가 이김.
+                 셋이 서로 다른 색. 하나가 뜻 하나임
+                   mark_nodes   NEW_COLOR         (mark_color 로 덮을 수 있음)
+                   mark_dotted  NEW_DOTTED_COLOR  (상수)
+                   mark_edges   PATH_NEW          (상수)
+                 뒤의 둘을 상수로 고정하는 이유 : 이 인자들은 등록 장면에서만
+                 쓰임. 해석 장면은 highlight_paths 를 씀
+          dim_edges  [(from, to), ...] 선택에서 빠진 실행 경로. PATH_NEW_DIM 으로
+                 칠하고 굵기와 화살표는 짙은 경로와 같음(옅어도 실행 경로임).
+                 순번은 안 붙임.
+                 실선이 없는 쌍은 조용히 건너뜀. 여기서 선을 새로 긋지 않음
+          mark_color  mark_nodes 에 쓸 색. 생략하면 NEW_COLOR
+          edge_color  실선 색. 생략하면 PLAIN_COLOR. 노드 테두리와 같은 값이라
+                 엣지만 옅게 할 수가 없었음. 분리해두면 선을 뒤로 물릴 수 있음
+          dotted_color  점선 색. 생략하면 DOTTED_COLOR. 실선만 어둡게 하면
+                 밝은 점선이 화면에서 가장 튀어 위계가 뒤집히므로 함께 조절함
+    출력  DOT 문자열
+    규칙  색 우선순위는 mark > highlight > dim.
+          dim 이 가장 낮은 이유 : 경로들이 앞 구간을 공유하므로 같은 엣지가
+          짙은 경로에도 걸려 있으면 짙은 쪽이 이겨야 앞 구간이 끊겨 보이지 않음
+          레이아웃은 어떤 조합에서도 같음
+    제약  mark_edges 와 dim_edges 에 순번(xlabel)을 붙이지 않는다.
+          등록 장면은 highlight_paths 를 쓰지 않으므로 순번 규칙(경로가 정확히
+          하나일 때)에 아예 걸리지 않음
+          새 인자를 위치 인자로 만들지 않는다.
+          모두 키워드 전용이고 기본값에서는 출력이 한 글자도 달라지지 않음.
+          tests/graph_rendering 의 40여 개가 기존 출력 문자열에 의존함
+          강조에 엣지를 새로 추가하지 않는다.
+          이미 있는 실선의 색 · 굵기만 바꿈
+          순번을 label 로 붙이지 않는다.
+          label 은 Graphviz 가 공간을 확보해 노드가 밀림(실측). xlabel 을 씀
     """
     if highlight_paths is None:
         paths = [highlight] if highlight else []

@@ -54,10 +54,12 @@ def use_node_sample():
 
 
 def render_node_form(graph: dict | None = None):
-    """노드 등록 폼. 등록/초기화 결과는 session_state["registration"] 에 남긴다.
+    """노드 등록 폼.
 
-    Args:
-        graph: Backend 의 /graph 응답. inputs/outputs 선택지가 여기서 온다.
+    입력  graph  Backend 의 /graph 응답. inputs / outputs 선택지가 여기서 옴
+    규칙  등록 / 초기화 결과는 session_state["registration"] 에 남김
+          고르는 것은 타입 노드 id 이고 화면에 보이는 것은 그 이름.
+          id 를 그대로 보여주면 사람이 못 읽고, 이름을 보내면 백엔드가 못 찾음
     """
     st.subheader("노드 등록")
 

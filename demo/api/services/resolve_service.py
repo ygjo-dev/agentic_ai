@@ -8,14 +8,15 @@ from workflows.static.menu.load import load_menu
 
 
 def resolve(utterance: str, llm_client) -> dict:
-    """LLM 이 고른 결과에 각 recipe 의 실행 경로를 붙여 돌려준다.
+    """LLM 이 고른 결과에 각 recipe 의 실행 경로를 붙임.
 
-    llm_client 를 인자로 받는다 — 여기서 OllamaClient 를 import 하면
-    demo.api.main 의 OllamaClient 를 갈아끼우는 테스트가 죽는다.
-
-    paths 는 LLM 이 만드는 게 아니다. LLM 스키마(response_schema.py)는 그대로
-    두고, 결과를 받아 백엔드가 덧붙인다. 프론트엔드가 recipe 파일을 직접
-    읽지 않게 하려는 것이다.
+    입력  발화 · LLM 클라이언트
+    출력  LLM 응답 + paths. NO_MATCH 면 paths 가 {}
+    규칙  paths 는 LLM 이 만드는 게 아님. LLM 스키마(response_schema.py)는
+          그대로 두고 결과를 받아 백엔드가 덧붙임. 프론트엔드가 recipe 파일을
+          직접 읽지 않게 하려는 것
+    제약  여기서 OllamaClient 를 import 하지 않는다.
+          demo.api.main 의 OllamaClient 를 갈아끼우는 테스트가 죽음
     """
     result = resolve_route(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),

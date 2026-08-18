@@ -14,18 +14,20 @@ from ontology.registry import reset_to_init
 
 
 def _edges():
-    """지금의 실선 · 점선. 등록 전후로 한 번씩 불러 차집합을 낸다."""
+    """지금의 실선 · 점선. 등록 전후로 한 번씩 불러 차집합을 냄."""
     _, solid, dotted = ontology_service.domain_graph()
     return solid, dotted
 
 
 def register(form: dict, llm_client) -> dict:
-    """노드를 등록하고 그로 인해 무엇이 늘었는지까지 돌려준다.
+    """노드를 등록하고 그로 인해 무엇이 늘었는지까지.
 
-    llm_client 를 인자로 받는 이유는 resolve_service 와 같다.
-
-    new_solid_edges / new_dotted_edges 는 등록 직전과 직후의 차집합이다.
-    registry 가 알려주지 않으므로 앞뒤로 한 번씩 조회해 직접 계산한다.
+    입력  노드 폼 · LLM 클라이언트
+    출력  node_id · node · groups · reason · recipe_ids · paths · accepted ·
+          new_solid_edges · new_dotted_edges · counts · version
+    규칙  new_solid_edges / new_dotted_edges 는 등록 직전과 직후의 차집합.
+          registry 가 알려주지 않으므로 앞뒤로 한 번씩 조회해 직접 계산함
+    제약  llm_client 를 여기서 import 하지 않는다. 이유는 resolve_service 와 같음
     """
     before_solid, before_dotted = _edges()
     before_nodes = len(ontology_service.domain_graph()[0])
@@ -72,6 +74,6 @@ def register(form: dict, llm_client) -> dict:
 
 
 def reset() -> dict:
-    """_init 사본으로 되돌린다."""
+    """_init 사본으로 되돌림."""
     reset_to_init()
     return {"ok": True, "version": ontology_service.ontology_version()}

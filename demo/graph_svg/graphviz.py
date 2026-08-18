@@ -25,11 +25,12 @@ class GraphvizFailed(RuntimeError):
 
 
 def _run_graphviz(dot: str, engine: str, args: list[str]) -> str:
-    """Graphviz 를 한 번 돌린다. 실행 파일 확인과 오류 변환을 한곳에 모은다.
+    """Graphviz 를 한 번 돌림. 실행 파일 확인과 오류 변환을 한곳에 모음.
 
-    Raises:
-        GraphvizNotFound: 실행 파일이 없다.
-        GraphvizFailed: DOT 을 거부했거나 시간 안에 끝내지 못했다.
+    입력  DOT 문자열 · 엔진 이름 · 명령행 인자
+    출력  표준 출력
+    규칙  GraphvizNotFound  실행 파일이 없음
+          GraphvizFailed    DOT 을 거부했거나 30초 안에 못 끝냄
     """
     if shutil.which(engine) is None:
         raise GraphvizNotFound(
@@ -61,17 +62,16 @@ def _run_graphviz(dot: str, engine: str, args: list[str]) -> str:
 
 
 def render_svg(dot: str, engine: str = "dot", *, no_layout: bool = False) -> str:
-    """DOT 을 SVG 문자열로 변환한다.
+    """DOT 을 SVG 문자열로 변환.
 
-    Args:
-        engine: 기본값 dot 을 유지한다 — 기존 호출부가 전부 인자 하나로 부른다.
-        no_layout: -n 을 붙인다. 모든 노드에 pos 가 있을 때 배치를 다시 계산하지
-            않고 준 좌표를 그대로 쓴다. 하이라이트가 어떻게 바뀌어도 좌표가
-            같다는 것이 이것으로 구조적으로 보장된다.
-
-    Raises:
-        GraphvizNotFound: 실행 파일이 없다.
-        GraphvizFailed: DOT 을 거부했다 (문법 오류 등).
+    입력  dot        DOT 문자열
+          engine     기본값 dot. 기존 호출부가 전부 인자 하나로 부름
+          no_layout  -n 을 붙임. 모든 노드에 pos 가 있을 때 배치를 다시
+                     계산하지 않고 준 좌표를 그대로 씀. 하이라이트가 어떻게
+                     바뀌어도 좌표가 같다는 것이 이것으로 구조적으로 보장됨
+    출력  SVG 문자열
+    규칙  GraphvizNotFound  실행 파일이 없음
+          GraphvizFailed    DOT 을 거부했음(문법 오류 등)
     """
     args = ["-Tsvg"] + (["-n"] if no_layout else [])
     return _run_graphviz(dot, engine, args)
@@ -84,10 +84,13 @@ _POS_ATTR = re.compile(r'pos="([-\d.e+]+),([-\d.e+]+)')
 
 
 def layout_positions(dot: str) -> dict[str, tuple[float, float]]:
-    """neato 로 배치를 계산해 노드 좌표를 뽑는다. {node_id: (x, y)}.
+    """neato 로 배치를 계산해 노드 좌표를 뽑음.
 
-    -Tdot 을 쓴다. -Tplain 도 좌표를 주지만 단위가 인치라 포인트인 pos 와
-    72배 어긋난다 — 그대로 되돌려 넣으면 배치가 폭발한다.
+    입력  DOT 문자열
+    출력  {node_id: (x, y)}
+    제약  -Tplain 을 쓰지 않는다.
+          좌표를 주긴 하지만 단위가 인치라 포인트인 pos 와 72배 어긋남.
+          그대로 되돌려 넣으면 배치가 폭발함. -Tdot 을 씀
     """
     out = _run_graphviz(dot, "neato", ["-Tdot"])
 
@@ -108,15 +111,17 @@ _SVG_PRESERVE_ATTR = re.compile(r'\spreserveAspectRatio="[^"]*"')
 
 
 def fit_svg(svg: str) -> str:
-    """SVG 가 담긴 상자를 꽉 채우도록 크기 속성을 정리한다.
+    """SVG 가 담긴 상자를 꽉 채우도록 크기 속성을 정리.
 
-    Graphviz 는 <svg width="591pt" height="336pt" viewBox="..."> 를 낸다.
-    width/height 가 박혀 있으면 고정 높이 패널 안에서 위아래 여백이 뜨거나
-    잘린다. 두 속성을 빼고 viewBox 만 남기면 CSS 가 크기를 온전히 정한다.
-
-    preserveAspectRatio 로 비율은 유지한다 — 찌그러지면 안 읽힌다.
-    viewBox 가 없으면(있을 리 없지만) 손대지 않는다. 크기 정보가 그것뿐이라
-    지우면 아무것도 안 보이게 된다.
+    입력  SVG 문자열
+    출력  width / height 를 뺀 SVG. viewBox 가 없으면 그대로
+    규칙  Graphviz 는 <svg width="591pt" height="336pt" viewBox="..."> 를 냄
+          두 속성을 빼고 viewBox 만 남기면 CSS 가 크기를 온전히 정함
+          preserveAspectRatio 로 비율은 유지. 찌그러지면 안 읽힘
+    제약  width / height 를 남기지 않는다.
+          박혀 있으면 고정 높이 패널 안에서 위아래 여백이 뜨거나 잘림
+          viewBox 를 지우지 않는다.
+          크기 정보가 그것뿐이라 지우면 아무것도 안 보이게 됨
     """
     match = _SVG_OPEN_TAG.search(svg)
     if not match or "viewBox" not in match.group(0):
@@ -136,14 +141,14 @@ _SVG_GRAPH_CLOSE = re.compile(r"</g>\s*</svg>\s*$", re.S)
 
 
 def stack_nodes_on_top(svg: str) -> str:
-    """노드를 엣지 뒤로 옮겨 선이 노드를 가리지 않게 한다.
+    """노드를 엣지 뒤로 옮겨 선이 노드를 가리지 않게 함.
 
-    SVG 는 문서에 나온 순서대로 그리므로 뒤에 오는 것이 위에 얹힌다.
-    Graphviz 는 노드와 엣지를 섞어서 내는데(실측: 마지막 노드 뒤에 엣지 9개),
-    그 엣지들이 노드 위를 지나간다. 노드를 전부 맨 뒤로 보내면 정리된다.
-
-    build_dot 을 건드리지 않는 후처리라 기존 테스트가 안전하다.
-    좌표는 손대지 않으므로 배치도 그대로다.
+    입력  SVG 문자열
+    출력  노드 <g> 블록이 전부 맨 뒤로 간 SVG
+    규칙  SVG 는 문서에 나온 순서대로 그리므로 뒤에 오는 것이 위에 얹힘
+          Graphviz 는 노드와 엣지를 섞어서 냄(실측 : 마지막 노드 뒤에 엣지 9개)
+          build_dot 을 건드리지 않는 후처리라 기존 테스트가 안전함
+          좌표는 손대지 않으므로 배치도 그대로임
     """
     groups = _SVG_NODE_GROUP.findall(svg)
     if not groups:

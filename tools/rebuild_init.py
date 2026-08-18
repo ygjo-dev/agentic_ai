@@ -46,7 +46,7 @@ MENU_YAML_HEAD_MARKER = "recipes:"
 #
 # 실행할 수는 있다. 다만 image 는 중간 산출물이라 사용자가 그것을 달라고 하지
 # 않고, 무엇보다 **다른 모든 recipe 의 앞토막**이라 menu 에 있으면 발화 해석이
-# "어디서 끝나는가" 를 못 가른다 — 실측으로 35/35 가 5/35 가 됐다(작업 32).
+# "어디서 끝나는가" 를 못 가른다 — 실측으로 35/35 가 5/35 가 됐다(e8fcdc2).
 # 프롬프트를 절차형으로 바꿔 25/45 까지 올렸으나 나머지를 못 채웠고, 고칠수록
 # 시연에 안 쓰는 발화가 대신 무너졌다.
 #
@@ -62,12 +62,15 @@ MENU_MD_HEAD_MARKER = "| --- | --- |"
 
 
 def _load_init_nodes() -> dict:
-    """`_init/ontology.yaml` 의 노드.
+    """_init/ontology.yaml 의 노드.
 
-    경로 생성(`all_recipes`)은 `graph` 를 거쳐 **작업본** ontology.yaml 을 읽는다.
-    경로를 인자로 받지 않으므로 둘이 다르면 `_init` 이 아닌 것으로 recipe 를
-    만들게 된다. 그래서 여기서 같은지 확인하고 다르면 멈춘다 — 화면에서
-    초기화를 누르고 다시 돌리면 된다.
+    출력  {node_id: {name, description}}
+    규칙  _init 과 작업본이 다르면 SystemExit. 화면에서 초기화를 누르고 다시
+          돌리면 됨
+    제약  작업본과 다른 채로 진행하지 않는다.
+          경로 생성(all_recipes)은 graph 를 거쳐 작업본 ontology.yaml 을 읽음.
+          경로를 인자로 받지 않으므로 둘이 다르면 _init 이 아닌 것으로 recipe 를
+          만들게 됨
     """
     if store.raw_bytes(paths.INIT_ONTOLOGY_PATH) != store.raw_bytes():
         raise SystemExit(
@@ -79,7 +82,11 @@ def _load_init_nodes() -> dict:
 
 
 def _head(text: str, marker: str) -> str:
-    """마커까지 남기고 그 뒤를 자른다. 손으로 쓴 머리말을 새로 짓지 않는다."""
+    """마커까지 남기고 그 뒤를 자름.
+
+    출력  머리말 문자열. 마커가 없으면 SystemExit
+    제약  손으로 쓴 머리말을 새로 짓지 않는다
+    """
     head, found, _tail = text.partition(marker)
     if not found:
         raise SystemExit(f"★ 머리말 마커를 못 찾았다: {marker!r}")
@@ -87,7 +94,11 @@ def _head(text: str, marker: str) -> str:
 
 
 def _current_chains(directory: Path) -> dict[str, tuple[str, ...]]:
-    """지금 `_init` 에 있는 recipe. {recipe_id: 노드 사슬}"""
+    """지금 _init 에 있는 recipe.
+
+    입력  recipe 디렉터리
+    출력  {recipe_id: 노드 사슬}
+    """
     from ontology.graph import recipe_nodes
 
     original = paths.RECIPES_DIR
@@ -102,7 +113,7 @@ def _current_chains(directory: Path) -> dict[str, tuple[str, ...]]:
 
 
 def _table(before: dict[str, tuple[str, ...]], after: list[list[str]], nodes: dict) -> None:
-    """번호 대응표. GT(check_resolve · sample_picker)를 갈아끼우는 근거다."""
+    """번호 대응표. GT(check_resolve · sample_picker)를 갈아끼우는 근거."""
     was = {tuple(chain): recipe_id for recipe_id, chain in before.items()}
 
     print()

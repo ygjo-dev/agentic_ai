@@ -40,11 +40,13 @@ _CACHE: OrderedDict[str, dict] = OrderedDict()
 
 
 def wrap_label(name: str) -> str:
-    """긴 이름을 두 줄로 접는다. 가운데에 가장 가까운 공백에서 자른다.
+    """긴 이름을 두 줄로 접음.
 
-    가로 폭이 줄면 겹칠 확률이 가장 크게 준다 — 노드 폭이 194 에서 87 로 준다.
-    공백에서만 자른다. 공백이 없는 이름은 그대로 둔다.
-    한글이 계속 읽혀야 하므로 글자 중간에서 자르지 않는다.
+    입력  노드 이름
+    출력  가운데에 가장 가까운 공백에서 자르고 DOT 개행(\\n)을 넣은 이름.
+          공백이 없으면 그대로
+    규칙  가로 폭이 줄면 겹칠 확률이 가장 크게 줆. 노드 폭 194 -> 87
+    제약  글자 중간에서 자르지 않는다. 한글이 계속 읽혀야 함
     """
     if " " not in name:
         return name
@@ -59,7 +61,7 @@ def wrap_label(name: str) -> str:
 
 
 def wrap_node_labels(nodes: dict) -> dict:
-    """노드 이름만 두 줄로 접은 사본. build_dot 은 건드리지 않는다."""
+    """노드 이름만 두 줄로 접은 사본. build_dot 은 안 건드림."""
     return {
         node_id: {**node, "name": wrap_label(node.get("name", node_id))}
         for node_id, node in nodes.items()
@@ -67,15 +69,16 @@ def wrap_node_labels(nodes: dict) -> dict:
 
 
 def chain_edges(chains) -> list[tuple[str, str]]:
-    """노드 id 사슬들을 인접 쌍으로. 중복은 접는다.
+    """노드 id 사슬들을 인접 쌍으로.
 
-    /nodes 응답의 accepted.chains 가 이 모양이다. 등록으로 만들어진 경로가
-    지나는 엣지 전부다 — "새로 생긴 연결"(new_solid_edges)만으로는 이미 있던
-    연결을 지나는 구간이 빠져 길이 끊겨 보인다.
-
-    **그리는 데 직접 쓰지는 않는다.** 변형마다 어느 recipe 를 짙게 하고 어느
-    것을 옅게 할지가 달라서, 엣지는 변형별로 paths 에서 뽑는다(variant_svgs).
-    여기서 만든 값은 "이 장면은 등록이다" 는 표시이자 캐시 키의 재료다.
+    입력  노드 id 사슬 목록. /nodes 응답의 accepted.chains 가 이 모양
+    출력  (from, to) 목록. 중복은 접힘
+    규칙  등록으로 만들어진 경로가 지나는 엣지 전부.
+          "새로 생긴 연결"(new_solid_edges)만으로는 이미 있던 연결을 지나는
+          구간이 빠져 길이 끊겨 보임
+          그리는 데 직접 쓰지는 않음. 변형마다 어느 recipe 를 짙게 하고 어느
+          것을 옅게 할지가 달라 엣지는 변형별로 paths 에서 뽑음(variant_svgs).
+          여기서 만든 값은 "이 장면은 등록이다" 는 표시이자 캐시 키의 재료
     """
     return list(dict.fromkeys(
         edge for chain in chains or () for edge in zip(chain, chain[1:])
@@ -83,15 +86,17 @@ def chain_edges(chains) -> list[tuple[str, str]]:
 
 
 def mark_from_registration(result: dict | None) -> dict | None:
-    """POST /nodes 응답에서 강조할 것만 뽑는다.
+    """POST /nodes 응답에서 강조할 것만 뽑음.
 
-    new_solid_edges / new_dotted_edges 는 등록 전후의 차집합이다.
-    이미 줄어든 형태({nodes, solid, dotted, accepted})가 들어오면 그대로
-    돌려준다 — UI 가 응답을 통째로 넘겨도, 서버가 두 번 줄여도 같은 값이 나온다.
-
-    accepted 는 등록으로 만들어진 경로다. **이 키가 있으면 등록 장면이다** —
-    하단이 teal 대신 주황 실행 경로를 그린다(variant_svgs). 경로가 하나도
-    안 만들어져 값이 비어도 키는 남는다.
+    입력  /nodes 응답, 또는 이미 줄어든 {nodes, solid, dotted, accepted}
+    출력  {nodes, solid, dotted, accepted}. 등록 장면이 아니면 None
+    규칙  new_solid_edges / new_dotted_edges 는 등록 전후의 차집합
+          이미 줄어든 형태면 그대로 돌려줌. UI 가 응답을 통째로 넘겨도,
+          서버가 두 번 줄여도 같은 값이 나옴
+          accepted 는 등록으로 만들어진 경로. 이 키가 있으면 등록 장면이고
+          하단이 teal 대신 주황 실행 경로를 그림(variant_svgs)
+    제약  경로가 하나도 안 만들어져도 accepted 키를 빼지 않는다.
+          값이 비어도 등록 장면이라는 표시가 남아야 함
     """
     if not result or "error" in result or result.get("reset"):
         return None
@@ -116,8 +121,11 @@ def mark_from_registration(result: dict | None) -> dict | None:
 def mark_key(mark: dict | None) -> str:
     """강조 상태를 캐시 키에 넣을 짧은 문자열.
 
-    강조 여부가 SVG 를 다르게 만든다. 키에 반영하지 않으면 등록 직후 강조가
-    안 뜨거나(이전 SVG 재사용) 강조가 계속 남는다.
+    입력  강조 원본. 없으면 None
+    출력  8자 해시. 강조가 없으면 "plain"
+    제약  강조 상태를 키에서 빼지 않는다.
+          강조 여부가 SVG 를 다르게 만듦. 반영하지 않으면 등록 직후 강조가
+          안 뜨거나(이전 SVG 재사용) 강조가 계속 남음
     """
     if not mark:
         return "plain"
@@ -131,10 +139,12 @@ def mark_key(mark: dict | None) -> str:
 
 
 def focus_key(recipe_ids, mark: dict | None) -> str:
-    """하단 그래프 캐시 키. 후보 집합과 모드를 반영한다.
+    """하단 그래프 캐시 키. 후보 집합과 모드를 반영함.
 
-    후보 순서가 달라도 같은 키가 나오게 정렬해서 넣는다 — 순서만 다른데
-    캐시가 헛돌면 같은 그림을 매번 다시 만든다.
+    입력  recipe id 목록 · 강조 원본
+    출력  8자 해시
+    규칙  후보 순서가 달라도 같은 키가 나오게 정렬해서 넣음.
+          순서만 다른데 캐시가 헛돌면 같은 그림을 매번 다시 만듦
     """
     payload = json.dumps(
         {"recipes": sorted(recipe_ids or []), "mark": mark_key(mark)},
@@ -145,23 +155,27 @@ def focus_key(recipe_ids, mark: dict | None) -> str:
 
 
 def cache_key(version: str, layout: str, mode: str, recipe_ids, mark) -> str:
-    """캐시 한 칸의 이름. 같은 화면이면 같아야 하고 다르면 달라야 한다."""
+    """캐시 한 칸의 이름. 같은 화면이면 같고 다르면 달라야 함."""
     return f"{version}:{layout}:{mode}:{focus_key(recipe_ids, mark)}"
 
 
 def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict) -> str:
-    """상단 그래프. 온톨로지의 **관계 지도**다 — 점선만 그린다.
+    """상단 그래프. 온톨로지의 관계 지도. 점선만 그림.
 
-    상단은 "무엇이 무엇과 관련되는가", 하단은 "무엇 다음에 무엇이 오는가".
-    둘 다 실선과 점선을 그리면 같은 그림이 두 번 뜨고, 그러면 두 패널이 각각
-    무엇을 말하는지 구분되지 않는다. 실선(실행 순서)은 하단에 넘긴다.
-
-    solid 는 계속 받는다 — 값은 그리지 않지만 노드 목록과 캔버스 계산에
-    쓰이던 인자이고, 인자를 지우면 부르는 쪽이 두 갈래로 갈린다.
-
-    발화 해석은 상단을 강조하지 않는다 — 결과는 하단이 보여준다. 노드를
-    등록했을 때만 **새 노드 테두리와 새 점선**을 표시한다. 새 실선(mark_edges)은
-    실선 위에 얹는 것이라 여기서는 갈 곳이 없다 — 그것은 하단이 맡는다.
+    입력  노드 · 실선 · 점선 · 좌표 · 강조 원본
+    출력  SVG 문자열
+    규칙  상단은 "무엇이 무엇과 관련되는가", 하단은 "무엇 다음에 무엇이
+          오는가". 실선(실행 순서)은 하단에 넘김
+          노드를 등록했을 때만 새 노드 테두리와 새 점선을 표시
+    제약  상단에 실선을 그리지 않는다.
+          둘 다 실선과 점선을 그리면 같은 그림이 두 번 뜨고, 두 패널이 각각
+          무엇을 말하는지 구분되지 않음
+          solid 인자를 지우지 않는다.
+          값은 그리지 않지만 노드 목록과 캔버스 계산에 쓰이던 인자이고,
+          지우면 부르는 쪽이 두 갈래로 갈림
+          발화 해석으로 상단을 강조하지 않는다. 결과는 하단이 보여줌
+          새 실선(mark_edges)을 여기서 표시하지 않는다.
+          실선 위에 얹는 것이라 갈 곳이 없음. 하단이 맡음
     """
     return fit_svg(stack_nodes_on_top(
         render_svg(
@@ -197,38 +211,35 @@ def variant_svgs(
     recipe_ids: list[str],
     mark: dict,
 ) -> dict[str, str]:
-    """하단 실행 경로 그래프. 조합별로 미리 만들어 둔다.
+    """하단 실행 경로 그래프. 조합별로 미리 만들어 둠.
 
-    {"": 후보 전부 강조, "<마지막노드 id>": 그것으로 끝나는 recipe 만}
-
-    배경 실선은 그대로 둔다 — 강조 안 된 경로도 보여야 지도 역할을 한다.
-    그 위에 얹히는 것이 **장면마다 다르다.**
-
-        발화 해석   highlight_paths   teal    순번 있음
-        노드 등록   mark_edges        짙은 주황
-                    dim_edges         옅은 주황   선택에서 빠진 recipe
-
-    두 장면을 가르는 값은 mark 의 "accepted" 키다 — 등록 응답에만 있다.
-    (값이 아니라 키의 유무로 가른다. 등록했는데 경로가 하나도 안 만들어지면
-    값이 비지만 그래도 등록 장면이고, 그때 teal 이 뜨면 안 된다.)
-
-    **등록 장면에는 teal 이 없다.** 예전에는 등록도 highlight_paths 를 함께
-    넘기고 mark 가 그 위를 덮게 했는데, 그러면 mark 에 안 걸린 노드 테두리가
-    teal 로 남아 "해석 결과" 와 같은 색이 등록 화면에 섞였다.
-
-    좁혀도 안 변하는 것이 있다 — 새 노드 테두리(mark_nodes)와 새 점선
-    (mark_dotted)이다. "무엇이 새로 생겼는가" 는 어느 후보를 보든 같은 사실이다.
-
-    새로 생긴 실선(mark["solid"])은 따로 칠하지 않는다. 어느 recipe 에도 안
-    들어간 연결은 실행 경로가 아니므로 배경 실선으로 남는 편이 맞다 — 주황은
-    "실행할 수 있는 길" 하나만 뜻한다.
+    입력  노드 · 실선 · 점선 · 좌표 · 경로 · recipe id 목록 · 강조 원본
+    출력  {"": 후보 전부 강조, "<마지막노드 id>": 그것으로 끝나는 recipe 만}
+    규칙  배경 실선은 그대로 둠. 강조 안 된 경로도 보여야 지도 역할을 함
+          그 위에 얹히는 것이 장면마다 다름
+            발화 해석   highlight_paths   teal        순번 있음
+            노드 등록   mark_edges        짙은 주황
+                        dim_edges         옅은 주황   선택에서 빠진 recipe
+          두 장면을 가르는 값은 mark 의 "accepted" 키. 등록 응답에만 있음
+          좁혀도 안 변하는 것 : 새 노드 테두리(mark_nodes)와 새 점선
+          (mark_dotted). "무엇이 새로 생겼는가" 는 어느 후보를 보든 같은 사실
+    제약  키의 유무로 가르고 값으로 가르지 않는다.
+          등록했는데 경로가 하나도 안 만들어지면 값이 비지만 그래도 등록
+          장면이고, 그때 teal 이 뜨면 안 됨
+          등록 장면에 teal 을 넣지 않는다.
+          예전에는 등록도 highlight_paths 를 함께 넘기고 mark 가 그 위를 덮게
+          했는데, mark 에 안 걸린 노드 테두리가 teal 로 남아 "해석 결과" 와
+          같은 색이 등록 화면에 섞였음
+          새로 생긴 실선(mark["solid"])을 따로 칠하지 않는다.
+          어느 recipe 에도 안 들어간 연결은 실행 경로가 아니므로 배경 실선으로
+          남는 편이 맞음. 주황은 "실행할 수 있는 길" 하나만 뜻함
     """
     wrapped = wrap_node_labels(nodes)
     registering = "accepted" in mark
     all_ids = list(recipe_ids)
 
     def path_edges(ids):
-        """recipe 들이 지나는 엣지를 한 줄로. 중복은 접는다."""
+        """recipe 들이 지나는 엣지를 한 줄로. 중복은 접음."""
         return list(dict.fromkeys(
             edge for path in focus.edges_of(paths, ids) for edge in path
         ))
@@ -283,10 +294,11 @@ def render_payload(
     layout: str,
     mode: str,
 ) -> dict:
-    """/render 응답 한 벌. 같은 화면을 두 번 그리지 않는다.
+    """/render 응답 한 벌.
 
-    캐시 적중이면 Graphviz 를 한 번도 부르지 않는다 — 시연에서 같은 발화를
-    다시 눌렀을 때 눈에 띄게 빠른 이유다.
+    출력  version · top · variants · focus · chips
+    규칙  같은 화면을 두 번 그리지 않음. 캐시 적중이면 Graphviz 를 한 번도
+          부르지 않음. 시연에서 같은 발화를 다시 눌렀을 때 눈에 띄게 빠른 이유
     """
     key = cache_key(version, layout, mode, recipe_ids, mark)
     hit = _CACHE.get(key)
@@ -315,5 +327,5 @@ def render_payload(
 
 
 def clear_cache() -> None:
-    """테스트와 온톨로지 초기화용. 평소에는 키가 version 을 물고 있어 필요 없다."""
+    """테스트와 온톨로지 초기화용. 평소에는 키가 version 을 물고 있어 필요 없음."""
     _CACHE.clear()

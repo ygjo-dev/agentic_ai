@@ -16,7 +16,7 @@
 저장소의 다른 곳을 건드리지 않는다.
 
 ──────────────────────────────────────────────────────────────────────
-알아낸 것 (작업 27~32 · qwen2.5:7b · 따로 적지 않았으면 _init recipe 6)
+알아낸 것 (4a55c44 ~ e8fcdc2 · qwen2.5:7b · 따로 적지 않았으면 _init recipe 6)
 
   형식은 발화와 menu 의 표기가 글자 그대로 겹칠 때만 갈린다.
     "워드"          0/10   menu 는 "Word"
@@ -40,7 +40,7 @@
     "CCTV 화면이 뿌옇지 않은지 봐줘"    0/5   영역 안이라 뭐라도 집는다
     "화면이 뿌옇게 나오는데 확인해줘"   0/5   겹치는 어휘가 없는데도 마찬가지
 
-  앞토막 recipe 는 판정을 무너뜨린다 (작업 32).
+  앞토막 recipe 는 판정을 무너뜨린다 (e8fcdc2).
     recipe 6개                          35/35
     + 앞토막 둘 (데이터 → 프레임 추출)     5/35
     + 프롬프트를 절차형으로 전환           25/45
@@ -113,7 +113,7 @@ def _pad(text: str, width: int) -> str:
 
 
 def _clip(text: str, width: int) -> str:
-    """폭 width 안에 들어가게 자른다. 잘렸으면 끝에 … 를 붙인다."""
+    """폭 width 안에 들어가게 자름. 잘렸으면 끝에 … 를 붙임."""
     if _width(text) <= width:
         return text
     kept, used = "", 0
@@ -139,7 +139,12 @@ def _short(recipe_ids) -> str:
 
 
 def _call_resolve(utterance: str) -> frozenset:
-    """POST /resolve 한 번. recipe_id 와 candidate_recipe_ids 를 합친 후보 집합."""
+    """POST /resolve 한 번.
+
+    입력  발화
+    출력  recipe_id 와 candidate_recipe_ids 를 합친 후보 집합
+    규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
+    """
     try:
         response = requests.post(
             f"{BASE_URL}/resolve", params={"utterance": utterance}, timeout=TIMEOUT
@@ -157,13 +162,16 @@ def _call_resolve(utterance: str) -> frozenset:
 
 
 def _measure(entries, runs: int, outcomes: dict) -> None:
-    """발화마다 runs 회 돌려 outcomes[번호] 에 나온 집합들의 Counter 를 쌓는다.
+    """발화마다 runs 회 돌려 결과를 쌓음.
 
-    돌려주지 않고 받은 dict 에 채우는 이유 : 중간에 끊겨도(Ctrl-C · 서버 중단)
-    거기까지의 결과가 부르는 쪽에 남아 있어야 표를 찍을 수 있다.
-
-    실행 하나가 끝날 때마다 점 하나를 찍는다 — 20회면 몇 분 걸려서
-    아무것도 안 나오면 멈춘 줄 안다.
+    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict
+    규칙  outcomes[번호] 에 나온 집합들의 Counter 를 쌓음
+          실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
+          아무것도 안 나오면 멈춘 줄 앎
+          오류도 결과의 하나로 Counter 에 남김
+    제약  결과를 돌려주지 않는다.
+          받은 dict 에 채움. 중간에 끊겨도(Ctrl-C · 서버 중단) 거기까지의
+          결과가 부르는 쪽에 남아 있어야 표를 찍을 수 있음
     """
     for number, utterance, _expected, _default in entries:
         counter = Counter()

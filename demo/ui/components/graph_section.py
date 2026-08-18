@@ -29,11 +29,13 @@ g.node [stroke="MARK"], g.edge [stroke="MARK"] {
 def graph_fill_html(svg: str, pulse: bool = False) -> str:
     """고정 높이 패널을 꽉 채우는 iframe 문서.
 
-    iframe 배경은 기본 흰색이라 다크 테마에서 흰 카드로 뜬다. DOT 의
-    bgcolor="transparent" 는 SVG 안쪽만 투명하게 하므로 여기서 한 번 더 덮는다.
-    SVG 는 비율을 유지한 채 상자에 맞춘다(크기 속성은 서버가 이미 뺐다).
-
-    pulse 는 방금 등록된 것에만 준다. CSS 애니메이션이라 JS 가 없다.
+    입력  SVG 문자열 · 방금 등록했는지
+    출력  iframe 에 넣을 HTML 문서
+    규칙  iframe 배경은 기본 흰색이라 다크 테마에서 흰 카드로 뜸.
+          DOT 의 bgcolor="transparent" 는 SVG 안쪽만 투명하게 하므로 여기서
+          한 번 더 덮음
+          SVG 는 비율을 유지한 채 상자에 맞춤. 크기 속성은 서버가 이미 뺐음
+          pulse 는 방금 등록된 것에만 줌. CSS 애니메이션이라 JS 가 없음
     """
     extra = _PULSE_CSS.replace("MARK", theme.new().lower()) if pulse else ""
 
@@ -52,10 +54,12 @@ def graph_fill_html(svg: str, pulse: bool = False) -> str:
 
 
 def show_graph(svg: str, height: int, pulse: bool = False):
-    """SVG 를 iframe 으로 띄운다.
+    """SVG 를 iframe 으로 띄움.
 
-    높이를 픽셀로 받는다. iframe 은 height 속성으로 고정되므로 CSS 로 덮을 수
-    없다 — 그게 예전에 그래프가 420px 에 갇혀 폭까지 눌렸던 원인이다.
+    입력  SVG 문자열 · 픽셀 높이 · 방금 등록했는지
+    제약  높이를 CSS 로 주지 않는다.
+          iframe 은 height 속성으로 고정되므로 CSS 로 덮을 수 없음.
+          예전에 그래프가 420px 에 갇혀 폭까지 눌렸던 원인
     """
     st.components.v1.html(graph_fill_html(svg, pulse), height=height)
 
@@ -65,14 +69,14 @@ def render_graph_section(
     pulse: bool = False,
     ratios: dict | None = None,
 ):
-    """온톨로지 그래프. 무엇을 골랐는지는 하단 경로 패널이 보여준다.
+    """온톨로지 그래프. 무엇을 골랐는지는 하단 경로 패널이 보여줌.
 
-    발화 해석으로는 이 그래프를 강조하지 않는다. 노드를 등록했을 때만
-    새로 생긴 것을 강조한다 — 그때가 "어디에 들어갔는지" 를 보여줄 장면이다.
-
-    Args:
-        rendered: POST /render 응답. top 에 상단 SVG 가 들어 있다.
-        pulse: 방금 등록했는가. 두근거림은 그때만 준다.
+    입력  rendered  POST /render 응답. top 에 상단 SVG 가 들어 있음
+          pulse     방금 등록했는가. 두근거림은 그때만 줌
+          ratios    config.layout_ratios() 결과
+    제약  발화 해석으로 이 그래프를 강조하지 않는다.
+          노드를 등록했을 때만 새로 생긴 것을 강조함. 그때가 "어디에
+          들어갔는지" 를 보여줄 장면임
     """
     if not rendered or not rendered.get("top"):
         st.markdown(
