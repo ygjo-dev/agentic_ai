@@ -19,7 +19,6 @@ GRAPH_TIMEOUT = 10
 RENDER_TIMEOUT = 30  # Graphviz 를 여러 벌 돌린다. 캐시 적중이면 즉시 온다.
 RESOLVE_TIMEOUT = 180
 NODES_TIMEOUT = 180
-HEALTH_TIMEOUT = 5
 
 # 마지막으로 성공한 /graph 응답을 여기 둔다. 백엔드가 잠깐 끊겨도
 # 그래프가 사라지지 않아야 한다.
@@ -125,8 +124,3 @@ def reset_nodes() -> dict:
     result = _call("POST", "/nodes/reset", timeout=NODES_TIMEOUT)
     st.session_state.pop(GRAPH_CACHE_KEY, None)
     return result
-
-
-def health() -> dict:
-    """시연 직전 점검용."""
-    return _call("GET", "/health", timeout=HEALTH_TIMEOUT)

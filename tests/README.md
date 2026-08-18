@@ -9,7 +9,6 @@ python -m pytest tests -q
 ```
 리뷰 대상        38   ontology · orchestrator · llm_engine     제품 명세
 배치 불변식      58   demo/graph_svg/                          눈이 못 보는 것
-연기 감지         5   demo/api/test_health_endpoint.py         서버가 뜨는가
 ```
 
 ## 리뷰 대상 — 38개
@@ -65,7 +64,6 @@ python -m pytest tests -q
 | `demo/graph_svg/test_layout_store.py` | 11 | 좌표 저장 · 깨진 파일 복구 |
 | `demo/graph_svg/test_rotation.py` | 11 | 회전은 최초 배치에만 |
 | `demo/graph_svg/test_render_svg.py` | 7 | graphviz 호출과 실패 구분 |
-| `demo/api/test_health_endpoint.py` | 5 | 서버가 뜨는가 |
 
 여기 있는 단언 대부분은 **몇 주에 걸쳐 실측으로 알아낸 배치 성질**이다.
 어떤 강조 조합에서도 좌표가 같다 · 노드를 등록해도 기존 노드가 안 움직인다 ·

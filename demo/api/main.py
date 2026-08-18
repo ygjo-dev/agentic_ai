@@ -151,26 +151,6 @@ async def reset_nodes_endpoint() -> dict:
     return node_service.reset()
 
 
-@app.get("/health")
-async def health_endpoint() -> dict:
-    """시연 직전 점검용. 온톨로지 버전과 LLM 도달 여부.
-
-    출력  ok · ontology_version · llm(reachable · model)
-    제약  LLM 에 닿지 못해도 500 을 내지 않는다.
-          못 닿는다는 사실 자체가 응답임
-          라우팅 계층이 HTTP 를 직접 던지지 않는다.
-          닿는지 보는 일은 llm_engine 이 함. "LLM 호출을 한 곳에 가둔다" 는
-          약속이 깨짐
-          OLLAMA_MODEL 을 from ... import 로 베껴두지 않는다.
-          테스트가 그 전역을 갈아끼워도 보이지 않음
-    """
-    return {
-        "ok": True,
-        "ontology_version": ontology_service.ontology_version(),
-        "llm": {"reachable": ollama.ping(), "model": ollama.OLLAMA_MODEL},
-    }
-
-
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("demo.api.main:app", host="0.0.0.0", port=8000, reload=True)
