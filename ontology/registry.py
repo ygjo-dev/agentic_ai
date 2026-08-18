@@ -15,18 +15,22 @@ from orchestrator.route_resolver import resolve_route
 
 
 def group_ids() -> list[str]:
-    """지금 있는 대상(그룹) 노드 id. LLM 이 고를 수 있는 선택지 전부다.
+    """지금 있는 대상(그룹) 노드 id.
 
-    파일에 종류가 안 적혀 있으므로 관계로 판정한다 — about 의 대상으로
-    등장하는 노드가 그룹이다.
+    출력  노드 id 목록. LLM 이 고를 수 있는 선택지 전부
+    규칙  파일에 종류가 안 적혀 있으므로 관계로 판정.
+          about 의 대상으로 등장하는 노드가 그룹임
     """
     return graph.group_ids()
 
 
 def functions(nodes: dict) -> dict:
-    """실행할 수 있는 노드만. hasOutput 이 있으면 실행할 수 있다.
+    """실행할 수 있는 노드만.
 
-    데이터 노드와 그룹 노드는 여기 안 들어온다.
+    입력  {노드 id: 노드} 전체
+    출력  같은 형태. 실행 노드만 남음
+    규칙  hasOutput 이 있으면 실행할 수 있음
+          데이터 노드와 그룹 노드는 안 들어옴
     """
     return {nid: node for nid, node in nodes.items() if graph.is_executable(nid)}
 
@@ -44,10 +48,12 @@ class UnknownGroup(ValueError):
 
 
 def add_node(node_id: str, node: dict, path=None) -> None:
-    """온톨로지에 노드를 추가한다. 관계는 붙이지 않는다.
+    """온톨로지에 노드를 추가.
 
-    여기서 보는 것은 중복뿐이다. 무엇을 받고 내놓는지는 노드가 아니라 관계라
-    `register_node()` 가 edge 로 따로 붙인다.
+    입력  노드 id · 노드 dict · 온톨로지 경로(없으면 기본)
+    규칙  여기서 보는 것은 중복뿐. 이미 있으면 DuplicateNode
+          관계는 붙이지 않음. 무엇을 받고 내놓는지는 노드가 아니라 관계라
+          register_node() 가 edge 로 따로 붙임
     """
     ontology = store.read(path)
 
@@ -60,8 +66,10 @@ def add_node(node_id: str, node: dict, path=None) -> None:
 def check_types(type_ids, path=None) -> None:
     """받고 내놓는 타입이 실재하는지.
 
-    없는 타입을 가리키면 그 노드는 아무와도 이어지지 않는다 — 화면에는 떠 있는데
-    경로가 하나도 안 생긴다. 파일을 건드리기 전에 막는다.
+    입력  타입 id 목록 · 온톨로지 경로(없으면 기본)
+    규칙  온톨로지에 없는 id 가 있으면 UnknownType. 파일을 건드리기 전에 막음
+    제약  없는 타입을 가리키는 노드를 만들지 않는다.
+          아무와도 이어지지 않아 화면에는 떠 있는데 경로가 하나도 안 생김
     """
     known = set(store.nodes(path))
     for type_id in type_ids:
@@ -94,21 +102,21 @@ class InvalidInference(ValueError):
 
 
 def infer_node(form: dict, llm_client, path=None) -> dict:
-    """사람이 쓴 노드 정보를 보고 LLM 이 node_id 와 관한 대상들을 정한다.
+    """사람이 쓴 노드 정보를 보고 LLM 이 node_id 와 관한 대상들을 정함.
 
-    대상은 **닫힌 목록에서 고르는 것**이다. 예전에는 자유 문자열(subject 값)을
-    쓰게 했는데, "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌다. 지금은
-    존재하는 그룹 노드 id 들이다.
-
-    **여럿을 고를 수 있다.** 한 노드가 여러 대상에 관한 것일 수 있기 때문이다 —
-    승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것이다.
-
-    어느 대상에도 매이지 않는 범용 노드(형식만 바꾸는 생성 노드 등)는 빈 목록이다.
-    억지로 고르는 것보다 낫다.
-
-    Raises:
-        InvalidInference: 형식에 맞지 않거나 쓸 수 없는 값을 돌려줬다.
-        RouteResolutionError: 응답이 JSON 이 아니거나 필수 key 가 없다.
+    입력  노드 폼 · LLM 클라이언트 · 온톨로지 경로(없으면 기본)
+    출력  node_id · groups · reason. groups 는 중복 제거됨.
+          같은 대상을 두 번 적으면 점선이 두 줄 생김
+    규칙  대상은 닫힌 목록에서 고름. 존재하는 그룹 노드 id 들
+          여럿 고를 수 있음. 한 노드가 여러 대상에 관한 것일 수 있음
+          예 : 승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것임
+          빈 목록 허용. 어느 대상에도 안 매인 범용 노드(형식만 바꾸는 생성
+          노드 등)가 그렇고, 억지로 고르는 것보다 나음
+          InvalidInference      형식에 맞지 않거나 쓸 수 없는 값을 돌려줌
+          RouteResolutionError  응답이 JSON 이 아니거나 필수 key 가 없음
+    제약  대상을 자유 문자열로 받지 않는다.
+          예전 subject 값이 그랬는데 "궤도" 대신 "선로" 라고 쓰면 아무와도
+          안 이어졌음
     """
     nodes = store.nodes(path)
     choices = group_ids()
@@ -151,7 +159,7 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
 
 
 def _group_of(edges: list[dict]) -> dict[str, list[str]]:
-    """노드 -> 관한 대상 id 들. 프롬프트에 보여줄 용도다. 여럿일 수 있다."""
+    """노드 -> 관한 대상 id 들. 프롬프트에 보여줄 용도. 여럿일 수 있음."""
     found: dict[str, list[str]] = {}
     for edge in edges:
         if edge.get("predicate") == ABOUT:
@@ -162,8 +170,12 @@ def _group_of(edges: list[dict]) -> dict[str, list[str]]:
 def _describe(nodes: dict, belongs: dict[str, list[str]]) -> str:
     """기존 기능 노드를 프롬프트에 넣을 형태로.
 
-    무엇에 관한 것인지가 핵심이라 반드시 넣는다 — LLM 이 비슷한 노드를 보고
-    고른다. 그룹 노드 자체는 여기 넣지 않는다. 선택지는 따로 보여준다.
+    입력  노드 전체 · {노드: 관한 대상 목록}
+    출력  여러 줄 문자열
+    규칙  무엇에 관한 것인지가 핵심이라 반드시 넣음. LLM 이 비슷한 노드를
+          보고 고름
+    제약  그룹 노드 자체를 여기 넣지 않는다.
+          선택지는 _describe_groups 가 따로 보여줌
     """
     lines = []
     for node_id, node in functions(nodes).items():
@@ -179,10 +191,12 @@ def _describe(nodes: dict, belongs: dict[str, list[str]]) -> str:
 
 
 def _describe_groups(nodes: dict, choices: list[str]) -> str:
-    """고를 수 있는 group 목록. id 와 이름을 함께 보여준다.
+    """고를 수 있는 group 목록.
 
-    id 만 보여주면 LLM 이 뜻을 모르고, 이름만 보여주면 무엇을 적어야 할지
-    모른다. 적어야 하는 것은 id 다.
+    입력  노드 전체 · 고를 수 있는 그룹 id 목록
+    출력  여러 줄 문자열. id 와 이름을 함께 담음
+    규칙  id 만 보여주면 LLM 이 뜻을 모르고, 이름만 보여주면 무엇을 적어야
+          할지 모름. 적어야 하는 것은 id
     """
     return "\n".join(
         f"- {group_id}  ({nodes[group_id]['name']} — {nodes[group_id]['description']})"
@@ -218,25 +232,25 @@ MAX_STEPS = 4
 
 
 def all_recipes(nodes: dict) -> list[list[str]]:
-    """온톨로지 전체의 경로 후보. 길이 2 이상, MAX_STEPS 이하. 파일은 안 쓴다.
+    """온톨로지 전체의 경로 후보.
 
-    데이터 노드에서 출발해 `can_connect` 로 이어 붙인다. 규칙은
-    `ontology/graph.py` 의 solid_edges 와 같다 — 앞 노드가 건네는 것을 뒤
-    노드가 받을 수 있으면 이어진다.
-
-    **대상(about)이 어긋나는 것을 여기서 거르지 않는다** — 거르는 것은 부르는
-    쪽의 일이다(`register_node` · `tools/rebuild_init.py`). 그래야 "무엇이
-    만들어질 수 있는가" 와 "무엇을 남길 것인가" 가 갈린다. 여기서 함께 걸러
-    버리면 등록이 무엇을 버렸는지 셀 수 없어진다.
-
-    **길이 1 은 안 만든다.** "승강장 CCTV 영상" 하나도 그 자체로 건넬 수 있는
-    것이 맞지만, 그것을 recipe 로 삼으려면 `start_ids` 와 `function_for` 의
-    "데이터만 있는 경로" 분기를 건드려야 한다. 지금은 안 한다.
-
-    **순서가 결정적이다.** 짧은 것부터(BFS), 같은 길이 안에서는 `start_ids` 와
-    `nodes` 의 순서를 따르고 그것은 ontology.yaml 에 적힌 순서다. 그래서 같은
-    온톨로지로 두 번 돌리면 같은 번호가 나온다 — `tools/rebuild_init.py` 가
-    그것에 기댄다.
+    입력  노드 전체
+    출력  노드 id 목록의 목록. 길이 2 이상 MAX_STEPS 이하. 파일은 안 씀
+    규칙  데이터 노드에서 출발해 can_connect 로 이어 붙임.
+          규칙은 ontology/graph.py 의 solid_edges 와 같음. 앞 노드가 건네는
+          것을 뒤 노드가 받을 수 있으면 이어짐
+          순서가 결정적. 짧은 것부터(BFS), 같은 길이 안에서는 start_ids 와
+          nodes 의 순서를 따르고 그것은 ontology.yaml 에 적힌 순서임.
+          같은 온톨로지로 두 번 돌리면 같은 번호가 나오고
+          tools/rebuild_init.py 가 그것에 기댐
+    제약  대상(about)이 어긋나는 것을 여기서 거르지 않는다.
+          거르는 것은 부르는 쪽의 일임(register_node · tools/rebuild_init.py).
+          그래야 "무엇이 만들어질 수 있는가" 와 "무엇을 남길 것인가" 가 갈림.
+          여기서 함께 걸러 버리면 등록이 무엇을 버렸는지 셀 수 없어짐
+          길이 1 을 만들지 않는다.
+          "승강장 CCTV 영상" 하나도 그 자체로 건넬 수 있는 것은 맞지만,
+          recipe 로 삼으려면 start_ids 와 function_for 의 "데이터만 있는 경로"
+          분기를 건드려야 함. 지금은 안 함
     """
     # 그룹을 여기서 따로 거르지 않는다. **거를 필요가 없다** — 그룹은
     # hasInput 이 없어 `can_connect` 가 누구 뒤에도 세우지 않고, `start_ids` 도
@@ -270,13 +284,17 @@ def all_recipes(nodes: dict) -> list[list[str]]:
 
 
 def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
-    """새 노드를 지나는 경로만 만든다. 파일은 쓰지 않는다.
+    """새 노드를 지나는 경로만.
 
-    기존 노드끼리의 조합은 이미 recipe 로 있으니 다시 만들면 중복이다.
-    경로 자체는 `all_recipes` 가 만든다 — **등록으로 생기는 recipe 와 _init 의
-    recipe 가 같은 함수에서 나와야 한다.** 규칙이 두 벌이 되면 menu 문장이
-    미묘하게 갈리고, 그 문장이 발화 매칭의 유일한 근거라 "초기 recipe 는 되는데
-    등록한 건 안 되는" 상황이 나온다.
+    입력  새 노드 id · 노드 전체
+    출력  노드 id 목록의 목록. 파일은 안 씀
+    규칙  기존 노드끼리의 조합은 이미 recipe 로 있어 다시 만들면 중복
+          경로 자체는 all_recipes 가 만듦
+    제약  등록용 경로 생성을 따로 만들지 않는다.
+          등록으로 생기는 recipe 와 _init 의 recipe 가 같은 함수에서 나와야 함.
+          규칙이 두 벌이 되면 menu 문장이 미묘하게 갈리고, 그 문장이 발화
+          매칭의 유일한 근거라 "초기 recipe 는 되는데 등록한 건 안 되는"
+          상황이 나옴
     """
     if node_id not in nodes or node_id in set(group_ids()):
         return []
@@ -285,10 +303,13 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
 
 
 def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list[str]:
-    """경로를 recipe 파일로 쓰고 만들어진 id 를 돌려준다.
+    """경로를 recipe 파일로 씀.
 
-    기존 번호는 건드리지 않고 가장 큰 번호 다음부터 이어 붙인다 —
-    menu 와 frontend 의 SAMPLES 가 그 번호를 가리키고 있다.
+    입력  경로 목록 · 노드 전체 · 쓸 디렉터리(없으면 기본)
+    출력  만들어진 recipe id 목록
+    규칙  가장 큰 번호 다음부터 이어 붙임
+    제약  기존 번호를 건드리지 않는다.
+          menu 와 frontend 의 SAMPLES 가 그 번호를 가리키고 있음
     """
     directory = directory or paths.RECIPES_DIR
 
@@ -310,9 +331,11 @@ def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list
 def _step_block(node: dict, node_id: str) -> str:
     """recipe 파일의 step 한 덩어리.
 
-    노드 id 만 적는다. 무엇을 주고받는지는 온톨로지의 hasInput / hasOutput 이
-    말하므로 여기 또 적으면 진실의 원천이 둘이 된다 — 노드를 고쳤을 때
-    recipe 파일이 옛 값을 들고 있으면 어느 쪽이 맞는지 알 수 없다.
+    출력  "  - node: <id>" 한 줄
+    제약  무엇을 주고받는지 여기 적지 않는다.
+          온톨로지의 hasInput / hasOutput 이 말하므로 또 적으면 진실의 원천이
+          둘이 됨. 노드를 고쳤을 때 recipe 파일이 옛 값을 들고 있으면 어느
+          쪽이 맞는지 알 수 없음
     """
     return f"  - node: {node_id}"
 
@@ -325,17 +348,17 @@ MENU_BUDGET = 6000
 
 
 def _to_connective(sentence: str) -> str:
-    """종결형을 연결형으로. "분석한다" -> "분석하고", "찾는다" -> "찾고".
+    """종결형을 연결형으로.
 
-    두 가지 어미만 다룬다. 지금 description 이 그 둘로 끝나기 때문이다.
-
-      ~는다  자음 어간. "는" 을 통째로 떼고 "고" 를 붙인다 (찾는다 -> 찾고)
-      ~ㄴ다  하다 계열. 종성 ㄴ 을 떼고 "고" 를 붙인다 (분석한다 -> 분석하고)
-
-    **한국어 활용을 다 다루지 않는다.** ㄹ 불규칙("만든다" 는 "만들고" 인데
-    이 규칙으로는 "만드고" 가 된다)은 처리하지 못한다. 그래서 description 을
-    쓸 때 "생성한다" 처럼 하다 계열이나 "찾는다" 처럼 는다 계열로 끝맺는다.
-    이 제약은 tests 가 지킨다.
+    입력  description 한 문장
+    출력  이어 붙일 수 있는 형태. "분석한다" -> "분석하고", "찾는다" -> "찾고"
+    규칙  어미 둘만 다룸. 지금 description 이 그 둘로 끝남
+            ~는다  자음 어간. "는" 을 통째로 떼고 "고" 를 붙임 (찾는다 -> 찾고)
+            ~ㄴ다  하다 계열. 종성 ㄴ 을 떼고 "고" 를 붙임 (분석한다 -> 분석하고)
+    제약  한국어 활용을 다 다루지 않는다.
+          ㄹ 불규칙("만든다" 는 "만들고" 인데 이 규칙으로는 "만드고" 가 된다)은
+          처리 못 함. 그래서 description 을 쓸 때 "생성한다" 처럼 하다 계열이나
+          "찾는다" 처럼 는다 계열로 끝맺음. 이 제약은 tests 가 지킴
     """
     if not sentence.endswith("다") or len(sentence) < 2:
         return sentence + "하고"
@@ -352,9 +375,14 @@ def _to_connective(sentence: str) -> str:
 
 
 def _with_particle(name: str) -> str:
-    """"~으로" 인가 "~로" 인가. 받침이 있으면 으로, 없거나 ㄹ이면 로.
+    """"~으로" 인가 "~로" 인가.
 
-    "궤도 점검 보고서으로" 처럼 어긋나면 시연 중에 사람이 먼저 알아챈다.
+    입력  노드 이름
+    출력  조사가 붙은 이름
+    규칙  받침 있음        으로
+          받침 없음 · ㄹ   로
+          한글이 아니면(영문 · 숫자) 안전하게 "으로"
+          "궤도 점검 보고서으로" 처럼 어긋나면 시연 중에 사람이 먼저 알아챔
     """
     last = name.strip()[-1]
     code = ord(last) - 0xAC00
@@ -366,19 +394,22 @@ def _with_particle(name: str) -> str:
 
 
 def function_for(chain: list[str], nodes: dict) -> str:
-    """recipe 가 하는 일 한 문장. LLM 이 recipe 를 고르는 유일한 근거다.
+    """recipe 가 하는 일 한 문장.
 
-    경로는 데이터 노드에서 시작한다. 데이터의 description 은 명사구라
-    ("승강장에 설치된 CCTV 가 촬영한 영상") 연결형으로 못 바꾼다 — 붙이면
-    "영상하고" 가 된다. 그래서 **데이터는 이름에 조사를 붙여 앞에 두고**,
-    기능들의 description 만 이어 붙인다.
-
-        승강장 CCTV 영상으로 영상에서 분석용 이미지 프레임을 추출하고
-        이미지에서 승강장의 혼잡한 정도를 분석한다.
-
-    데이터 이름을 빼면 안 된다. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
-    구분할 근거가 사라져 LLM 이 고를 수 없다 —
-    승강장 CCTV 로 시작하는 것과 검측차 영상으로 시작하는 것이 같은 문장이 된다.
+    입력  경로(노드 id 목록) · 노드 전체
+    출력  마침표로 끝나는 한 문장. LLM 이 recipe 를 고르는 유일한 근거
+    규칙  경로는 데이터 노드에서 시작함
+          데이터는 이름에 조사를 붙여 앞에 두고, 기능들의 description 만
+          이어 붙임. 마지막만 종결형이고 앞은 모두 연결형
+          예 : 승강장 CCTV 영상으로 영상에서 분석용 이미지 프레임을 추출하고
+               이미지에서 승강장의 혼잡한 정도를 분석한다.
+    제약  데이터의 description 을 연결형으로 바꾸지 않는다.
+          명사구라("승강장에 설치된 CCTV 가 촬영한 영상") 붙이면 "영상하고"
+          가 됨
+          데이터 이름을 빼지 않는다.
+          같은 기능을 쓰는 recipe 가 무엇으로 시작하는지 구분할 근거가 사라져
+          LLM 이 고를 수 없음. 승강장 CCTV 로 시작하는 것과 검측차 영상으로
+          시작하는 것이 같은 문장이 됨
     """
     steps = [nid for nid in chain if graph.is_executable(nid)]
     sources = [nid for nid in chain if nid not in steps]
@@ -404,10 +435,14 @@ def append_menu(
     yaml_path=None,
     md_path=None,
 ) -> None:
-    """menu.yaml 과 menu.md 에 새 recipe 를 추가한다.
+    """menu.yaml 과 menu.md 에 새 recipe 를 추가.
 
-    기존 항목은 텍스트째로 두고 뒤에 이어 붙인다 — function 문장이 한 글자라도
-    바뀌면 이미 검증한 발화들이 다른 recipe 로 갈 수 있다.
+    입력  recipe id 목록 · 경로 목록 · 노드 전체 · 두 파일 경로(없으면 기본)
+    규칙  yaml 은 끝에 블록을 이어 붙임
+          md 는 목차 표 끝에 행을 넣고 본문 섹션은 문서 끝에 붙임
+    제약  기존 항목을 다시 쓰지 않는다. 텍스트째로 두고 뒤에 이어 붙임.
+          function 문장이 한 글자라도 바뀌면 이미 검증한 발화들이 다른
+          recipe 로 갈 수 있음
     """
     yaml_path = yaml_path or paths.MENU_YAML_PATH
     md_path = md_path or paths.MENU_MD_PATH
@@ -446,25 +481,24 @@ def append_menu(
 
 
 def register_node(form: dict, llm_client) -> dict:
-    """노드 등록 전체. 한 번에 끝난다.
+    """노드 등록 전체. 한 번에 끝남.
 
-    LLM 판단 -> 온톨로지 -> 경로 생성 -> recipe · menu. 앞 단계가 실패하면 뒤는
-    실행되지 않는다. 온톨로지에 못 넣은 노드로 recipe 를 만들면 존재하지 않는
-    노드를 가리키게 된다.
-
-    관계는 노드를 쓴 **뒤에** 잇는다. 순서가 바뀌면 아직 없는 노드를 가리키는
-    edge 가 파일에 남는다.
-
-    **대상이 어긋나는 경로는 등록하지 않는다.** `crosses_groups` 가 참인 경로는
-    파일이 되지 않고 응답에도 안 담긴다 — 궤도 검측차 영상으로 승강장 승객의
-    위험 행동을 찾는 경로 같은 것들이다. 화각이 안 맞아 실행할 수 없다.
-
-    예전에는 그런 경로를 화면에 올려 사람이 승인하게 했다(propose/approve).
-    관문이 시연 화면의 절반을 먹었고, 걸러지는 것이 전부 진짜 쓰레기라 사람이
-    건질 조합이 하나도 없었다. **사람이 검토하는 절차는 이 화면이 아닌 곳에
-    제대로 들어간다** — 그때 `crosses_groups` 가 차단에서 분류로 돌아간다.
-
-    버린 경로는 돌려주지 않는다. 화면이 안 쓰는 키를 만들지 않는다.
+    입력  노드 폼 · LLM 클라이언트
+    출력  inferred(node_id · groups · reason) + node · recipe_ids · chains
+    규칙  LLM 판단 -> 온톨로지 -> 경로 생성 -> recipe · menu
+          앞 단계가 실패하면 뒤는 실행되지 않음. 온톨로지에 못 넣은 노드로
+          recipe 를 만들면 존재하지 않는 노드를 가리킴
+          관계는 노드를 쓴 뒤에 이음. 순서가 바뀌면 아직 없는 노드를 가리키는
+          edge 가 파일에 남음
+          crosses_groups 가 참인 경로는 파일이 되지 않고 응답에도 안 담김.
+          예 : 궤도 검측차 영상으로 승강장 승객의 위험 행동을 찾는 경로.
+               화각이 안 맞아 실행할 수 없음
+    제약  버린 경로를 돌려주지 않는다. 화면이 안 쓰는 키를 만들지 않음
+    이력  f9bbda1 이전 그런 경로를 화면에 올려 사람이 승인하게 했음
+          (propose/approve). 관문이 시연 화면의 절반을 먹었고, 걸러지는 것이
+          전부 진짜 쓰레기라 사람이 건질 조합이 하나도 없었음
+          사람이 검토하는 절차는 이 화면이 아닌 곳에 제대로 들어감.
+          그때 crosses_groups 가 차단에서 분류로 돌아감
     """
     inferred = infer_node(form, llm_client=llm_client)
     node_id = inferred["node_id"]
@@ -501,10 +535,10 @@ def register_node(form: dict, llm_client) -> dict:
 
 
 def reset_to_init() -> None:
-    """_init 사본을 작업 파일로 되돌린다.
+    """_init 사본을 작업 파일로 되돌림.
 
-    등록으로 늘어난 recipe 도 사라져야 하므로 디렉터리를 통째로 갈아끼운다.
-    _init 사본 자체는 절대 건드리지 않는다 — 그것이 망가지면 되돌릴 곳이 없다.
+    규칙  등록으로 늘어난 recipe 도 사라져야 하므로 디렉터리를 통째로 갈아끼움
+    제약  _init 사본 자체를 건드리지 않는다. 망가지면 되돌릴 곳이 없음
     """
     store.restore_from_init()
     shutil.copy2(paths.INIT_MENU_YAML_PATH, paths.MENU_YAML_PATH)
