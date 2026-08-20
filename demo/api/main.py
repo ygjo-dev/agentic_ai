@@ -32,6 +32,7 @@ from demo.api.schemas.requests import (
     RenderRequest,
 )
 from demo.api.services import (
+    execute_service,
     node_service,
     ontology_service,
     render_service,
@@ -167,9 +168,18 @@ async def register_node_endpoint(
     return node_service.register(form.model_dump(), llm_client=make_client(model))
 
 
-def _chat_answer(text: str) -> str:
-    """하드코딩 응답 문구. /chat 과 /chat/stream 이 같은 말을 하게 하려고 둠."""
-    return f"온톨로지 오케스트레이터가 응답했습니다. (발화: {text})"
+def _chat_events(form: ChatRequest, model: str | None = None):
+    """발화 한 건의 이벤트 흐름. /chat 과 /chat/stream 이 같은 것을 씀.
+
+    입력  요청 본문 · 쓸 LLM 모델 이름(없으면 기본 모델)
+    출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
+    규칙  두 경로가 다른 답을 하면 화면과 curl 중 무엇을 믿을지가 갈림
+    """
+    return execute_service.chat(
+        form.text,
+        llm_client=make_client(model),
+        reason_max_length=profile(model).reason_max_length,
+    )
 
 
 @app.post("/chat")
@@ -177,13 +187,19 @@ async def chat_endpoint(form: ChatRequest) -> dict:
     """KRRI_ASAP 이 부르는 ASAP-orchestrator 자리를 대신 받음.
 
     입력  form  text · sessionId · context · target_documents
-    출력  answer 와 commands. answer 에 받은 text 를 그대로 끼움
-    규칙  응답을 하드코딩함. 온톨로지도 LLM 도 부르지 않음.
-          지금 재는 것은 저쪽에서 우리 것으로 연결이 되는가 하나임
-    제약  form 의 값을 해석하지 않는다. text 를 되돌려 보내는 것 말고는
-          쓰는 곳이 없다
+    출력  answer 와 commands. commands 는 아직 늘 빈 배열임
+    규칙  발화를 해석해 recipe 를 고르고 그 노드 순서대로 MCP 도구를 부름.
+          부른 순서가 answer 에 그대로 적힘
+          /chat/stream 과 같은 흐름을 씀. 중간 이벤트를 버리고 마지막
+          result 만 돌려줄 뿐임
+    제약  form 의 context 와 target_documents 를 해석하지 않는다.
+          아직 쓰는 곳이 없다
     """
-    return {"answer": _chat_answer(form.text), "commands": []}
+    last = {"answer": "", "commands": []}
+    for payload in _chat_events(form):
+        if payload["type"] == "result":
+            last = {"answer": payload["answer"], "commands": payload["commands"]}
+    return last
 
 
 @app.post("/chat/stream")
@@ -192,8 +208,10 @@ async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
 
     입력  form  /chat 과 같은 ChatRequest
     출력  text/event-stream. step_start · step_end · result · [DONE] 순서
-    규칙  answer 는 /chat 과 같은 문구임. 두 경로가 다른 말을 하면
-          화면과 curl 중 무엇을 믿을지가 갈림
+    규칙  step_start 와 step_end 가 recipe 의 실행 단계마다 한 쌍씩 나감.
+          해석(resolve)도 한 단계로 나감. 저쪽 화면이 진행 상황을 그림
+          answer 는 /chat 과 같음. 두 경로가 다른 답을 하면 화면과 curl 중
+          무엇을 믿을지가 갈림
           이벤트마다 빈 줄을 하나 붙임. SSE 는 빈 줄이 있어야 한 건이 끝남
     제약  ensure_ascii 를 켜지 않는다. 켜면 한글이 유니코드 이스케이프로
           나가 저쪽 화면에서 읽히지 않는다
@@ -203,19 +221,8 @@ async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream():
-        yield event(
-            {
-                "type": "step_start",
-                "node": "resolve",
-                "message": "발화를 해석하고 있습니다...",
-            }
-        )
-        yield event(
-            {"type": "step_end", "node": "resolve", "message": "해석 완료"}
-        )
-        yield event(
-            {"type": "result", "answer": _chat_answer(form.text), "commands": []}
-        )
+        for payload in _chat_events(form):
+            yield event(payload)
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")
