@@ -1,7 +1,7 @@
 """대상 : llm_engine/ — LLM 호출을 한 곳에 가둔다
 
 해석 엔진(orchestrator)은 어떤 LLM 을 쓰는지 모른다. `generate(prompt, schema)`
-하나만 아는 Protocol 로 이야기하고, 그 구현이 여기 있다. 모델을 바꾸려면
+하나만 아는 객체로 이야기하고, 그 구현이 여기 있다. 모델을 바꾸려면
 이 폴더만 갈아끼운다.
 
 **응답을 파싱하지 않는다.** Ollama 응답 봉투에서 원문만 꺼내 그대로 넘긴다 —
@@ -20,12 +20,13 @@ import urllib.request
 import pytest
 
 from conftest import StubLLMClient
-from llm_engine.client import LLMClient
 from llm_engine.ollama import (
     OLLAMA_HOST,
     OLLAMA_MODEL,
     OllamaClient,
+    OllamaConfig,
     call_ollama,
+    make_client,
     ping,
 )
 
@@ -102,22 +103,50 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
 def test_the_raw_answer_comes_back_untouched(sent_request):
     """봉투에서 ["response"] 원문만 꺼냄. 파싱은 route_resolver 가 함.
 
-    Protocol 을 벗어나면 orchestrator 가 구현을 갈아끼울 수 없고, 테스트의
-    Stub 도 실제와 다른 것을 검증하게 됨. 그래서 실물과 Stub 둘 다 봄.
+    Stub 이 실물에서 흘러가면 registry · orchestrator 테스트가 실제와 다른
+    것을 검증하면서 통과함. 그래서 실물을 기준으로 Stub 을 맞춰 봄.
+
+    기준이 실물임. 예전에는 별도 Protocol 파일이 기준이었는데, 프로덕션
+    어디서도 import 되지 않아 강제되는 것이 없었음. 지우고 실물에 맞춤.
     """
     assert call_ollama("발화", RESPONSE_SCHEMA) == ANSWER
     assert OllamaClient().generate("발화", RESPONSE_SCHEMA) == ANSWER
     assert json.loads(sent_request["request"].data.decode("utf-8"))["prompt"] == "발화"
 
-    expected = list(inspect.signature(LLMClient.generate).parameters.values())[1:]
-    for instance in (OllamaClient(), StubLLMClient(ANSWER)):
+    def parameters(instance):
         generate = getattr(instance, "generate", None)
         assert callable(generate), type(instance).__name__
+        signature = inspect.signature(generate)
+        return [
+            (p.name, p.annotation) for p in signature.parameters.values()
+        ], signature.return_annotation
 
-        actual = list(inspect.signature(generate).parameters.values())
-        assert [(p.name, p.annotation) for p in actual] == [
-            (p.name, p.annotation) for p in expected
-        ], f"{type(instance).__name__}.generate() 가 Protocol 과 다르다"
+    assert parameters(StubLLMClient(ANSWER)) == parameters(OllamaClient()), \
+        "StubLLMClient.generate() 가 실물과 다르다"
+
+
+def test_the_model_can_be_swapped_without_restarting(sent_request):
+    """모델을 바꾸는 데 프로세스를 다시 띄우지 않음.
+
+    측정은 같은 발화를 모델만 바꿔 돌리는 일이라, 모델이 다른 클라이언트가
+    한 프로세스에 동시에 살아 있어야 함. 전역 상수를 읽으면 그게 안 됨.
+
+    인자를 안 주면 기본 모델. 지금 동작이 그대로여야 함.
+    """
+    def sent_body():
+        return json.loads(sent_request["request"].data.decode("utf-8"))
+
+    make_client("qwen2.5:7b").generate("발화", RESPONSE_SCHEMA)
+    assert sent_body()["model"] == "qwen2.5:7b"
+
+    make_client().generate("발화", RESPONSE_SCHEMA)
+    assert sent_body()["model"] == OLLAMA_MODEL
+
+    # 모델과 함께 움직이는 값도 호출마다 갈아끼울 수 있어야 한다 —
+    # 큰 모델은 기본 타임아웃(180초)을 넘긴다.
+    call_ollama("발화", RESPONSE_SCHEMA, config=OllamaConfig(timeout=1, num_ctx=512))
+    assert sent_request["kwargs"]["timeout"] == 1
+    assert sent_body()["options"]["num_ctx"] == 512
 
 
 def test_reachability_is_checked_without_raising(monkeypatch):

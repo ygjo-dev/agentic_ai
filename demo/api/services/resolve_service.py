@@ -15,8 +15,8 @@ def resolve(utterance: str, llm_client) -> dict:
     규칙  paths 는 LLM 이 만드는 게 아님. LLM 스키마(response_schema.py)는
           그대로 두고 결과를 받아 백엔드가 덧붙임. 프론트엔드가 recipe 파일을
           직접 읽지 않게 하려는 것
-    제약  여기서 OllamaClient 를 import 하지 않는다.
-          demo.api.main 의 OllamaClient 를 갈아끼우는 테스트가 죽음
+    제약  여기서 LLM 클라이언트를 만들지 않는다.
+          demo.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
     """
     result = resolve_route(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),

@@ -27,8 +27,7 @@ from demo.api.services import (
     resolve_service,
 )
 from demo.api.services.render_service import UnknownRenderMode
-from llm_engine import ollama
-from llm_engine.ollama import OllamaClient
+from llm_engine.ollama import make_client
 from ontology.registry import (
     DuplicateNode,
     InvalidInference,
@@ -118,21 +117,28 @@ async def render_endpoint(form: RenderRequest) -> dict:
 
 
 @app.post("/resolve")
-async def resolve_endpoint(utterance: str) -> dict:
+async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
     """사용자 발화로부터 Recipe 선택.
 
     입력  utterance  사용자 자연어 입력
+          model      쓸 LLM 모델 이름. 없으면 기본 모델
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
           candidate_recipe_ids · reason · paths
           paths 는 후보별 실행 경로. NO_MATCH 면 비어 있음
+    규칙  model 은 측정용임. 같은 발화를 모델만 바꿔 재는 데 서버를 다시
+          띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음
     """
-    return resolve_service.resolve(utterance, llm_client=OllamaClient())
+    return resolve_service.resolve(utterance, llm_client=make_client(model))
 
 
 @app.post("/nodes")
-async def register_node_endpoint(form: NodeRegisterRequest) -> dict:
+async def register_node_endpoint(
+    form: NodeRegisterRequest, model: str | None = None
+) -> dict:
     """노드 등록. 온톨로지 · recipe · menu 가 함께 갱신됨.
 
+    입력  form   노드 폼
+          model  쓸 LLM 모델 이름. 없으면 기본 모델. /resolve 와 같은 뜻
     출력  새로 생긴 것(node_id · node · recipe_ids · paths · accepted ·
           new_solid_edges · new_dotted_edges) · 등록 전후 개수(counts) ·
           갱신된 version
@@ -142,7 +148,7 @@ async def register_node_endpoint(form: NodeRegisterRequest) -> dict:
           버린 경로를 응답에 담지 않는다.
           화면이 쓰지 않는 키를 만들지 않음
     """
-    return node_service.register(form.model_dump(), llm_client=OllamaClient())
+    return node_service.register(form.model_dump(), llm_client=make_client(model))
 
 
 @app.post("/nodes/reset")

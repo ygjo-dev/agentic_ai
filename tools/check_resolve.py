@@ -7,6 +7,7 @@
     python tools/check_resolve.py                   1~3번 × 5회 (4번은 --only)
     python tools/check_resolve.py --runs 10         굳히기
     python tools/check_resolve.py --only 2,4        고친 발화만 다시
+    python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
 
 화면이 지나는 것과 같은 경로여야 표를 믿을 수 있으므로 POST /resolve 를 부른다.
 서버(uvicorn)가 떠 있어야 한다.
@@ -98,16 +99,21 @@ def _short(recipe_ids) -> str:
     return "{" + ", ".join(trimmed) + "}"
 
 
-def _call_resolve(utterance: str) -> frozenset:
+def _call_resolve(utterance: str, model: str | None = None) -> frozenset:
     """POST /resolve 한 번.
 
-    입력  발화
+    입력  발화 · 모델 이름(없으면 서버 기본 모델)
     출력  recipe_id 와 candidate_recipe_ids 를 합친 후보 집합
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
+          모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
     """
+    params = {"utterance": utterance}
+    if model:
+        params["model"] = model
+
     try:
         response = requests.post(
-            f"{BASE_URL}/resolve", params={"utterance": utterance}, timeout=TIMEOUT
+            f"{BASE_URL}/resolve", params=params, timeout=TIMEOUT
         )
     except requests.exceptions.ConnectionError as exc:
         raise ServerDown(str(exc)) from exc
@@ -121,10 +127,10 @@ def _call_resolve(utterance: str) -> frozenset:
 # ── 측정 ────────────────────────────────────────────────────────────
 
 
-def _measure(entries, runs: int, outcomes: dict) -> None:
+def _measure(entries, runs: int, outcomes: dict, model: str | None = None) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
-    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict
+    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict · 모델 이름
     규칙  outcomes[번호] 에 나온 집합들의 Counter 를 쌓음
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
@@ -140,7 +146,7 @@ def _measure(entries, runs: int, outcomes: dict) -> None:
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                counter[_call_resolve(utterance)] += 1
+                counter[_call_resolve(utterance, model)] += 1
                 sys.stdout.write(".")
             except ServerDown:
                 sys.stdout.write("\n")
@@ -229,6 +235,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="후보 발화가 지금 온톨로지에서 통하는지 잰다.")
     parser.add_argument("--runs", type=int, default=5, help="발화마다 몇 번 돌릴지 (기본 5)")
     parser.add_argument("--only", default="", help="돌릴 발화 번호. 예: 2,4")
+    parser.add_argument("--model", default="", help="쓸 모델. 예: qwen2.5:7b (기본: 서버 기본 모델)")
     args = parser.parse_args()
 
     if args.only:
@@ -241,12 +248,16 @@ def main() -> int:
     else:
         entries = [entry for entry in UTTERANCES if entry[3]]
 
-    print(f"발화 {len(entries)}개 × {args.runs}회 · {_recipe_state()}")
+    # 모델을 적는다. NOTES.md 의 측정 기록은 조건 없는 숫자를 받지 않는다.
+    print(
+        f"발화 {len(entries)}개 × {args.runs}회 · {_recipe_state()}"
+        f" · 모델 {args.model or '서버 기본'}"
+    )
     print()
 
     outcomes, note, status = {}, "", 0
     try:
-        _measure(entries, args.runs, outcomes)
+        _measure(entries, args.runs, outcomes, args.model)
     except ServerDown:
         # 재시도하지 않는다. 여기까지 잰 것이 있으면 표는 찍는다.
         note, status = "uvicorn 을 먼저 실행하세요", 1
