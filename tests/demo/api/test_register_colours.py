@@ -40,8 +40,10 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-# 끝노드가 갈리는 조합을 고른다. 셋 다 같은 곳에서 끝나면 변형이 한 벌뿐이라
+# 끝노드가 갈리는 조합을 고른다. 다 같은 곳에서 끝나면 변형이 한 벌뿐이라
 # "좁히면 나머지가 옅어진다" 를 검사할 수 없다.
+#
+# 몇 개를 고르는지는 온톨로지가 정한다. 지금 recipe 는 둘이고 끝노드도 둘이다.
 #
 # **번호를 적지 않는다.** 여기 필요한 성질은 "끝나는 곳이 서로 다른 recipe 셋"
 # 하나뿐인데, 번호는 온톨로지가 바뀌면 통째로 밀린다. 밀린 번호를 그대로 두면
@@ -61,7 +63,7 @@ def _by_endpoint(count: int) -> dict[str, str]:
     return found
 
 
-BY_ENDPOINT = _by_endpoint(3)
+BY_ENDPOINT = _by_endpoint(2)
 REGISTERED = list(BY_ENDPOINT.values())
 
 # 좁힐 때 누를 끝노드. 가장 짧은 경로의 끝을 고른다 — 좁히면 짙은 엣지가
@@ -70,9 +72,9 @@ NARROW_TO = min(BY_ENDPOINT, key=lambda node: len(recipe_nodes(BY_ENDPOINT[node]
 
 # 등록 응답에서 그리기가 쓰는 것만 줄인 형태. render_service 가 그대로 받는다.
 MARK = {
-    "nodes": ["generate_ppt"],
+    "nodes": ["find_cctv"],
     "solid": [],
-    "dotted": [("detect_track_crack", "group_track")],
+    "dotted": [("find_cctv", "group_cctv")],
     "accepted": build.chain_edges([recipe_nodes(r) for r in REGISTERED]),
 }
 
@@ -148,7 +150,7 @@ def test_the_registration_actually_draws_paths(registered):
     """변형이 여러 벌이고 경로가 실제로 칠해져야 아래 검사들이 뜻을 가짐."""
     variants = registered["variants"]
 
-    assert len(BY_ENDPOINT) == 3, f"끝노드가 갈리는 recipe 가 셋이 안 된다: {BY_ENDPOINT}"
+    assert len(BY_ENDPOINT) == 2, f"끝노드가 갈리는 recipe 가 둘이 안 된다: {BY_ENDPOINT}"
     assert set(variants) >= {"", *BY_ENDPOINT}
     assert edges_of_colour(variants[""], PATH_NEW)
 

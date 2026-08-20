@@ -4,9 +4,9 @@
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python tools/check_resolve.py                   1~3번 × 5회 (4번은 --only)
+    python tools/check_resolve.py                   1~2번 × 5회
     python tools/check_resolve.py --runs 10         굳히기
-    python tools/check_resolve.py --only 2,4        고친 발화만 다시
+    python tools/check_resolve.py --only 2          고친 발화만 다시
     python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
 
 화면이 지나는 것과 같은 경로여야 표를 믿을 수 있으므로 POST /resolve 를 부른다.
@@ -18,6 +18,9 @@
 
 실측 기록과 "다시 시도하지 말 것" 은 NOTES.md 에 있다. 발화를 고치기 전에
 읽는다 — 이미 재본 것을 또 재게 된다.
+
+**여기와 NOTES.md 에 적힌 알아낸 것은 예전 온톨로지(철도 CCTV 14노드)와 예전
+모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:8b 다.
 """
 
 import argparse
@@ -32,24 +35,20 @@ from dotenv import load_dotenv
 
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
-# recipe id 로 적어도 되는 이유 : _init 의 001~006 은 고정이다. 노드를 등록해도
-# 새 recipe 는 007 부터 붙으므로 이 여섯의 뜻은 안 변한다.
+# recipe id 로 적어도 되는 이유 : _init 의 001~002 는 고정이다. 노드를 등록해도
+# 새 recipe 는 003 부터 붙으므로 이 둘의 뜻은 안 변한다.
 #
-#   001  승강장 CCTV → 프레임 추출 → 혼잡도 분석
-#   002  ... → 혼잡도 분석 → Word 생성
-#   003  ... → 혼잡도 분석 → PPT 생성
-#   004  궤도 검측차 CCTV → 프레임 추출 → 균열 검출
-#   005  ... → 균열 검출 → Word 생성
-#   006  ... → 균열 검출 → PPT 생성
+#   001  말한 장소 → 장소 좌표 변환
+#   002  말한 장소 → 장소 좌표 변환 → CCTV 조회
 #
-# 넷 다 확정본이다. demo/ui/components/sample_picker.py 의 SAMPLES 와 같다.
-# probe(원래 발화에서 한 가지만 바꾼 것)는 다 지웠다 — 거기서 알아낸 것은
-# NOTES.md 에 남겼다.
+# 둘 다 demo/ui/components/sample_picker.py 의 SAMPLES 와 같다.
+#
+# **아직 안 쟀다.** 001 은 002 의 앞토막이라 끝점이 실제로 갈리는지가 관건이고,
+# 그것은 실행기를 붙인 화면에서 본다. 예전 발화 넷과 거기서 알아낸 것은
+# NOTES.md 에 남아 있다 — 그건 예전 온톨로지 기준이다.
 UTTERANCES = [
-    (1, "승강장에 사람이 얼마나 몰렸는지 분석해줘",       {"recipe_001"},               True),
-    (2, "검측차 영상에서 레일 갈라진 데 있는지 확인해줘",  {"recipe_004"},               True),
-    (3, "승강장 혼잡도 결과를 문서로 정리해줘",           {"recipe_002", "recipe_003"}, True),
-    (4, "오늘 지하철 요금 알려줘",                       set(),                        False),
+    (1, "오송역 좌표 알려줘",    {"recipe_001"}, True),
+    (2, "오송역 CCTV 보여줘",    {"recipe_002"}, True),
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent

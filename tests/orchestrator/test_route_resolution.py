@@ -62,7 +62,7 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
 
     assert len(client.prompts) == 1
     assert UTTERANCE in client.prompts[0]
-    for recipe_id in ("recipe_004", "recipe_005"):
+    for recipe_id in ("recipe_001", "recipe_002"):
         assert recipe_id in client.prompts[0], f"menu 가 프롬프트에 안 실렸다: {recipe_id}"
 
 

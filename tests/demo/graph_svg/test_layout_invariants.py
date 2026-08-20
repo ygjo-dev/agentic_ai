@@ -645,4 +645,4 @@ def test_graphviz_accepts_the_real_ontology():
     )
 
     assert "<svg" in svg
-    assert nodes["platform_cctv_video"]["name"] in svg, "한글 라벨이 SVG 에 실리지 않았다."
+    assert nodes["spoken_place"]["name"] in svg, "한글 라벨이 SVG 에 실리지 않았다."

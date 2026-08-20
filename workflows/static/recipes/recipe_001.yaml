@@ -1,7 +1,5 @@
 steps:
 
-  - node: platform_cctv_video
+  - node: spoken_place
 
-  - node: extract_frames
-
-  - node: analyze_congestion
+  - node: geocode_place

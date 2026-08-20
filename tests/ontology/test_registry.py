@@ -5,7 +5,8 @@
   1. LLM 이 노드 id 와 무엇에 관한 것인지를 정한다
   2. 온톨로지에 노드를 넣고 관계(hasInput · hasOutput · about)를 붙인다
   3. 새 노드를 지나는 실행 경로를 만든다. **대상이 어긋나는 것은 버린다**
-       궤도 검측차 영상으로 승강장 승객을 보는 경로 같은 것들이다
+       궤도 검측차 영상으로 승강장 승객을 보는 경로 같은 것들이다.
+       지금 온톨로지는 그룹이 group_cctv 하나뿐이라 그 검사들이 skip 상태다
   4. 남은 경로를 recipe 파일로 쓰고 menu 에 기능 문장을 더한다
 
 **앞이 실패하면 뒤는 돌지 않는다.** 온톨로지에 못 넣은 노드로 recipe 를 만들면
@@ -46,16 +47,16 @@ from ontology.registry import (
 )
 
 FORM = {
-    "name": "궤도 침하 검출",
-    "description": "이미지에서 궤도 노반의 침하를 검출한다.",
-    "inputs": ["image"],
-    "outputs": ["analysis"],
+    "name": "주변 CCTV 조회",
+    "description": "지도 범위 주변의 CCTV 목록을 조회한다.",
+    "inputs": ["map_extent"],
+    "outputs": ["cctv_list"],
 }
 
 INFERRED = {
-    "node_id": "detect_track_settlement",
-    "groups": ["group_track"],
-    "reason": "궤도 균열 검출과 같은 대상에 관한 것이다.",
+    "node_id": "find_nearby_cctv",
+    "groups": ["group_cctv"],
+    "reason": "CCTV 조회와 같은 대상에 관한 것이다.",
 }
 
 NEW_NODE = {"name": FORM["name"], "description": FORM["description"]}
@@ -97,32 +98,26 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
     쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌음.
 
     여럿을 고를 수 있음. 한 노드가 여러 대상에 관한 것일 수 있기 때문.
-    승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것. 하나만
-    받으면 그 사실을 적을 방법이 없음.
+    지금 온톨로지에는 그룹이 group_cctv 하나뿐이라 여기서 못 잼 —
+    test_several_subjects_all_become_dotted_lines 가 그 검사이고 skip 상태임.
 
     어느 대상에도 매이지 않는 범용 노드는 빈 목록. 형식만 바꾸는 생성
     노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀림.
     """
     result = infer_node(FORM, llm_client=stub())
 
-    assert result["node_id"] == "detect_track_settlement"
-    assert result["groups"] == ["group_track"]
+    assert result["node_id"] == "find_nearby_cctv"
+    assert result["groups"] == ["group_cctv"]
     assert result["reason"]
-
-    # 여러 개도 정상이다.
-    many = infer_node(
-        FORM, llm_client=stub({**INFERRED, "groups": ["group_track", "group_cctv"]})
-    )
-    assert many["groups"] == ["group_track", "group_cctv"]
 
     # 빈 목록도 정상이다.
     assert infer_node(FORM, llm_client=stub({**INFERRED, "groups": []}))["groups"] == []
 
     # 같은 대상을 두 번 적으면 점선이 두 줄 생긴다.
     twice = infer_node(
-        FORM, llm_client=stub({**INFERRED, "groups": ["group_track", "group_track"]})
+        FORM, llm_client=stub({**INFERRED, "groups": ["group_cctv", "group_cctv"]})
     )
-    assert twice["groups"] == ["group_track"]
+    assert twice["groups"] == ["group_cctv"]
 
     assert set(NODE_REGISTRATION_SCHEMA["required"]) == {
         "node_id", "groups", "reason"
@@ -153,7 +148,7 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
     # 모르고, 이름만 보여주면 무엇을 적어야 할지 모른다.
     #
     # "id 가 문자열 어딘가에 있다" 로 재면 무력하다 — 아래 기존 노드 설명에도
-    # 대상 id 가 나오고, 대상 이름("궤도")은 기능 이름("궤도 균열 검출") 안에도
+    # 대상 id 가 나오고, 대상 이름("CCTV")은 기능 이름("CCTV 조회") 안에도
     # 들어 있다. 실제로 목록을 빼도 통과했다. 블록 자체를 찾는다.
     choices = group_ids()
     assert choices, "대상이 하나도 없으면 이 검사가 무력하다"
@@ -183,14 +178,14 @@ def test_a_malformed_llm_answer_is_rejected():
     bad_answers = [
         {**INFERRED, "node_id": "Bad-Id"},              # 대문자와 하이픈
         {**INFERRED, "node_id": "analyze crack"},       # 공백
-        {**INFERRED, "groups": "group_track"},          # 목록이 아니다
-        {**INFERRED, "groups": [["group_track"]]},      # 원소가 문자열이 아니다
+        {**INFERRED, "groups": "group_cctv"},           # 목록이 아니다
+        {**INFERRED, "groups": [["group_cctv"]]},       # 원소가 문자열이 아니다
         {**INFERRED, "groups": ["group_tunnel"]},       # 온톨로지에 없는 대상
         # 하나만 틀려도 전부 거부한다. 통과시키면 나머지 하나만 붙어
         # "왜 하나만 묶였지" 를 화면에서 알 방법이 없다.
-        {**INFERRED, "groups": ["group_track", "group_tunnel"]},
+        {**INFERRED, "groups": ["group_cctv", "group_tunnel"]},
         # 타입 노드는 대상이 아니다. id 라고 다 되는 것이 아니다.
-        {**INFERRED, "groups": ["video"]},
+        {**INFERRED, "groups": ["place_name"]},
     ]
     for answer in bad_answers:
         with pytest.raises(InvalidInference):
@@ -225,12 +220,12 @@ def test_types_that_do_not_exist_are_rejected():
     """
     before = paths.ONTOLOGY_PATH.read_bytes()
 
-    for broken in (["SensorStream"], ["analysis", "Report"]):
+    for broken in (["SensorStream"], ["map_extent", "Report"]):
         with pytest.raises(UnknownType):
             check_types(broken)
 
     # 있는 타입은 통과한다. 위 검사가 무조건 터지는 것이 아님을 보인다.
-    check_types(["image", "analysis"])
+    check_types(["map_extent", "cctv_list"])
 
     assert paths.ONTOLOGY_PATH.read_bytes() == before
 
@@ -245,19 +240,23 @@ def test_a_new_node_gets_exactly_its_share_of_all_the_paths():
     근거라 "초기 recipe 는 되는데 등록한 건 안 되는" 상황이 나오고 원인을
     찾기도 어려움.
     """
-    add_node("detect_track_settlement", NEW_NODE)
-    store.append_edge("detect_track_settlement", "image", HAS_INPUT)
-    store.append_edge("detect_track_settlement", "analysis", HAS_OUTPUT)
+    add_node("find_nearby_cctv", NEW_NODE)
+    store.append_edge("find_nearby_cctv", "map_extent", HAS_INPUT)
+    store.append_edge("find_nearby_cctv", "cctv_list", HAS_OUTPUT)
     nodes = nodes_now()
 
     every = all_recipes(nodes)
-    mine = new_recipes_for("detect_track_settlement", nodes)
+    mine = new_recipes_for("find_nearby_cctv", nodes)
 
     assert mine, "새 노드를 지나는 경로가 없으면 이 검사가 무력하다"
     assert len(mine) < len(every), "전부가 새 노드를 지나면 비교가 뜻이 없다"
-    assert mine == [c for c in every if "detect_track_settlement" in c]
+    assert mine == [c for c in every if "find_nearby_cctv" in c]
 
 
+@pytest.mark.skip(
+    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 crosses_groups 가 참이 되는 "
+           "경우를 실제 노드로 만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다."
+)
 def test_all_recipes_does_not_drop_paths_that_cross_subjects():
     """거르는 것은 부르는 쪽의 일. 여기서 함께 거르면 안 됨.
 
@@ -280,36 +279,36 @@ def test_only_paths_through_the_new_node_are_created():
 
     이 함수는 파일을 쓰지 않음. 경로 목록만 돌려줌.
     """
-    # 영상만 받는 노드다. 분석결과로는 이 노드에 닿을 길이 없다 — 분석결과를
-    # 영상으로 바꾸는 노드가 온톨로지에 없기 때문이다.
-    add_node("detect_intrusion", {"name": "선로 침입 검출",
-                                  "description": "영상에서 선로 침입을 검출한다."})
-    store.append_edge("detect_intrusion", "video", HAS_INPUT)
-    store.append_edge("detect_intrusion", "analysis", HAS_OUTPUT)
+    # 장소 이름만 받는 노드다. 지도 범위로는 이 노드에 닿을 길이 없다 —
+    # 지도 범위를 장소 이름으로 바꾸는 노드가 온톨로지에 없기 때문이다.
+    add_node("find_cctv_by_name", {"name": "장소명 CCTV 조회",
+                                   "description": "장소 이름으로 CCTV 목록을 조회한다."})
+    store.append_edge("find_cctv_by_name", "place_name", HAS_INPUT)
+    store.append_edge("find_cctv_by_name", "cctv_list", HAS_OUTPUT)
     nodes = nodes_now()
     before = json.dumps(nodes, sort_keys=True)
 
-    chains = new_recipes_for("detect_intrusion", nodes)
+    chains = new_recipes_for("find_cctv_by_name", nodes)
 
     assert chains
     for chain in chains:
-        assert "detect_intrusion" in chain
+        assert "find_cctv_by_name" in chain
     assert len({tuple(chain) for chain in chains}) == len(chains), "중복 경로"
 
-    # 닿을 수 없는 자리는 제외된다. 이 노드는 영상만 받으므로 분석결과를
+    # 닿을 수 없는 자리는 제외된다. 이 노드는 장소 이름만 받으므로 지도 범위를
     # 내놓는 노드 뒤에는 절대 붙지 않는다.
-    assert not [c for c in chains if "analyze_congestion" in c]
-    assert [c for c in chains if c[0] == "platform_cctv_video"]
+    assert not [c for c in chains if "geocode_place" in c]
+    assert [c for c in chains if c[0] == "spoken_place"]
 
     # 다른 노드를 넣으면 그 노드를 지나는 경로만 나온다. 새 노드가 안 낀 경로는
     # 이미 recipe 로 있으므로 다시 만들면 중복이다.
-    others = new_recipes_for("generate_word", nodes)
-    assert others and all("generate_word" in chain for chain in others)
-    assert not [c for c in others if "detect_intrusion" in c and "generate_word" not in c]
+    others = new_recipes_for("find_cctv", nodes)
+    assert others and all("find_cctv" in chain for chain in others)
+    assert not [c for c in others if "find_cctv_by_name" in c and "find_cctv" not in c]
 
-    # 문서를 받는 노드가 없어 산출물이 다시 입력으로 되먹임되지 않는다.
-    # 생성 노드는 경로의 끝이다.
-    assert all(c[-1] == "generate_word" for c in others)
+    # CCTV 목록을 받는 노드가 없어 산출물이 다시 입력으로 되먹임되지 않는다.
+    # 조회 노드는 경로의 끝이다.
+    assert all(c[-1] == "find_cctv" for c in others)
 
     assert json.dumps(nodes_now(), sort_keys=True) == before, "온톨로지를 건드렸다"
 
@@ -326,15 +325,15 @@ def test_a_created_path_is_runnable_and_short():
     """
     from ontology.graph import can_connect
 
-    add_node("enhance_image", {"name": "이미지 보정",
-                               "description": "이미지의 품질을 보정한다."})
-    store.append_edge("enhance_image", "image", HAS_INPUT)
-    store.append_edge("enhance_image", "image", HAS_OUTPUT)
+    add_node("refine_extent", {"name": "지도 범위 보정",
+                               "description": "지도 범위를 보정한다."})
+    store.append_edge("refine_extent", "map_extent", HAS_INPUT)
+    store.append_edge("refine_extent", "map_extent", HAS_OUTPUT)
     nodes = nodes_now()
 
-    assert can_connect("enhance_image", "enhance_image"), "이 검사의 전제가 깨졌다"
+    assert can_connect("refine_extent", "refine_extent"), "이 검사의 전제가 깨졌다"
 
-    chains = new_recipes_for("enhance_image", nodes)
+    chains = new_recipes_for("refine_extent", nodes)
 
     assert chains
     assert len({len(chain) for chain in chains}) > 1, "여러 길이가 나와야 한다"
@@ -354,22 +353,22 @@ def test_a_subject_node_never_enters_an_execution_path():
 
     조용히 깨지는 자리. 파일은 멀쩡해 보이고 화면도 그려지는데 실행만 안 됨.
     """
-    add_node("detect_track_settlement", NEW_NODE)
-    store.append_edge("detect_track_settlement", "image", HAS_INPUT)
-    store.append_edge("detect_track_settlement", "analysis", HAS_OUTPUT)
+    add_node("find_nearby_cctv", NEW_NODE)
+    store.append_edge("find_nearby_cctv", "map_extent", HAS_INPUT)
+    store.append_edge("find_nearby_cctv", "cctv_list", HAS_OUTPUT)
     nodes = nodes_now()
 
     groups = set(group_ids())
     assert groups, "대상이 없으면 이 검사가 무력하다"
 
-    chains = new_recipes_for("detect_track_settlement", nodes)
+    chains = new_recipes_for("find_nearby_cctv", nodes)
 
     assert chains
     for chain in chains:
         assert not groups & set(chain), f"경로에 대상이 들어갔다: {chain}"
 
     # 대상 자체를 등록 대상으로 넘겨도 경로를 만들지 않는다.
-    assert new_recipes_for("group_track", nodes) == []
+    assert new_recipes_for("group_cctv", nodes) == []
 
 
 def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
@@ -380,7 +379,7 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     진실의 원천이 둘이 됨.
     """
     nodes = nodes_now()
-    chains = [["track_car_cctv_video", "extract_frames"]]
+    chains = [["spoken_place", "geocode_place"]]
     before_files = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
     last = max(int(p.stem.split("_")[1]) for p in paths.RECIPES_DIR.glob("recipe_*.yaml"))
 
@@ -442,6 +441,11 @@ def chains_in_recipe_files() -> set[tuple[str, ...]]:
     }
 
 
+@pytest.mark.skip(
+    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 crosses_groups 가 참이 되는 "
+           "경우를 실제 노드로 만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다. "
+           "위 CROSSING_FORM 은 되살릴 때 쓸 옛 온톨로지 기준 재료다."
+)
 def test_paths_that_cross_subjects_are_never_registered():
     """★ 대상이 어긋나는 경로는 파일이 되지 않음. 응답에도 안 담김.
 
@@ -482,20 +486,24 @@ def test_paths_that_cross_subjects_are_never_registered():
 def test_a_node_that_agrees_with_everything_loses_no_path():
     """어긋날 상대가 없으면 하나도 안 버림. 차단이 과하면 여기서 잡힘.
 
-    CCTV 화질 저하 진단은 두 영상 모두에 관한 것(group_cctv)이라 어느 시작점에서
-    출발해도 대상이 통함. 이런 등록에서 경로가 하나라도 사라지면 차단 조건이
-    너무 넓은 것이고, 그러면 시연에서 "왜 이 길은 안 생겼지" 가 됨.
+    CCTV 상태 점검은 CCTV 에 관한 것이라 어느 시작점에서 출발해도 대상이 통함.
+    이런 등록에서 경로가 하나라도 사라지면 차단 조건이 너무 넓은 것이고,
+    그러면 시연에서 "왜 이 길은 안 생겼지" 가 됨.
+
+    지금 온톨로지는 그룹이 group_cctv 하나뿐이라 어긋날 상대 자체가 없음.
+    그래서 이 검사가 지금 못 박는 것은 "등록이 경로를 안 버린다" 까지임.
+    차단 조건의 넓이는 그룹이 둘 이상이 되면 다시 재짐.
     """
     from ontology.graph import crosses_groups
 
     result = register_node(
-        {"name": "CCTV 화질 저하 진단", "description": "영상에서 CCTV 화질 저하를 진단한다.",
-         "inputs": ["video"], "outputs": ["analysis"]},
-        llm_client=stub({**INFERRED, "node_id": "analyze_image_quality",
+        {"name": "CCTV 상태 점검", "description": "CCTV 목록의 상태를 점검한다.",
+         "inputs": ["cctv_list"], "outputs": ["cctv_list"]},
+        llm_client=stub({**INFERRED, "node_id": "check_cctv_health",
                          "groups": ["group_cctv"]}),
     )
 
-    made = new_recipes_for("analyze_image_quality", nodes_now())
+    made = new_recipes_for("check_cctv_health", nodes_now())
     assert made, "경로가 없으면 이 검사가 무력하다"
     assert not [chain for chain in made if crosses_groups(chain)]
     assert result["chains"] == made
@@ -516,8 +524,8 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
     """
     nodes = nodes_now()
     chains = [
-        ["track_car_cctv_video", "extract_frames"],
-        ["track_car_cctv_video", "extract_frames", "detect_track_crack"],
+        ["spoken_place", "geocode_place"],
+        ["spoken_place", "geocode_place", "find_cctv"],
     ]
     new_ids = ["recipe_090", "recipe_091"]
     before = menu_now()
@@ -542,7 +550,7 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
 def test_a_menu_sentence_reads_as_one_korean_sentence():
     """경로는 데이터 노드로 시작하는데 그 설명은 명사구.
 
-    설명을 그냥 이어 붙이면 "...촬영한 영상하고 프레임을 추출하고" 가 됨.
+    설명을 그냥 이어 붙이면 "...지목한 장소하고 좌표를 찾고" 가 됨.
     데이터는 이름에 조사를 붙여 앞에 두고 기능 설명만 이음.
 
     데이터 이름을 빼면 안 됨. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
@@ -550,37 +558,29 @@ def test_a_menu_sentence_reads_as_one_korean_sentence():
     """
     nodes = nodes_now()
 
-    one = function_for(["platform_cctv_video", "extract_frames"], nodes)
-    two = function_for(
-        ["platform_cctv_video", "extract_frames", "analyze_congestion"], nodes
-    )
+    one = function_for(["spoken_place", "geocode_place"], nodes)
+    two = function_for(["spoken_place", "geocode_place", "find_cctv"], nodes)
 
     # 종결형이 문장 끝에만 있어야 한 문장으로 읽힌다.
     for sentence in (one, two):
         assert sentence.count("다.") == 1 and sentence.endswith("다."), sentence
-    assert "영상하고" not in one, "명사구를 억지로 연결형으로 바꿨다"
+    assert "장소하고" not in one, "명사구를 억지로 연결형으로 바꿨다"
     assert one != two
 
     # 데이터 이름이 실려야 시작점을 구분할 수 있다.
-    assert nodes["platform_cctv_video"]["name"] in one
-    other = function_for(["track_car_cctv_video", "extract_frames"], nodes)
+    assert nodes["spoken_place"]["name"] in one
+    other = function_for(["place_name", "geocode_place"], nodes)
     assert other != one, "시작 데이터가 다른데 같은 문장이 됐다"
 
-    # 중간 단계는 연결형이 된다. "검출한다" 는 "검출하고" 다 —
+    # 중간 단계는 연결형이 된다. "찾는다" 는 "찾고" 다 —
     # 마지막 단계로만 재면 종결형 그대로라 이 규칙이 한 번도 안 불린다.
-    chained = function_for(
-        ["track_car_cctv_video", "extract_frames", "detect_track_crack"], nodes
-    )
-    assert "검출하고 " not in chained, "마지막 단계는 종결형이어야 한다"
-    assert "추출하고 " in chained, chained
-    assert chained.count("다.") == 1 and chained.endswith("다."), chained
+    assert "조회하고 " not in two, "마지막 단계는 종결형이어야 한다"
+    assert "찾고 " in two, two
 
-    # 조사가 받침을 따라간다. "영상으로" 와 "이미지로" 가 갈린다 —
+    # 조사가 받침을 따라간다. "장소 이름으로" 와 "말한 장소로" 가 갈린다 —
     # 받침을 안 보면 시연 중에 사람이 먼저 알아챈다.
-    assert "궤도 검측차 CCTV 영상으로 " in function_for(
-        ["track_car_cctv_video", "extract_frames"], nodes
-    )
-    assert "승강장 CCTV 영상으로 " in one
+    assert "장소 이름으로 " in other
+    assert "말한 장소로 " in one
 
     # 실제 menu 문장도 서로 구별된다.
     sentences = [entry["function"] for entry in menu_now().values()]
@@ -603,20 +603,20 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
 
     result = register_node(FORM, llm_client=stub())
 
-    node = nodes_now()["detect_track_settlement"]
+    node = nodes_now()["find_nearby_cctv"]
     assert set(node) == {"name", "description"}, "노드에 종류나 입출력을 적었다"
     assert node["name"] == FORM["name"]
 
     # 받고 내놓는 것은 관계로 붙는다. 이게 있어야 경로에 낄 수 있다.
     edges = edges_now()
-    for type_id, predicate in (("image", HAS_INPUT), ("analysis", HAS_OUTPUT)):
+    for type_id, predicate in (("map_extent", HAS_INPUT), ("cctv_list", HAS_OUTPUT)):
         assert {
-            "from": "detect_track_settlement", "to": type_id, "predicate": predicate
+            "from": "find_nearby_cctv", "to": type_id, "predicate": predicate
         } in edges
 
     # 고른 대상에 관계 한 줄이 붙는다. 이게 화면에서 점선이 된다.
     assert {
-        "from": "detect_track_settlement", "to": "group_track", "predicate": ABOUT
+        "from": "find_nearby_cctv", "to": "group_cctv", "predicate": ABOUT
     } in edges
 
     assert set(result["recipe_ids"]) == recipes_now() - before_recipes
@@ -626,7 +626,7 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
         data = yaml.safe_load(
             (paths.RECIPES_DIR / f"{recipe_id}.yaml").read_text(encoding="utf-8")
         )
-        assert "detect_track_settlement" in [step["node"] for step in data["steps"]]
+        assert "find_nearby_cctv" in [step["node"] for step in data["steps"]]
 
     # 화면이 쓰는 것들.
     assert result["node_id"] and result["reason"] and result["chains"]
@@ -634,9 +634,9 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     # 두 번째 등록도 번호를 이어 간다.
     about_count = len([e for e in edges_now() if e["predicate"] == ABOUT])
     second = register_node(
-        {"name": "Excel 보고서 생성", "description": "분석 결과를 Excel 문서로 생성한다.",
-         "inputs": ["analysis"], "outputs": ["output_report"]},
-        llm_client=stub({**INFERRED, "node_id": "generate_excel", "groups": []}),
+        {"name": "지도 범위 보정", "description": "지도 범위를 보정한다.",
+         "inputs": ["map_extent"], "outputs": ["map_extent"]},
+        llm_client=stub({**INFERRED, "node_id": "refine_extent", "groups": []}),
     )
     # 범용 노드는 어디에도 안 붙는다. 억지로 묶으면 오히려 틀린다.
     assert len([e for e in edges_now() if e["predicate"] == ABOUT]) == about_count
@@ -646,6 +646,10 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     assert set(menu_now()) == recipes_now()
 
 
+@pytest.mark.skip(
+    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 대상을 둘 고르는 경우를 "
+           "만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다."
+)
 def test_several_subjects_all_become_dotted_lines():
     """대상을 여럿 고르면 전부 붙음. 하나만 붙이면 나머지가 조용히 사라짐.
 
@@ -717,7 +721,7 @@ def test_resetting_removes_everything_a_registration_added():
     reset_to_init()
     reset_to_init()  # 두 번 돌려도 같아야 한다
 
-    assert "detect_track_settlement" not in nodes_now()
+    assert "find_nearby_cctv" not in nodes_now()
     assert paths.ONTOLOGY_PATH.read_bytes() == paths.INIT_ONTOLOGY_PATH.read_bytes()
     assert paths.MENU_YAML_PATH.read_bytes() == paths.INIT_MENU_YAML_PATH.read_bytes()
     assert paths.MENU_MD_PATH.read_bytes() == paths.INIT_MENU_MD_PATH.read_bytes()

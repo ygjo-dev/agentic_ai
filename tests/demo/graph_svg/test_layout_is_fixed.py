@@ -32,9 +32,23 @@ from demo.graph_svg.graphviz import layout_positions
 from demo.api.services.ontology_service import domain_graph, recipe_ids
 from ontology.graph import highlight_edges, recipe_nodes
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
-)
+pytestmark = [
+    pytest.mark.skipif(
+        shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
+    ),
+    # 여기 있는 검사는 전부 "어떤 강조 조합에서도 좌표가 같다" 이고, 그 조합은
+    # 실제 recipe 로 짓는다. 새 온톨로지는 최장 recipe 가 3단이고 그것이 하나뿐이라
+    # CANDIDATES(4단 recipe 둘 이상)를 못 맞춘다 — 조합이 비면 강조가 하나도
+    # 안 걸려 단언이 아무것도 검증하지 못한다.
+    #
+    # **지우지 않는다.** 배치 불변식은 몇 주에 걸쳐 실측으로 얻은 것이고 여기
+    # 말고는 적힌 곳이 없다. 화면 그림은 지금 안 쓴다(저쪽 화면을 쓴다).
+    # 온톨로지가 촘촘해져 여러 단 recipe 가 둘 이상 생기면 되살린다.
+    pytest.mark.skip(
+        reason="새 온톨로지의 최장 recipe 가 3단이고 하나뿐이라 CANDIDATES 조건을 "
+               "못 맞춘다. recipe 가 늘면 되살린다."
+    ),
+]
 
 
 def pinned_positions():

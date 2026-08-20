@@ -18,13 +18,13 @@
 # - is-a 는 형식 계층이고 about 은 대상이다. 두 축은 직교한다.
 #   is-a 에 대상 구분을 시키지 않는다 — 그건 about 의 일이다.
 #   덕분에 범용 노드가 상위 타입 한 줄만 적으면 하위 타입을 전부 받는다.
-#     Word 생성은 "분석결과" 만 적고, 프레임 추출은 "영상" 만 적는다.
+#     장소 좌표 변환은 "장소 이름" 만 적고도 "말한 장소" 를 받는다.
 #
 # - 실행 순서(실선)는 edges 가 아니라 recipe 가 정한다.
 #   두 곳에 적으면 진실의 원천이 둘이 되고, 어긋났을 때 어느 쪽이 맞는지 알 수 없다.
 #
 # - about 은 차단하지 않는다. 경로가 대상을 넘나드는지 표시할 뿐이고 판단은 사람이 한다.
-#   승강장 CCTV 로 궤도 균열을 찾는 경로는 타입상 만들 수 있지만 화각이 맞지 않는다.
+#   대상이 다른 두 기능을 한 경로에 세우면 타입상 이어져도 실제로는 실행할 수 없다.
 #   그것을 막는 것은 온톨로지가 아니라 사람이다.
 #
 # - 불러오기 노드가 없다. 데이터가 노드로 있으므로 "불러오기" 라는 동사가 따로
@@ -36,39 +36,23 @@ nodes:
 
   # ---------------------------------------------------------- 타입 : 오가는 것
 
-  video:
-    name: 영상
-    description: 시간에 따라 이어진 화상 데이터.
+  place_name:
+    name: 장소 이름
+    description: 사람이 부르는 지명이나 역 이름.
 
-  platform_cctv_video:
-    name: 승강장 CCTV 영상
-    description: 승강장에 설치된 CCTV 가 촬영한 영상.
+  map_extent:
+    name: 지도 범위
+    description: 지도에서 다룰 좌표 범위.
 
-  track_car_cctv_video:
-    name: 궤도 검측차 CCTV 영상
-    description: 검측차가 궤도를 주행하며 촬영한 영상.
+  cctv_list:
+    name: CCTV 목록
+    description: 조회된 CCTV 지점들.
 
-  image:
-    name: 이미지
-    description: 한 장의 정지 화상.
-
-  output_report:
-    name: 문서
-    description: 분석 결과를 정리해 만든 문서.
-
-  analysis:
-    name: 분석결과
-    description: 분석으로 얻은 수치와 판정.
+  spoken_place:
+    name: 말한 장소
+    description: 사용자가 발화에서 지목한 장소.
 
   # ---------------------------------------------------------- 대상 : 무엇에 관한 것인가
-
-  group_platform:
-    name: 승강장
-    description: 승객이 열차를 타고 내리는 공간.
-
-  group_track:
-    name: 궤도
-    description: 열차가 주행하는 선로 구조물.
 
   group_cctv:
     name: CCTV
@@ -76,49 +60,25 @@ nodes:
 
   # ---------------------------------------------------------- 기능 : 실행할 수 있는 것
 
-  extract_frames:
-    name: 영상 프레임 추출
-    description: 영상에서 분석용 이미지 프레임을 추출한다.
+  geocode_place:
+    name: 장소 좌표 변환
+    description: 장소 이름으로 좌표와 지도 범위를 찾는다.
 
-  analyze_congestion:
-    name: 승강장 혼잡도 분석
-    description: 이미지에서 승강장의 혼잡한 정도를 분석한다.
-
-  detect_track_crack:
-    name: 궤도 균열 검출
-    description: 이미지에서 궤도 표면의 균열을 검출한다.
-
-  generate_word:
-    name: Word 보고서 생성
-    description: 분석 결과를 Word 문서로 생성한다.
-
-  generate_ppt:
-    name: PPT 보고서 생성
-    description: 분석 결과를 PPT 문서로 생성한다.
+  find_cctv:
+    name: CCTV 조회
+    description: 지도 범위 안의 CCTV 목록을 조회한다.
 
 
 edges:
 
   # ---------------------------------------------------------- is-a : 형식 계층
-  - { from: platform_cctv_video,  to: video,         predicate: is-a }
-  - { from: track_car_cctv_video, to: video,         predicate: is-a }
+  - { from: spoken_place,  to: place_name, predicate: is-a }
 
   # ---------------------------------------------------------- hasInput / hasOutput
-  - { from: extract_frames,     to: video,         predicate: hasInput }
-  - { from: extract_frames,     to: image,         predicate: hasOutput }
-  - { from: analyze_congestion, to: image,         predicate: hasInput }
-  - { from: analyze_congestion, to: analysis,      predicate: hasOutput }
-  - { from: detect_track_crack, to: image,         predicate: hasInput }
-  - { from: detect_track_crack, to: analysis,      predicate: hasOutput }
-  - { from: generate_word,      to: analysis,      predicate: hasInput }
-  - { from: generate_word,      to: output_report, predicate: hasOutput }
-  - { from: generate_ppt,       to: analysis,      predicate: hasInput }
-  - { from: generate_ppt,       to: output_report, predicate: hasOutput }
+  - { from: geocode_place, to: place_name, predicate: hasInput }
+  - { from: geocode_place, to: map_extent, predicate: hasOutput }
+  - { from: find_cctv,     to: map_extent, predicate: hasInput }
+  - { from: find_cctv,     to: cctv_list,  predicate: hasOutput }
 
   # ---------------------------------------------------------- about : 무엇에 관한 것인가
-  - { from: platform_cctv_video,  to: group_platform, predicate: about }
-  - { from: platform_cctv_video,  to: group_cctv,     predicate: about }
-  - { from: track_car_cctv_video, to: group_track,    predicate: about }
-  - { from: track_car_cctv_video, to: group_cctv,     predicate: about }
-  - { from: analyze_congestion,   to: group_platform, predicate: about }
-  - { from: detect_track_crack,   to: group_track,    predicate: about }
+  - { from: find_cctv,     to: group_cctv, predicate: about }
