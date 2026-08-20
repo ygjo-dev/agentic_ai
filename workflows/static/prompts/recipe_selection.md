@@ -22,7 +22,10 @@
 - 후보 1개면 status = "SELECT", recipe_id = 그 후보.
   후보 2개 이상이면 status = "CLARIFY", recipe_id = null.
   후보 0개면 status = "NO_MATCH", recipe_id = null, candidate_recipe_ids = [].
-- reason 을 먼저 쓴다. 비교 과정을 짧게 쓴다.
+- reason 을 먼저 쓴다. 요청이 어디서 끝나는지와 무엇을 비교했는지만
+  한두 문장으로 쓴다.
+- reason 에 Recipe ID 를 적지 않는다. 고른 Recipe 는 candidate_recipe_ids
+  에만 담는다. ID 를 나열하지 않는다.
 
 [예시]
 
