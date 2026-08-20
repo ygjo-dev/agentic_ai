@@ -25,7 +25,11 @@ if REPO_ROOT not in sys.path:
 # 읽으므로, 뒤에 읽으면 .env 가 안 먹는다.
 load_dotenv(Path(REPO_ROOT) / ".env")
 
-from demo.api.schemas.requests import NodeRegisterRequest, RenderRequest
+from demo.api.schemas.requests import (
+    ChatRequest,
+    NodeRegisterRequest,
+    RenderRequest,
+)
 from demo.api.services import (
     node_service,
     ontology_service,
@@ -160,6 +164,23 @@ async def register_node_endpoint(
           화면이 쓰지 않는 키를 만들지 않음
     """
     return node_service.register(form.model_dump(), llm_client=make_client(model))
+
+
+@app.post("/chat")
+async def chat_endpoint(form: ChatRequest) -> dict:
+    """KRRI_ASAP 이 부르는 ASAP-orchestrator 자리를 대신 받음.
+
+    입력  form  text · sessionId · context · target_documents
+    출력  answer 와 commands. answer 에 받은 text 를 그대로 끼움
+    규칙  응답을 하드코딩함. 온톨로지도 LLM 도 부르지 않음.
+          지금 재는 것은 저쪽에서 우리 것으로 연결이 되는가 하나임
+    제약  form 의 값을 해석하지 않는다. text 를 되돌려 보내는 것 말고는
+          쓰는 곳이 없다
+    """
+    return {
+        "answer": f"온톨로지 오케스트레이터가 응답했습니다. (발화: {form.text})",
+        "commands": [],
+    }
 
 
 @app.post("/nodes/reset")

@@ -37,3 +37,17 @@ class RenderRequest(BaseModel):
     # POST /nodes 응답을 그대로 넘겨도 되고, 이미 줄인 형태여도 된다.
     # 줄이는 일은 서버가 한다 — UI 가 도메인 형태를 알 필요가 없다.
     mark: dict | None = None
+
+
+class ChatRequest(BaseModel):
+    """ASAP-orchestrator 계약의 POST /chat 요청 본문.
+
+    KRRI_ASAP 이 8000 번으로 보내던 것을 그대로 받는다. 네 필드 모두 지금은
+    읽지 않지만 선언은 해둔다 — 없는 필드가 오면 FastAPI 가 422 를 내고,
+    저쪽 화면에서는 연결이 안 된 것과 구분되지 않는다.
+    """
+
+    text: str
+    sessionId: str  # noqa: N815 — 저쪽 계약의 이름이다. 바꾸면 422 가 난다.
+    context: dict = {}
+    target_documents: list = []
