@@ -30,7 +30,7 @@ NODE_SAMPLES = [
     # 어느 대상에도 매이지 않는 범용 노드. 대상이 비어 점선이 안 생긴다.
     (
         "Excel 보고서 생성",
-        "분석 결과를 Excel 표로 생성한다.",
+        "분석 결과를 Excel 문서로 생성한다.",
         ["analysis"],
         ["output_report"],
     ),

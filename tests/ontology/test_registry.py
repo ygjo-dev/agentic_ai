@@ -634,7 +634,7 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     # 두 번째 등록도 번호를 이어 간다.
     about_count = len([e for e in edges_now() if e["predicate"] == ABOUT])
     second = register_node(
-        {"name": "Excel 보고서 생성", "description": "분석 결과를 Excel 표로 생성한다.",
+        {"name": "Excel 보고서 생성", "description": "분석 결과를 Excel 문서로 생성한다.",
          "inputs": ["analysis"], "outputs": ["output_report"]},
         llm_client=stub({**INFERRED, "node_id": "generate_excel", "groups": []}),
     )
