@@ -15,11 +15,15 @@ import time
 from pathlib import Path
 
 import streamlit as st
+from dotenv import load_dotenv
 
 # demo/ui/main.py -> demo/ui -> demo -> 저장소 뿌리. 한 단계 깊어졌다.
 REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
+
+# api_client 가 import 시점에 BACKEND_URL 을 읽으므로 그보다 먼저 읽는다.
+load_dotenv(Path(REPO_ROOT) / ".env")
 
 from demo.ui import api_client, config, styles, theme
 from demo.ui.api_client import ApiError

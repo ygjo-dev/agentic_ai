@@ -23,11 +23,15 @@
 
 | 어디 | 지금 값 | 왜 |
 |---|---|---|
-| `llm_engine/ollama.py` `OLLAMA_MODEL` | `qwen3:8b` | 더 작은 것으로 못 내린다. qwen2.5:7b · qwen3:4b 는 발화 하나씩을 못 맞추고, qwen3:14b 는 183초라 `urlopen` timeout(180)을 넘긴다 |
+| `models.yaml` `default` | `qwen3:8b` | 더 작은 것으로 못 내린다. qwen2.5:7b · qwen3:4b 는 발화 하나씩을 못 맞추고, qwen3:14b 는 183초라 `urlopen` timeout(180)을 넘긴다 |
 | `llm_engine/ollama.py` `options` | `repeat_penalty` 없음 | 올리면 반복은 멎지만 판정까지 깎인다. 반복은 아래 `maxLength` 로 막는다 |
-| `orchestrator/schemas/response_schema.py` `REASON_MAX_LENGTH` | `200` | 없애면 모델이 recipe id 나열을 무한 반복해 202초에 끊긴다. 올려도 답은 그대로이고 시간만 는다 (200 · 400 · 600 -> 30 · 50 · 70초) |
+| `models.yaml` `defaults.reason_max_length` | `200` | 없애면 모델이 recipe id 나열을 무한 반복해 202초에 끊긴다. 올려도 답은 그대로이고 시간만 는다 (200 · 400 · 600 -> 30 · 50 · 70초) |
 | `workflows/static/prompts/recipe_selection.md` | reason 에 ID 금지 | 이 규칙이 루프와 판정을 함께 잡는다. 빼면 3번 발화가 0/10 |
 | `workflows/static/menu/menu.yaml` | recipe 를 끝에 이어 붙임 | 대상별로 묶는 것을 재봤는데 모델에 따라 반대로 작용한다 |
+
+모델마다 다른 값(`num_ctx` · `timeout` · `reason_max_length`)은 `models.yaml` 에 있다.
+목록에 없는 모델은 `defaults` 로 돈다. 어디에 붙는가(`OLLAMA_HOST` · `BACKEND_URL`)는
+기계마다 다르므로 환경변수로 두고 커밋하지 않는다 — `.env.example` 을 복사해 쓴다.
 
 ---
 

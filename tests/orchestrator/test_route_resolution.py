@@ -20,7 +20,10 @@ import pytest
 import paths
 from conftest import CLARIFY, NO_MATCH, SELECT, assert_route_contract, menu_was_read
 from orchestrator.route_resolver import RouteResolutionError, resolve_route
-from orchestrator.schemas.response_schema import RESPONSE_SCHEMA
+from orchestrator.schemas.response_schema import recipe_selection_schema
+
+# 상한 값 자체는 이 테스트의 관심이 아니다. 모델별 값은 models.yaml 에 있다.
+SCHEMA = recipe_selection_schema(200)
 from workflows.static.menu.load import load_menu
 
 UTTERANCE = "기상 관측값으로 결빙 위험도를 분석해줘"
@@ -31,7 +34,7 @@ def resolve(stub_llm_client, raw: str, utterance: str = UTTERANCE):
     result = resolve_route(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
         variables={"menu": load_menu(), "utterance": utterance},
-        response_schema=RESPONSE_SCHEMA,
+        response_schema=SCHEMA,
         llm_client=client,
     )
     return result, client
@@ -96,7 +99,7 @@ def test_only_the_contracted_keys_survive(
     result, _ = resolve(stub_llm_client, json.dumps({**answer, "군더더기": "버려야 한다"}))
 
     assert_route_contract(result)
-    assert set(result) == set(RESPONSE_SCHEMA["required"])
+    assert set(result) == set(SCHEMA["required"])
     assert result["status"] == status
     assert result["recipe_id"] == recipe_id
     assert result["candidate_recipe_ids"] == candidates

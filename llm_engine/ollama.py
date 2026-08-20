@@ -3,28 +3,40 @@
 import json
 import os
 import urllib.request
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
+
+from llm_engine.profiles import profile
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen3:8b")
 
 
 @dataclass(frozen=True)
 class OllamaConfig:
-    """호출 한 번이 쓰는 설정(기본 값)."""
+    """호출 한 번이 쓰는 설정. 값은 models.yaml 에서 온다."""
 
+    model: str
+    num_ctx: int          # menu.yaml 길이가 길수록 ↑
+    timeout: float        # 호출 하나의 상한(초)
     host: str = OLLAMA_HOST
-    model: str = OLLAMA_MODEL
-    timeout: float = 180  # 호출 하나의 상한(초)
-    num_ctx: int = 8192   # menu.yaml 길이가 길수록 ↑
 
 
-DEFAULT_CONFIG = OllamaConfig()
+def config_for(model: str | None = None) -> OllamaConfig:
+    """모델 프로파일을 호출 설정으로.
+
+    입력  모델 이름. None 이면 기본 모델
+    출력  OllamaConfig
+    규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴.
+          어디에 붙는가는 기계마다 다르고, 어떻게 부르는가는 모델마다 다름
+    """
+    found = profile(model)
+    return OllamaConfig(
+        model=found.model, num_ctx=found.num_ctx, timeout=found.timeout
+    )
 
 
 class OllamaClient:
-    def __init__(self, config: OllamaConfig = DEFAULT_CONFIG):
-        self.config = config
+    def __init__(self, config: OllamaConfig | None = None):
+        self.config = config or config_for()
 
     def generate(self, prompt: str, response_schema: dict) -> str:
         return call_ollama(prompt, response_schema, config=self.config)
@@ -39,9 +51,7 @@ def make_client(model: str | None = None) -> OllamaClient:
           모델이 다른 클라이언트가 한 프로세스에 여럿 살 수 있음.
           같은 발화를 모델만 바꿔 재는 데 프로세스를 다시 띄우지 않으려는 것
     """
-    if model is None:
-        return OllamaClient()
-    return OllamaClient(replace(DEFAULT_CONFIG, model=model))
+    return OllamaClient(config_for(model))
 
 
 def ping(timeout: float = 3) -> bool:
@@ -64,8 +74,10 @@ def call_ollama(
     prompt: str,
     response_schema: dict,
     *,
-    config: OllamaConfig = DEFAULT_CONFIG,
+    config: OllamaConfig | None = None,
 ) -> str:
+    config = config or config_for()
+
     body = json.dumps(
         {
             "model": config.model,

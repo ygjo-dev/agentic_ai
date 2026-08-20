@@ -8,9 +8,11 @@ Backend FastAPI 진입점.
 (향후 타 샌드박스와의 소켓/HTTP 통신을 추가 예정).
 """
 
+import os
 import sys
 from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
@@ -18,6 +20,10 @@ from fastapi.responses import JSONResponse
 REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
+
+# 프로젝트 모듈보다 먼저 읽는다. llm_engine 이 import 시점에 OLLAMA_HOST 를
+# 읽으므로, 뒤에 읽으면 .env 가 안 먹는다.
+load_dotenv(Path(REPO_ROOT) / ".env")
 
 from demo.api.schemas.requests import NodeRegisterRequest, RenderRequest
 from demo.api.services import (
@@ -28,6 +34,7 @@ from demo.api.services import (
 )
 from demo.api.services.render_service import UnknownRenderMode
 from llm_engine.ollama import make_client
+from llm_engine.profiles import profile
 from ontology.registry import (
     DuplicateNode,
     InvalidInference,
@@ -128,7 +135,11 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
     규칙  model 은 측정용임. 같은 발화를 모델만 바꿔 재는 데 서버를 다시
           띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음
     """
-    return resolve_service.resolve(utterance, llm_client=make_client(model))
+    return resolve_service.resolve(
+        utterance,
+        llm_client=make_client(model),
+        reason_max_length=profile(model).reason_max_length,
+    )
 
 
 @app.post("/nodes")
@@ -159,4 +170,9 @@ async def reset_nodes_endpoint() -> dict:
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("demo.api.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "demo.api.main:app",
+        host=os.environ.get("API_HOST", "0.0.0.0"),
+        port=int(os.environ.get("API_PORT", "8000")),
+        reload=True,
+    )

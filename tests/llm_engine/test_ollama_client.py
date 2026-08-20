@@ -22,10 +22,10 @@ import pytest
 from conftest import StubLLMClient
 from llm_engine.ollama import (
     OLLAMA_HOST,
-    OLLAMA_MODEL,
     OllamaClient,
     OllamaConfig,
     call_ollama,
+    config_for,
     make_client,
     ping,
 )
@@ -87,14 +87,14 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     assert request.full_url == f"{OLLAMA_HOST}/api/generate"
     assert headers["content-type"] == "application/json"
 
-    assert body["model"] == OLLAMA_MODEL
+    assert body["model"] == config_for().model
     assert body["prompt"] == "발화"
     assert body["stream"] is False
     assert body["format"] == RESPONSE_SCHEMA
     assert body["think"] is False
     assert body["options"]["temperature"] == 0
     assert body["options"]["seed"] == 0
-    assert body["options"]["num_ctx"] == 8192
+    assert body["options"]["num_ctx"] == config_for().num_ctx
 
     # 시연 중 LLM 이 멎어도 화면이 영영 기다리면 안 된다.
     assert sent_request["kwargs"].get("timeout"), "타임아웃이 없다"
@@ -140,11 +140,15 @@ def test_the_model_can_be_swapped_without_restarting(sent_request):
     assert sent_body()["model"] == "qwen2.5:7b"
 
     make_client().generate("발화", RESPONSE_SCHEMA)
-    assert sent_body()["model"] == OLLAMA_MODEL
+    assert sent_body()["model"] == config_for().model
 
     # 모델과 함께 움직이는 값도 호출마다 갈아끼울 수 있어야 한다 —
     # 큰 모델은 기본 타임아웃(180초)을 넘긴다.
-    call_ollama("발화", RESPONSE_SCHEMA, config=OllamaConfig(timeout=1, num_ctx=512))
+    call_ollama(
+        "발화",
+        RESPONSE_SCHEMA,
+        config=OllamaConfig(model="아무거나", timeout=1, num_ctx=512),
+    )
     assert sent_request["kwargs"]["timeout"] == 1
     assert sent_body()["options"]["num_ctx"] == 512
 

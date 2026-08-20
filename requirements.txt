@@ -13,6 +13,7 @@ fastapi>=0.100.0       # Backend API (backend/main.py)
 uvicorn>=0.24.0        # FastAPI 서버 실행
 streamlit>=1.60.0      # 데모 UI (frontend/main.py)
 requests>=2.31.0       # Frontend에서 Backend 호출
+python-dotenv>=1.0.0   # .env 로드. 진입점에서만 부른다
 
 # --- 개발 / 테스트 ---
 pytest>=9.1.1          # tests/ · 실행은 python -m pytest (저장소 루트가 sys.path 에 필요)

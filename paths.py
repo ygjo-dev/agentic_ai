@@ -4,6 +4,9 @@ REPO_ROOT = Path(__file__).resolve().parent
 
 ONTOLOGY_PATH = REPO_ROOT / "ontology" / "ontology.yaml"
 
+# 모델별 값(num_ctx · timeout · reason 길이 상한). 측정 결과라 커밋한다.
+MODELS_PATH = REPO_ROOT / "models.yaml"
+
 # 실행 경로(Route) 결정 엔진.
 ORCHESTRATOR_DIR = REPO_ROOT / "orchestrator"
 SCHEMAS_DIR = ORCHESTRATOR_DIR / "schemas"

@@ -21,12 +21,14 @@
 """
 
 import argparse
+import os
 import sys
 import unicodedata
 from collections import Counter
 from pathlib import Path
 
 import requests
+from dotenv import load_dotenv
 
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
@@ -50,10 +52,13 @@ UTTERANCES = [
     (4, "오늘 지하철 요금 알려줘",                       set(),                        False),
 ]
 
-BASE_URL = "http://localhost:8000"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(REPO_ROOT / ".env")
+
+# 화면이 부르는 주소와 같아야 표를 믿을 수 있다. 그래서 같은 환경변수를 본다.
+BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 TIMEOUT = 180  # demo/ui/api_client.RESOLVE_TIMEOUT 과 같다. LLM 이 끼는 호출이다.
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "recipes"
 INIT_RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "_init" / "recipes"
 
