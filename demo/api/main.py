@@ -8,13 +8,14 @@ Backend FastAPI 진입점.
 (향후 타 샌드박스와의 소켓/HTTP 통신을 추가 예정).
 """
 
+import json
 import os
 import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 # demo/api/main.py -> demo/api -> demo -> 저장소 뿌리.
 REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
@@ -166,6 +167,11 @@ async def register_node_endpoint(
     return node_service.register(form.model_dump(), llm_client=make_client(model))
 
 
+def _chat_answer(text: str) -> str:
+    """하드코딩 응답 문구. /chat 과 /chat/stream 이 같은 말을 하게 하려고 둠."""
+    return f"온톨로지 오케스트레이터가 응답했습니다. (발화: {text})"
+
+
 @app.post("/chat")
 async def chat_endpoint(form: ChatRequest) -> dict:
     """KRRI_ASAP 이 부르는 ASAP-orchestrator 자리를 대신 받음.
@@ -177,10 +183,42 @@ async def chat_endpoint(form: ChatRequest) -> dict:
     제약  form 의 값을 해석하지 않는다. text 를 되돌려 보내는 것 말고는
           쓰는 곳이 없다
     """
-    return {
-        "answer": f"온톨로지 오케스트레이터가 응답했습니다. (발화: {form.text})",
-        "commands": [],
-    }
+    return {"answer": _chat_answer(form.text), "commands": []}
+
+
+@app.post("/chat/stream")
+async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
+    """/chat 과 같은 답을 SSE 로 흘려보냄. 저쪽 화면이 부르는 것은 이쪽임.
+
+    입력  form  /chat 과 같은 ChatRequest
+    출력  text/event-stream. step_start · step_end · result · [DONE] 순서
+    규칙  answer 는 /chat 과 같은 문구임. 두 경로가 다른 말을 하면
+          화면과 curl 중 무엇을 믿을지가 갈림
+          이벤트마다 빈 줄을 하나 붙임. SSE 는 빈 줄이 있어야 한 건이 끝남
+    제약  ensure_ascii 를 켜지 않는다. 켜면 한글이 유니코드 이스케이프로
+          나가 저쪽 화면에서 읽히지 않는다
+    """
+
+    def event(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def stream():
+        yield event(
+            {
+                "type": "step_start",
+                "node": "resolve",
+                "message": "발화를 해석하고 있습니다...",
+            }
+        )
+        yield event(
+            {"type": "step_end", "node": "resolve", "message": "해석 완료"}
+        )
+        yield event(
+            {"type": "result", "answer": _chat_answer(form.text), "commands": []}
+        )
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
 
 
 @app.post("/nodes/reset")
