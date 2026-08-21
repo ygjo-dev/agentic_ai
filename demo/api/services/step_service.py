@@ -19,9 +19,10 @@ from demo.api.services import ontology_service
 
 SERVER_ID = "asap-mcp-core"
 
-# road.getCctv 에 넘길 반경. vendor 의 point_radius_to_bbox 어댑터가 중심
-# 좌표와 이 값으로 bbox 를 만든다 — 대상 도구의 required 에 bbox 넷이 있으면
-# 저절로 걸린다.
+# 좌표 하나를 지도 범위로 넓힐 때의 반경. road.getCctv 와 ev.searchStations ·
+# ev.searchChargers 가 같은 값을 쓴다. vendor 의 point_radius_to_bbox 어댑터가
+# 중심 좌표와 이 값으로 bbox 를 만든다 — 대상 도구의 required 에 bbox 넷이
+# 있으면 저절로 걸리고, 아니면 단계에 adapter 를 적어야 걸린다.
 #
 # 어제 geocode bbox 에 ±0.15도를 더해 95건이 나왔고 그것이 대략 15km 다.
 # 이 값으로는 오송역 83건이 나왔다(실측). 어댑터가 위도를 보정하기 때문에
@@ -34,10 +35,18 @@ SPOKEN_PLACE = "@place"
 # 앞 단계를 가리키는 표시. 실제 step id 로 바꿔서 vendor 에 넘긴다.
 PREVIOUS_STEP = "$prev"
 
+# 중심 좌표와 반경을 bbox 넷으로 바꾸는 vendor 어댑터의 이름.
+#
+# road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 저절로 건다.
+# ev.searchStations · ev.searchChargers 는 넷 다 optional 이라 안 걸린다 —
+# 그래서 그 둘의 단계에만 이 이름을 적는다.
+POINT_RADIUS_TO_BBOX = "point_radius_to_bbox"
+
 # 노드 -> step. **온톨로지 밖이다.**
 #
 #   server_id · tool  vendor 가 Gateway 에 보낼 것
 #   input             그 도구가 받는 input. @place 와 $prev 를 쓸 수 있다
+#   adapter           vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
 #   headline          그 노드에서 끝나는 경로의 답 첫 줄
 #
 # headline 은 마지막 노드의 것만 쓰인다. 도구 이름으로는 만들 수 없는 문장이라
@@ -55,7 +64,119 @@ STEP_OF = {
         "input": {"location": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "headline": "{place} CCTV 를 조회했습니다.",
     },
+    "get_railway_section": {
+        "server_id": SERVER_ID,
+        "tool": "rail.getSectionGeometry",
+        "input": {"sectionName": SPOKEN_PLACE},
+        "headline": "{place} 철도 구간 형상을 조회했습니다.",
+    },
+    "get_railway_lines": {
+        "server_id": SERVER_ID,
+        "tool": "geo.getRailwayLines",
+        "input": {"stationName": SPOKEN_PLACE},
+        "headline": "{place} 철도 노선을 조회했습니다.",
+    },
+    "find_admin_boundary_by_point": {
+        "server_id": SERVER_ID,
+        "tool": "adminBoundary.findBoundaryByPoint",
+        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
+        "headline": "{place} 행정구역을 조회했습니다.",
+    },
+    "find_election_district_by_point": {
+        "server_id": SERVER_ID,
+        "tool": "election.findDistrictByPoint",
+        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
+        "headline": "{place} 국회의원 지역구를 조회했습니다.",
+    },
+    "find_assembly_district_by_point": {
+        "server_id": SERVER_ID,
+        "tool": "election.findAssemblyDistrictByPoint",
+        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
+        "headline": "{place} 국회의원 전체 선거구를 조회했습니다.",
+    },
+    "find_assembly_pledge_district_by_point": {
+        "server_id": SERVER_ID,
+        "tool": "election.findAssemblyPledgeDistrictByPoint",
+        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
+        "headline": "{place} 국회의원 선거구 공약을 조회했습니다.",
+    },
+    "find_local_pledge_summary_by_point": {
+        "server_id": SERVER_ID,
+        "tool": "election.findLocalPledgeSummaryByPoint",
+        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
+        "headline": "{place} 지방선거 교통 공약을 조회했습니다.",
+    },
+    "search_admin_boundaries": {
+        "server_id": SERVER_ID,
+        "tool": "adminBoundary.searchBoundaries",
+        "input": {"query": SPOKEN_PLACE},
+        "headline": "{place} 행정구역 경계를 조회했습니다.",
+    },
+    "get_vworld_boundaries": {
+        "server_id": SERVER_ID,
+        "tool": "vworld.getAdministrativeBoundaries",
+        "input": {"query": SPOKEN_PLACE},
+        "headline": "{place} VWorld 행정경계를 조회했습니다.",
+    },
+    "search_population_statistics": {
+        "server_id": SERVER_ID,
+        "tool": "population.searchStatistics",
+        "input": {"query": SPOKEN_PLACE},
+        "headline": "{place} 인구 통계를 조회했습니다.",
+    },
+    "search_ev_stations": {
+        "server_id": SERVER_ID,
+        "tool": "ev.searchStations",
+        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+        "adapter": POINT_RADIUS_TO_BBOX,
+        "headline": "{place} 전기차 충전소를 조회했습니다.",
+    },
+    "search_ev_chargers": {
+        "server_id": SERVER_ID,
+        "tool": "ev.searchChargers",
+        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+        "adapter": POINT_RADIUS_TO_BBOX,
+        "headline": "{place} 전기차 충전기를 조회했습니다.",
+    },
 }
+
+# 아직 배선을 안 적은 노드와 그 이유. 다음 사람이 왜 비어 있는지 알아야 한다.
+#
+# 1. 앞 단계가 내놓는 식별자와 이 도구가 받는 식별자의 체계가 다르다
+#
+#    get_election_district · get_assembly_district · get_assembly_pledge_district
+#    get_ev_station
+#
+#    앞 단계가 find_admin_boundary_by_point 이고 그것이 내놓는 것은 행정구역
+#    코드다. 위 넷이 받는 것은 선거구 코드(code · name)와 충전소 번호(statId)라
+#    체계가 다르다. 값을 옮겨 적을 수가 없어 배선을 안 적었다.
+#    온톨로지의 식별자 타입이 셋을 하나로 묶은 탓이다. NOTES.md
+#    「적을 수 없었던 경로」 참고.
+#    recipe 042 · 043 · 044 · 048 이 여기 걸린다. 앞 단계 없이 이 도구만 부르는
+#    recipe 015 · 016 · 017 · 021 은 3번 이유로도 막힌다.
+#
+# 2. 받을 것은 행정구역 코드가 맞지만 어느 필드에 오는지 아직 모른다
+#
+#    get_local_pledge_summary · get_age_profile · get_population_trend
+#
+#    population.getAgeProfile · population.getTrend 는 level 과 code 를 받고
+#    그것이 행정구역 코드다. 다만 adminBoundary.findBoundaryByPoint 가 그 코드를
+#    어떤 필드 이름으로 내놓는지 아직 안 눌러봤다. 눌러보고 적는다.
+#    recipe 045 · 046 · 047 이 여기 걸린다. 앞 단계 없이 이 도구만 부르는
+#    recipe 018 · 019 · 020 은 3번 이유로도 막힌다.
+#
+# 3. 부를 인자를 발화에서 못 뽑는다
+#
+#    web_search · web_fetch · search_documents
+#    search_election_districts · search_assembly_districts
+#    search_assembly_pledge_districts · search_local_pledge_summaries
+#
+#    place_in 이 뽑는 것은 장소 어절 하나뿐이다. 위 것들이 받는 것은 웹 질의 ·
+#    URL · 문서 키워드 · 선거구 이름이라 장소를 그대로 넣을 자리가 아니다.
+#    행정구역 이름을 받는 search_admin_boundaries 와 다른 점이 여기다.
+#    발화 해석 LLM 이 recipe 를 고르면서 인자를 함께 내놓게 되면 풀린다.
+#    recipe 006 · 007 · 008 · 009 · 010 · 014 · 028 · 030 · 032 · 041 이
+#    여기 걸린다.
 
 # 장소로 볼 어절의 끝 글자.
 PLACE_SUFFIXES = "역시군구읍면동리"
@@ -94,7 +215,7 @@ def unwired(recipe_id: str) -> list[str]:
     출력  STEP_OF 에 없는 실행 노드 id 목록. 경로 순서. 전부 있으면 빈 목록
     규칙  실행 노드만 셈. 데이터 노드는 부를 것이 없어 세지 않음
           부르는 쪽(execute_service.run)이 비어 있지 않으면 도구를 하나도
-          안 부름. 48개 중 온전히 도는 것은 001 과 025 둘뿐임
+          안 부름. 배선을 안 적은 노드와 그 이유는 STEP_OF 아래 주석에 있음
     """
     return [
         node_id
@@ -113,6 +234,8 @@ def plan(recipe_id: str, place: str) -> dict:
     규칙  step id 는 s1 · s2 … 로 붙음. $prev 를 앞 step 의 id 로 바꿈
           STEP_OF 에 없는 노드는 step 을 만들지 않음. 데이터 노드
           (spoken_place)는 값을 준비할 뿐 부를 것이 없음
+          adapter 가 있는 노드만 step 에 inputAdapter 칸이 생김. 없는 것은
+          vendor 가 도구 스키마를 보고 스스로 정함
           실행 노드가 빠져 반쪽으로 도는 것은 부르기 전에 unwired 가 막음
     제약  첫 step 의 input 에 $prev 를 쓰지 않는다. 가리킬 앞 단계가 없음
     """
@@ -128,14 +251,15 @@ def plan(recipe_id: str, place: str) -> dict:
             continue
 
         step_id = f"s{len(steps) + 1}"
-        steps.append(
-            {
-                "id": step_id,
-                "server_id": wiring["server_id"],
-                "tool": wiring["tool"],
-                "input": _filled(wiring["input"], place, previous_id),
-            }
-        )
+        step = {
+            "id": step_id,
+            "server_id": wiring["server_id"],
+            "tool": wiring["tool"],
+            "input": _filled(wiring["input"], place, previous_id),
+        }
+        if wiring.get("adapter"):
+            step["inputAdapter"] = wiring["adapter"]
+        steps.append(step)
         nodes.append(node_id)
         headline = wiring["headline"].format(place=place)
         previous_id = step_id

@@ -75,6 +75,13 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
+- **온톨로지의 식별자 타입이 셋을 하나로 묶고 있다.** 행정구역 코드 · 선거구
+  코드 · 충전소 번호가 한 타입이라 recipe 042 · 043 · 044 · 048 이 배선을
+  적을 수 없는 경로로 만들어졌다. 쪼개면 사라지지만 recipe 번호가 통째로
+  바뀐다. 시연 뒤에 한다 (아래 2026-08-21 (셋째) 참고).
+- **배선을 적은 도구 넷을 아직 안 눌러봤다.** `rail.getSectionGeometry` ·
+  `geo.getRailwayLines` · `vworld.getAdministrativeBoundaries` ·
+  `population.searchStatistics`. 응답 모양과 역 이름 검색이 되는지를 모른다.
 - **축 조회를 넣은 뒤의 판정을 아직 LLM 으로 안 쟀다.** 아래 2026-08-21 (이어서)
   는 축이 맞다고 가정한 코드 계산이다. LLM 이 그 축을 실제로 쓰는지는
   `python tools/check_resolve.py --runs 10` 으로 재야 한다.
@@ -89,6 +96,78 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 ---
 
 ## 측정 기록
+
+### 2026-08-21 (셋째) · STEP_OF 배선 열둘 · recipe 48
+
+바로 아래 기록에서 반쪽 실행을 `unwired()` 로 막아놓고 배선은 안 늘렸다.
+이번에 그 표에 열두 줄을 채웠다.
+
+```
+recipe 48   온전히 도는 것       2 -> 24
+            반쪽으로 남은 것    22 -> 10
+            하나도 못 부르는 것 24 -> 14
+```
+
+늘어난 22개는 002 003 004 005 011 012 013 022 023 024 026 027 029 031 033
+034 035 036 037 038 039 040 이다. **LLM 을 부르지 않은 코드 계산이다** —
+`unwired()` 가 빈 목록을 내는 recipe 를 센 것이고, 도구를 실제로 눌러본 것은
+아래 「눌러보지 않은 것」 에 적었다.
+
+좌표를 받는 도구(`lon`/`lat`)와 이름을 받는 도구(`query`/`stationName`/
+`sectionName`)만 적었다. geocode 가 내주는 `bbox` 는 한 변이 1km 라 그것을
+그대로 넘기는 배선은 안 적었다 — 오송역 CCTV 가 그 bbox 로는 0건, 좌표
++ 15km 로는 83건이었다(어제 실측).
+
+#### ev 두 개만 어댑터를 명시했다
+
+`_apply_input_adapter` 는 대상 도구의 `required` 에 bbox 넷이 다 있을 때만
+`point_radius_to_bbox` 를 저절로 건다. `road.getCctv` 는 넷이 전부 required 라
+걸리고, `ev.searchStations` · `ev.searchChargers` 는 넷 다 optional 이라 안
+걸린다. 그래서 `STEP_OF` 에 `adapter` 칸을 만들고 그 둘에만 적었다.
+`step_service.plan()` 이 그 값을 step 의 `inputAdapter` 로 실어 보낸다.
+
+#### 적을 수 없었던 경로
+
+```
+recipe 042  geocode -> 지점 행정구역 판별 -> 국회의원 지역구 상세
+recipe 043  geocode -> 지점 행정구역 판별 -> 국회의원 전체 선거구 상세
+recipe 044  geocode -> 지점 행정구역 판별 -> 국회의원 선거구 공약 상세
+recipe 048  geocode -> 지점 행정구역 판별 -> 충전소 상세 조회
+```
+
+앞 단계 `adminBoundary.findBoundaryByPoint` 가 내놓는 것은 행정구역 코드다.
+마지막 도구가 받는 것은 선거구 코드(`election.getDistrict` 의 `code`/`name`)와
+충전소 번호(`ev.getStation` 의 `statId`)라 체계가 다르다. 앞 단계 결과에서
+옮겨 적을 값이 없어 배선 자체를 적을 수가 없었다.
+
+**온톨로지의 식별자 타입이 셋을 하나로 묶은 탓이다.** 행정구역 코드 · 선거구
+코드 · 충전소 번호가 한 타입이라 경로 생성기가 이 넷을 말이 되는 경로로 봤다.
+타입을 쪼개면 이 recipe 들이 애초에 안 만들어지고 문제가 사라진다.
+
+**지금 고치지 않는다.** 타입을 쪼개면 경로 집합이 달라져 recipe 번호가 통째로
+바뀐다. 2026-08-21 (이어서) 의 발화별 후보 표가 그 번호로 적혀 있어 통째로
+무효가 된다. 시연이 끝난 뒤에 한다.
+
+045 · 046 · 047 은 이것과 다르다. `population.getAgeProfile` ·
+`population.getTrend` 가 받는 `level` · `code` 는 행정구역 코드가 맞다.
+`findBoundaryByPoint` 가 그 코드를 어떤 필드 이름으로 내놓는지 안 눌러봐서
+못 적었을 뿐이다. 눌러보면 적을 수 있다.
+
+#### 눌러보지 않은 것
+
+```
+rail.getSectionGeometry              응답에 location 이 있는지 모름
+geo.getRailwayLines                  stationName 으로 오송역이 걸리는지 모름
+vworld.getAdministrativeBoundaries   query 에 "오송역" 같은 역 이름이 걸리는지 모름
+population.searchStatistics          query 에 역 이름이 걸리는지 모름
+```
+
+recipe 039 (철도 구간 -> CCTV)가 `$prev.location` 을 쓴다. `rail.getSectionGeometry`
+응답에 `location` 이 없으면 참조가 None 이 되고, 중심 좌표가 없으니 어댑터가
+안 걸려 `road.getCctv` 의 필수 입력이 비었다는 실패로 끝난다. 틀린 답이 나가는
+것이 아니라 실패 문구가 나가므로 그대로 뒀다.
+
+---
 
 ### 2026-08-21 (이어서) · 발화 해석에 축 조회를 넣음 · recipe 48
 
