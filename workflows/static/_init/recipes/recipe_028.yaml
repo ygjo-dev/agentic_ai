@@ -1,0 +1,7 @@
+steps:
+
+  - node: spoken_place
+
+  - node: geocode_place
+
+  - node: search_assembly_districts

@@ -36,19 +36,10 @@ pytestmark = [
     pytest.mark.skipif(
         shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
     ),
-    # 여기 있는 검사는 전부 "어떤 강조 조합에서도 좌표가 같다" 이고, 그 조합은
-    # 실제 recipe 로 짓는다. 새 온톨로지는 최장 recipe 가 3단이고 그것이 하나뿐이라
-    # CANDIDATES(4단 recipe 둘 이상)를 못 맞춘다 — 조합이 비면 강조가 하나도
-    # 안 걸려 단언이 아무것도 검증하지 못한다.
-    #
-    # **지우지 않는다.** 배치 불변식은 몇 주에 걸쳐 실측으로 얻은 것이고 여기
-    # 말고는 적힌 곳이 없다. 화면 그림은 지금 안 쓴다(저쪽 화면을 쓴다).
-    # 온톨로지가 촘촘해져 여러 단 recipe 가 둘 이상 생기면 되살린다.
-    pytest.mark.skip(
-        reason="새 온톨로지의 최장 recipe 가 3단이고 하나뿐이라 CANDIDATES 조건을 "
-               "못 맞춘다. recipe 가 늘면 되살린다."
-    ),
 ]
+
+# MCP 도구 39개를 넣으면서 4단 recipe 가 일곱 개 생겨 CANDIDATES 조건이 다시
+# 맞는다. 그 전에는 최장 recipe 가 3단 하나뿐이라 이 파일 전체가 skip 이었다.
 
 
 def pinned_positions():
@@ -105,7 +96,7 @@ FOUR_STEP = CANDIDATES[0] if CANDIDATES else ""
 COMBOS = {
     "하이라이트 없음": {},
     "SELECT 4단(순번)": {"highlight": P(FOUR_STEP), "highlight_nodes": recipe_nodes(FOUR_STEP)},
-    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["track_car_cctv_video"]},
+    "SELECT 노드만(엣지 0)": {"highlight_nodes": ["find_cctv"]},
     "CLARIFY 후보 2개": {"highlight_paths": [P(r) for r in CANDIDATES[:2]]},
     "CLARIFY 후보 4개": {"highlight_paths": [P(r) for r in CANDIDATES]},
 }

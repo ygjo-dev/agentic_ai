@@ -29,6 +29,75 @@
 #
 # - 불러오기 노드가 없다. 데이터가 노드로 있으므로 "불러오기" 라는 동사가 따로
 #   필요 없다. recipe 는 데이터 노드에서 시작한다.
+#
+# ---------------------------------------------------------------------------
+# 이 온톨로지가 담은 것 : Gateway catalog 의 MCP 도구 39개
+#
+# catalog 는 42개다. 그중 셋(knowledge.deleteDoc · bim.updateModel ·
+# bim.deleteModel)은 데이터를 지우거나 바꾸는 도구라 넣지 않았다. 시연에서
+# 눌리면 되돌릴 곳이 없다.
+#
+# ## 타입을 무엇으로 묶었나 — 받는 것과 내놓는 것, 두 축뿐이다
+#
+# **대상별로 타입을 만들지 않았다.** "선거구 목록" · "충전소 목록" 처럼 나누면
+# 타입이 대상 수만큼 곱해지는데, 그렇게 나눠도 경로 생성은 달라지지 않는다 —
+# 무엇에 관한 목록인지는 about 이 이미 말하기 때문이다. 그래서 "목록" 하나다.
+#
+#   받는 것 (6)
+#     장소 이름   지명 · 역명 · 구간명 · 노선명. 사람이 부르는 이름
+#     지점 좌표   경위도 한 점 (lon · lat)
+#     지도 범위   좌표 사각형. bbox 한 필드든 minLon/minLat/maxLon/maxLat 네
+#                 필드든 같은 타입이다. 이름 맞추기는 온톨로지가 아니라
+#                 vendor 의 _resolve_reference 가 한다
+#     식별자      이미 아는 한 건을 집는 값. code · statId · pledgeId · name ·
+#                 level+code 를 하나로 묶었다. 필드명만 다를 뿐 같은 일이다
+#     키워드      자유 검색어 (query)
+#     웹 주소     url. 식별자에 넣지 않고 따로 뒀다. 넣으면 행정구역 코드로
+#                 웹 문서를 가져오는 경로가 생긴다
+#
+#   내놓는 것 (8. 위의 좌표 셋과 웹 주소가 겹친다)
+#     지점 좌표 · 지도 범위 · 웹 주소   다음 도구가 받을 수 있는 것
+#     목록        조건에 맞는 항목들. search… · list… 가 내놓는 것
+#     항목 상세   한 건의 내용. get… · find…ByPoint 가 내놓는 것
+#     데이터셋 정보  무엇을 언제까지 담고 있는지. getDatasetInfo 9개 + dem.getInfo
+#     경계 도형   행정구역 폴리곤
+#     통계        집계 수치와 변화 추이
+#
+# **다음 도구가 받는 타입을 함부로 내놓게 하지 않는다.** 경로가 폭발하는 원인이
+# 그것 하나다. 좌표를 내놓는 것은 장소 좌표 변환과 철도 구간 형상 조회 둘뿐이고,
+# 식별자를 내놓는 것은 지점 행정구역 판별 하나다. 인구 통계 조회는 설명에
+# "지도 범위" 가 나오지만 지도 범위를 내놓게 하지 않았다 — 그렇게 하면 지도
+# 범위를 받는 도구 열 개가 그 뒤에 줄줄이 붙는다.
+#
+# ## 대상을 어떻게 갈랐나 — 섞이면 말이 안 되는 것 다섯
+#
+#   group_transport · group_election · group_population · group_ev · group_document
+#
+# 계열 이름(election · population …)을 그대로 쓰지 않고 굵게 묶었다.
+# road.getCctv · rail.getSectionGeometry · geo.getRailwayLines 는 계열이 셋이지만
+# 대상은 하나(교통)다. 나누면 "철도 구간을 찾아 그 범위의 CCTV 를 본다" 가
+# crosses_groups 에 걸려 죽는다.
+#
+# **범용 도구에는 about 을 붙이지 않았다.** 어느 분야에서나 쓰이는 것들이다 —
+# 장소 좌표 변환 · adminBoundary 셋 · vworld 둘 · dem.getInfo · web 둘, 아홉 개.
+# about 이 붙은 노드가 경로에 하나뿐이면 crosses_groups 는 거짓이므로
+# "범용 -> 특정분야" 경로가 살아남는다. 말한 장소 -> 장소 좌표 변환 -> CCTV 조회가
+# 그것이다.
+#
+# ## 시작 데이터 노드 셋
+#
+#   말한 장소     is-a 장소 이름   원래 있던 것
+#   말한 키워드   is-a 키워드      키워드만 받는 search… 와 웹 검색 · 문서 검색
+#                                  열 개가 여기서 출발한다. 시작점이 없으면
+#                                  그 열 개는 어느 경로에도 못 들어간다
+#   말한 식별자   is-a 식별자      get… 일곱 개가 같은 이유로 필요하다.
+#                                  "충북 제1선거구 알려줘" 처럼 사람이 이름을
+#                                  바로 대는 발화가 여기서 출발한다
+#
+# **hasInput 이 하나도 없는 도구는 recipe 가 될 수 없다.** getDatasetInfo 아홉과
+# knowledge.listDocs · bim.listModels 는 인자를 안 받아서 can_connect 가 누구
+# 뒤에도 세우지 못하고, start_ids 는 실행 노드를 빼므로 첫 칸에도 못 온다.
+# 온톨로지에는 있고 recipe 에는 없다. 열한 개다.
 
 version: 2.0
 
@@ -38,47 +107,417 @@ nodes:
 
   place_name:
     name: 장소 이름
-    description: 사람이 부르는 지명이나 역 이름.
+    description: 사람이 부르는 지명이나 역 이름, 구간 이름.
+
+  point:
+    name: 지점 좌표
+    description: 한 지점의 경위도 좌표.
 
   map_extent:
     name: 지도 범위
     description: 지도에서 다룰 좌표 범위.
 
-  cctv_list:
-    name: CCTV 목록
-    description: 조회된 CCTV 지점들.
+  record_key:
+    name: 식별자
+    description: 한 건을 가리키는 코드나 번호, 이름.
+
+  keyword:
+    name: 키워드
+    description: 무엇을 찾을지 적은 검색어.
+
+  web_address:
+    name: 웹 주소
+    description: 가져올 웹 문서의 주소.
+
+  item_list:
+    name: 목록
+    description: 조건에 맞는 항목들.
+
+  item_detail:
+    name: 항목 상세
+    description: 한 항목의 자세한 내용.
+
+  dataset_info:
+    name: 데이터셋 정보
+    description: 데이터가 무엇을 언제까지 담고 있는지.
+
+  boundary_shape:
+    name: 경계 도형
+    description: 행정구역 경계 도형.
+
+  statistics:
+    name: 통계
+    description: 집계한 수치와 변화 추이.
+
+  # ---------------------------------------------------------- 시작 데이터 : 발화에서 온 값
 
   spoken_place:
     name: 말한 장소
     description: 사용자가 발화에서 지목한 장소.
 
+  spoken_keyword:
+    name: 말한 키워드
+    description: 사용자가 발화에서 찾아 달라고 한 말.
+
+  spoken_identifier:
+    name: 말한 식별자
+    description: 사용자가 발화에서 집어 말한 코드나 이름.
+
   # ---------------------------------------------------------- 대상 : 무엇에 관한 것인가
 
-  group_cctv:
-    name: CCTV
-    description: 현장을 촬영하는 영상 장비.
+  group_transport:
+    name: 교통
+    description: 도로와 철도, 현장 영상에 관한 것.
 
-  # ---------------------------------------------------------- 기능 : 실행할 수 있는 것
+  group_election:
+    name: 선거
+    description: 선거구와 당선인, 공약에 관한 것.
+
+  group_population:
+    name: 인구
+    description: 주민등록 인구와 그 변화에 관한 것.
+
+  group_ev:
+    name: 전기차 충전
+    description: 전기차 충전소와 충전기에 관한 것.
+
+  group_document:
+    name: 자료실
+    description: 쌓아 둔 문서와 3D 모델에 관한 것.
+
+  # ---------------------------------------------------------- 기능 : 범용 (about 없음)
 
   geocode_place:
     name: 장소 좌표 변환
     description: 장소 이름으로 위치 좌표와 지도 범위를 찾는다.
 
+  admin_boundary_dataset_info:
+    name: 행정경계 데이터 정보
+    description: 시도와 시군구, 읍면동 경계 데이터가 무엇을 담고 있는지 알려준다.
+
+  search_admin_boundaries:
+    name: 행정구역 조회
+    description: 이름이나 코드, 지도 범위로 시도와 시군구, 읍면동 경계를 조회한다.
+
+  find_admin_boundary_by_point:
+    name: 지점 행정구역 판별
+    description: 좌표가 속한 시도와 시군구, 읍면동 계층을 찾는다.
+
+  vworld_dataset_info:
+    name: VWorld 데이터 정보
+    description: VWorld 행정구역 프리셋 목록과 설정 상태를 알려준다.
+
+  get_vworld_boundaries:
+    name: VWorld 행정경계 조회
+    description: VWorld 에서 광역시도와 시군구, 읍면동, 리 경계를 내려받는다.
+
+  dem_info:
+    name: 표고 데이터 정보
+    description: 수치표고모델의 범위와 줌 레벨, 좌표계를 알려준다.
+
+  web_search:
+    name: 웹 검색
+    description: 인터넷에서 최신 공개 정보를 검색한다.
+
+  web_fetch:
+    name: 웹 문서 가져오기
+    description: 웹 주소의 제목과 본문을 가져온다.
+
+  # ---------------------------------------------------------- 기능 : 교통
+
   find_cctv:
     name: CCTV 조회
     description: 지도 범위 안의 CCTV 목록을 조회한다.
+
+  get_railway_section:
+    name: 철도 구간 형상 조회
+    description: 구간 이름으로 철도 선형 좌표와 지도 범위를 찾는다.
+
+  get_railway_lines:
+    name: 철도 노선 조회
+    description: 노선 이름이나 역 이름으로 철도 노선 선형을 조회한다.
+
+  # ---------------------------------------------------------- 기능 : 선거
+
+  election_district_dataset_info:
+    name: 국회의원 지역구 데이터 정보
+    description: 제22대 국회의원 지역구 데이터가 무엇을 담고 있는지 알려준다.
+
+  search_election_districts:
+    name: 국회의원 지역구 검색
+    description: 이름이나 시도, 선거구 코드로 제22대 국회의원 지역구를 검색한다.
+
+  get_election_district:
+    name: 국회의원 지역구 상세
+    description: 선거구 코드나 이름으로 제22대 국회의원 지역구 한 곳을 조회한다.
+
+  find_election_district_by_point:
+    name: 지점 국회의원 지역구 판별
+    description: 좌표가 속한 제22대 국회의원 지역구를 찾는다.
+
+  assembly_district_dataset_info:
+    name: 국회의원 전체 선거구 데이터 정보
+    description: 제22대 국회의원 전체 선거구와 공약 집계 데이터가 무엇을 담고 있는지 알려준다.
+
+  search_assembly_districts:
+    name: 국회의원 전체 선거구 검색
+    description: 제22대 국회의원 전체 선거구를 공약 수와 분야 집계와 함께 검색한다.
+
+  get_assembly_district:
+    name: 국회의원 전체 선거구 상세
+    description: 코드나 이름으로 제22대 국회의원 전체 선거구 한 곳을 조회한다.
+
+  find_assembly_district_by_point:
+    name: 지점 국회의원 전체 선거구 판별
+    description: 좌표가 속한 제22대 국회의원 전체 선거구를 찾는다.
+
+  assembly_pledge_dataset_info:
+    name: 국회의원 공약 데이터 정보
+    description: 제22대 국회의원 선거구 공약 데이터가 무엇을 담고 있는지 알려준다.
+
+  search_assembly_pledge_districts:
+    name: 국회의원 선거구 공약 검색
+    description: 당선인과 정당, 공약 분야로 제22대 국회의원 선거구 공약을 검색한다.
+
+  get_assembly_pledge_district:
+    name: 국회의원 선거구 공약 상세
+    description: 공약 번호나 선거구 코드로 제22대 국회의원 공약 한 건을 조회한다.
+
+  find_assembly_pledge_district_by_point:
+    name: 지점 국회의원 선거구 공약 판별
+    description: 좌표가 속한 제22대 국회의원 선거구의 공약을 찾는다.
+
+  local_pledge_dataset_info:
+    name: 지방선거 공약 데이터 정보
+    description: 2026 지방선거 시도별 교통 공약 요약 데이터가 무엇을 담고 있는지 알려준다.
+
+  search_local_pledge_summaries:
+    name: 지방선거 교통 공약 검색
+    description: 2026 지방선거 시도별 대표 인물과 정당, 교통 공약 주제를 검색한다.
+
+  get_local_pledge_summary:
+    name: 지방선거 교통 공약 상세
+    description: 시도 코드나 이름으로 2026 지방선거 교통 공약 요약 한 건을 조회한다.
+
+  find_local_pledge_summary_by_point:
+    name: 지점 지방선거 교통 공약 판별
+    description: 좌표가 속한 시도의 2026 지방선거 교통 공약 요약을 찾는다.
+
+  # ---------------------------------------------------------- 기능 : 인구
+
+  population_dataset_info:
+    name: 인구 데이터 정보
+    description: 주민등록 인구 데이터의 최신 기준월과 전국 합계를 알려준다.
+
+  search_population_statistics:
+    name: 인구 통계 조회
+    description: 시도와 시군구, 읍면동 단위로 주민등록 인구를 집계해 조회한다.
+
+  get_age_profile:
+    name: 연령별 인구 구성 조회
+    description: 행정구역 코드로 0세부터 110세까지 성별 연령 인구 구성을 조회한다.
+
+  get_population_trend:
+    name: 인구 변화 추이 조회
+    description: 행정구역 코드로 월별 총인구와 유소년·생산연령·고령인구 추이를 조회한다.
+
+  # ---------------------------------------------------------- 기능 : 전기차 충전
+
+  ev_dataset_info:
+    name: 충전소 데이터 정보
+    description: 전기차 충전소 데이터의 건수와 최신 동기화 시각을 알려준다.
+
+  search_ev_stations:
+    name: 전기차 충전소 검색
+    description: 지도 범위와 지역, 충전기 유형으로 전기차 충전소를 검색한다.
+
+  get_ev_station:
+    name: 충전소 상세 조회
+    description: 충전소 번호로 충전소 정보와 충전기별 현재 상태를 조회한다.
+
+  search_ev_chargers:
+    name: 전기차 충전기 조회
+    description: 지도 범위와 지역으로 전기차 충전기를 조회한다.
+
+  # ---------------------------------------------------------- 기능 : 자료실
+
+  search_documents:
+    name: 문서 검색
+    description: 지식베이스에 쌓인 문서에서 물어본 내용을 검색한다.
+
+  list_documents:
+    name: 문서 목록 조회
+    description: 지식베이스에 저장된 문서 목록을 조회한다.
+
+  list_bim_models:
+    name: 3D 모델 목록 조회
+    description: 업로드된 3D 모델과 타일셋 목록을 조회한다.
 
 
 edges:
 
   # ---------------------------------------------------------- is-a : 형식 계층
-  - { from: spoken_place,  to: place_name, predicate: is-a }
+  - { from: spoken_place,      to: place_name, predicate: is-a }
+  - { from: spoken_keyword,    to: keyword,    predicate: is-a }
+  - { from: spoken_identifier, to: record_key, predicate: is-a }
 
-  # ---------------------------------------------------------- hasInput / hasOutput
+  # ---------------------------------------------------------- hasInput / hasOutput : 범용
   - { from: geocode_place, to: place_name, predicate: hasInput }
+  - { from: geocode_place, to: point,      predicate: hasOutput }
   - { from: geocode_place, to: map_extent, predicate: hasOutput }
-  - { from: find_cctv,     to: map_extent, predicate: hasInput }
-  - { from: find_cctv,     to: cctv_list,  predicate: hasOutput }
+
+  - { from: admin_boundary_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_admin_boundaries, to: keyword,        predicate: hasInput }
+  - { from: search_admin_boundaries, to: map_extent,     predicate: hasInput }
+  - { from: search_admin_boundaries, to: boundary_shape, predicate: hasOutput }
+
+  # 식별자를 내놓는 유일한 노드다. 좌표 -> 행정구역 코드 -> 인구 상세가
+  # 이 한 줄로 이어진다.
+  - { from: find_admin_boundary_by_point, to: point,          predicate: hasInput }
+  - { from: find_admin_boundary_by_point, to: boundary_shape, predicate: hasOutput }
+  - { from: find_admin_boundary_by_point, to: record_key,     predicate: hasOutput }
+
+  - { from: vworld_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: get_vworld_boundaries, to: keyword,        predicate: hasInput }
+  - { from: get_vworld_boundaries, to: map_extent,     predicate: hasInput }
+  - { from: get_vworld_boundaries, to: boundary_shape, predicate: hasOutput }
+
+  - { from: dem_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: web_search, to: keyword,     predicate: hasInput }
+  - { from: web_search, to: item_list,   predicate: hasOutput }
+  - { from: web_search, to: web_address, predicate: hasOutput }
+
+  - { from: web_fetch, to: web_address, predicate: hasInput }
+  - { from: web_fetch, to: item_detail, predicate: hasOutput }
+
+  # ---------------------------------------------------------- hasInput / hasOutput : 교통
+  - { from: find_cctv, to: map_extent, predicate: hasInput }
+  - { from: find_cctv, to: item_list,  predicate: hasOutput }
+
+  - { from: get_railway_section, to: place_name, predicate: hasInput }
+  - { from: get_railway_section, to: map_extent, predicate: hasOutput }
+
+  - { from: get_railway_lines, to: place_name, predicate: hasInput }
+  - { from: get_railway_lines, to: map_extent, predicate: hasInput }
+  - { from: get_railway_lines, to: item_list,  predicate: hasOutput }
+
+  # ---------------------------------------------------------- hasInput / hasOutput : 선거
+  - { from: election_district_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_election_districts, to: keyword,   predicate: hasInput }
+  - { from: search_election_districts, to: item_list, predicate: hasOutput }
+
+  - { from: get_election_district, to: record_key,  predicate: hasInput }
+  - { from: get_election_district, to: item_detail, predicate: hasOutput }
+
+  - { from: find_election_district_by_point, to: point,       predicate: hasInput }
+  - { from: find_election_district_by_point, to: item_detail, predicate: hasOutput }
+
+  - { from: assembly_district_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_assembly_districts, to: keyword,    predicate: hasInput }
+  - { from: search_assembly_districts, to: map_extent, predicate: hasInput }
+  - { from: search_assembly_districts, to: item_list,  predicate: hasOutput }
+
+  - { from: get_assembly_district, to: record_key,  predicate: hasInput }
+  - { from: get_assembly_district, to: item_detail, predicate: hasOutput }
+
+  - { from: find_assembly_district_by_point, to: point,       predicate: hasInput }
+  - { from: find_assembly_district_by_point, to: item_detail, predicate: hasOutput }
+
+  - { from: assembly_pledge_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_assembly_pledge_districts, to: keyword,    predicate: hasInput }
+  - { from: search_assembly_pledge_districts, to: map_extent, predicate: hasInput }
+  - { from: search_assembly_pledge_districts, to: item_list,  predicate: hasOutput }
+
+  - { from: get_assembly_pledge_district, to: record_key,  predicate: hasInput }
+  - { from: get_assembly_pledge_district, to: item_detail, predicate: hasOutput }
+
+  - { from: find_assembly_pledge_district_by_point, to: point,       predicate: hasInput }
+  - { from: find_assembly_pledge_district_by_point, to: item_detail, predicate: hasOutput }
+
+  - { from: local_pledge_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_local_pledge_summaries, to: keyword,    predicate: hasInput }
+  - { from: search_local_pledge_summaries, to: map_extent, predicate: hasInput }
+  - { from: search_local_pledge_summaries, to: item_list,  predicate: hasOutput }
+
+  - { from: get_local_pledge_summary, to: record_key,  predicate: hasInput }
+  - { from: get_local_pledge_summary, to: item_detail, predicate: hasOutput }
+
+  - { from: find_local_pledge_summary_by_point, to: point,       predicate: hasInput }
+  - { from: find_local_pledge_summary_by_point, to: item_detail, predicate: hasOutput }
+
+  # ---------------------------------------------------------- hasInput / hasOutput : 인구
+  - { from: population_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_population_statistics, to: keyword,    predicate: hasInput }
+  - { from: search_population_statistics, to: map_extent, predicate: hasInput }
+  - { from: search_population_statistics, to: statistics, predicate: hasOutput }
+
+  - { from: get_age_profile, to: record_key, predicate: hasInput }
+  - { from: get_age_profile, to: statistics, predicate: hasOutput }
+
+  - { from: get_population_trend, to: record_key, predicate: hasInput }
+  - { from: get_population_trend, to: statistics, predicate: hasOutput }
+
+  # ---------------------------------------------------------- hasInput / hasOutput : 전기차 충전
+  - { from: ev_dataset_info, to: dataset_info, predicate: hasOutput }
+
+  - { from: search_ev_stations, to: keyword,    predicate: hasInput }
+  - { from: search_ev_stations, to: map_extent, predicate: hasInput }
+  - { from: search_ev_stations, to: item_list,  predicate: hasOutput }
+
+  - { from: get_ev_station, to: record_key,  predicate: hasInput }
+  - { from: get_ev_station, to: item_detail, predicate: hasOutput }
+
+  - { from: search_ev_chargers, to: keyword,    predicate: hasInput }
+  - { from: search_ev_chargers, to: map_extent, predicate: hasInput }
+  - { from: search_ev_chargers, to: item_list,  predicate: hasOutput }
+
+  # ---------------------------------------------------------- hasInput / hasOutput : 자료실
+  - { from: search_documents, to: keyword,   predicate: hasInput }
+  - { from: search_documents, to: item_list, predicate: hasOutput }
+
+  - { from: list_documents,  to: item_list, predicate: hasOutput }
+  - { from: list_bim_models, to: item_list, predicate: hasOutput }
 
   # ---------------------------------------------------------- about : 무엇에 관한 것인가
-  - { from: find_cctv,     to: group_cctv, predicate: about }
+  - { from: find_cctv,           to: group_transport, predicate: about }
+  - { from: get_railway_section, to: group_transport, predicate: about }
+  - { from: get_railway_lines,   to: group_transport, predicate: about }
+
+  - { from: election_district_dataset_info,         to: group_election, predicate: about }
+  - { from: search_election_districts,              to: group_election, predicate: about }
+  - { from: get_election_district,                  to: group_election, predicate: about }
+  - { from: find_election_district_by_point,        to: group_election, predicate: about }
+  - { from: assembly_district_dataset_info,         to: group_election, predicate: about }
+  - { from: search_assembly_districts,              to: group_election, predicate: about }
+  - { from: get_assembly_district,                  to: group_election, predicate: about }
+  - { from: find_assembly_district_by_point,        to: group_election, predicate: about }
+  - { from: assembly_pledge_dataset_info,           to: group_election, predicate: about }
+  - { from: search_assembly_pledge_districts,       to: group_election, predicate: about }
+  - { from: get_assembly_pledge_district,           to: group_election, predicate: about }
+  - { from: find_assembly_pledge_district_by_point, to: group_election, predicate: about }
+  - { from: local_pledge_dataset_info,              to: group_election, predicate: about }
+  - { from: search_local_pledge_summaries,          to: group_election, predicate: about }
+  - { from: get_local_pledge_summary,               to: group_election, predicate: about }
+  - { from: find_local_pledge_summary_by_point,     to: group_election, predicate: about }
+
+  - { from: population_dataset_info,      to: group_population, predicate: about }
+  - { from: search_population_statistics, to: group_population, predicate: about }
+  - { from: get_age_profile,              to: group_population, predicate: about }
+  - { from: get_population_trend,         to: group_population, predicate: about }
+
+  - { from: ev_dataset_info,    to: group_ev, predicate: about }
+  - { from: search_ev_stations, to: group_ev, predicate: about }
+  - { from: get_ev_station,     to: group_ev, predicate: about }
+  - { from: search_ev_chargers, to: group_ev, predicate: about }
+
+  - { from: search_documents,  to: group_document, predicate: about }
+  - { from: list_documents,    to: group_document, predicate: about }
+  - { from: list_bim_models,   to: group_document, predicate: about }

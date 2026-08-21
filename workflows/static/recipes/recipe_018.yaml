@@ -1,0 +1,5 @@
+steps:
+
+  - node: spoken_identifier
+
+  - node: get_local_pledge_summary

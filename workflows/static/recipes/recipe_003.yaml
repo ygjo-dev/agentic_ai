@@ -1,0 +1,5 @@
+steps:
+
+  - node: spoken_place
+
+  - node: get_railway_lines

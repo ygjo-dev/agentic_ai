@@ -1,0 +1,7 @@
+steps:
+
+  - node: spoken_place
+
+  - node: geocode_place
+
+  - node: find_election_district_by_point

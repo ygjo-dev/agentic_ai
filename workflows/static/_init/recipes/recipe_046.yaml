@@ -1,0 +1,9 @@
+steps:
+
+  - node: spoken_place
+
+  - node: geocode_place
+
+  - node: find_admin_boundary_by_point
+
+  - node: get_age_profile

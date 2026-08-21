@@ -5,8 +5,7 @@
   1. LLM 이 노드 id 와 무엇에 관한 것인지를 정한다
   2. 온톨로지에 노드를 넣고 관계(hasInput · hasOutput · about)를 붙인다
   3. 새 노드를 지나는 실행 경로를 만든다. **대상이 어긋나는 것은 버린다**
-       궤도 검측차 영상으로 승강장 승객을 보는 경로 같은 것들이다.
-       지금 온톨로지는 그룹이 group_cctv 하나뿐이라 그 검사들이 skip 상태다
+       철도 구간의 지도 범위로 충전 대기열을 예측하는 경로 같은 것들이다
   4. 남은 경로를 recipe 파일로 쓰고 menu 에 기능 문장을 더한다
 
 **앞이 실패하면 뒤는 돌지 않는다.** 온톨로지에 못 넣은 노드로 recipe 를 만들면
@@ -50,12 +49,12 @@ FORM = {
     "name": "주변 CCTV 조회",
     "description": "지도 범위 주변의 CCTV 목록을 조회한다.",
     "inputs": ["map_extent"],
-    "outputs": ["cctv_list"],
+    "outputs": ["item_list"],
 }
 
 INFERRED = {
     "node_id": "find_nearby_cctv",
-    "groups": ["group_cctv"],
+    "groups": ["group_transport"],
     "reason": "CCTV 조회와 같은 대상에 관한 것이다.",
 }
 
@@ -98,8 +97,7 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
     쓰게 했는데 "궤도" 대신 "선로" 라고 쓰면 아무와도 안 이어졌음.
 
     여럿을 고를 수 있음. 한 노드가 여러 대상에 관한 것일 수 있기 때문.
-    지금 온톨로지에는 그룹이 group_cctv 하나뿐이라 여기서 못 잼 —
-    test_several_subjects_all_become_dotted_lines 가 그 검사이고 skip 상태임.
+    붙는지는 test_several_subjects_all_become_dotted_lines 가 잼.
 
     어느 대상에도 매이지 않는 범용 노드는 빈 목록. 형식만 바꾸는 생성
     노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀림.
@@ -107,7 +105,7 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
     result = infer_node(FORM, llm_client=stub())
 
     assert result["node_id"] == "find_nearby_cctv"
-    assert result["groups"] == ["group_cctv"]
+    assert result["groups"] == ["group_transport"]
     assert result["reason"]
 
     # 빈 목록도 정상이다.
@@ -115,9 +113,9 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
 
     # 같은 대상을 두 번 적으면 점선이 두 줄 생긴다.
     twice = infer_node(
-        FORM, llm_client=stub({**INFERRED, "groups": ["group_cctv", "group_cctv"]})
+        FORM, llm_client=stub({**INFERRED, "groups": ["group_transport", "group_transport"]})
     )
-    assert twice["groups"] == ["group_cctv"]
+    assert twice["groups"] == ["group_transport"]
 
     assert set(NODE_REGISTRATION_SCHEMA["required"]) == {
         "node_id", "groups", "reason"
@@ -178,12 +176,12 @@ def test_a_malformed_llm_answer_is_rejected():
     bad_answers = [
         {**INFERRED, "node_id": "Bad-Id"},              # 대문자와 하이픈
         {**INFERRED, "node_id": "analyze crack"},       # 공백
-        {**INFERRED, "groups": "group_cctv"},           # 목록이 아니다
-        {**INFERRED, "groups": [["group_cctv"]]},       # 원소가 문자열이 아니다
+        {**INFERRED, "groups": "group_transport"},           # 목록이 아니다
+        {**INFERRED, "groups": [["group_transport"]]},       # 원소가 문자열이 아니다
         {**INFERRED, "groups": ["group_tunnel"]},       # 온톨로지에 없는 대상
         # 하나만 틀려도 전부 거부한다. 통과시키면 나머지 하나만 붙어
         # "왜 하나만 묶였지" 를 화면에서 알 방법이 없다.
-        {**INFERRED, "groups": ["group_cctv", "group_tunnel"]},
+        {**INFERRED, "groups": ["group_transport", "group_tunnel"]},
         # 타입 노드는 대상이 아니다. id 라고 다 되는 것이 아니다.
         {**INFERRED, "groups": ["place_name"]},
     ]
@@ -225,7 +223,7 @@ def test_types_that_do_not_exist_are_rejected():
             check_types(broken)
 
     # 있는 타입은 통과한다. 위 검사가 무조건 터지는 것이 아님을 보인다.
-    check_types(["map_extent", "cctv_list"])
+    check_types(["map_extent", "item_list"])
 
     assert paths.ONTOLOGY_PATH.read_bytes() == before
 
@@ -242,7 +240,7 @@ def test_a_new_node_gets_exactly_its_share_of_all_the_paths():
     """
     add_node("find_nearby_cctv", NEW_NODE)
     store.append_edge("find_nearby_cctv", "map_extent", HAS_INPUT)
-    store.append_edge("find_nearby_cctv", "cctv_list", HAS_OUTPUT)
+    store.append_edge("find_nearby_cctv", "item_list", HAS_OUTPUT)
     nodes = nodes_now()
 
     every = all_recipes(nodes)
@@ -253,10 +251,6 @@ def test_a_new_node_gets_exactly_its_share_of_all_the_paths():
     assert mine == [c for c in every if "find_nearby_cctv" in c]
 
 
-@pytest.mark.skip(
-    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 crosses_groups 가 참이 되는 "
-           "경우를 실제 노드로 만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다."
-)
 def test_all_recipes_does_not_drop_paths_that_cross_subjects():
     """거르는 것은 부르는 쪽의 일. 여기서 함께 거르면 안 됨.
 
@@ -284,7 +278,7 @@ def test_only_paths_through_the_new_node_are_created():
     add_node("find_cctv_by_name", {"name": "장소명 CCTV 조회",
                                    "description": "장소 이름으로 CCTV 목록을 조회한다."})
     store.append_edge("find_cctv_by_name", "place_name", HAS_INPUT)
-    store.append_edge("find_cctv_by_name", "cctv_list", HAS_OUTPUT)
+    store.append_edge("find_cctv_by_name", "item_list", HAS_OUTPUT)
     nodes = nodes_now()
     before = json.dumps(nodes, sort_keys=True)
 
@@ -355,7 +349,7 @@ def test_a_subject_node_never_enters_an_execution_path():
     """
     add_node("find_nearby_cctv", NEW_NODE)
     store.append_edge("find_nearby_cctv", "map_extent", HAS_INPUT)
-    store.append_edge("find_nearby_cctv", "cctv_list", HAS_OUTPUT)
+    store.append_edge("find_nearby_cctv", "item_list", HAS_OUTPUT)
     nodes = nodes_now()
 
     groups = set(group_ids())
@@ -368,7 +362,7 @@ def test_a_subject_node_never_enters_an_execution_path():
         assert not groups & set(chain), f"경로에 대상이 들어갔다: {chain}"
 
     # 대상 자체를 등록 대상으로 넘겨도 경로를 만들지 않는다.
-    assert new_recipes_for("group_cctv", nodes) == []
+    assert new_recipes_for("group_transport", nodes) == []
 
 
 def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
@@ -417,20 +411,21 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
 # **사람이 검토하는 절차는 이 화면 밖에 제대로 들어간다** — 그때 crosses_groups 가
 # 차단에서 분류로 돌아간다.
 
-# 승강장에 관한 노드인데 이미지를 받는다. 궤도 검측차 영상에서 시작하는 경로도
-# 타입상 만들어지고, 그것이 어긋나는 경로다 — 검측차는 주행 중 궤도를
-# 내려다보므로 승강장 승객이 화각에 없다.
+# 전기차 충전에 관한 노드인데 지도 범위를 받는다. 지도 범위를 내놓는 것은
+# 장소 좌표 변환(범용)과 철도 구간 형상 조회(교통) 둘이라, 철도 구간에서
+# 출발하는 경로가 타입상 만들어지고 그것이 어긋나는 경로다 — 철도 구간의
+# 범위로 충전 대기열을 예측하는 것은 실행할 수 없다.
 CROSSING_FORM = {
-    "name": "승강장 위험 행동 검출",
-    "description": "이미지에서 승강장 승객의 위험 행동을 검출한다.",
-    "inputs": ["image"],
-    "outputs": ["analysis"],
+    "name": "충전 대기열 예측",
+    "description": "지도 범위 안 충전소의 대기 시간을 예측한다.",
+    "inputs": ["map_extent"],
+    "outputs": ["item_list"],
 }
 
 CROSSING_INFERRED = {
-    "node_id": "detect_risky_behavior",
-    "groups": ["group_platform"],
-    "reason": "승강장 승객에 관한 것이다.",
+    "node_id": "predict_charging_wait",
+    "groups": ["group_ev"],
+    "reason": "전기차 충전에 관한 것이다.",
 }
 
 
@@ -441,11 +436,6 @@ def chains_in_recipe_files() -> set[tuple[str, ...]]:
     }
 
 
-@pytest.mark.skip(
-    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 crosses_groups 가 참이 되는 "
-           "경우를 실제 노드로 만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다. "
-           "위 CROSSING_FORM 은 되살릴 때 쓸 옛 온톨로지 기준 재료다."
-)
 def test_paths_that_cross_subjects_are_never_registered():
     """★ 대상이 어긋나는 경로는 파일이 되지 않음. 응답에도 안 담김.
 
@@ -462,7 +452,7 @@ def test_paths_that_cross_subjects_are_never_registered():
 
     result = register_node(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
 
-    made = new_recipes_for("detect_risky_behavior", nodes_now())
+    made = new_recipes_for("predict_charging_wait", nodes_now())
     dropped = [chain for chain in made if crosses_groups(chain)]
     assert dropped, "버려지는 경로가 없으면 이 검사가 무력하다"
     assert result["chains"] == [c for c in made if not crosses_groups(c)]
@@ -486,28 +476,35 @@ def test_paths_that_cross_subjects_are_never_registered():
 def test_a_node_that_agrees_with_everything_loses_no_path():
     """어긋날 상대가 없으면 하나도 안 버림. 차단이 과하면 여기서 잡힘.
 
-    CCTV 상태 점검은 CCTV 에 관한 것이라 어느 시작점에서 출발해도 대상이 통함.
-    이런 등록에서 경로가 하나라도 사라지면 차단 조건이 너무 넓은 것이고,
-    그러면 시연에서 "왜 이 길은 안 생겼지" 가 됨.
+    목록 건수 요약은 어느 대상에도 안 매인 범용 노드라 선거 목록 뒤에 서든
+    충전소 목록 뒤에 서든 대상이 통함. about 이 붙은 노드가 경로에 하나뿐이면
+    crosses_groups 가 거짓이기 때문. 이런 등록에서 경로가 하나라도 사라지면
+    차단 조건이 너무 넓은 것이고, 시연에서 "왜 이 길은 안 생겼지" 가 됨.
 
-    지금 온톨로지는 그룹이 group_cctv 하나뿐이라 어긋날 상대 자체가 없음.
-    그래서 이 검사가 지금 못 박는 것은 "등록이 경로를 안 버린다" 까지임.
-    차단 조건의 넓이는 그룹이 둘 이상이 되면 다시 재짐.
+    범용 노드로 재는 이유 : 대상이 붙은 노드로 재면 다른 대상의 목록 뒤에
+    설 때 정당하게 걸러지므로 "차단이 과한지" 를 못 가름.
     """
     from ontology.graph import crosses_groups
 
     result = register_node(
-        {"name": "CCTV 상태 점검", "description": "CCTV 목록의 상태를 점검한다.",
-         "inputs": ["cctv_list"], "outputs": ["cctv_list"]},
-        llm_client=stub({**INFERRED, "node_id": "check_cctv_health",
-                         "groups": ["group_cctv"]}),
+        {"name": "목록 건수 요약", "description": "목록에 몇 건이 담겼는지 센다.",
+         "inputs": ["item_list"], "outputs": ["item_list"]},
+        llm_client=stub({**INFERRED, "node_id": "count_items", "groups": []}),
     )
 
-    made = new_recipes_for("check_cctv_health", nodes_now())
+    made = new_recipes_for("count_items", nodes_now())
     assert made, "경로가 없으면 이 검사가 무력하다"
-    assert not [chain for chain in made if crosses_groups(chain)]
-    assert result["chains"] == made
-    assert len(result["recipe_ids"]) == len(made)
+
+    # 새 노드가 새로 어긋나게 만든 경로가 하나도 없어야 한다. 앞토막이 이미
+    # 어긋나 있던 것(철도 구간 -> 선거구 검색)은 이 노드와 무관하게 버려진다.
+    for chain in made:
+        without = [nid for nid in chain if nid != "count_items"]
+        assert crosses_groups(chain) == crosses_groups(without), chain
+
+    kept = [chain for chain in made if not crosses_groups(chain)]
+    assert kept, "남은 경로가 없으면 이 검사가 무력하다"
+    assert result["chains"] == kept
+    assert len(result["recipe_ids"]) == len(kept)
     assert set(result["recipe_ids"]) <= set(menu_now())
 
 
@@ -609,14 +606,14 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
 
     # 받고 내놓는 것은 관계로 붙는다. 이게 있어야 경로에 낄 수 있다.
     edges = edges_now()
-    for type_id, predicate in (("map_extent", HAS_INPUT), ("cctv_list", HAS_OUTPUT)):
+    for type_id, predicate in (("map_extent", HAS_INPUT), ("item_list", HAS_OUTPUT)):
         assert {
             "from": "find_nearby_cctv", "to": type_id, "predicate": predicate
         } in edges
 
     # 고른 대상에 관계 한 줄이 붙는다. 이게 화면에서 점선이 된다.
     assert {
-        "from": "find_nearby_cctv", "to": "group_cctv", "predicate": ABOUT
+        "from": "find_nearby_cctv", "to": "group_transport", "predicate": ABOUT
     } in edges
 
     assert set(result["recipe_ids"]) == recipes_now() - before_recipes
@@ -646,27 +643,23 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     assert set(menu_now()) == recipes_now()
 
 
-@pytest.mark.skip(
-    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 대상을 둘 고르는 경우를 "
-           "만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다."
-)
 def test_several_subjects_all_become_dotted_lines():
     """대상을 여럿 고르면 전부 붙음. 하나만 붙이면 나머지가 조용히 사라짐.
 
-    승강장 CCTV 영상이 승강장에도 CCTV 에도 관한 것이라고 판단했는데 한 줄만
-    적히면, 화면에서는 왜 한쪽에만 묶였는지 알 방법이 없음.
+    충전소 주변 CCTV 가 전기차 충전에도 교통에도 관한 것이라고 판단했는데 한
+    줄만 적히면, 화면에서는 왜 한쪽에만 묶였는지 알 방법이 없음.
     """
     register_node(
         FORM,
-        llm_client=stub({**INFERRED, "groups": ["group_track", "group_cctv"]}),
+        llm_client=stub({**INFERRED, "groups": ["group_ev", "group_transport"]}),
     )
 
     attached = {
         edge["to"]
         for edge in edges_now()
-        if edge["from"] == "detect_track_settlement" and edge["predicate"] == ABOUT
+        if edge["from"] == INFERRED["node_id"] and edge["predicate"] == ABOUT
     }
-    assert attached == {"group_track", "group_cctv"}
+    assert attached == {"group_ev", "group_transport"}
 
 
 def test_a_failure_leaves_nothing_half_written():

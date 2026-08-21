@@ -1,0 +1,7 @@
+steps:
+
+  - node: spoken_place
+
+  - node: get_railway_section
+
+  - node: get_vworld_boundaries

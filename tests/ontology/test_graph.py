@@ -150,7 +150,7 @@ def test_only_concrete_data_can_start_a_path():
     assert not [nid for nid in starts if is_executable(nid)]
 
     # 형식은 실제로 존재하는 노드들이다 — 없는 것을 뺐다고 통과하면 안 된다.
-    assert {"place_name", "map_extent", "cctv_list"} <= types
+    assert {"place_name", "map_extent", "item_list"} <= types
     assert "spoken_place" in starts
 
 
@@ -259,23 +259,23 @@ def test_a_recipe_becomes_an_ordered_path():
             assert can_connect(frm, to), (recipe_id, frm, to)
 
 
-@pytest.mark.skip(
-    reason="새 온톨로지에 그룹이 group_cctv 하나뿐이라 crosses_groups 가 참이 되는 "
-           "경우를 실제 노드로 만들 수 없다. 도구가 늘어 그룹이 둘 이상이 되면 되살린다."
-)
 def test_a_path_that_crosses_subjects_is_blocked():
     """★ 대상을 넘나드는 경로는 등록되지 않음. 이것이 그 판정.
 
-    승강장 CCTV 로 궤도 균열을 찾는 경로는 타입상 만들 수 있지만 화각이
-    안 맞음. registry 가 이 판정으로 그런 경로를 버림. 파일이 안 생기고
+    철도 구간의 지도 범위로 충전소를 찾는 경로는 타입상 만들 수 있지만
+    실행할 수 없음. registry 가 이 판정으로 그런 경로를 버림. 파일이 안 생기고
     화면에도 안 나옴.
 
     넘나든다의 정의 : 대상이 붙은 노드가 둘 이상인데 공통 대상이 하나도 없음.
     하나 이하면 거짓. 어긋날 상대가 없음. 이 조건이 넓어지면 멀쩡한 경로가
     조용히 사라지므로 양쪽을 다 못 박음.
+
+    지금 온톨로지에는 대상이 둘 붙은 노드가 없어 교집합은 "둘이 같은 대상"
+    으로만 잼. 여럿 붙는 경우는 tests/ontology/test_registry.py 의
+    test_several_subjects_all_become_dotted_lines 가 등록으로 만들어 잼.
     """
     assert crosses_groups(
-        ["platform_cctv_video", "extract_frames", "detect_track_crack"]
+        ["spoken_place", "get_railway_section", "search_ev_stations"]
     )
 
     # 실제 recipe 는 하나도 넘나들지 않는다. 넘나드는 것은 등록되지 않기 때문이다.
@@ -283,14 +283,14 @@ def test_a_path_that_crosses_subjects_is_blocked():
         assert not crosses_groups(recipe_nodes(recipe_id)), recipe_id
 
     # 대상이 붙은 노드가 하나뿐이면 넘나드는 것이 아니다. 비교할 상대가 없다.
-    assert not crosses_groups(["platform_cctv_video", "extract_frames"])
+    # 범용 노드(장소 좌표 변환)는 대상이 안 붙어 이 수에 안 들어간다.
+    assert not crosses_groups(["spoken_place", "geocode_place", "find_cctv"])
     assert not crosses_groups([])
 
-    # 한 노드가 여러 대상에 관한 것일 수 있다. 승강장 CCTV 영상은 승강장에도
-    # CCTV 에도 관한 것이라, 그 교집합으로 걸러진다.
-    assert len(about_of("platform_cctv_video")) > 1
-    assert not crosses_groups(["platform_cctv_video", "track_car_cctv_video"]), (
-        "둘 다 CCTV 에 관한 것이라 통해야 한다"
+    # 공통 대상이 있으면 통한다. CCTV 조회와 철도 노선 조회는 둘 다 교통이다.
+    assert about_of("find_cctv") & about_of("get_railway_lines")
+    assert not crosses_groups(["find_cctv", "get_railway_lines"]), (
+        "둘 다 교통에 관한 것이라 통해야 한다"
     )
 
 

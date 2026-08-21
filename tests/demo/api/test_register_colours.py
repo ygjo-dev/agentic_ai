@@ -74,7 +74,7 @@ NARROW_TO = min(BY_ENDPOINT, key=lambda node: len(recipe_nodes(BY_ENDPOINT[node]
 MARK = {
     "nodes": ["find_cctv"],
     "solid": [],
-    "dotted": [("find_cctv", "group_cctv")],
+    "dotted": [("find_cctv", "group_transport")],
     "accepted": build.chain_edges([recipe_nodes(r) for r in REGISTERED]),
 }
 
