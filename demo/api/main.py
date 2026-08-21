@@ -172,13 +172,16 @@ def _chat_events(form: ChatRequest, model: str | None = None):
     """발화 한 건의 이벤트 흐름. /chat 과 /chat/stream 이 같은 것을 씀.
 
     입력  요청 본문 · 쓸 LLM 모델 이름(없으면 기본 모델)
-    출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
+    출력  비동기 이벤트 흐름. 마지막은 반드시 type=result
     규칙  두 경로가 다른 답을 하면 화면과 curl 중 무엇을 믿을지가 갈림
+    제약  동기 for 로 돌지 않는다.
+          vendor 실행기가 코루틴이라 흐름 전체가 async generator 임
     """
     return execute_service.chat(
         form.text,
         llm_client=make_client(model),
         reason_max_length=profile(model).reason_max_length,
+        context=form.context,
     )
 
 
@@ -187,16 +190,16 @@ async def chat_endpoint(form: ChatRequest) -> dict:
     """KRRI_ASAP 이 부르는 ASAP-orchestrator 자리를 대신 받음.
 
     입력  form  text · sessionId · context · target_documents
-    출력  answer 와 commands. commands 는 아직 늘 빈 배열임
-    규칙  발화를 해석해 recipe 를 고르고 그 노드 순서대로 MCP 도구를 부름.
-          부른 순서가 answer 에 그대로 적힘
+    출력  answer 와 commands. commands 는 vendor 가 결과에서 만든 지도 명령임
+    규칙  발화를 해석해 recipe 를 고르고 그 노드 순서를 steps 로 바꿔
+          vendor 실행기에 넘김. 부른 순서가 answer 에 그대로 적힘
           /chat/stream 과 같은 흐름을 씀. 중간 이벤트를 버리고 마지막
           result 만 돌려줄 뿐임
-    제약  form 의 context 와 target_documents 를 해석하지 않는다.
-          아직 쓰는 곳이 없다
+    제약  form 의 target_documents 를 해석하지 않는다. 아직 쓰는 곳이 없다.
+          context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 함
     """
     last = {"answer": "", "commands": []}
-    for payload in _chat_events(form):
+    async for payload in _chat_events(form):
         if payload["type"] == "result":
             last = {"answer": payload["answer"], "commands": payload["commands"]}
     return last
@@ -221,7 +224,7 @@ async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream():
-        for payload in _chat_events(form):
+        async for payload in _chat_events(form):
             yield event(payload)
         yield "data: [DONE]\n\n"
 
