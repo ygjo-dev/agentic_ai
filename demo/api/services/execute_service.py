@@ -15,6 +15,8 @@ _execute_generic_mcp_workflow 가 steps 배열 하나를 받아 참조 해석($s
 recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
 """
 
+from collections import Counter
+
 from demo.api.services import ontology_service, resolve_service, step_service
 from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 
@@ -36,6 +38,22 @@ NO_PLACE_ANSWER = (
 
 # 도구가 아직 안 붙은 노드가 경로에 있을 때의 답. 이름을 적어 무엇이 없는지 알린다.
 UNWIRED_ANSWER = "{names} 기능이 아직 붙지 않아 실행할 수 없습니다."
+
+# 후보를 하나로 못 좁혔을 때의 머리말. 후보 수로 가른다.
+CLARIFY_HEADLINE = "어느 것을 보시겠습니까?"
+CLARIFY_MANY_HEADLINE = "여러 가지로 해석됩니다. 어느 것을 보시겠습니까?"
+
+# 긴 머리말로 바뀌는 후보 수.
+CLARIFY_MANY_FROM = 4
+
+# 부를 것이 하나도 없을 때의 답.
+NO_MATCH_ANSWER = "지금 할 수 있는 일 중에 맞는 것이 없습니다."
+
+# 후보 줄에서 앞 단계를 잇는 표시.
+STEP_JOIN = " -> "
+
+# 배선이 아직 없어 골라도 실행되지 않는 후보에 붙이는 표시.
+UNWIRED_MARK = " (아직 실행할 수 없음)"
 
 
 async def run(recipe_id: str, place: str, text: str = "", context: dict | None = None):
@@ -161,16 +179,95 @@ def _unwired_answer(recipe_id: str, missing: list[str]) -> str:
 def _no_recipe_answer(resolved: dict) -> str:
     """고른 recipe 가 없을 때의 답.
 
-    입력  resolve 결과
-    출력  왜 못 골랐는지와 LLM 이 적은 이유
-    규칙  후보가 있으면 무엇들 사이에서 갈렸는지 적음. 없으면 영역 밖이라고 함
+    입력  resolve 결과. candidate_recipe_ids · paths · reason 을 읽음
+    출력  후보가 있으면 머리말 한 줄과 번호 붙은 후보 목록. 없으면 영역 밖이라는
+          한 문장. 둘 다 뒤에 LLM 이 적은 이유가 붙음
+    규칙  후보 수로 머리말을 가름. 4개 이상이면 여러 갈래라고 먼저 말함
+          수를 문장에 넣지 않음. "둘 중" 처럼 쓰면 후보 수가 바뀔 때마다
+          어미가 틀어짐
+    제약  recipe id 를 문장에 적지 않는다.
+          사람에게 뜻이 없고, 온톨로지를 개편하면 번호가 통째로 바뀜.
+          응답 JSON 의 candidate_recipe_ids 는 그대로 두므로 화면과 도구는
+          여전히 id 로 읽음
     """
     candidates = resolved.get("candidate_recipe_ids") or []
     reason = resolved.get("reason") or ""
 
     if candidates:
-        head = "무엇을 원하시는지 하나로 좁히지 못했습니다. 후보 : " + " · ".join(candidates)
+        head = _clarify_head(candidates, resolved.get("paths") or {})
     else:
-        head = "지금 할 수 있는 일 중에 맞는 것이 없습니다."
+        head = NO_MATCH_ANSWER
 
     return f"{head}\n\n{reason}".rstrip()
+
+
+def _clarify_head(candidates: list[str], paths: dict) -> str:
+    """후보 목록을 사람이 고를 수 있는 모양으로.
+
+    입력  후보 recipe id 목록 · resolve 가 붙인 후보별 경로
+    출력  머리말 한 줄 + 후보마다 한 줄. 앞에 번호가 붙음
+    규칙  번호는 1부터. 사용자가 "1번" 이라고 답할 수 있어야 함
+          번호 자릿수를 맞춰 이름이 같은 칸에서 시작함
+    제약  번호로 답한 것을 받아 실행하지 않는다.
+          세션 상태와 저쪽 화면 계약이 필요함. 지금은 문구만 냄
+    """
+    labels = _candidate_labels(candidates, paths)
+    width = len(str(len(labels)))
+    headline = (
+        CLARIFY_MANY_HEADLINE if len(labels) >= CLARIFY_MANY_FROM else CLARIFY_HEADLINE
+    )
+
+    lines = [
+        f"  {str(number).rjust(width)}  {label}"
+        for number, label in enumerate(labels, start=1)
+    ]
+    return "\n".join([headline, *lines])
+
+
+def _candidate_labels(candidates: list[str], paths: dict) -> list[str]:
+    """후보마다 무엇을 하는 것인지 한 줄.
+
+    입력  후보 recipe id 목록 · 후보별 경로
+    출력  후보와 같은 순서의 문자열 목록
+    규칙  마지막 실행 노드의 이름이 그 recipe 가 결국 무엇을 하는지임
+          마지막 이름이 겹치는 후보끼리는 앞 단계를 붙여 가름. 안 겹치는
+          후보에는 안 붙임. 짧을수록 읽기 쉬움
+          경로가 비면 id 로 떨어짐. 사람에게 뜻은 없지만 줄이 사라지는 것보다
+          나음
+          배선이 없는 후보도 목록에 남기고 표시만 함. 온톨로지가 그 경로를
+          안다는 것이 보여야 하고, 무엇이 안 붙었는지가 다음 할 일임
+    """
+    chains = {recipe_id: _step_names(recipe_id, paths) for recipe_id in candidates}
+    tails = Counter(chain[-1] for chain in chains.values() if chain)
+
+    labels = []
+    for recipe_id in candidates:
+        chain = chains[recipe_id]
+        if not chain:
+            label = recipe_id
+        elif tails[chain[-1]] > 1:
+            label = STEP_JOIN.join(chain)
+        else:
+            label = chain[-1]
+
+        if step_service.unwired(recipe_id):
+            label += UNWIRED_MARK
+        labels.append(label)
+
+    return labels
+
+
+def _step_names(recipe_id: str, paths: dict) -> list[str]:
+    """경로에서 부를 노드의 이름만. 순서 그대로.
+
+    입력  recipe id · 후보별 경로
+    출력  실행 노드 이름 목록. 경로가 없으면 빈 목록
+    규칙  데이터 노드(말한 장소)는 뺌. 부를 것이 없고 모든 후보에 똑같이 들어
+          있어 후보를 가르는 데 쓸모가 없음
+    """
+    executable = set(ontology_service.executable_in(recipe_id))
+    return [
+        entry["name"]
+        for entry in (paths.get(recipe_id) or [])
+        if entry["node_id"] in executable
+    ]
