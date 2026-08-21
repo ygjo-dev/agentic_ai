@@ -23,7 +23,18 @@ from orchestrator.route_resolver import RouteResolutionError, resolve_route
 from orchestrator.schemas.response_schema import recipe_selection_schema
 
 # 상한 값 자체는 이 테스트의 관심이 아니다. 모델별 값은 models.yaml 에 있다.
-SCHEMA = recipe_selection_schema(200)
+#
+# 축(given · want · about)의 선택지도 마찬가지다. 엔진은 도메인을 모르므로
+# 무엇이 오든 상관없고, 실제 값은 부르는 쪽이 온톨로지에서 뽑아 넣는다.
+GIVEN, WANT, ABOUT = "axis_given", "axis_want", "axis_about"
+
+SCHEMA = recipe_selection_schema(200, [GIVEN], [WANT], [ABOUT])
+
+AXIS_CHOICES = {
+    "given_choices": f"- {GIVEN}",
+    "want_choices": f"- {WANT}",
+    "about_choices": f"- {ABOUT}",
+}
 from workflows.static.menu.load import load_menu
 
 UTTERANCE = "기상 관측값으로 결빙 위험도를 분석해줘"
@@ -33,7 +44,7 @@ def resolve(stub_llm_client, raw: str, utterance: str = UTTERANCE):
     client = stub_llm_client(raw)
     result = resolve_route(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
-        variables={"menu": load_menu(), "utterance": utterance},
+        variables={"menu": load_menu(), "utterance": utterance, **AXIS_CHOICES},
         response_schema=SCHEMA,
         llm_client=client,
     )
@@ -55,6 +66,9 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
 
     _, client = resolve(stub_llm_client, json.dumps({
         "reason": "결빙 위험도 분석과 하는 일이 같다.",
+        "given": GIVEN,
+        "want": WANT,
+        "about": ABOUT,
         "candidate_recipe_ids": ["recipe_004"],
         "status": SELECT,
         "recipe_id": "recipe_004",
@@ -70,18 +84,23 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
     "answer, status, recipe_id, candidates",
     [
         (
-            {"reason": "하는 일이 같다.", "candidate_recipe_ids": ["recipe_004"],
+            {"reason": "하는 일이 같다.",
+             "given": GIVEN, "want": WANT, "about": ABOUT,
+             "candidate_recipe_ids": ["recipe_004"],
              "status": SELECT, "recipe_id": "recipe_004"},
             SELECT, "recipe_004", ["recipe_004"],
         ),
         (
             {"reason": "Word 인지 PPT 인지 발화에 없다.",
+             "given": GIVEN, "want": None, "about": ABOUT,
              "candidate_recipe_ids": ["recipe_012", "recipe_013"],
              "status": CLARIFY, "recipe_id": None},
             CLARIFY, None, ["recipe_012", "recipe_013"],
         ),
         (
-            {"reason": "menu 에 없는 기능이다.", "candidate_recipe_ids": [],
+            {"reason": "menu 에 없는 기능이다.",
+             "given": None, "want": None, "about": None,
+             "candidate_recipe_ids": [],
              "status": NO_MATCH, "recipe_id": None},
             NO_MATCH, None, [],
         ),

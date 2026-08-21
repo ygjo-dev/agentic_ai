@@ -56,6 +56,17 @@ def recipe_ids() -> list[str]:
     return sorted(path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml"))
 
 
+def executable_in(recipe_id: str) -> list[str]:
+    """recipe 안에서 실제로 부를 노드.
+
+    입력  recipe id
+    출력  실행 노드 id 목록. 경로 순서 그대로
+    규칙  hasOutput 이 있으면 실행 노드. 데이터 노드(말한 장소)는 값을 준비할
+          뿐 부를 것이 없어 빠짐
+    """
+    return [node_id for node_id in recipe_nodes(recipe_id) if is_executable(node_id)]
+
+
 def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
     """recipe 한 벌의 실행 경로.
 

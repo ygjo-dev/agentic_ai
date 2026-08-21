@@ -9,6 +9,23 @@
 - recipes 아래의 key 하나가 Recipe 하나이고, 그 key 가 Recipe ID 다.
 - 각 Recipe 의 function 값이 그 Recipe 가 하는 일이다.
 
+[축 고르는 법]
+- reason 을 먼저 쓴다. reason 규칙은 아래 [규칙] 에 있다.
+- 그다음 given / want / about 셋을 쓴다. Menu 를 보기 전에 발화만 보고 쓴다.
+- 셋은 아래 목록에서 고른다. 목록에 없는 말을 쓰지 않는다.
+- 발화에 근거가 없으면 null 을 쓴다. 추측해서 채우지 않는다.
+  "국회의원 선거구 찾아줘" 에는 무엇을 돌려받을지가 없다 -> want = null
+- 그다음 candidate_recipe_ids 와 status 를 아래 [규칙] 대로 쓴다.
+
+[given — 발화가 무엇에서 시작하는가]
+{given_choices}
+
+[want — 발화가 무엇을 돌려받으려 하는가]
+{want_choices}
+
+[about — 발화가 무엇에 관한 것인가]
+{about_choices}
+
 [규칙]
 - Recipe ID 는 recipe_002, recipe_010 처럼 recipes 의 key 를 그대로 쓴다.
 - 각 Recipe 의 function 문장을 사용자 요청과 비교한다.

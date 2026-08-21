@@ -15,7 +15,7 @@ _execute_generic_mcp_workflow 가 steps 배열 하나를 받아 참조 해석($s
 recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
 """
 
-from demo.api.services import resolve_service, step_service
+from demo.api.services import ontology_service, resolve_service, step_service
 from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 
 # 우리가 누구인지. 이 값으로 Gateway 가 권한을 찾는다.
@@ -34,6 +34,9 @@ NO_PLACE_ANSWER = (
     "어느 장소인지 알 수 없습니다. '오송역' 처럼 장소를 함께 말씀해 주세요."
 )
 
+# 도구가 아직 안 붙은 노드가 경로에 있을 때의 답. 이름을 적어 무엇이 없는지 알린다.
+UNWIRED_ANSWER = "{names} 기능이 아직 붙지 않아 실행할 수 없습니다."
+
 
 async def run(recipe_id: str, place: str, text: str = "", context: dict | None = None):
     """recipe 의 노드 순서대로 도구를 부름. 이벤트를 차례로 냄.
@@ -41,12 +44,19 @@ async def run(recipe_id: str, place: str, text: str = "", context: dict | None =
     입력  recipe id · 장소 · 원 발화 · 저쪽 화면이 보낸 context
     출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
           step_start / step_end 는 실제로 불린 단계마다 한 쌍
-    규칙  부를 것이 없으면 곧장 result. vendor 는 빈 steps 를 실패로 봄
+    규칙  경로에 도구가 안 붙은 노드가 있으면 하나도 안 부르고 그렇다고 답함.
+          부르는 것만 부르면 반쪽 결과를 온전한 답인 것처럼 내놓게 됨
+          부를 것이 없으면 곧장 result. vendor 는 빈 steps 를 실패로 봄
           한 단계가 실패하면 vendor 가 거기서 멈춤. trace 에 그 단계까지만
           담기므로 이벤트도 거기까지만 나감
     제약  실패 문구를 우리가 다시 쓰지 않는다.
           vendor 가 무엇이 비었는지까지 적어 answer_draft 로 돌려줌
     """
+    missing = step_service.unwired(recipe_id)
+    if missing:
+        yield _result(_unwired_answer(recipe_id, missing), [])
+        return
+
     plan = step_service.plan(recipe_id, place)
     if not plan["steps"]:
         yield _result("부를 도구가 없습니다.", [])
@@ -133,6 +143,19 @@ def _commands(executed: dict) -> list[dict]:
         command.model_dump() if hasattr(command, "model_dump") else command
         for command in (executed.get("commands") or [])
     ]
+
+
+def _unwired_answer(recipe_id: str, missing: list[str]) -> str:
+    """도구가 안 붙은 노드가 있을 때의 답.
+
+    입력  recipe id · STEP_OF 에 없는 실행 노드 id 목록
+    출력  무엇이 아직 없는지 적은 한 문장
+    규칙  id 가 아니라 노드 이름으로 적음. 사람이 읽는 문장임
+    """
+    named = {entry["node_id"]: entry["name"] for entry in ontology_service.path_of(recipe_id)}
+    return UNWIRED_ANSWER.format(
+        names=" · ".join(named.get(node_id, node_id) for node_id in missing)
+    )
 
 
 def _no_recipe_answer(resolved: dict) -> str:

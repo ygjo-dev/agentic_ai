@@ -28,6 +28,8 @@
 | `models.yaml` `defaults.reason_max_length` | `200` | 없애면 모델이 recipe id 나열을 무한 반복해 202초에 끊긴다. 올려도 답은 그대로이고 시간만 는다 (200 · 400 · 600 -> 30 · 50 · 70초) |
 | `workflows/static/prompts/recipe_selection.md` | reason 에 ID 금지 | 이 규칙이 루프와 판정을 함께 잡는다. 빼면 3번 발화가 0/10 |
 | `workflows/static/menu/menu.yaml` | recipe 를 끝에 이어 붙임 | 대상별로 묶는 것을 재봤는데 모델에 따라 반대로 작용한다 |
+| `workflows/static/prompts/recipe_selection.md` 축 목록 | id + 이름 + 설명 730자 | 채운 프롬프트가 6758자다. `num_ctx` 8192(토큰) 에 여유가 많지 않으므로 선택지를 늘릴 때는 프롬프트 길이를 다시 재고 넣는다 |
+| `ontology/shortlist.py` `candidates()` about | 두 단 (걸린 것 우선, 없으면 범용) | 범용 recipe 를 늘 통과시키면 "국회의원 선거구" 에 웹 검색과 VWorld 경계가 따라오고, 늘 빼면 대상 없는 발화에서 후보가 0개가 된다 |
 
 모델마다 다른 값(`num_ctx` · `timeout` · `reason_max_length`)은 `models.yaml` 에 있다.
 목록에 없는 모델은 `defaults` 로 돈다. 어디에 붙는가(`OLLAMA_HOST` · `BACKEND_URL`)는
@@ -73,6 +75,9 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
+- **축 조회를 넣은 뒤의 판정을 아직 LLM 으로 안 쟀다.** 아래 2026-08-21 (이어서)
+  는 축이 맞다고 가정한 코드 계산이다. LLM 이 그 축을 실제로 쓰는지는
+  `python tools/check_resolve.py --runs 10` 으로 재야 한다.
 - **노드 등록 후(recipe 8)의 판정을 안 쟀다.** 등록 전 6개에서만 30/30 을
   굳혔다. 등록 장면이 시연의 핵심이라 재야 한다. 8개에서 3번 발화가 흔들린
   전례가 있다 (아래 2026-08-19 참고).
@@ -84,6 +89,61 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 ---
 
 ## 측정 기록
+
+### 2026-08-21 (이어서) · 발화 해석에 축 조회를 넣음 · recipe 48
+
+바로 아래 측정에서 다섯 발화가 전부 CLARIFY 가 됐고, 원인은 menu 문장의 공통
+앞토막이었다. LLM 이 쓴 `reason` 은 맞았다. 발화는 읽었고 48문장 사이에서 못
+고른 것이다. 그래서 그 `reason` 이 말한 것을 닫힌 목록의 객관식(축 셋)으로 받고,
+그 값으로 온톨로지를 조회해 후보를 뽑게 했다. LLM 호출은 그대로 한 번이다.
+
+**아래는 LLM 을 부르지 않은 코드 계산이다.** 축이 맞다고 놓고 조회만 돌린 것이라
+LLM 이 그 축을 실제로 쓰는지는 아직 모른다.
+
+```
+발화                        (given, want, about)                        후보
+오송역 위치 보여줘          spoken_place · point · -                     1  (001)
+오송역 좌표 알려줘          spoken_place · point · -                     1  (001)
+오송역 CCTV 보여줘          spoken_place · item_list · group_transport   5  (003 025 026 039 040)
+청주시 인구 구성 알려줘     spoken_place · statistics · group_population 3  (034 046 047)
+오송역 근처 충전소 찾아줘   spoken_place · item_list · group_ev          2  (035 036)
+국회의원 선거구 찾아줘      spoken_keyword · - · group_election          4  (007 008 009 010)
+```
+
+48개가 1~5개로 준다. 2번 발화의 후보 15개(앞토막이 같은 것들)를 가르는 것은
+`want` 다. 좌표를 내놓고 끝나는 recipe 는 001 하나뿐이라 나머지가 전부 빠진다.
+6번의 넷은 여기서도 안 갈린다. 발화가 모호한 것이라 되묻는 것이 맞다.
+
+**프롬프트가 5656자에서 6758자가 됐다** (menu 4316 · 축 목록 730 · 틀 1712).
+`num_ctx` 는 8192 토큰이라 여유가 많지 않다. 선택지를 늘릴 때 다시 재야 한다.
+
+#### 배선이 없는 recipe 를 부르고 있었다
+
+`step_service.plan()` 이 `STEP_OF` 에 없는 노드를 조용히 건너뛴다. recipe_022
+(geocode -> 행정구역 경계)를 고르면 geocode 만 부르고 "좌표를 조회했습니다" 라고
+답한다. 반쪽 결과가 온전한 답처럼 나간다.
+
+```
+recipe 48   온전히 도는 것  2  (001 · 025)
+            반쪽으로 도는 것 22
+            하나도 못 부르는 것 24
+```
+
+`step_service.unwired()` 를 만들어 `execute_service.run()` 이 실행 전에 본다.
+비어 있지 않으면 도구를 하나도 안 부르고 아직 안 붙은 기능의 이름을 답에 적는다.
+**배선(`STEP_OF`)은 늘리지 않았다.** 이번에 한 것은 없는 기능을 있는 척하지
+않게 막은 것뿐이다.
+
+#### 다시 시도하지 말 것
+
+- **축 조회에서 `is-a` 를 타고 올라가기** — `want` 를 조상까지 올리면 상위 타입
+  하나가 하위 전부를 끌어와 좁히는 뜻이 없어진다. `given` 도 같다. `record_key`
+  로 물으면 `spoken_identifier` 로 시작하는 일곱 개가 딸려온다.
+- **축이 셋 다 null 일 때 조회 결과를 쓰기** — `candidates()` 는 그때 48개를
+  전부 낸다. 그것을 후보로 삼으면 영역 밖 발화의 NO_MATCH 가 48개 CLARIFY 로
+  뒤집힌다. 고를 근거가 하나도 없다는 뜻이므로 LLM 이 쓴 것을 그대로 둔다.
+
+---
 
 ### 2026-08-21 · MCP 도구 39개 · recipe 48 · qwen3:8b
 

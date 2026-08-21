@@ -137,6 +137,9 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
           model      쓸 LLM 모델 이름. 없으면 기본 모델
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
           candidate_recipe_ids · reason · paths
+          LLM 이 쓴 축 셋(given · want · about)과 그 축으로 뽑은
+          shortlist_recipe_ids 도 함께 담김. 화면은 안 그림. 브라우저에서
+          응답을 열었을 때 왜 그 후보가 남았는지 보이면 됨
           paths 는 후보별 실행 경로. NO_MATCH 면 비어 있음
     규칙  model 은 측정용임. 같은 발화를 모델만 바꿔 재는 데 서버를 다시
           띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음

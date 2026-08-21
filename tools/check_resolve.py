@@ -1,13 +1,13 @@
 """시연 발화가 지금 온톨로지에서 통하는지 재는 도구.
 
-**아래 GT 는 지금 온톨로지 기준이 아니다.** MCP 도구 39개를 넣으면서 recipe 가
-2개에서 48개로 바뀌었고 번호가 통째로 옮겨갔다. 무엇이 정답인지 아직 모른다.
+**아래 GT 는 잠정이다.** MCP 도구 39개로 recipe 가 48개가 됐고, 거기에 축 조회
+(ontology/shortlist.py)가 붙었다. 무엇이 정답인지는 표를 보고 사람이 정한다.
 
 같은 발화가 두 번 다르게 나온 적이 있어 한 번 눌러본 것은 근거가 안 된다.
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python tools/check_resolve.py                   1~2번 × 5회
+    python tools/check_resolve.py                   1~6번 × 5회
     python tools/check_resolve.py --runs 10         굳히기
     python tools/check_resolve.py --only 2          고친 발화만 다시
     python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
@@ -15,7 +15,7 @@
 화면이 지나는 것과 같은 경로여야 표를 믿을 수 있으므로 POST /resolve 를 부른다.
 서버(uvicorn)가 떠 있어야 한다.
 
-발화는 확정됐지만 **이 파일은 지우지 않는다.** 온톨로지나 menu 가 바뀌면 다시
+발화가 확정된 뒤에도 **이 파일은 지우지 않는다.** 온톨로지나 menu 가 바뀌면 다시
 재야 하고, 그때 되살리는 것보다 두는 편이 싸다. 그래서 파일 하나에 담고
 저장소의 다른 곳을 건드리지 않는다.
 
@@ -24,6 +24,9 @@
 
 **여기와 NOTES.md 에 적힌 알아낸 것은 예전 온톨로지(철도 CCTV 14노드)와 예전
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:8b 다.
+
+표를 두 장 찍는다. 적중 표와 축 표다. 후보가 안 맞을 때 LLM 이 recipe 를 잘못
+고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다.
 """
 
 import argparse
@@ -38,20 +41,25 @@ from dotenv import load_dotenv
 
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
-# recipe id 로 적어도 되는 이유 : _init 의 001~002 는 고정이다. 노드를 등록해도
-# 새 recipe 는 003 부터 붙으므로 이 둘의 뜻은 안 변한다.
+# **기대값은 잠정이다.** 축 조회(ontology/shortlist.py)를 넣고 처음 재는
+# 발화들이라 무엇이 정답인지 표를 보고 사람이 정한다.
 #
 #   001  말한 장소 → 장소 좌표 변환
-#   002  말한 장소 → 장소 좌표 변환 → CCTV 조회
+#   025  말한 장소 → 장소 좌표 변환 → CCTV 조회
+#   035  말한 장소 → 장소 좌표 변환 → 전기차 충전소 검색
+#   046  말한 장소 → 장소 좌표 변환 → 지점 행정구역 판별 → 연령별 인구 구성 조회
+#   007~010  말한 키워드 → 선거 네 데이터셋의 검색. 발화만으로는 안 갈린다
 #
-# 둘 다 demo/ui/components/sample_picker.py 의 SAMPLES 와 같다.
-#
-# **아직 안 쟀다.** 001 은 002 의 앞토막이라 끝점이 실제로 갈리는지가 관건이고,
-# 그것은 실행기를 붙인 화면에서 본다. 예전 발화 넷과 거기서 알아낸 것은
-# NOTES.md 에 남아 있다 — 그건 예전 온톨로지 기준이다.
+# 1 과 2 는 같은 recipe 를 다르게 물은 것이다. 001 은 22개 recipe 의 앞토막이라
+# 끝점이 실제로 갈리는지가 관건이고, 그것을 가르는 것이 want 축이다.
 UTTERANCES = [
-    (1, "오송역 좌표 알려줘",    {"recipe_001"}, True),
-    (2, "오송역 CCTV 보여줘",    {"recipe_002"}, True),
+    (1, "오송역 위치 보여줘",        {"recipe_001"}, True),
+    (2, "오송역 좌표 알려줘",        {"recipe_001"}, True),
+    (3, "오송역 CCTV 보여줘",        {"recipe_025"}, True),
+    (4, "청주시 인구 구성 알려줘",   {"recipe_046"}, True),
+    (5, "오송역 근처 충전소 찾아줘", {"recipe_035"}, True),
+    (6, "국회의원 선거구 찾아줘",
+     {"recipe_007", "recipe_008", "recipe_009", "recipe_010"}, True),
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -106,11 +114,20 @@ def _short(recipe_ids) -> str:
     return "{" + ", ".join(trimmed) + "}"
 
 
-def _call_resolve(utterance: str, model: str | None = None) -> frozenset:
+def _axes(result: dict) -> tuple:
+    """응답의 축 셋. 표에 한 줄로 찍을 형태.
+
+    출력  (given, want, about). 안 쓴 축은 "-"
+    규칙  Counter 의 key 라 튜플로 둠. 리스트는 해시가 안 됨
+    """
+    return tuple(result.get(axis) or "-" for axis in ("given", "want", "about"))
+
+
+def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  recipe_id 와 candidate_recipe_ids 를 합친 후보 집합
+    출력  (후보 집합, 축 셋). 후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
     """
@@ -128,32 +145,39 @@ def _call_resolve(utterance: str, model: str | None = None) -> frozenset:
     response.raise_for_status()
     result = response.json()
     found = [result.get("recipe_id"), *(result.get("candidate_recipe_ids") or [])]
-    return frozenset(rid for rid in found if rid)
+    return frozenset(rid for rid in found if rid), _axes(result)
 
 
 # ── 측정 ────────────────────────────────────────────────────────────
 
 
-def _measure(entries, runs: int, outcomes: dict, model: str | None = None) -> None:
+def _measure(
+    entries, runs: int, outcomes: dict, axes: dict, model: str | None = None
+) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
-    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict · 모델 이름
-    규칙  outcomes[번호] 에 나온 집합들의 Counter 를 쌓음
+    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 둘 · 모델 이름
+    규칙  outcomes[번호] 에 나온 후보 집합들의 Counter 를 쌓음
+          axes[번호] 에 나온 (given, want, about) 조합의 Counter 를 쌓음
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
-          오류도 결과의 하나로 Counter 에 남김
+          오류도 결과의 하나로 Counter 에 남김. 그때 축은 안 쌓음. 응답이 없음
     제약  결과를 돌려주지 않는다.
           받은 dict 에 채움. 중간에 끊겨도(Ctrl-C · 서버 중단) 거기까지의
           결과가 부르는 쪽에 남아 있어야 표를 찍을 수 있음
     """
     for number, utterance, _expected, _default in entries:
         counter = Counter()
+        axis_counter = Counter()
         outcomes[number] = counter
+        axes[number] = axis_counter
         sys.stdout.write(f"  {number} ")
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                counter[_call_resolve(utterance, model)] += 1
+                found, axis = _call_resolve(utterance, model)
+                counter[found] += 1
+                axis_counter[axis] += 1
                 sys.stdout.write(".")
             except ServerDown:
                 sys.stdout.write("\n")
@@ -230,6 +254,43 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
         print("  ⚠ 완전 적중이 아닌 발화 : " + " · ".join(str(n) for n in imperfect))
 
 
+AXIS_WIDTH = 46  # 축 표에서 (given, want, about) 칸의 폭.
+
+
+def _print_axes(entries, axes: dict) -> None:
+    """발화마다 어떤 축이 나왔는지.
+
+    입력  발화 목록 · {번호: 축 조합 Counter}
+    규칙  많이 나온 것부터. 조합이 하나면 한 줄, 갈리면 여러 줄
+          적중 표가 안 맞을 때 무엇이 틀렸는지 여기서 갈림.
+          축이 흔들렸는지, 축은 같은데 LLM 이 recipe 를 다르게 골랐는지
+    """
+    print()
+    print(
+        "  "
+        + _pad("#", 3)
+        + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad("given · want · about", AXIS_WIDTH)
+        + "횟수"
+    )
+
+    for number, utterance, _expected, _default in entries:
+        counter = axes.get(number)
+        if not counter:
+            continue
+
+        head = (
+            "  "
+            + _pad(str(number), 3)
+            + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+        )
+        rows = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+        for index, (axis, count) in enumerate(rows):
+            prefix = head if index == 0 else " " * _width(head)
+            shown = _clip(" · ".join(axis), AXIS_WIDTH - 2)
+            print(prefix + _pad(shown, AXIS_WIDTH) + f"{count}회")
+
+
 def _recipe_state() -> str:
     """표 머리에 적을 지금 recipe 상태. _init 그대로인지, 노드가 등록됐는지."""
     current = sorted(p.stem for p in RECIPES_DIR.glob("recipe_*.yaml"))
@@ -262,9 +323,9 @@ def main() -> int:
     )
     print()
 
-    outcomes, note, status = {}, "", 0
+    outcomes, axes, note, status = {}, {}, "", 0
     try:
-        _measure(entries, args.runs, outcomes, args.model)
+        _measure(entries, args.runs, outcomes, axes, args.model)
     except ServerDown:
         # 재시도하지 않는다. 여기까지 잰 것이 있으면 표는 찍는다.
         note, status = "uvicorn 을 먼저 실행하세요", 1
@@ -274,6 +335,8 @@ def main() -> int:
 
     if any(outcomes.values()):
         _print_table(entries, outcomes, args.runs)
+    if any(axes.values()):
+        _print_axes(entries, axes)
     if note:
         print()
         print(note)

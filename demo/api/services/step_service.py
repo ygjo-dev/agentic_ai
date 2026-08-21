@@ -87,6 +87,22 @@ def place_in(text: str) -> str | None:
     return None
 
 
+def unwired(recipe_id: str) -> list[str]:
+    """아직 도구가 안 붙은 노드.
+
+    입력  recipe id
+    출력  STEP_OF 에 없는 실행 노드 id 목록. 경로 순서. 전부 있으면 빈 목록
+    규칙  실행 노드만 셈. 데이터 노드는 부를 것이 없어 세지 않음
+          부르는 쪽(execute_service.run)이 비어 있지 않으면 도구를 하나도
+          안 부름. 48개 중 온전히 도는 것은 001 과 025 둘뿐임
+    """
+    return [
+        node_id
+        for node_id in ontology_service.executable_in(recipe_id)
+        if node_id not in STEP_OF
+    ]
+
+
 def plan(recipe_id: str, place: str) -> dict:
     """recipe 한 벌을 vendor 가 받는 실행 계획으로.
 
@@ -97,6 +113,7 @@ def plan(recipe_id: str, place: str) -> dict:
     규칙  step id 는 s1 · s2 … 로 붙음. $prev 를 앞 step 의 id 로 바꿈
           STEP_OF 에 없는 노드는 step 을 만들지 않음. 데이터 노드
           (spoken_place)는 값을 준비할 뿐 부를 것이 없음
+          실행 노드가 빠져 반쪽으로 도는 것은 부르기 전에 unwired 가 막음
     제약  첫 step 의 input 에 $prev 를 쓰지 않는다. 가리킬 앞 단계가 없음
     """
     steps: list[dict] = []
