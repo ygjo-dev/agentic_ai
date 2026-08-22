@@ -28,7 +28,9 @@
 | `models.yaml` `defaults.reason_max_length` | `200` | 없애면 모델이 recipe id 나열을 무한 반복해 202초에 끊긴다. 올려도 답은 그대로이고 시간만 는다 (200 · 400 · 600 -> 30 · 50 · 70초) |
 | `workflows/static/prompts/recipe_selection.md` | reason 에 ID 금지 | 이 규칙이 루프와 판정을 함께 잡는다. 빼면 3번 발화가 0/10 |
 | `workflows/static/menu/menu.yaml` | recipe 를 끝에 이어 붙임 | 대상별로 묶는 것을 재봤는데 모델에 따라 반대로 작용한다 |
-| `workflows/static/prompts/recipe_selection.md` 축 목록 | id + 이름 + 설명 730자 | 채운 프롬프트가 6758자다. `num_ctx` 8192(토큰) 에 여유가 많지 않으므로 선택지를 늘릴 때는 프롬프트 길이를 다시 재고 넣는다 |
+| `workflows/static/prompts/recipe_selection.md` 축 목록 | id + 이름 + 설명 730자 | 채운 프롬프트가 7133자다. `num_ctx` 는 32768(토큰) 이라 지금은 여유가 있다 — 옛 근거(8192 · 6758자)는 2026-08-21 측정 기록 쪽에 날짜와 함께 남아 있다. 선택지를 늘릴 때 다시 재는 것은 그대로다 |
+| `ontology/registry.py` `MENU_BUDGET` | `6000` | 근거가 낡았다. `num_ctx` 8192 시절 값이고 지금은 32768 이다. 프로덕션에서 읽는 곳이 0 이고 테스트 하나가 보는 회귀 방지선이다 (`registry.py` 주석). 올릴 이유도 없다 — 진짜 제약은 컨텍스트 크기가 아니라 문장 변별력이다. menu 문장의 앞 30자가 23개나 같아서 shortlist 를 만들었다. 자수를 늘리면 오히려 나빠진다. 개편에서 잴 것은 자수가 아니라 "앞토막이 같은 문장 수" 다 |
+| `ontology/registry.py` `MAX_STEPS` | `4` | 같은 성격이다. `registry.py` 주석이 스스로 "임시방편이다. 경로 길이가 문제가 아니라 말이 안 되는 조합이 섞이는 것이 문제" 라고 적고 있고, 그 조합 문제는 온톨로지 개편이 푼다. 개편에서 다시 본다 |
 | `ontology/shortlist.py` `candidates()` about | 두 단 (걸린 것 우선, 없으면 범용) | 범용 recipe 를 늘 통과시키면 "국회의원 선거구" 에 웹 검색과 VWorld 경계가 따라오고, 늘 빼면 대상 없는 발화에서 후보가 0개가 된다 |
 
 모델마다 다른 값(`num_ctx` · `timeout` · `reason_max_length`)은 `models.yaml` 에 있다.
@@ -103,6 +105,140 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   쓴다 — 무엇을 조회하려던 것인지는 단계 줄이 말한다.
   headline 을 명사형(`"{arg} 행정구역"`)으로 바꾸면 성공 · 빈 결과 · 오류 셋을
   한 문장 틀로 합칠 수 있다. `STEP_OF` 48줄을 다시 쓰는 일이라 이번에 안 했다.
+
+### 배선이 온톨로지의 선언을 반만 따른다 — 34개 중 13개
+
+노드 아홉이 입력 타입을 **둘** 선언했는데 `STEP_OF` 는 노드 하나당 한 줄이라
+하나만 적을 수 있다. 어느 쪽을 골랐느냐에 따라 오류가 거울처럼 갈린다.
+
+```
+                                   선언              배선이 고른 쪽
+search_admin_boundaries            keyword+extent     keyword
+get_vworld_boundaries              keyword+extent     keyword
+get_railway_lines                  place_name+extent  place_name
+search_assembly_districts          keyword+extent     keyword
+search_assembly_pledge_districts   keyword+extent     keyword
+search_local_pledge_summaries      keyword+extent     keyword
+search_population_statistics       keyword+extent     keyword
+search_ev_stations                 keyword+extent     extent
+search_ev_chargers                 keyword+extent     extent
+```
+
+**A. 발화 인자를 버린다 (2개).** 첫 실행 노드인데 배선이 `$prev` 만 쓴다.
+
+```
+recipe_012  말한 키워드 -> search_ev_stations   ev.searchStations
+recipe_013  말한 키워드 -> search_ev_chargers   ev.searchChargers
+```
+
+`_filled` 이 앞 단계 없는 `$prev` 칸을 빼므로 `{"radiusMeters": 15000}` 만
+나간다. bbox 넷이 전부 optional 이라 오류 없이 전국 검색이 된다.
+
+```
+발화        "청주오스코 충전소 알려줘"
+나가는 것    {"radiusMeters": 15000}      키워드가 사라졌다
+```
+
+`ev.searchStations` 스키마에 칸이 있다 (`KRRI_ASAP/ASAP-mcp/main.py:532`).
+
+```
+"query": { "type": "string", "description": "충전소명, 주소, 운영기관 키워드" }
+```
+
+**B. 앞 단계 결과를 안 쓴다 (11개).** 앞 단계가 있는데 배선이 `@arg` 만 쓴다.
+
+```
+recipe_022  geocode_place       -> search_admin_boundaries
+recipe_024  geocode_place       -> get_vworld_boundaries
+recipe_026  geocode_place       -> get_railway_lines
+recipe_028  geocode_place       -> search_assembly_districts
+recipe_030  geocode_place       -> search_assembly_pledge_districts
+recipe_032  geocode_place       -> search_local_pledge_summaries
+recipe_034  geocode_place       -> search_population_statistics
+recipe_037  get_railway_section -> search_admin_boundaries
+recipe_038  get_railway_section -> get_vworld_boundaries
+recipe_040  get_railway_section -> get_railway_lines
+recipe_041  web_search          -> web_fetch
+```
+
+recipe_022 가 화면에서 CLARIFY 후보로 나온 그것이다.
+
+```
+menu 문장   "말한 장소로 위치 좌표와 지도 범위를 찾고, 이름이나 코드, 지도
+             범위로 시도와 시군구, 읍면동 경계를 조회한다."
+실제        s1 geo.geocode                    {"query": "오송역"}
+            s2 adminBoundary.searchBoundaries {"query": "오송역"}   앞 결과를 안 쓴다
+```
+
+geocode 를 부르고 버린다. 행정구역 DB 에 "오송역" 이라는 경계 이름이 없으니
+0건이다. **menu 문장이 약속한 것과 실행되는 것이 다르다.**
+
+B 가 전부 틀린 답인 것은 아니다.
+
+```
+낭비일 뿐    recipe_026  getRailwayLines(stationName="오송역")
+             stationName 에 역 이름은 맞는 값이다. geocode 단계만 헛돈다
+명백히 틀림  나머지 열.  역 이름 · 구간 이름을 경계 · 선거구 · 인구 검색어로 보낸다
+             recipe_041 은 web_fetch 의 url 자리에 발화 인자를 넣는다.
+             검색 결과에서 URL 을 꺼내야 맞다
+```
+
+**지금 고치지 않는다.** 한 줄을 채우면 반대쪽이 깨진다. 제대로 된 답은 배선을
+노드별이 아니라 **간선별**(무엇에서 무엇으로)로 적는 것이고, 개편의
+「도구를 온톨로지에 넣을 것인가」와 같은 결정이다.
+
+**설명도 함께 빠졌다.** `search_ev_stations` 의 `description` 이 "지도 범위와
+지역, 충전기 유형으로 전기차 충전소를 검색한다" 라 키워드로 찾는다는 말이 없다.
+도구 description 을 옮기며 빠진 것이다. 개편에서 description 을 다시 쓸 때
+**도구 `inputSchema` 의 입력 칸을 전부 훑어 빠진 능력이 없는지 본다.**
+
+**세 층 중 관계만 맞았다.** 관계(hasInput 둘)는 정확했고 그 덕에 경로가 생겼다.
+못 따라간 것은 파생물 둘(`description` · `STEP_OF`)이다.
+
+### 화면 실측으로 셋이 한꺼번에 보였다 (2026-08-23 · 1회)
+
+```
+발화    "청주오스코 충전소 알려줘"
+결과    SELECT recipe_048
+        말한 장소 -> 장소 좌표 변환 -> 지점 행정구역 판별 -> 충전소 상세 조회
+답      "충전소 상세 조회 기능이 아직 붙지 않아 실행할 수 없습니다."
+        도구를 하나도 안 불렀다 (resolve 한 단계만)
+```
+
+**recipe_012 를 못 골랐다.** 그 menu 문장에 이름으로 찾는다는 말이 없다.
+그래서 A 부류 둘은 "틀리게 도는" 것이 아니라 **도달 자체가 안 되는 죽은 능력**에
+가깝다. 실제로 사용자에게 보이는 오류는 B 부류다.
+
+**recipe_048 이 뽑혔다.** 「적을 수 없었던 경로」의 가짜 넷 중 하나다.
+`find_admin_boundary_by_point` 가 내놓는 행정구역 코드와 `ev.getStation` 이 받는
+충전소 번호를 온톨로지가 같은 `식별자` 타입으로 묶어 생긴 경로다.
+`given` 이 `spoken_place` 로 갔다 — "청주오스코" 를 장소로 읽었고, `place_name`
+이 지명 · 역 이름 · 구간 이름을 다 삼키는 문제와 같은 뿌리다.
+
+**`unwired` 가 막았다.** "오송시" 사례와 정반대다. 그쪽은 전부 성공해서 틀린
+답이 나갔고 이쪽은 정직하게 못 한다고 말했다. 반쪽 실행을 막아둔 판단이 값을
+했다.
+
+**1회다.** 반복해서 재지 않았으므로 비율로 읽으면 안 된다.
+
+### 「찍은 지점」 시작 데이터 노드가 없다
+
+저쪽 화면은 지도에서 찍은 점을 `context.selectedLocation` 으로 보내고 저쪽
+프롬프트는 `$context.selectedLocation.lon` 을 쓴다. 우리는 그 칸을 안 읽는다.
+그래서 "이 근처 CCTV 보여줘" 를 못 한다. 시작 데이터 노드를 더하면 `find_cctv`
+가 혼자 첫 노드로 불리는 진짜 경우가 생기고, 그때 `$prev` 자리에 `$context` 가
+들어가야 한다. 위 간선별 배선과 같은 자리에서 풀린다.
+
+### 경로와 배선이 맞는지 세는 검사가 없다
+
+recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 줄이면 된다.
+개편 때 `tools/` 에 넣는다. 세는 규칙은 이렇다.
+
+```
+배선이 다 있는 recipe 만 본다 (unwired 가 빈 것)
+첫 실행 노드인데 input 이 $prev 만 쓴다        -> A
+앞 실행 노드가 있는데 input 이 @arg 만 쓴다    -> B
+```
 
 ---
 
@@ -662,6 +798,27 @@ recipe 039 (철도 구간 -> CCTV)가 `$prev.location` 을 쓴다. `rail.getSect
 응답에 `location` 이 없으면 참조가 None 이 되고, 중심 좌표가 없으니 어댑터가
 안 걸려 `road.getCctv` 의 필수 입력이 비었다는 실패로 끝난다. 틀린 답이 나가는
 것이 아니라 실패 문구가 나가므로 그대로 뒀다.
+
+#### 정정 (2026-08-23)
+
+- **「온전히 도는 것 24」는 "도구를 다 부른다" 는 뜻일 뿐이다.** 배선이 다 있는
+  34개 중 13개가 온톨로지의 선언과 어긋나게 돈다 (위 열린 과제 A · B).
+- **왜 안 보였는지 셋.** `unwired()` 가 "`STEP_OF` 에 줄이 있느냐" 만 보고 "그
+  줄이 이 경로에 맞느냐" 는 안 본다 / 도구들이 관대해서 오류가 안 난다
+  (`ev.searchStations` 는 bbox 넷이 optional, `searchBoundaries` 는 query 가 안
+  맞으면 그냥 0건) / 어긋난 recipe 대부분이 화면에서 한 번도 안 켜졌다.
+- **당시 적용한 규칙이 원인이다.** 이 기록에 "좌표를 받는 도구와 이름을 받는
+  도구만 적었다" 고 있다. 도구를 둘 중 하나로 분류해 적었는데 아홉 개는
+  둘 다였다.
+- **저쪽에는 EV 배선이 아예 없다.** `ASAP-orchestrator/plugins` 12개와
+  `harnesses` 3개에 EV 관련이 하나도 없다. 저쪽 전체에서 `ev.searchStations` 가
+  나오는 곳은 프롬프트 예시 한 줄뿐이고 (`generic_mcp_executor.py:55`) 거기에도
+  좌표 경우만 있다. 키워드 경우는 Gemini 가 `inputSchema` 를 읽고 스스로 쓴다.
+
+```
+저쪽   배선을 안 적는다      될 때도 있고 안 될 때도 있다. 재현이 안 된다
+우리   한 줄로 적었다        늘 같게 돈다. 그 한 줄이 틀리면 늘 틀린다
+```
 
 ---
 
