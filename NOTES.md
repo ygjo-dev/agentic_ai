@@ -206,8 +206,20 @@ B 가 전부 틀린 답인 것은 아니다.
 ```
 
 **recipe_012 를 못 골랐다.** 그 menu 문장에 이름으로 찾는다는 말이 없다.
-그래서 A 부류 둘은 "틀리게 도는" 것이 아니라 **도달 자체가 안 되는 죽은 능력**에
-가깝다. 실제로 사용자에게 보이는 오류는 B 부류다.
+
+> **정정 (2026-08-23 밤, 기준선 측정).** 바로 위 두 문장 중 "죽은 능력" 이라는
+> 판단은 틀렸다. 발화 7 "전기차 충전소 데이터 검색해줘" 가 `{012, 013}` 을
+> 10/10 으로 후보에 올렸다.
+>
+> ```
+> recipe_012 는 후보에는 오른다. 다만 recipe_013 과 영원히 비겨 SELECT 가 안 된다.
+> 사람이 CLARIFY 에서 1번을 골라 실행하는 길이 생기면 그때 인자를 버리는 것이
+> 실제로 보이게 된다. "죽은 능력" 이 아니라 "아직 안 드러난 오류" 다.
+> "청주오스코 충전소 알려줘" 가 recipe_048 로 간 것과는 별개의 사실이다.
+> ```
+>
+> 따라서 "실제로 사용자에게 보이는 오류는 B 부류다" 도 반만 맞다. A 부류는
+> 안 보이는 것이 아니라 CLARIFY 에 가려 아직 안 보인 것이다.
 
 **recipe_048 이 뽑혔다.** 「적을 수 없었던 경로」의 가짜 넷 중 하나다.
 `find_admin_boundary_by_point` 가 내놓는 행정구역 코드와 `ev.getStation` 이 받는
@@ -243,6 +255,420 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-23 (넷째) · 개편의 계기판 둘 · check_wiring · probe_shapes
+
+**왜 만들었는가.** 개편에서 배선을 노드별에서 간선별로 다시 적는다. 그때 계속
+부를 눈 둘이 없었다.
+
+```
+tools/check_wiring.py   경로와 배선이 맞는지 센다.  서버도 LLM 도 안 쓴다
+tools/probe_shapes.py   도구 42개가 어떤 칸으로 답하는지 적는다
+```
+
+바로 위 「열린 과제」의 "경로와 배선이 맞는지 세는 검사가 없다" 와 인수인계
+문서의 "output 모양을 모르는 것이 걸림돌" 을 각각 없애려는 것이다.
+**둘 다 재기만 한다.** 온톨로지 · `STEP_OF` · recipe · menu · description 은
+한 글자도 안 고쳤다.
+
+#### check_wiring — 13개를 그대로 재현했다
+
+```
+  A  발화 인자를 버린다 (2개)
+  recipe        첫 실행 노드                    도구
+  recipe_012    search_ev_stations              ev.searchStations
+  recipe_013    search_ev_chargers              ev.searchChargers
+
+  B  앞 단계 결과를 안 쓴다 (11개)
+  recipe        앞 노드 -> 노드                             도구
+  recipe_022    geocode_place -> search_admin_boundaries    adminBoundary.searchBoundaries
+  recipe_024    geocode_place -> get_vworld_boundaries      vworld.getAdministrativeBoundaries
+  recipe_026    geocode_place -> get_railway_lines          geo.getRailwayLines
+  recipe_028    geocode_place -> search_assembly_districts  election.searchAssemblyDistricts
+  recipe_030    geocode_place -> search_assembly_pledge_districts
+  recipe_032    geocode_place -> search_local_pledge_summaries
+  recipe_034    geocode_place -> search_population_statistics
+  recipe_037    get_railway_section -> search_admin_boundaries
+  recipe_038    get_railway_section -> get_vworld_boundaries
+  recipe_040    get_railway_section -> get_railway_lines
+  recipe_041    web_search -> web_fetch                     web.fetch
+
+  recipe 48개 · 배선이 다 있는 것 34개 · A 2개 · B 11개 · 합계 13개
+```
+
+손으로 센 것(위 「배선이 온톨로지의 선언을 반만 따른다」)과 recipe 번호까지
+같다. **규칙을 숫자에 맞추려고 고친 적 없다.** 한 번에 나왔다.
+
+`STEP_OF` · `unwired` · `SPOKEN_VALUE` · `PREVIOUS_STEP` 을 `step_service` 에서
+import 한다. 표를 옮겨 적으면 배선을 고칠 때 두 곳이 조용히 어긋나고 그러면
+세는 숫자를 못 믿는다. 테스트는 안 두었다 — `tools/` 는 재는 도구이고 이 숫자가
+안 나오면 그 자리에서 드러난다.
+
+#### 응답 모양 사전 — 도구 42개
+
+`tools/probe_shapes.py`. 목록은 `curl -s http://localhost:3000/api/tools` 로
+받았다 (**이 장비는 3.0초**. Windows 21.1초). 42개를 다 누르는 데 **10.6초**.
+
+```
+  도구                                        결과       건수   좌표 칸                 bbox 칸               코드 칸                          최상위 칸                                     0건 문구 · 비고
+  rail.getSectionGeometry                     오류       -      -                       -                     -                                -                                             구간 '오송역'을(를) 찾을 수 없습니다.
+  road.getCctv                                데이터     82     [0].centerLon=수 …      -                     -                                cctvId cctvName centerLon centerLat cctvUrl…  -
+  geo.geocode                                 데이터     ?      location=[a,b]          bbox=[[a,b],[c,d]]    -                                location bbox address                         -
+  geo.getRailwayLines                         데이터     31     -                       -                     -                                type features                                 -
+  adminBoundary.getDatasetInfo                데이터     ?      -                       bbox=없음             -                                source datasetVersion crs format layers bbo…  -
+  adminBoundary.searchBoundaries              0건        0      -                       -                     -                                type features count totalMatches query warn…  행정구역 DB 데이터가 없거나 PostGIS…
+  adminBoundary.findBoundaryByPoint           0건        0      -                       -                     -                                type features count totalMatches query warn…  행정구역 DB 데이터가 없거나 PostGIS…
+  population.getDatasetInfo                   데이터     ?      -                       -                     id=문자                          id name source sourcePage sourceUrl format …  -
+  population.searchStatistics                 데이터     4      -                       bbox=없음             level=sigungu items[0].code=…    type features count totalMatches referenceD…  -
+  population.getAgeProfile                    인자 없음  -      -                       -                     -                                -                                             level, code
+  population.getTrend                         인자 없음  -      -                       -                     -                                -                                             level, code
+  vworld.getDatasetInfo                       데이터     ?      -                       -                     -                                source reference crs requestLimit adminBoun…  -
+  vworld.getAdministrativeBoundaries          데이터     4      -                       bbox=[a,b,c,d]       items[0].sig_cd=43111 …          type features items count totalFetched data…  -
+  knowledge.query                             0건        0      -                       -                     -                                -                                             문구 없음
+  knowledge.listDocs                          0건        0      -                       -                     -                                -                                             문구 없음
+  knowledge.deleteDoc                         인자 없음  -      -                       -                     -                                -                                             문서를 지움
+  bim.listModels                              0건        0      -                       -                     -                                -                                             문구 없음
+  bim.updateModel                             인자 없음  -      -                       -                     -                                -                                             모델을 고침
+  bim.deleteModel                             인자 없음  -      -                       -                     -                                -                                             모델을 지움
+  dem.getInfo                                 오류       -      -                       -                     -                                -                                             layer.json not found: /app/data/dem…
+  ev.getDatasetInfo                           데이터     ?      -                       bbox=[a,b,c,d]       id=문자                          id name source format status stationCount c…  -
+  ev.searchStations                           데이터     500    items[0].centerLon=수 … -                     items[0].id=ev_station_PW012325  count totalMatches pageNo limit aggregation…  -
+  ev.getStation                               인자 없음  -      -                       -                     -                                -                                             statId
+  ev.searchChargers                           데이터     100    items[0].centerLon=수 … -                     items[0].id=ev_station_PW012325  count totalMatches pageNo limit aggregation…  -
+  election.getDatasetInfo                     데이터     ?      -                       bbox=[[a,b],[c,d]]    datasetId=문자                   datasetId name electionDate districtCount c…  -
+  election.searchDistricts                    데이터     4      -                       bbox=[[a,b],[c,d]]    items[0].code=2431401 …          type features items count totalMatches limi…  -
+  election.getDistrict                        데이터     1      -                       bbox=[[a,b],[c,d]]    features[0].id=문자              type features item count totalMatches datas…  -
+  election.findDistrictByPoint                데이터     1      -                       bbox=[[a,b],[c,d]]    features[0].id=문자              type features item count dataset query bbox   -
+  election.getAssemblyDistrictDatasetInfo     데이터     ?      -                       bbox=[[a,b],[c,d]]    datasetId=문자                   datasetId name electionDate featureCount di…  -
+  election.searchAssemblyDistricts            데이터     5      -                       bbox=[[a,b],[c,d]]    items[0].code=4311101 …          type features items count totalMatches limi…  -
+  election.getAssemblyDistrict                데이터     1      -                       bbox=[[a,b],[c,d]]    features[0].id=1141001           type features item count totalMatches datas…  -
+  election.findAssemblyDistrictByPoint        데이터     1      -                       bbox=[[a,b],[c,d]]    items[0].code=4311301 …          type features items count totalMatches limi…  -
+  election.getAssemblyPledgeDatasetInfo       데이터     ?      -                       bbox=[[a,b],[c,d]]    datasetId=문자                   datasetId name electionDate featureCount di…  -
+  election.searchAssemblyPledgeDistricts      데이터     20     -                       bbox=[[a,b],[c,d]]    items[0].code=4313001 …          type features items count totalMatches limi…  -
+  election.getAssemblyPledgeDistrict          데이터     1      -                       bbox=[[a,b],[c,d]]    features[0].id=문자              type features item count totalMatches datas…  -
+  election.findAssemblyPledgeDistrictByPoint  데이터     1      -                       bbox=[[a,b],[c,d]]    items[0].code=4311301 …          type features items count totalMatches limi…  -
+  election.getLocalPledgeSummaryDatasetInfo   데이터     ?      -                       -                     datasetId=문자                   datasetId name electionDate featureCount si…  2026 지방선거 시도별 공약 요약 DB…
+  election.searchLocalPledgeSummaries         0건        0      -                       -                     -                                type features items count totalMatches data…  2026 지방선거 시도별 공약 요약 데이…
+  election.getLocalPledgeSummary              0건        0      -                       -                     -                                status message dataset query                  조건에 맞는 2026 지방선거 시도별…
+  election.findLocalPledgeSummaryByPoint      0건        0      -                       -                     -                                status message dataset query                  해당 좌표를 포함하는 시도 공약 요…
+  web.search                                  권한 없음  -      -                       -                     -                                -                                             MCP tool 'web-search/web.search' i…
+  web.fetch                                   인자 없음  -      -                       -                     -                                -                                             url
+  ─────────────────────────────────────────────────────────────────────────────
+  도구 42개                                   데이터 24 · 0건 8 · 오류 2 · 인자 없음 7 · 권한 없음 1
+```
+
+**표에 값을 적지 않았다.** 어제 vworld 응답이 405KB 였다. `geojson` ·
+`coordinates` · `features` 는 길이만 적고 모양은 `[a,b]` 처럼 자리로만 적는다.
+값이 필요하면 `tools/probe_out/<도구>.<라벨>.json` 을 본다.
+
+**건수는 `count`(한 쪽)지 `totalMatches`(전체)가 아니다.** 세는 순서가
+`probe_tools` 와 같아서 그렇다. 크게 갈리는 줄이 셋이다.
+
+```
+ev.searchStations                       count 500  totalMatches 93353   limit 500
+ev.searchChargers                       count 100  totalMatches 93353   limit 100
+election.searchAssemblyPledgeDistricts  count 20   totalMatches 206     limit 20
+```
+
+**`ARGUMENT_RULES` 를 그대로 쓰면 표가 비었다.** 모든 `query` 에 "오송역" 이
+들어가 행정구역 · 인구 · 선거 도구가 전부 0건이 된다. 0건이면 칸 이름을 볼 것이
+없어 사전이 안 만들어진다. `ARGUMENT_OVERRIDES` 를 따로 두었고 **어젯밤 실측으로
+확인된 값만** 적었다.
+
+```
+adminBoundary.searchBoundaries          query="청주시"
+vworld.getAdministrativeBoundaries      query="청주시"      오송역 0건 · 청주시 4건
+population.searchStatistics             query="청주시"      오송역 0건 · 청주시 4건
+geo.getRailwayLines                     stationName="오송역"  31건 (인자 없이 3683건)
+election.searchDistricts                query="청주"        4건 (인자 없이 254건)
+election.searchAssemblyDistricts        query="청주"        5건
+election.searchAssemblyPledgeDistricts  query="철도"        totalMatches 206건
+```
+
+#### ★ 배선 재료 — 개편에서 간선별 배선을 적을 때 이 표를 본다
+
+**무엇을 어떻게 이을지는 안 적는다. 재료만 적는다.**
+
+**좌표를 내놓는 도구 넷.**
+
+```
+geo.geocode         location=[lon,lat]                       최상위
+road.getCctv        [0].centerLon=수  [0].centerLat=수        최상위가 배열
+ev.searchStations   items[0].centerLon=수  items[0].centerLat=수
+ev.searchChargers   items[0].centerLon=수  items[0].centerLat=수
+```
+
+좌표를 한 칸에 배열로 주는 것은 `geo.geocode` 하나뿐이다. 나머지 셋은 경도와
+위도를 두 칸으로 쪼개 준다. **`ev` 둘에는 `location` 칸이 있는데 값이 빈
+문자열이다** (`items[0].location=""`). 이름만 보고 `$prev.location` 을 적으면
+좌표가 아니라 `""` 가 간다.
+
+**bbox 모양이 두 가지로 갈린다.** 17개가 `bbox` 를 내놓고 그중 둘이 다르다.
+
+```
+[[a,b],[c,d]]   geo.geocode · election 열하나                  13개
+[a,b,c,d]       vworld.getAdministrativeBoundaries
+                ev.getDatasetInfo                              2개
+없음(null)       adminBoundary.getDatasetInfo
+                population.searchStatistics                    2개
+```
+
+`STEP_OF` 의 `POINT_RADIUS_TO_BBOX` 는 중심 좌표와 반경으로 bbox 를 만드는
+것이라 이 두 모양과는 다른 자리다. **어제 이 갈림을 안 재고 배선을 적었다.**
+
+**코드를 내놓는 도구 19개.** 그중 다음 도구의 입력으로 쓸 수 있어 보이는 것.
+
+```
+population.searchStatistics         level=sigungu  items[0].code=43113
+                                    items[0].id=2026-06-30-sigungu-43113
+vworld.getAdministrativeBoundaries  items[0].sig_cd=43111  items[0].datasetId=sigungu
+                                    items[0].id=lt_c_adsigg_info.66
+election.searchDistricts            items[0].code=2431401
+election.searchAssemblyDistricts    items[0].code=4311101   features[0].id=4311101
+election.searchAssemblyPledgeDistricts  items[0].code=4313001
+election.findAssemblyDistrictByPoint    items[0].code=4311301
+election.findAssemblyPledgeDistrictByPoint  items[0].code=4311301
+election.getAssemblyDistrict        features[0].id=1141001
+ev.searchStations · ev.searchChargers   items[0].id=ev_station_PW012325
+```
+
+**코드를 받는 도구 12개.** `inputSchema` 의 어느 칸인가.
+
+```
+adminBoundary.searchBoundaries          code(선택)
+population.searchStatistics             level(선택)  code(선택)
+population.getAgeProfile                level(필수)  code(필수)
+population.getTrend                     level(필수)  code(필수)
+ev.getStation                           statId(필수)
+ev.searchChargers                       statId(선택)
+election.searchDistricts                code(선택)
+election.getDistrict                    code(선택)
+election.searchAssemblyDistricts        code(선택)
+election.getAssemblyDistrict            code(선택)
+election.searchAssemblyPledgeDistricts  code(선택)
+election.getAssemblyPledgeDistrict      code(선택)
+```
+
+**0건인데 문구가 없는 도구 셋.** 화면에 "찾지 못했습니다" 만 나간다.
+
+```
+knowledge.query      응답이 [] 하나. warning 자리가 없다
+knowledge.listDocs   응답이 [] 하나
+bim.listModels       응답이 [] 하나
+```
+
+#### 어제와 어긋난 것
+
+**`ev` 데이터가 들어왔다.** 어제(08-22 15:50)는 `dataset.status: "empty"` ·
+`stationCount: 0` · 시도 17개가 전부 `missingRegionCodes` 였다. 지금은 이렇다.
+
+```
+status          syncing
+stationCount    93353
+chargerCount    492390
+infoSyncedAt    2026-08-22T13:36:10Z
+```
+
+그래서 `ev.searchStations` 가 0건에서 500건(전체 93353)이 됐다. **위 A 부류
+(recipe_012 · 013)가 인자를 버리고 전국을 검색하는 것이 이제 실제로 결과를
+낸다.** 어제는 0건이라 티가 안 났다.
+
+**행정구역만 여전히 비어 있다.** `query="청주시"` 로 눌러도 0건이고 warning 이
+어제와 같다 ("행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다").
+인구 통계는 채워졌는데(4건) 행정구역은 아니다. `STEP_OF` 아래 주석 2번
+(`get_age_profile` 계열이 코드 필드 이름을 모른다)의 전제가 그대로 남아 있다.
+
+다만 **`population.searchStatistics` 자신이 `level` 과 `code` 를 내놓는다**
+(`level=sigungu` · `items[0].code=43113`). 주석 2번이 그 코드의 출처로 본 것은
+`adminBoundary.findBoundaryByPoint` 였다. **어느 쪽을 쓸지는 안 정했다. 사람이
+정할 일이다.**
+
+**`election.getLocalPledgeSummary` 둘을 0건으로 고쳐 세었다.** 어제 표는 이 둘을
+"데이터 1" 로 세었고 그 자리에서 "그대로 믿으면 안 된다" 고 적었다. 응답에
+`status: "not_found"` 가 실려 있어 이번에는 세는 규칙에 넣었다. 그래서 데이터
+24 · 0건 8 이다 (어제 셈법으로는 데이터 26 · 0건 6).
+
+**`road.getCctv` 84 -> 82.** 실시간 CCTV라 부를 때마다 다르다.
+
+**`rail.getSectionGeometry` 는 어제와 같이 오류다.** `"오송역"` 은 역 이름이지
+구간명이 아니다. 구간명을 하나도 못 얻어 이번에도 못 눌렀다.
+
+#### 안 한 것
+
+```
+철도 적재(import_railways.py)   남의 DB 에 쓰는 일이라 안 돌렸다
+bim.updateModel · bim.deleteModel · knowledge.deleteDoc
+                                REFUSED_TOOLS 그대로. 앞으로도 안 누른다
+온톨로지 · STEP_OF · recipe · menu · description   한 글자도 안 고쳤다
+```
+
+### 2026-08-23 (밤) · 개편 직전 기준선 · recipe 48 · qwen3:32b · 각 10회 · 묶음 셋
+
+**왜 쟀는가.** 개편 직전 기준선이다. recipe 번호가 통째로 바뀌므로 아래 표는
+개편 뒤 그대로는 무효가 된다. 그래도 전후를 맞대볼 수 있는 유일한 근거다.
+`git tag before-ontology-rework` 가 이 지점이다.
+
+원자료는 `/tmp/before.txt`(묶음 1) · `/tmp/block_2.txt` · `/tmp/block_3.txt`.
+
+#### 표 — 묶음 셋을 나란히. 합치지 않는다
+
+```
+#  발화                            묶음1     묶음2     묶음3    틀렸을 때 나온 것
+1  오송역 위치 보여줘              10/10     10/10     10/10
+2  오송역 좌표 알려줘              10/10     10/10     10/10
+3  오송역 CCTV 보여줘              10/10     10/10     10/10
+4  청주시 인구 구성 알려줘         10/10     10/10     10/10
+5  오송역 근처 충전소 찾아줘        0/10      0/10      0/10    {036}      10회
+6  국회의원 선거구 찾아줘           0/10      0/10      0/10    {007,008}   9회
+                                                               14개 후보    1회
+7  전기차 충전소 데이터 검색해줘    0/10      0/10      0/10    {012,013}  10회
+8  철도 안전 문서 찾아줘            0/10      0/10      0/10    {006}      10회
+9  충북 제1선거구 알려줘           10/10     10/10     10/10
+                                  ─────     ─────     ─────
+                                  50/90     50/90     50/90
+                                   56%       56%       56%
+```
+
+#### 묶음 간 차이 — 없다. 한 발화도 안 흔들렸다
+
+```
+세 파일이 바이트 단위로 같다.
+  289200511d6fd0a361c0eb7e965b295b  /tmp/before.txt
+  289200511d6fd0a361c0eb7e965b295b  /tmp/block_2.txt
+  289200511d6fd0a361c0eb7e965b295b  /tmp/block_3.txt
+```
+
+적중 · 축 · 인자 · 후보 수 · status 가 전부 같다. 발화 6 의 1/10 짜리
+14개-후보 이탈까지 세 묶음에 똑같이 한 번씩 나왔다.
+
+**「한 묶음 안에서는 완벽히 같고 묶음 간에는 흔들린다」는 이번에 재현되지
+않았다.** 흔들림의 자리를 찾다가 이유를 하나 봤다.
+
+```
+llm_engine/ollama.py:89   "options": {"temperature": 0, "seed": 0, ...}
+```
+
+온도도 seed 도 고정이다. 같은 프롬프트면 같은 답이 나오는 것이 정상이다.
+그러면 예전에 묶음 간에 흔들린 것은 프롬프트 · 온톨로지 · 모델 중 무엇이
+그 사이에 바뀌었기 때문이라는 뜻이 된다. **어느 쪽인지는 여기서 정하지
+않는다.** 지금 적을 수 있는 사실은 "이 커밋 · 이 모델에서는 세 묶음이
+완전히 같다" 까지다.
+
+기준선으로서는 이쪽이 낫다. 개편 뒤 숫자가 달라지면 그것은 흔들림이 아니라
+개편의 효과다.
+
+#### 묶음 1 에서 이미 읽히는 것 넷
+
+**축이 완벽하다.** `given · want · about · argument` 가 89/90 동일하다.
+흔들린 1회는 발화 6 의 축 셋이 전부 `null` 인 것이다.
+**인자 추출은 더 다룰 문제가 아니다.**
+
+**3번이 돌아왔다.** "오송역 CCTV 보여줘" 10/10. 예전에 10/10 -> 0/5 로
+뒤집혔던 발화다. 039 간섭이 이 묶음에는 없었다. 한 묶음이므로 굳히지 않는다.
+(이번에 세 묶음 모두 10/10 이었다는 것은 위 표에 있다.)
+
+**6번의 1/10 이 재현됐다.** `{007,008}` 9회 + 14개 1회. 지난번과 같은 비율이다.
+
+**★ 실패 넷 중 셋이 같은 모양이다.**
+
+```
+5번  {036}
+7번  {012, 013}
+6번  {007, 008}
+```
+
+전부 **비슷한 문장 두 개가 비기는 것**이다. 축은 세 경우 다 정확했다.
+타입이 굵어서가 아니라 **menu 문장이 안 갈린다.**
+**타입만 쪼개면 이 셋은 안 고쳐진다는 뜻이다.**
+
+#### 안 눌러본 도구 넷을 눌렀다 (여덟 번)
+
+Gateway 를 직접 불렀다(`POST /api/tools/execute`). `tools/probe_tools.py` 는
+`ARGUMENT_RULES` 가 "오송역" 고정이라 인자를 못 바꾼다.
+응답 전문은 `tools/probe_out/<도구>.<인자>.json` (gitignore).
+
+```
+도구                                인자        건수   최상위 칸
+rail.getSectionGeometry             대전~김천   오류   error{code,message}
+rail.getSectionGeometry             오송역      오류   error{code,message}
+geo.getRailwayLines                 오송역      31     type · features
+geo.getRailwayLines                 경부선      0      type · features
+vworld.getAdministrativeBoundaries  청주시      4      type · features · items · count ·
+                                                       totalFetched · dataset · query · bbox
+vworld.getAdministrativeBoundaries  오송역      0      위와 같음 (bbox 칸이 사라진다)
+population.searchStatistics         청주시      4      type · features · count · totalMatches ·
+                                                       referenceDate · level · metric ·
+                                                       metricLabel · unit · bbox · items · query
+population.searchStatistics         오송역      0      위와 같음
+```
+
+**`location` 칸은 넷 어디에도 없다.**
+
+**`rail.getSectionGeometry` 는 이 장비에서 어떤 인자로도 응답이 없다.**
+"대전~김천" · "오송역" 둘 다 NOT_FOUND 다. 인자를 잘못 준 것이 아닌지 확인했다.
+
+```
+KRRI_ASAP/ASAP-mcp/app/tools/rail.py       DB -> 없으면 MOCK_RAIL_DATA -> 없으면 NOT_FOUND
+KRRI_ASAP/ASAP-mcp/app/core/data.py:42     MOCK_RAIL_DATA 키는 "부산역" · "서울역" 둘뿐
+postgis                                    relation "rail.sections" does not exist
+```
+
+`sectionName="서울역"` 도 눌러봤다. 역시 NOT_FOUND 다
+(`tools/probe_out/rail.getSectionGeometry.서울역.json`). DB 테이블이 없고
+컨테이너의 MOCK 도 비어 있다. 소스가 선언하는 성공 시 모양은 이렇다.
+
+```
+{ sectionId, geometry{type,coordinates}, bbox }      location 이 없다
+```
+
+**recipe_039 의 `$prev.location` 은 이 도구로 풀리지 않는다.** 칸이 없어서
+못 푸는 것이 첫째고, 지금은 응답 자체가 안 나오는 것이 그보다 앞선다.
+(gitignore 런타임 데이터 누락과 같은 부류로 보인다. 여기서 고치지 않는다.)
+
+**행정구역 코드는 둘 다 준다.** `findBoundaryByPoint` 를 안 거쳐도 된다.
+
+```
+population.searchStatistics   최상위 level="sigungu"
+                              items[].code="43113"     ← level · code 를 그대로 준다
+                              items[].sidoName · sigunguName · name
+vworld.getAdministrativeBoundaries
+                              items[].properties.sig_cd="43111"
+                              dataset.id="sigungu" · items[].datasetId="sigungu"
+                              items[].properties.full_nm="충청북도 청주시 상당구"
+```
+
+recipe_045 · 046 · 047 의 `level` · `code` 배선을 적을 근거가 여기 있다.
+필드 이름은 population 쪽이 그대로 `level` · `code`, vworld 쪽이
+`datasetId` · `properties.sig_cd` 다. **어느 쪽을 쓸지는 사람이 정한다.**
+
+**bbox 모양.**
+
+```
+vworld       최상위 bbox = [127.27565046, ...]  평평한 넷
+             items[].bbox = [127.44526401, ...] 평평한 넷
+             0건이면 최상위 bbox 칸이 아예 없어진다
+population   includeBbox:true 인데 최상위 bbox · items[].bbox 가 전부 null
+geo.getRailwayLines  bbox 칸이 없다. geometry.coordinates(MultiLineString) 뿐
+```
+
+**0건일 때 warning 문구.**
+
+```
+geo.getRailwayLines "경부선"                 {"type":"FeatureCollection","features":[]}
+vworld... "오송역"                           count:0 · features:[] · items:[]
+population... "오송역"                       count:0 · totalMatches:0 · items:[]
+```
+
+셋 다 **warning 문구가 없다.** 조용히 0건이다. `query` 칸에 보낸 값이
+그대로 돌아오는 것이 vworld · population 의 유일한 단서다.
+`geo.getRailwayLines` 는 그것도 없다.
+
+**"경부선" 0건은 인자 이름 때문이다.** `stationName` 으로 보냈다.
+노선명 칸은 `railwayName` 이 따로 있다(`ASAP-mcp/main.py:277`). 도구 잘못이
+아니라 이번 호출이 그렇게 물어본 것이다. 적어두고 넘어간다.
+
+geojson · coordinates 값은 적지 않았다. 칸 이름과 길이만 봤다.
+
 
 ### 2026-08-23 · 어미가 판정을 가름 · recipe 48 · qwen3:32b · 각 1회
 
