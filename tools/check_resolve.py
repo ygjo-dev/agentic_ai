@@ -25,8 +25,12 @@
 **여기와 NOTES.md 에 적힌 알아낸 것은 예전 온톨로지(철도 CCTV 14노드)와 예전
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:8b 다.
 
-표를 두 장 찍는다. 적중 표와 축 표다. 후보가 안 맞을 때 LLM 이 recipe 를 잘못
-고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다.
+표를 세 장 찍는다. 적중 표 · 축 표 · 후보 표다. 후보가 안 맞을 때 LLM 이
+recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다.
+
+후보 표는 모델을 바꿔 재는 데 쓴다. 축 셋이 같아 조회로는 못 가르는 발화
+(5번 충전소 · recipe_035 대 recipe_036)에서 조회 후보 수는 그대로인데 LLM
+후보 수만 줄면 모델 크기 탓이고, 둘 다 그대로면 menu 문장 탓이다.
 """
 
 import argparse
@@ -67,7 +71,10 @@ load_dotenv(REPO_ROOT / ".env")
 
 # 화면이 부르는 주소와 같아야 표를 믿을 수 있다. 그래서 같은 환경변수를 본다.
 BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
-TIMEOUT = 180  # demo/ui/api_client.RESOLVE_TIMEOUT 과 같다. LLM 이 끼는 호출이다.
+# models.yaml 의 가장 큰 timeout(qwen3:32b 900) 보다 짧으면 큰 모델을 잴 때
+# 서버가 답하기 전에 여기서 끊겨 표가 오류로만 찬다. 화면(demo/ui/api_client.
+# RESOLVE_TIMEOUT 180)과 달리 이 도구는 큰 모델도 재므로 값을 따로 둔다.
+TIMEOUT = 900
 
 RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "recipes"
 INIT_RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "_init" / "recipes"
@@ -123,11 +130,37 @@ def _axes(result: dict) -> tuple:
     return tuple(result.get(axis) or "-" for axis in ("given", "want", "about"))
 
 
+def _tally(result: dict) -> tuple:
+    """응답의 후보 수 셋. 후보 표에 한 줄로 찍을 형태.
+
+    출력  (LLM 후보 수, 조회 후보 수, 최종 status). 없는 key 는 "-"
+    규칙  LLM 후보 수는 candidate_recipe_ids 의 길이.
+          recipe_id 가 있고 그 목록에 없으면 하나 더 셈
+          조회 후보 수는 shortlist_recipe_ids 의 길이
+          Counter 의 key 라 문자열 튜플로 둠. 리스트는 해시가 안 됨
+    이력  candidate_recipe_ids 는 resolve_service._verdict 를 지난 값이라
+          LLM 이 부른 날것이 아니라 조회 후보와 겹친 것임. 날것은 응답에
+          안 실림. 조회 후보 수와 나란히 보면 어느 쪽이 좁혔는지는 갈림
+    """
+    spoken = result.get("candidate_recipe_ids")
+    if spoken is None:
+        llm_count = "-"
+    else:
+        chosen = result.get("recipe_id")
+        llm_count = str(len(spoken) + (1 if chosen and chosen not in spoken else 0))
+
+    looked_up = result.get("shortlist_recipe_ids")
+    lookup_count = "-" if looked_up is None else str(len(looked_up))
+
+    return llm_count, lookup_count, result.get("status") or "-"
+
+
 def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, 축 셋). 후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
+    출력  (후보 집합, 축 셋, 후보 수 셋).
+          후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
     """
@@ -145,23 +178,26 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     response.raise_for_status()
     result = response.json()
     found = [result.get("recipe_id"), *(result.get("candidate_recipe_ids") or [])]
-    return frozenset(rid for rid in found if rid), _axes(result)
+    return frozenset(rid for rid in found if rid), _axes(result), _tally(result)
 
 
 # ── 측정 ────────────────────────────────────────────────────────────
 
 
 def _measure(
-    entries, runs: int, outcomes: dict, axes: dict, model: str | None = None
+    entries, runs: int, outcomes: dict, axes: dict, tallies: dict,
+    model: str | None = None,
 ) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
-    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 둘 · 모델 이름
+    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 셋 · 모델 이름
     규칙  outcomes[번호] 에 나온 후보 집합들의 Counter 를 쌓음
           axes[번호] 에 나온 (given, want, about) 조합의 Counter 를 쌓음
+          tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status) 의 Counter 를 쌓음
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
-          오류도 결과의 하나로 Counter 에 남김. 그때 축은 안 쌓음. 응답이 없음
+          오류도 결과의 하나로 Counter 에 남김. 그때 축과 후보 수는 안 쌓음.
+          응답이 없음
     제약  결과를 돌려주지 않는다.
           받은 dict 에 채움. 중간에 끊겨도(Ctrl-C · 서버 중단) 거기까지의
           결과가 부르는 쪽에 남아 있어야 표를 찍을 수 있음
@@ -169,15 +205,18 @@ def _measure(
     for number, utterance, _expected, _default in entries:
         counter = Counter()
         axis_counter = Counter()
+        tally_counter = Counter()
         outcomes[number] = counter
         axes[number] = axis_counter
+        tallies[number] = tally_counter
         sys.stdout.write(f"  {number} ")
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                found, axis = _call_resolve(utterance, model)
+                found, axis, tally = _call_resolve(utterance, model)
                 counter[found] += 1
                 axis_counter[axis] += 1
+                tally_counter[tally] += 1
                 sys.stdout.write(".")
             except ServerDown:
                 sys.stdout.write("\n")
@@ -291,6 +330,56 @@ def _print_axes(entries, axes: dict) -> None:
             print(prefix + _pad(shown, AXIS_WIDTH) + f"{count}회")
 
 
+# 후보 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
+LLM_COUNT_WIDTH = 15
+LOOKUP_COUNT_WIDTH = 16
+STATUS_WIDTH = 12
+
+
+def _print_candidates(entries, tallies: dict) -> None:
+    """발화마다 후보가 몇 개까지 좁혀졌는지.
+
+    입력  발화 목록 · {번호: 후보 수 조합 Counter}
+    규칙  많이 나온 것부터. 조합이 하나면 한 줄, 갈리면 여러 줄
+          축 표와 같은 모양. 나란히 놓고 읽음
+          모델을 바꿔 잰 두 표를 견주는 것이 이 표의 쓸모.
+          조회 후보 수는 그대로인데 LLM 후보 수만 줄면 모델이 문장을 읽어
+          가른 것이고, 둘 다 그대로면 문장으로는 못 가르는 것
+    """
+    print()
+    print(
+        "  "
+        + _pad("#", 3)
+        + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad("LLM 후보 수", LLM_COUNT_WIDTH)
+        + _pad("조회 후보 수", LOOKUP_COUNT_WIDTH)
+        + _pad("status", STATUS_WIDTH)
+        + "횟수"
+    )
+
+    for number, utterance, _expected, _default in entries:
+        counter = tallies.get(number)
+        if not counter:
+            continue
+
+        head = (
+            "  "
+            + _pad(str(number), 3)
+            + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+        )
+        rows = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+        for index, (tally, count) in enumerate(rows):
+            llm_count, lookup_count, status = tally
+            prefix = head if index == 0 else " " * _width(head)
+            print(
+                prefix
+                + _pad(llm_count, LLM_COUNT_WIDTH)
+                + _pad(lookup_count, LOOKUP_COUNT_WIDTH)
+                + _pad(status, STATUS_WIDTH)
+                + f"{count}회"
+            )
+
+
 def _recipe_state() -> str:
     """표 머리에 적을 지금 recipe 상태. _init 그대로인지, 노드가 등록됐는지."""
     current = sorted(p.stem for p in RECIPES_DIR.glob("recipe_*.yaml"))
@@ -323,9 +412,9 @@ def main() -> int:
     )
     print()
 
-    outcomes, axes, note, status = {}, {}, "", 0
+    outcomes, axes, tallies, note, status = {}, {}, {}, "", 0
     try:
-        _measure(entries, args.runs, outcomes, axes, args.model)
+        _measure(entries, args.runs, outcomes, axes, tallies, args.model)
     except ServerDown:
         # 재시도하지 않는다. 여기까지 잰 것이 있으면 표는 찍는다.
         note, status = "uvicorn 을 먼저 실행하세요", 1
@@ -337,6 +426,8 @@ def main() -> int:
         _print_table(entries, outcomes, args.runs)
     if any(axes.values()):
         _print_axes(entries, axes)
+    if any(tallies.values()):
+        _print_candidates(entries, tallies)
     if note:
         print()
         print(note)
