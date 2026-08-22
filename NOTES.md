@@ -100,6 +100,244 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 측정 기록
 
+### 2026-08-22 (셋째) · Gateway 도구 42개 훑기
+
+`tools/probe_tools.py` 로 42개를 한 번씩 눌렀다. 배선을 어디에 적을지 정하려고
+무엇이 실제로 데이터를 주는지 먼저 쟀다. 도구 목록은 이 장비에 `tools.json` 이
+없어 `curl -s http://localhost:3000/api/tools -o /tmp/tools.json` 으로 받았다.
+
+```
+  도구                                      상태        건수    비고
+  rail.getSectionGeometry                   실패        -       구간 '오송역'을(를) 찾을 수 없습니다.
+  road.getCctv                              데이터      84
+  geo.geocode                               데이터      1
+  geo.getRailwayLines                       데이터      3683
+  adminBoundary.getDatasetInfo              데이터      1
+  adminBoundary.searchBoundaries            빈 결과     0       행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니…
+  adminBoundary.findBoundaryByPoint         빈 결과     0       행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니…
+  population.getDatasetInfo                 데이터      1
+  population.searchStatistics               빈 결과     0       인구 통계 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습…
+  population.getAgeProfile                  인자 없음   -       level, code
+  population.getTrend                       인자 없음   -       level, code
+  vworld.getDatasetInfo                     데이터      1
+  vworld.getAdministrativeBoundaries        데이터      200
+  knowledge.query                           빈 결과     0
+  knowledge.listDocs                        빈 결과     0
+  knowledge.deleteDoc                       인자 없음   -       문서를 지움
+  bim.listModels                            빈 결과     0
+  bim.updateModel                           인자 없음   -       모델을 고침
+  bim.deleteModel                           인자 없음   -       모델을 지움
+  dem.getInfo                               실패        -       layer.json not found: /app/data/dem/90m_GRS80/layer.json
+  ev.getDatasetInfo                         데이터      1
+  ev.searchStations                         빈 결과     0
+  ev.getStation                             인자 없음   -       statId
+  ev.searchChargers                         빈 결과     0
+  election.getDatasetInfo                   데이터      1
+  election.searchDistricts                  데이터      20
+  election.getDistrict                      데이터      1
+  election.findDistrictByPoint              데이터      1
+  election.getAssemblyDistrictDatasetInfo   데이터      1
+  election.searchAssemblyDistricts          데이터      20
+  election.getAssemblyDistrict              데이터      1
+  election.findAssemblyDistrictByPoint      데이터      1
+  election.getAssemblyPledgeDatasetInfo     데이터      1
+  election.searchAssemblyPledgeDistricts    데이터      20
+  election.getAssemblyPledgeDistrict        데이터      1
+  election.findAssemblyPledgeDistrictByPo…  데이터      1
+  election.getLocalPledgeSummaryDatasetIn…  데이터      1       2026 지방선거 시도별 공약 요약 DB 데이터가 적재되지 않았습…
+  election.searchLocalPledgeSummaries       빈 결과     0       2026 지방선거 시도별 공약 요약 데이터를 조회하지 못했습니다.
+  election.getLocalPledgeSummary            데이터      1       조건에 맞는 2026 지방선거 시도별 공약 요약을 찾지 못했습니…
+  election.findLocalPledgeSummaryByPoint    데이터      1       해당 좌표를 포함하는 시도 공약 요약을 찾지 못했습니다.
+  web.search                                실패        -       MCP tool 'web-search/web.search' is not applied for this us…
+  web.fetch                                 인자 없음   -       url
+  ─────────────────────────────────────────────────────────────────────────────
+  도구 42개                                 데이터 23 · 빈 결과 9 · 실패 3 · 인자 없음 7
+```
+
+앞서 42개가 전부 `"Tool name is required"` 로 실패했던 것은 본문 모양 탓이었고
+`919b09a` 에서 `vendor/asap/mcp_client.py` 와 같은 모양(`tool` · `input` ·
+`user_context` · `server_id`)으로 고쳤다. 이번에는 전부 응답이 왔다.
+
+#### 「데이터」 23 을 그대로 믿으면 안 된다
+
+건수만 보면 안 되는 줄이 넷이다.
+
+`election.getLocalPledgeSummary` · `election.findLocalPledgeSummaryByPoint` 는
+건수 1인데 `warning` 이 "찾지 못했습니다" 다. 껍데기 객체 하나를 세었을 뿐
+알맹이는 없다. 같은 데이터셋의 `getLocalPledgeSummaryDatasetInfo` 도 "적재되지
+않았습니다" 라고 답한다. 셋이 같은 말을 한다 — 2026 지방선거 공약 요약은
+저쪽에 안 들어와 있다.
+
+`getDatasetInfo` 계열 다섯은 건수 1이 곧 메타데이터 한 덩이다. 데이터가 있다는
+뜻이 아니다. `ev.getDatasetInfo` 는 `status: "empty"`, `stationCount: 0`,
+`missingRegionCodes` 에 시도 17개가 전부 들어 있다. `population.getDatasetInfo`
+도 `status: "empty"`, `totalPopulation: 0` 이다.
+
+`required` 가 없는 도구는 probe 가 인자 없이 불렀다. `election.searchDistricts`
+셋의 20건은 `limit` 이 20이라 잘린 전체 목록이지 `query` 가 거른 결과가 아니다.
+그래서 `query` 를 따로 눌러 확인했다 — `"청주"` 로 4건 · 5건, `"철도"` 로
+206건이 나왔다. 거르기가 실제로 돈다.
+
+#### 0건인 도구와 그 warning
+
+```
+adminBoundary.searchBoundaries      행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다.
+adminBoundary.findBoundaryByPoint   행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다.
+population.searchStatistics         인구 통계 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다.
+election.searchLocalPledgeSummaries 2026 지방선거 시도별 공약 요약 데이터를 조회하지 못했습니다.
+ev.searchStations                   (warning 없음. dataset.status = "empty")
+ev.searchChargers                   (warning 없음. dataset.status = "empty")
+knowledge.query                     (응답이 [] 하나. warning 자리가 없음)
+knowledge.listDocs                  (응답이 [] 하나)
+bim.listModels                      (응답이 [] 하나)
+```
+
+전부 저쪽 데이터다. 우리가 채울 수 없다.
+
+`adminBoundary` 는 `getDatasetInfo` 가 sido · sigungu · emd 세 층 전부
+`featureCount: 0` 이라고 답한다. PostGIS 는 붙어 있고 테이블만 비었다.
+`knowledge` 는 `listDocs` 도 `[]` 라 질의가 틀린 것이 아니라 지식베이스에
+문서가 하나도 없는 것이다. `ev` 는 시도 17개가 전부 `missingRegionCodes` 라
+동기화가 한 번도 안 돌았다.
+
+`MEMORY.md` 의 「KRRI_ASAP gitignore 데이터 누락」 과 같은 줄기다. clone 과
+build 는 끝났는데 gitignore 로 빠진 런타임 데이터가 안 들어와 있다.
+
+#### 「인자 없음」 일곱
+
+probe 가 값을 지어내지 않아 안 부른 것들이다. 도구가 고장 났다는 뜻이 아니다.
+
+```
+population.getAgeProfile        level, code   행정구역 코드를 어디서 받을지 모름
+population.getTrend             level, code   행정구역 코드를 어디서 받을지 모름
+ev.getStation                   statId        충전소 번호를 지어낼 수 없음
+web.fetch                       url           URL 을 지어낼 수 없음
+knowledge.deleteDoc             filename      남의 문서를 지움. 일부러 안 부름
+bim.updateModel                 -             남의 모델을 고침. 일부러 안 부름
+bim.deleteModel                 -             남의 모델을 지움. 일부러 안 부름
+```
+
+앞의 넷은 `ARGUMENT_RULES` 에 값이 없어서고 뒤의 셋은 `REFUSED_TOOLS` 라서다.
+뒤의 셋은 앞으로도 누르지 않는다.
+
+#### 「실패」 셋
+
+```
+rail.getSectionGeometry   구간 '오송역'을(를) 찾을 수 없습니다.
+dem.getInfo               layer.json not found: /app/data/dem/90m_GRS80/layer.json
+web.search                MCP tool 'web-search/web.search' is not applied for this user.
+```
+
+`rail.getSectionGeometry` 는 도구가 아니라 인자 탓이다. `"오송역"` 은 역 이름이지
+구간명이 아니다. 구간명 하나를 알면 다시 재야 한다. 배선(`get_railway_section`)은
+이미 적혀 있고 `sectionName` 을 발화에서 받으므로 이대로 둔다.
+
+`dem.getInfo` 는 DEM 타일셋이 컨테이너 안에 없다. `MEMORY.md` 에 적어 둔 그
+누락이다.
+
+`web.search` 는 데이터 문제가 아니다. 우리 `USER_CONTEXT` 에 `web-search` 서버가
+안 열려 있다. KRRI_ASAP 쪽 사용자 권한이라 우리가 못 연다.
+
+#### `web.search` · `web.fetch` 는 서버가 다르다
+
+42개 중 마흔은 `serverId` 가 `asap-mcp-core` 인데 이 둘만 `web-search` 다.
+`STEP_OF` 가 `SERVER_ID` 를 통째로 쓰고 있어 그대로 적으면 Gateway 가 도구를
+못 찾는다. `WEB_SERVER_ID` 를 따로 두었다.
+
+#### 이번에 적은 배선 일곱
+
+`STEP_OF` 가 14 -> 21 이 됐다. 전부 발화에서 온 말 하나만 받는 도구라 앞 단계가
+필요 없다.
+
+```
+노드                              도구                                     상태
+search_election_districts         election.searchDistricts                 데이터 254
+search_assembly_districts         election.searchAssemblyDistricts         데이터 254
+search_assembly_pledge_districts  election.searchAssemblyPledgeDistricts   데이터 476
+search_local_pledge_summaries     election.searchLocalPledgeSummaries      0건
+search_documents                  knowledge.query                          0건
+web_search                        web.search                               권한 막힘
+web_fetch                         web.fetch                                안 눌러봄
+```
+
+아래 넷도 적었다. **배선이 없는 것과 데이터가 없는 것은 다르다.** 적어 두면
+저쪽에 데이터가 들어왔을 때 고칠 것 없이 그대로 돈다. 왜 지금 비었는지는
+`STEP_OF` 의 각 줄 위 주석에 적었다.
+
+#### 여전히 못 적는 것
+
+`get_age_profile` · `get_population_trend` · `get_local_pledge_summary` 는
+이번에도 못 적었다. `adminBoundary.findBoundaryByPoint` 가 0건이라 `features` 가
+비어 있었고 행정구역 코드가 어느 필드로 오는지 볼 것이 없었다.
+`getDatasetInfo` 가 `codeField` 로 `ctprvn_cd` · `SIG_CD` · `emd_cd` 를 말하지만
+그것은 shapefile 컬럼 이름이지 응답 필드 이름이 아니다. 짐작으로 적지 않는다.
+
+`get_election_district` · `get_assembly_district` · `get_assembly_pledge_district`
+· `get_ev_station` 은 「적을 수 없었던 경로」 그대로다. 식별자 체계가 다르다.
+
+#### 앞 단계가 없으면 그 칸을 안 보낸다
+
+`recipe_012` · `013` 은 `spoken_keyword -> search_ev_stations` 인데 그 배선의
+`center` 가 `$prev.location` 이라 첫 step 에서 `plan()` 이 `ValueError` 로
+멈췄다. 같은 노드가 두 자리에 쓰이기 때문이다 — 키워드 뒤(012 · 013)에도 오고
+geocode 뒤(035 · 036)에도 온다. 배선은 한 벌뿐이다.
+
+`_filled` 이 `ValueError` 를 올리던 것을 「그 칸을 빼고 부른다」 로 바꿨다.
+
+근거는 `ev.searchStations` 의 bbox 넷이 전부 optional 이라는 것이다. 없어도
+도구가 돌고 전국을 검색한다. 값을 지어내는 것보다 안 보내는 것이 낫다.
+`radiusMeters` 만 남은 input 으로 실제로 눌러 확인했다 — HTTP 200 이고
+스키마에 없는 `radiusMeters` 도 거부하지 않는다.
+
+`inputAdapter` 도 함께 뺀다. `point_radius_to_bbox` 는 `center` · `point` ·
+`coordinate` · `coordinates` · `location` 중 하나를 찾고 못 찾으면
+`ValueError("point_radius_to_bbox에는 center/location 좌표가 필요합니다")` 를
+올린다. 걸 것이 없는데 걸면 옮겨 온 셈이라 `plan` 이 싣기 전에 본다.
+
+`required` 인 칸이 `$prev` 를 쓰는데 앞 단계가 없으면 그때는 도구가 거부한다.
+그건 배선이 틀린 것이지 선택의 문제가 아니라 여기서 가리지 않는다.
+
+**조영곤님이 자리에 없는 동안 대신 정한 판단이다.** 되돌릴 때는 `_filled` 과
+`plan` 의 `inputAdapter` 한 줄만 보면 된다. `_filled` 의 이력 절에도 적었다.
+
+##### 전후
+
+`step_service.unwired()` 가 빈 목록을 내는 recipe 를 셌다. LLM 을 안 부르는
+코드 계산이다.
+
+```
+                          전    후
+온전히 도는 것            24    34
+반쪽                      10     7
+하나도 못 부름            14     7
+                          48    48
+```
+
+`plan()` 이 터지던 `recipe_012` · `013` 까지 세면 실제로 돌던 것은 22 였다.
+`unwired()` 는 배선이 있는지만 보고 `$prev` 가 풀리는지는 안 본다.
+
+늘어난 recipe 는 열둘이다.
+
+```
+006 007 008 009 010 014 041   이번에 적은 배선 일곱으로
+012 013                       앞 단계 없을 때 규칙으로
+028 030 032                   반쪽이던 것이 채워져서
+```
+
+##### 돈다고 답이 나오는 것은 아니다
+
+34 중 도구가 실제로 데이터를 주는 것은 18이다. 나머지 16은 호출까지 가고
+빈 결과나 권한 오류를 받는다. 저쪽 데이터가 채워지면 그대로 답이 나온다.
+
+```
+데이터가 나옴 18   001 002 003 005 007 008 009 024 025 026 027 028 029 030 031 038 039 040
+빈 결과 14         004 010 011 012 013 014 022 023 032 033 034 035 036 037
+권한 막힘 2        006 041
+```
+
+`007` · `008` · `009` 가 새로 데이터가 나오는 쪽에 들었다 —
+`election.search*` 셋이 이번 배선의 수확이다.
+
 ### 2026-08-22 (이어서) · qwen3:8b 대 qwen3:32b · recipe 48 · 각 10회
 
 ```

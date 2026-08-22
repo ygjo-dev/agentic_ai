@@ -20,6 +20,10 @@ from demo.api.services import ontology_service
 
 SERVER_ID = "asap-mcp-core"
 
+# web.search · web.fetch 만 다른 MCP 서버에 있다. 나머지 마흔은 SERVER_ID 다.
+# 여기를 틀리면 Gateway 가 도구를 못 찾는다 — tools.json 의 serverId 가 근거다.
+WEB_SERVER_ID = "web-search"
+
 # 좌표 하나를 지도 범위로 넓힐 때의 반경. road.getCctv 와 ev.searchStations ·
 # ev.searchChargers 가 같은 값을 쓴다. vendor 의 point_radius_to_bbox 어댑터가
 # 중심 좌표와 이 값으로 bbox 를 만든다 — 대상 도구의 required 에 bbox 넷이
@@ -47,6 +51,19 @@ PREVIOUS_STEP = "$prev"
 # ev.searchStations · ev.searchChargers 는 넷 다 optional 이라 안 걸린다 —
 # 그래서 그 둘의 단계에만 이 이름을 적는다.
 POINT_RADIUS_TO_BBOX = "point_radius_to_bbox"
+
+# point_radius_to_bbox 가 중심 좌표를 찾는 칸 이름. vendor 의
+# _extract_center_point 가 보는 것과 같은 순서 · 같은 이름이다.
+#
+# 이 중 하나도 안 남으면 어댑터가 ValueError 를 올린다("point_radius_to_bbox에는
+# center/location 좌표가 필요합니다"). 그래서 plan 이 어댑터를 걸기 전에 본다.
+CENTER_KEYS = ("center", "point", "coordinate", "coordinates", "location")
+
+# _filled 이 "이 칸은 채울 수 없으니 안 보낸다" 를 알리는 표시.
+#
+# None 을 쓰지 않는다. None 은 도구가 받는 값일 수 있어 "빼라" 와 "null 을
+# 보내라" 가 안 갈린다.
+DROP = object()
 
 # 노드 -> step. **온톨로지 밖이다.**
 #
@@ -144,6 +161,73 @@ STEP_OF = {
         "adapter": POINT_RADIUS_TO_BBOX,
         "headline": "{arg} 전기차 충전기를 조회했습니다.",
     },
+    # ── 발화에서 온 말로 찾는 것 ────────────────────────────────────
+    #
+    # 아래 일곱은 앞 단계가 필요 없다. 받는 것이 좌표가 아니라 발화에서 온
+    # 말이라 첫 step 으로도 돈다.
+    #
+    # 노드와 도구의 짝은 온톨로지 노드 description 과 tools.json description 을
+    # 맞대어 정했다. 아래 셋은 2026-08-22 실측으로 query 가 실제로 거르는 것도
+    # 확인했다 — 인자 없이 부르면 254 · 254 · 476 건이고 query="청주" 로 부르면
+    # 4 · 5 건, query="철도" 로 부르면 206 건이다.
+    "search_election_districts": {
+        "server_id": SERVER_ID,
+        "tool": "election.searchDistricts",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 국회의원 지역구 목록을 조회했습니다.",
+    },
+    "search_assembly_districts": {
+        "server_id": SERVER_ID,
+        "tool": "election.searchAssemblyDistricts",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 국회의원 전체 선거구 목록을 조회했습니다.",
+    },
+    "search_assembly_pledge_districts": {
+        "server_id": SERVER_ID,
+        "tool": "election.searchAssemblyPledgeDistricts",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 국회의원 선거구 공약 목록을 조회했습니다.",
+    },
+    # 아래 넷은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
+    # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
+    # 데이터가 들어오면 고칠 것 없이 그대로 돈다. 왜 비었는지는 각 줄 위에
+    # 적었고 NOTES.md 「2026-08-22 (셋째)」 에 응답 전문 근거가 있다.
+    #
+    # election.searchLocalPledgeSummaries : 0건.
+    #   "2026 지방선거 시도별 공약 요약 데이터를 조회하지 못했습니다."
+    #   같은 데이터셋의 getDatasetInfo 도 미적재라고 답한다. 저쪽 데이터다.
+    "search_local_pledge_summaries": {
+        "server_id": SERVER_ID,
+        "tool": "election.searchLocalPledgeSummaries",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 지방선거 교통 공약 목록을 조회했습니다.",
+    },
+    # knowledge.query : 0건. 지식베이스가 비었다. knowledge.listDocs 도 [] 라
+    #   질의가 틀린 것이 아니라 문서가 하나도 없는 것이다.
+    "search_documents": {
+        "server_id": SERVER_ID,
+        "tool": "knowledge.query",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 문서를 조회했습니다.",
+    },
+    # web.search : 실패. "MCP tool 'web-search/web.search' is not applied for
+    #   this user." 데이터가 없는 것이 아니라 우리 user_context 에 web-search
+    #   서버가 안 열려 있는 것이다. KRRI_ASAP 쪽 권한이라 우리가 못 연다.
+    "web_search": {
+        "server_id": WEB_SERVER_ID,
+        "tool": "web.search",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 웹 검색 결과를 조회했습니다.",
+    },
+    # web.fetch : 안 눌러봤다. required 가 url 하나인데 probe 가 URL 을 지어내지
+    #   않는다. 같은 web-search 서버라 web.search 와 같은 권한에 막힐 것으로
+    #   본다 — 확인은 못 했다.
+    "web_fetch": {
+        "server_id": WEB_SERVER_ID,
+        "tool": "web.fetch",
+        "input": {"url": SPOKEN_VALUE},
+        "headline": "{arg} 웹 문서를 조회했습니다.",
+    },
 }
 
 # 아직 배선을 안 적은 노드와 그 이유. 다음 사람이 왜 비어 있는지 알아야 한다.
@@ -159,7 +243,8 @@ STEP_OF = {
 #    온톨로지의 식별자 타입이 셋을 하나로 묶은 탓이다. NOTES.md
 #    「적을 수 없었던 경로」 참고.
 #    recipe 042 · 043 · 044 · 048 이 여기 걸린다. 앞 단계 없이 이 도구만 부르는
-#    recipe 015 · 016 · 017 · 021 은 3번 이유로도 막힌다.
+#    recipe 015 · 016 · 017 · 021 도 같은 이유로 막힌다 — 발화에서 온 말을
+#    선거구 코드나 충전소 번호로 그대로 쓸 수는 없다.
 #
 # 2. 받을 것은 행정구역 코드가 맞지만 어느 필드에 오는지 아직 모른다
 #
@@ -167,22 +252,14 @@ STEP_OF = {
 #
 #    population.getAgeProfile · population.getTrend 는 level 과 code 를 받고
 #    그것이 행정구역 코드다. 다만 adminBoundary.findBoundaryByPoint 가 그 코드를
-#    어떤 필드 이름으로 내놓는지 아직 안 눌러봤다. 눌러보고 적는다.
-#    recipe 045 · 046 · 047 이 여기 걸린다. 앞 단계 없이 이 도구만 부르는
-#    recipe 018 · 019 · 020 은 3번 이유로도 막힌다.
-#
-# 3. 부를 인자는 이제 오는데 표에 줄을 아직 안 적었다
-#
-#    web_search · web_fetch · search_documents
-#    search_election_districts · search_assembly_districts
-#    search_assembly_pledge_districts · search_local_pledge_summaries
-#
-#    위 것들이 받는 것은 웹 질의 · URL · 문서 키워드 · 선거구 이름이라
-#    place_in 이 뽑는 장소 어절을 그대로 넣을 자리가 아니었다. 발화 해석 LLM 이
-#    argument 를 함께 내놓게 되어 그 막힘은 풀렸다 — 남은 것은 이 표에 줄을
-#    적는 일이다.
-#    recipe 006 · 007 · 008 · 009 · 010 · 014 · 028 · 030 · 032 · 041 이
-#    여기 걸린다.
+#    어떤 필드 이름으로 내놓는지 여전히 모른다.
+#    2026-08-22 에 눌렀고 0건이었다 — "행정구역 DB 데이터가 없거나 PostGIS
+#    연결을 사용할 수 없습니다". features 가 비어 있어 필드 이름을 볼 것이
+#    없었다. 저쪽 PostGIS 에 경계가 적재되면 응답을 보고 적는다.
+#    getDatasetInfo 가 layers 의 codeField 로 ctprvn_cd · SIG_CD · emd_cd 를
+#    말하지만 그것은 shapefile 의 컬럼 이름이지 응답 필드 이름이 아니다.
+#    짐작으로 적지 않는다.
+#    recipe 018 · 019 · 020 · 045 · 046 · 047 이 여기 걸린다.
 
 # 장소로 볼 어절의 끝 글자.
 PLACE_SUFFIXES = "역시군구읍면동리"
@@ -245,8 +322,14 @@ def plan(recipe_id: str, argument: str) -> dict:
           (spoken_place)는 값을 준비할 뿐 부를 것이 없음
           adapter 가 있는 노드만 step 에 inputAdapter 칸이 생김. 없는 것은
           vendor 가 도구 스키마를 보고 스스로 정함
+          앞 단계가 없어 중심 좌표 칸이 빠졌으면 inputAdapter 도 안 실음.
+          걸 것이 없는데 걸면 vendor 어댑터가 ValueError 를 올림
           실행 노드가 빠져 반쪽으로 도는 것은 부르기 전에 unwired 가 막음
-    제약  첫 step 의 input 에 $prev 를 쓰지 않는다. 가리킬 앞 단계가 없음
+    제약  첫 step 의 input 에 $prev 를 쓸 수는 있으나 그 칸은 빠진 채로 나간다.
+          required 인 칸이면 도구가 거부하고 그것은 배선이 틀린 것이다
+    이력  예전에는 첫 step 이 $prev 를 가리키면 _filled 이 ValueError 로
+          멈췄음. recipe 012 · 013 이 그것에 걸려 도구를 하나도 못 불렀음.
+          _filled 의 이력 절 참고
     """
     steps: list[dict] = []
     nodes: list[str] = []
@@ -266,7 +349,7 @@ def plan(recipe_id: str, argument: str) -> dict:
             "tool": wiring["tool"],
             "input": _filled(wiring["input"], argument, previous_id),
         }
-        if wiring.get("adapter"):
+        if wiring.get("adapter") and _has_center(step["input"]):
             step["inputAdapter"] = wiring["adapter"]
         steps.append(step)
         nodes.append(node_id)
@@ -276,25 +359,52 @@ def plan(recipe_id: str, argument: str) -> dict:
     return {"steps": steps, "nodes": nodes, "headline": headline}
 
 
+def _has_center(tool_input: dict) -> bool:
+    """point_radius_to_bbox 가 걸 중심 좌표가 input 에 남았는지.
+
+    입력  _filled 을 지난 step 의 input
+    출력  CENTER_KEYS 중 하나라도 있으면 True
+    규칙  값이 무엇인지는 안 봄. 여기 있는 값은 좌표 아니면 $s1.location 처럼
+          vendor 가 나중에 푸는 참조라 지금 판정할 수 없음
+    """
+    return any(key in tool_input for key in CENTER_KEYS)
+
+
 def _filled(value, argument: str, previous_id: str | None):
     """input 안의 @arg 와 $prev 를 실제 값으로. 중첩된 것까지.
 
     입력  input 조각 · 발화에서 뽑은 인자 · 앞 step 의 id(없으면 None)
-    출력  같은 모양에 표시만 바뀐 것
+    출력  같은 모양에 표시만 바뀐 것. 앞 단계가 없어 채울 수 없던 칸은 빠짐
     규칙  "@arg" 는 어절 전체가 표시일 때만 바꿈. 값의 타입이 바뀌므로
           문자열 안에 섞어 쓰지 않음
           "$prev" 로 시작하면 뒤의 경로는 그대로 두고 앞만 바꿈
-    제약  앞 단계 없이 $prev 를 만나면 멈춘다. 조용히 넘기면 vendor 가
-          해석 못 한 문자열을 그대로 Gateway 에 보냄
+          앞 단계가 없으면 그 칸을 DROP 으로 표시하고 dict · list 에서 뺌
+    제약  값을 지어내지 않는다. 앞 단계가 없을 때 좌표를 만들어 넣지 않고
+          칸을 통째로 뺀다
+          required 인 칸이 $prev 를 쓰는데 앞 단계가 없으면 도구가 거부한다.
+          그것은 배선이 틀린 것이라 여기서 가리지 않는다
+    이력  예전에는 앞 단계 없이 $prev 를 만나면 ValueError 로 멈췄음.
+          같은 노드가 두 자리에 쓰이면(search_ev_stations 가 키워드 뒤에도
+          geocode 뒤에도 옴) 첫 자리에서 무조건 멈춰 recipe 012 · 013 이
+          도구를 하나도 못 불렀음.
+          ev.searchStations 의 bbox 넷이 전부 optional 이라 그 칸이 없어도
+          도구가 돌고 전국을 검색한다 — 값을 지어내는 것보다 안 보내는 것이
+          낫다고 보아 "빼고 부른다" 로 바꿨음.
+          조영곤님이 자리에 없는 동안 대신 정한 판단임. 되돌릴 때는 이 함수와
+          plan 의 inputAdapter 한 줄만 보면 됨
     """
     if isinstance(value, dict):
-        return {key: _filled(item, argument, previous_id) for key, item in value.items()}
+        filled = {
+            key: _filled(item, argument, previous_id) for key, item in value.items()
+        }
+        return {key: item for key, item in filled.items() if item is not DROP}
     if isinstance(value, list):
-        return [_filled(item, argument, previous_id) for item in value]
+        filled = [_filled(item, argument, previous_id) for item in value]
+        return [item for item in filled if item is not DROP]
     if value == SPOKEN_VALUE:
         return argument
     if isinstance(value, str) and value.startswith(PREVIOUS_STEP):
         if previous_id is None:
-            raise ValueError(f"첫 step 이 앞 단계를 가리킨다 : {value}")
+            return DROP
         return f"${previous_id}{value[len(PREVIOUS_STEP):]}"
     return value

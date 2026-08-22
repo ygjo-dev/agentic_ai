@@ -183,3 +183,78 @@ def test_둘_다_없으면_given_에_맞는_안내가_나간다(
 
     assert fragment in events[-1]["answer"]
     assert not no_execution, "인자가 없는데 도구를 불렀다"
+
+
+# ── 앞 단계가 없을 때 ───────────────────────────────────────────────
+#
+# 같은 노드가 두 자리에 쓰인다. search_ev_stations 는 keyword 뒤(recipe 012 ·
+# 013)에도 오고 geocode 뒤(recipe 035 · 036)에도 온다. 배선은 한 벌뿐이라
+# $prev 를 쓰는 칸이 첫 step 에 놓이는 일이 생긴다.
+#
+# 예전에는 그때 ValueError 로 멈춰 recipe 012 · 013 이 도구를 하나도 못 불렀다.
+# 지금은 그 칸을 빼고 부른다 — 아래가 그 규칙이다.
+
+
+def test_앞_단계가_없으면_prev_칸을_빼고_부른다(monkeypatch):
+    """멈추지 않고 그 칸만 빠져야 함.
+
+    ev.searchStations 의 bbox 넷은 전부 optional 이라 없어도 도구가 돌고
+    전국을 검색한다. 좌표를 지어내는 것보다 안 보내는 것이 낫다.
+    """
+    wire(monkeypatch, ["search_ev_stations"])
+
+    plan = step_service.plan("recipe_012", "충전소")
+
+    assert plan["steps"][0]["input"] == {"radiusMeters": step_service.RADIUS_METERS}
+    assert "center" not in plan["steps"][0]["input"]
+
+
+def test_앞_단계가_없으면_inputAdapter_도_안_싣는다(monkeypatch):
+    """걸 중심 좌표가 사라졌음. 그대로 걸면 vendor 어댑터가 ValueError 를 올림.
+
+    _point_radius_to_bbox_input 이 center/location 을 못 찾으면 예외다.
+    배선에 adapter 가 적혀 있어도 실을 수 없는 자리가 있다.
+    """
+    wire(monkeypatch, ["search_ev_stations"])
+
+    plan = step_service.plan("recipe_012", "충전소")
+
+    assert "inputAdapter" not in plan["steps"][0]
+
+
+def test_앞_단계가_있으면_inputAdapter_를_그대로_싣는다(monkeypatch):
+    """빼는 것은 앞 단계가 없을 때뿐임. geocode 뒤에서는 예전 그대로여야 함."""
+    wire(monkeypatch, ["geocode_place", "search_ev_stations"])
+
+    plan = step_service.plan("recipe_035", "오송역")
+
+    assert plan["steps"][1]["input"]["center"] == "$s1.location"
+    assert plan["steps"][1]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
+
+
+def test_빠지는_것은_prev_칸_하나뿐이다(monkeypatch):
+    """@arg 와 상수는 그대로 남아야 함. 통째로 비우는 것이 아님."""
+    wire(monkeypatch, ["lonely"], lonely={
+        "server_id": "asap-mcp-core",
+        "tool": "x.lonely",
+        "input": {"query": ARG, "location": "$prev.location", "limit": 50},
+        "headline": "{arg} 를 조회했습니다.",
+    })
+
+    plan = step_service.plan("recipe_x", "오송역")
+
+    assert plan["steps"][0]["input"] == {"query": "오송역", "limit": 50}
+
+
+def test_list_안의_prev_도_빠진다(monkeypatch):
+    """중첩된 자리도 같은 규칙. dict 만 보고 list 를 빠뜨리면 참조가 새어 나감."""
+    wire(monkeypatch, ["nested_prev"], nested_prev={
+        "server_id": "asap-mcp-core",
+        "tool": "x.nested",
+        "input": {"names": [ARG, "$prev.name", "고정값"]},
+        "headline": "{arg} 를 조회했습니다.",
+    })
+
+    plan = step_service.plan("recipe_x", "오송역")
+
+    assert plan["steps"][0]["input"]["names"] == ["오송역", "고정값"]
