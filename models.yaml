@@ -6,7 +6,7 @@
 # 목록에 없는 모델도 --model 로 부를 수 있다. 그때는 defaults 를 그대로 쓴다.
 # 서버를 띄운 채로 고쳐도 다음 요청부터 반영된다.
 
-default: "qwen3:8b"
+default: "qwen3:32b"
 
 defaults:
   num_ctx: 32768
