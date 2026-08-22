@@ -285,11 +285,21 @@ def _probe(tool: dict, timeout: int = TIMEOUT) -> dict:
             "payload": None,
         }
 
+    # vendor/asap/mcp_client.execute_tool 이 만드는 본문과 같은 모양임.
+    # 도구 이름은 tool, 인자는 input 이고 user_context 와 server_id 는 그 옆에
+    # 따로 얹음. toolName/arguments 로 보내면 42개가 전부
+    # "Tool name is required" 로 실패함(실측).
+    #
+    # 실행기가 지나는 창구를 흉내 내는 것이 이 도구의 전부임. 본문 모양이
+    # 갈리면 여기서 되는 것이 화면에서 안 되고, 그것을 표로는 못 알아봄.
     body = {
-        "toolName": name,
-        "arguments": arguments,
+        "tool": name,
+        "input": arguments,
         "user_context": dict(USER_CONTEXT),
     }
+    server_id = tool.get("serverId")
+    if server_id:
+        body["server_id"] = server_id
 
     try:
         response = requests.post(
