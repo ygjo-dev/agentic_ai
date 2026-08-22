@@ -7,7 +7,7 @@
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python tools/check_resolve.py                   1~6번 × 5회
+    python tools/check_resolve.py                   1~9번 × 5회
     python tools/check_resolve.py --runs 10         굳히기
     python tools/check_resolve.py --only 2          고친 발화만 다시
     python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
@@ -26,7 +26,9 @@
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:8b 다.
 
 표를 세 장 찍는다. 적중 표 · 축 표 · 후보 표다. 후보가 안 맞을 때 LLM 이
-recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다.
+recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다. 축 표에는
+발화에서 뽑은 인자(argument)도 함께 찍는다 — 축이 맞아도 인자가 흔들리면
+실행이 엉뚱한 것을 조회한다.
 
 후보 표는 모델을 바꿔 재는 데 쓴다. 축 셋이 같아 조회로는 못 가르는 발화
 (5번 충전소 · recipe_035 대 recipe_036)에서 조회 후보 수는 그대로인데 LLM
@@ -53,6 +55,9 @@ from dotenv import load_dotenv
 #   035  말한 장소 → 장소 좌표 변환 → 전기차 충전소 검색
 #   046  말한 장소 → 장소 좌표 변환 → 지점 행정구역 판별 → 연령별 인구 구성 조회
 #   007~010  말한 키워드 → 선거 네 데이터셋의 검색. 발화만으로는 안 갈린다
+#   012  말한 키워드 → 전기차 충전소 검색
+#   014  말한 키워드 → 문서 검색
+#   015  말한 식별자 → 국회의원 지역구 조회
 #
 # 1 과 2 는 같은 recipe 를 다르게 물은 것이다. 001 은 22개 recipe 의 앞토막이라
 # 끝점이 실제로 갈리는지가 관건이고, 그것을 가르는 것이 want 축이다.
@@ -64,6 +69,9 @@ UTTERANCES = [
     (5, "오송역 근처 충전소 찾아줘", {"recipe_035"}, True),
     (6, "국회의원 선거구 찾아줘",
      {"recipe_007", "recipe_008", "recipe_009", "recipe_010"}, True),
+    (7, "전기차 충전소 데이터 검색해줘", {"recipe_012"}, True),
+    (8, "철도 안전 문서 찾아줘",         {"recipe_014"}, True),
+    (9, "충북 제1선거구 알려줘",         {"recipe_015"}, True),
 ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -122,12 +130,17 @@ def _short(recipe_ids) -> str:
 
 
 def _axes(result: dict) -> tuple:
-    """응답의 축 셋. 표에 한 줄로 찍을 형태.
+    """응답의 축 셋과 인자. 표에 한 줄로 찍을 형태.
 
-    출력  (given, want, about). 안 쓴 축은 "-"
+    출력  (given, want, about, argument). 안 쓴 축과 못 뽑은 인자는 "-"
     규칙  Counter 의 key 라 튜플로 둠. 리스트는 해시가 안 됨
+          argument 는 축과 같은 국면에서 나오므로 같은 표에 둠. 축이 맞는데
+          인자만 흔들리는지가 여기서 갈림
     """
-    return tuple(result.get(axis) or "-" for axis in ("given", "want", "about"))
+    return tuple(
+        result.get(axis) or "-"
+        for axis in ("given", "want", "about", "argument")
+    )
 
 
 def _tally(result: dict) -> tuple:
@@ -159,7 +172,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, 축 셋, 후보 수 셋).
+    출력  (후보 집합, 축 넷, 후보 수 셋).
           후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
@@ -192,7 +205,7 @@ def _measure(
 
     입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 셋 · 모델 이름
     규칙  outcomes[번호] 에 나온 후보 집합들의 Counter 를 쌓음
-          axes[번호] 에 나온 (given, want, about) 조합의 Counter 를 쌓음
+          axes[번호] 에 나온 (given, want, about, argument) 조합의 Counter 를 쌓음
           tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status) 의 Counter 를 쌓음
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
@@ -295,14 +308,18 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
 
 AXIS_WIDTH = 46  # 축 표에서 (given, want, about) 칸의 폭.
 
+# 인자 칸의 폭. 축 셋과 한 칸에 담으면 표가 너무 넓어져 따로 둔다.
+ARGUMENT_WIDTH = 22
+
 
 def _print_axes(entries, axes: dict) -> None:
-    """발화마다 어떤 축이 나왔는지.
+    """발화마다 어떤 축과 인자가 나왔는지.
 
     입력  발화 목록 · {번호: 축 조합 Counter}
     규칙  많이 나온 것부터. 조합이 하나면 한 줄, 갈리면 여러 줄
           적중 표가 안 맞을 때 무엇이 틀렸는지 여기서 갈림.
           축이 흔들렸는지, 축은 같은데 LLM 이 recipe 를 다르게 골랐는지
+          인자는 축 셋과 따로 묶어 찍음. 세는 것은 넷을 함께 묶은 조합임
     """
     print()
     print(
@@ -310,6 +327,7 @@ def _print_axes(entries, axes: dict) -> None:
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 4)
         + _pad("given · want · about", AXIS_WIDTH)
+        + _pad("argument", ARGUMENT_WIDTH)
         + "횟수"
     )
 
@@ -326,8 +344,14 @@ def _print_axes(entries, axes: dict) -> None:
         rows = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
         for index, (axis, count) in enumerate(rows):
             prefix = head if index == 0 else " " * _width(head)
-            shown = _clip(" · ".join(axis), AXIS_WIDTH - 2)
-            print(prefix + _pad(shown, AXIS_WIDTH) + f"{count}회")
+            *three, argument = axis
+            shown = _clip(" · ".join(three), AXIS_WIDTH - 2)
+            print(
+                prefix
+                + _pad(shown, AXIS_WIDTH)
+                + _pad(_clip(argument, ARGUMENT_WIDTH - 2), ARGUMENT_WIDTH)
+                + f"{count}회"
+            )
 
 
 # 후보 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.

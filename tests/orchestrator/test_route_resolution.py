@@ -26,6 +26,7 @@ from orchestrator.schemas.response_schema import recipe_selection_schema
 #
 # 축(given · want · about)의 선택지도 마찬가지다. 엔진은 도메인을 모르므로
 # 무엇이 오든 상관없고, 실제 값은 부르는 쪽이 온톨로지에서 뽑아 넣는다.
+# argument 는 선택지가 없다. 발화에서 그대로 떼어 온 값이라 닫힌 목록이 아니다.
 GIVEN, WANT, ABOUT = "axis_given", "axis_want", "axis_about"
 
 SCHEMA = recipe_selection_schema(200, [GIVEN], [WANT], [ABOUT])
@@ -69,6 +70,7 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         "given": GIVEN,
         "want": WANT,
         "about": ABOUT,
+        "argument": "기상 관측값",
         "candidate_recipe_ids": ["recipe_004"],
         "status": SELECT,
         "recipe_id": "recipe_004",
@@ -86,6 +88,7 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         (
             {"reason": "하는 일이 같다.",
              "given": GIVEN, "want": WANT, "about": ABOUT,
+             "argument": "기상 관측값",
              "candidate_recipe_ids": ["recipe_004"],
              "status": SELECT, "recipe_id": "recipe_004"},
             SELECT, "recipe_004", ["recipe_004"],
@@ -93,6 +96,7 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         (
             {"reason": "Word 인지 PPT 인지 발화에 없다.",
              "given": GIVEN, "want": None, "about": ABOUT,
+             "argument": "기상 관측값",
              "candidate_recipe_ids": ["recipe_012", "recipe_013"],
              "status": CLARIFY, "recipe_id": None},
             CLARIFY, None, ["recipe_012", "recipe_013"],
@@ -100,6 +104,7 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         (
             {"reason": "menu 에 없는 기능이다.",
              "given": None, "want": None, "about": None,
+             "argument": None,
              "candidate_recipe_ids": [],
              "status": NO_MATCH, "recipe_id": None},
             NO_MATCH, None, [],

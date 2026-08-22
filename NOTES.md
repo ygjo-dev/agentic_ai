@@ -97,6 +97,69 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 측정 기록
 
+### 2026-08-22 · 발화에서 인자를 LLM 이 뽑음 (argument) · recipe 48
+
+`place_in` 정규식은 끝 글자가 역·시·군·구·읍·면·동·리 인 어절 하나만 뽑았다.
+그래서 `"충북대 근처 CCTV"` 는 끝 글자가 안 맞아 못 잡고, `"국회의원 선거구
+찾아줘"` 는 장소가 없어 `execute_service` 가 거기서 멈췄고, `"충북 제1선거구"`
+같은 식별자는 뽑는 코드가 아예 없었다. 축 셋을 받는 그 자리에서 인자도 함께
+받게 했다.
+
+응답 스키마에 칸 하나(`argument`)를 더했다. **셋으로 나누지 않았다** — `given`
+이 이미 그 값이 장소인지 키워드인지 식별자인지 말하므로, `place`/`keyword`/
+`identifier` 를 따로 두면 `given` 과 어긋날 수 있고 프롬프트도 그만큼 길어진다.
+
+```
+채운 프롬프트   6758자 -> 7133자   (+375, 발화 "오송역 위치 보여줘" 기준)
+프롬프트 원본   1763자 -> 2138자
+```
+
+`num_ctx` 는 32768 이라 여유가 있다. 위 「건드리기 전에 읽을 것」 표의 6758자는
+이 변경 전 값이다.
+
+**아직 LLM 으로 안 쟀다.** `argument` 가 실제로 어떻게 나오는지는
+`python tools/check_resolve.py --runs 10` 으로 재야 한다. 축 표에 `argument`
+칸을 더해뒀다. 이 커밋의 숫자는 프롬프트 길이와 테스트뿐이다.
+
+#### `@place` 를 `@arg` 로 바꿨다
+
+`STEP_OF` 의 표시 이름이다. 키워드를 받는 도구(`search_documents` ·
+`search_election_districts`)도 같은 칸에 발화에서 온 값을 넣으므로 표시가
+"장소" 를 뜻하면 안 된다. 배선 여섯(`geocode_place` · `get_railway_section` ·
+`get_railway_lines` · `search_admin_boundaries` · `get_vworld_boundaries` ·
+`search_population_statistics`)과 headline 열넷이 함께 바뀌었다.
+**배선은 새로 안 적었다.** 남은 25개는 다음 커밋이다.
+
+`place_in` 은 지웠다가 다시 넣을 값이 아니라 그대로 뒀다. LLM 이 `argument` 를
+빠뜨리거나 흔들려도 장소 발화만은 여전히 돌아야 한다. 지금은 `argument` 가
+null 일 때만 돈다.
+
+#### 안내 문구를 `given` 으로 갈랐다
+
+`NO_PLACE_ANSWER` 하나만 있어서 `"국회의원 선거구 찾아줘"` 에 장소를 대라고
+답했다. `spoken_keyword` 는 무엇을 찾을지, `spoken_identifier` 는 이름이나
+코드를 말해 달라고 한다. `given` 이 null 이거나 모르는 값이면 예전 문구다.
+
+#### 재는 발화를 셋 늘렸다
+
+7 `"전기차 충전소 데이터 검색해줘"` · 8 `"철도 안전 문서 찾아줘"` ·
+9 `"충북 제1선거구 알려줘"`. **기대값은 잠정이다.** 셋 다 배선이 없어 실행까지
+안 가고, 지금 보는 것은 축과 `argument` 가 맞게 나오는지뿐이다.
+
+#### 안 고친 것
+
+`"국회의원 선거구 찾아줘"` 의 `want` 가 `record_key` 로 나와 조회 후보가 0이
+되는 것을 앞선 측정에서 봤다. 원인이 `want` 선택지 설계에 있고, 온톨로지
+개편에서 식별자 타입이 쪼개지면 선택지가 통째로 달라진다. 지금 손대면 두 번
+일한다.
+
+recipe 012 · 013 은 `spoken_keyword -> search_ev_stations` 인데 그 배선의
+input 이 `$prev.location` 이라 첫 step 에서 `plan()` 이 멈춘다. 이번 범위가
+아니라(배선을 새로 안 적음) 그대로 뒀다. 다음 커밋에서 볼 것.
+
+테스트 156 passed / 1 failed. 실패 하나는 `test_dense_graph_would_move_if_
+overlap_removal_were_used` 로 이 장비의 graphviz 버전 차이다(제품 경로 아님).
+
 ### 2026-08-21 (셋째) · STEP_OF 배선 열둘 · recipe 48
 
 바로 아래 기록에서 반쪽 실행을 `unwired()` 로 막아놓고 배선은 안 늘렸다.

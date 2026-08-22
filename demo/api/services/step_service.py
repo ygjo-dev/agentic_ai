@@ -10,7 +10,8 @@ vendor/asap/generic_mcp_executor 의 _resolve_reference 가 안다 — 도구별
 필드 이름별이라 도구가 늘어도 재사용된다. 우리는 $prev.location 처럼 "앞
 단계의 무엇" 이라고만 적는다.
 
-발화에서 장소를 뽑는 것도 여기다. @place 를 채우는 값이라 같은 자리에 둔다.
+발화에서 온 값이 들어가는 자리가 @arg 다. 무엇을 뽑을지는 발화 해석 LLM 이
+argument 로 함께 내놓고, 그것이 없을 때만 place_in 이 장소 하나를 뽑는다.
 """
 
 import re
@@ -29,8 +30,13 @@ SERVER_ID = "asap-mcp-core"
 # 세로가 ±0.1347도로 좁아진다 — ±0.15도로 네 변을 똑같이 넓히던 것과 다르다.
 RADIUS_METERS = 15000
 
-# 발화에서 온 값을 가리키는 표시. @place 하나뿐이다.
-SPOKEN_PLACE = "@place"
+# 발화에서 온 값을 가리키는 표시. 하나뿐이다.
+#
+# 예전 이름은 @place 였다. 키워드를 받는 도구(search_documents ·
+# search_election_districts)도 같은 자리에 발화에서 온 값을 넣으므로 표시가
+# "장소" 를 뜻하면 안 된다. 그 값이 장소인지 키워드인지 식별자인지는 발화 해석
+# 응답의 given 이 말한다 — 여기는 그것을 구분하지 않는다.
+SPOKEN_VALUE = "@arg"
 
 # 앞 단계를 가리키는 표시. 실제 step id 로 바꿔서 vendor 에 넘긴다.
 PREVIOUS_STEP = "$prev"
@@ -45,7 +51,7 @@ POINT_RADIUS_TO_BBOX = "point_radius_to_bbox"
 # 노드 -> step. **온톨로지 밖이다.**
 #
 #   server_id · tool  vendor 가 Gateway 에 보낼 것
-#   input             그 도구가 받는 input. @place 와 $prev 를 쓸 수 있다
+#   input             그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
 #   adapter           vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
 #   headline          그 노드에서 끝나는 경로의 답 첫 줄
 #
@@ -55,88 +61,88 @@ STEP_OF = {
     "geocode_place": {
         "server_id": SERVER_ID,
         "tool": "geo.geocode",
-        "input": {"query": SPOKEN_PLACE},
-        "headline": "{place} 좌표를 조회했습니다.",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 좌표를 조회했습니다.",
     },
     "find_cctv": {
         "server_id": SERVER_ID,
         "tool": "road.getCctv",
         "input": {"location": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
-        "headline": "{place} CCTV 를 조회했습니다.",
+        "headline": "{arg} CCTV 를 조회했습니다.",
     },
     "get_railway_section": {
         "server_id": SERVER_ID,
         "tool": "rail.getSectionGeometry",
-        "input": {"sectionName": SPOKEN_PLACE},
-        "headline": "{place} 철도 구간 형상을 조회했습니다.",
+        "input": {"sectionName": SPOKEN_VALUE},
+        "headline": "{arg} 철도 구간 형상을 조회했습니다.",
     },
     "get_railway_lines": {
         "server_id": SERVER_ID,
         "tool": "geo.getRailwayLines",
-        "input": {"stationName": SPOKEN_PLACE},
-        "headline": "{place} 철도 노선을 조회했습니다.",
+        "input": {"stationName": SPOKEN_VALUE},
+        "headline": "{arg} 철도 노선을 조회했습니다.",
     },
     "find_admin_boundary_by_point": {
         "server_id": SERVER_ID,
         "tool": "adminBoundary.findBoundaryByPoint",
         "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
-        "headline": "{place} 행정구역을 조회했습니다.",
+        "headline": "{arg} 행정구역을 조회했습니다.",
     },
     "find_election_district_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findDistrictByPoint",
         "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
-        "headline": "{place} 국회의원 지역구를 조회했습니다.",
+        "headline": "{arg} 국회의원 지역구를 조회했습니다.",
     },
     "find_assembly_district_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findAssemblyDistrictByPoint",
         "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
-        "headline": "{place} 국회의원 전체 선거구를 조회했습니다.",
+        "headline": "{arg} 국회의원 전체 선거구를 조회했습니다.",
     },
     "find_assembly_pledge_district_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findAssemblyPledgeDistrictByPoint",
         "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
-        "headline": "{place} 국회의원 선거구 공약을 조회했습니다.",
+        "headline": "{arg} 국회의원 선거구 공약을 조회했습니다.",
     },
     "find_local_pledge_summary_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findLocalPledgeSummaryByPoint",
         "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
-        "headline": "{place} 지방선거 교통 공약을 조회했습니다.",
+        "headline": "{arg} 지방선거 교통 공약을 조회했습니다.",
     },
     "search_admin_boundaries": {
         "server_id": SERVER_ID,
         "tool": "adminBoundary.searchBoundaries",
-        "input": {"query": SPOKEN_PLACE},
-        "headline": "{place} 행정구역 경계를 조회했습니다.",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 행정구역 경계를 조회했습니다.",
     },
     "get_vworld_boundaries": {
         "server_id": SERVER_ID,
         "tool": "vworld.getAdministrativeBoundaries",
-        "input": {"query": SPOKEN_PLACE},
-        "headline": "{place} VWorld 행정경계를 조회했습니다.",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} VWorld 행정경계를 조회했습니다.",
     },
     "search_population_statistics": {
         "server_id": SERVER_ID,
         "tool": "population.searchStatistics",
-        "input": {"query": SPOKEN_PLACE},
-        "headline": "{place} 인구 통계를 조회했습니다.",
+        "input": {"query": SPOKEN_VALUE},
+        "headline": "{arg} 인구 통계를 조회했습니다.",
     },
     "search_ev_stations": {
         "server_id": SERVER_ID,
         "tool": "ev.searchStations",
         "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "adapter": POINT_RADIUS_TO_BBOX,
-        "headline": "{place} 전기차 충전소를 조회했습니다.",
+        "headline": "{arg} 전기차 충전소를 조회했습니다.",
     },
     "search_ev_chargers": {
         "server_id": SERVER_ID,
         "tool": "ev.searchChargers",
         "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "adapter": POINT_RADIUS_TO_BBOX,
-        "headline": "{place} 전기차 충전기를 조회했습니다.",
+        "headline": "{arg} 전기차 충전기를 조회했습니다.",
     },
 }
 
@@ -165,16 +171,16 @@ STEP_OF = {
 #    recipe 045 · 046 · 047 이 여기 걸린다. 앞 단계 없이 이 도구만 부르는
 #    recipe 018 · 019 · 020 은 3번 이유로도 막힌다.
 #
-# 3. 부를 인자를 발화에서 못 뽑는다
+# 3. 부를 인자는 이제 오는데 표에 줄을 아직 안 적었다
 #
 #    web_search · web_fetch · search_documents
 #    search_election_districts · search_assembly_districts
 #    search_assembly_pledge_districts · search_local_pledge_summaries
 #
-#    place_in 이 뽑는 것은 장소 어절 하나뿐이다. 위 것들이 받는 것은 웹 질의 ·
-#    URL · 문서 키워드 · 선거구 이름이라 장소를 그대로 넣을 자리가 아니다.
-#    행정구역 이름을 받는 search_admin_boundaries 와 다른 점이 여기다.
-#    발화 해석 LLM 이 recipe 를 고르면서 인자를 함께 내놓게 되면 풀린다.
+#    위 것들이 받는 것은 웹 질의 · URL · 문서 키워드 · 선거구 이름이라
+#    place_in 이 뽑는 장소 어절을 그대로 넣을 자리가 아니었다. 발화 해석 LLM 이
+#    argument 를 함께 내놓게 되어 그 막힘은 풀렸다 — 남은 것은 이 표에 줄을
+#    적는 일이다.
 #    recipe 006 · 007 · 008 · 009 · 010 · 014 · 028 · 030 · 032 · 041 이
 #    여기 걸린다.
 
@@ -183,14 +189,14 @@ PLACE_SUFFIXES = "역시군구읍면동리"
 
 # 한글 어절 하나가 통째로 장소인지 본다.
 #
-# **LLM 을 쓰지 않는다.** 인자 추출을 /resolve 에 얹으면 recipe 선택이 함께
-# 흔들린다 — 지금 확인된 것이 그 선택이라 건드리지 않는다.
+# **LLM 을 쓰지 않는다. 대비책이다.** 인자는 이제 발화 해석 LLM 이 argument 로
+# 함께 내놓고, 이 정규식은 그것이 null 로 올 때만 돈다.
 #
 # 못 잡는 것 : "충북대 근처" · "청주 시내" 처럼 끝 글자가 다른 곳,
 #              "오송역의" 처럼 조사가 붙은 어절, "서울에서 대전까지" 의 둘 중 하나.
 # 잘못 잡는 것 : "알려주시" 같은 어절도 형태가 같다. 실제 발화에서는 드물다.
-# 다음에 바꿀 것 : 발화 해석 LLM 이 recipe 를 고르면서 인자를 함께 내놓게 한다.
-#                  그때 이 함수가 통째로 사라진다.
+# 지우지 않는 이유 : LLM 이 흔들리거나 argument 를 빠뜨렸을 때 장소 발화만은
+#                    여전히 돌아야 한다. 뽑는 값도 이름도 예전 그대로다.
 PLACE_PATTERN = re.compile(f"[가-힣]{{2,}}[{PLACE_SUFFIXES}]")
 
 
@@ -201,6 +207,8 @@ def place_in(text: str) -> str | None:
     출력  첫 번째로 걸린 어절. 없으면 None
     규칙  어절 전체가 걸려야 함. "보여줘" 처럼 일부만 맞는 것은 안 봄
           여러 개면 첫 번째. 발화가 "서울에서 대전까지" 인 recipe 는 아직 없음
+    이력  예전에는 인자를 뽑는 유일한 자리였음. 발화 해석 LLM 이 argument 를
+          함께 내주게 되어 지금은 대비책임. 그 값이 null 일 때만 부름
     """
     for word in str(text or "").split():
         if PLACE_PATTERN.fullmatch(word):
@@ -224,10 +232,11 @@ def unwired(recipe_id: str) -> list[str]:
     ]
 
 
-def plan(recipe_id: str, place: str) -> dict:
+def plan(recipe_id: str, argument: str) -> dict:
     """recipe 한 벌을 vendor 가 받는 실행 계획으로.
 
-    입력  recipe id · 발화에서 뽑은 장소
+    입력  recipe id · 발화에서 뽑은 인자. 장소일 수도 키워드일 수도 식별자일
+          수도 있음. 어느 것인지는 여기서 안 가름
     출력  steps  vendor 의 intent["steps"] 에 그대로 들어갈 배열
           nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
           headline  답의 첫 줄. 마지막 step 의 노드가 정함
@@ -255,35 +264,35 @@ def plan(recipe_id: str, place: str) -> dict:
             "id": step_id,
             "server_id": wiring["server_id"],
             "tool": wiring["tool"],
-            "input": _filled(wiring["input"], place, previous_id),
+            "input": _filled(wiring["input"], argument, previous_id),
         }
         if wiring.get("adapter"):
             step["inputAdapter"] = wiring["adapter"]
         steps.append(step)
         nodes.append(node_id)
-        headline = wiring["headline"].format(place=place)
+        headline = wiring["headline"].format(arg=argument)
         previous_id = step_id
 
     return {"steps": steps, "nodes": nodes, "headline": headline}
 
 
-def _filled(value, place: str, previous_id: str | None):
-    """input 안의 @place 와 $prev 를 실제 값으로. 중첩된 것까지.
+def _filled(value, argument: str, previous_id: str | None):
+    """input 안의 @arg 와 $prev 를 실제 값으로. 중첩된 것까지.
 
-    입력  input 조각 · 장소 · 앞 step 의 id(없으면 None)
+    입력  input 조각 · 발화에서 뽑은 인자 · 앞 step 의 id(없으면 None)
     출력  같은 모양에 표시만 바뀐 것
-    규칙  "@place" 는 어절 전체가 표시일 때만 바꿈. 값의 타입이 바뀌므로
+    규칙  "@arg" 는 어절 전체가 표시일 때만 바꿈. 값의 타입이 바뀌므로
           문자열 안에 섞어 쓰지 않음
           "$prev" 로 시작하면 뒤의 경로는 그대로 두고 앞만 바꿈
     제약  앞 단계 없이 $prev 를 만나면 멈춘다. 조용히 넘기면 vendor 가
           해석 못 한 문자열을 그대로 Gateway 에 보냄
     """
     if isinstance(value, dict):
-        return {key: _filled(item, place, previous_id) for key, item in value.items()}
+        return {key: _filled(item, argument, previous_id) for key, item in value.items()}
     if isinstance(value, list):
-        return [_filled(item, place, previous_id) for item in value]
-    if value == SPOKEN_PLACE:
-        return place
+        return [_filled(item, argument, previous_id) for item in value]
+    if value == SPOKEN_VALUE:
+        return argument
     if isinstance(value, str) and value.startswith(PREVIOUS_STEP):
         if previous_id is None:
             raise ValueError(f"첫 step 이 앞 단계를 가리킨다 : {value}")

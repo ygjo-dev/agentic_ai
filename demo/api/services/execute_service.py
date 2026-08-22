@@ -32,9 +32,26 @@ USER_CONTEXT = {
 # vendor 가 steps 를 workflow 로 알아보게 하는 이름.
 WORKFLOW_ACTION = "call_mcp_workflow"
 
+# 부를 인자를 못 뽑았을 때의 안내. given 이 무엇이냐에 따라 무엇을 더 말해
+# 달라고 할지가 다르다. 장소 문구 하나로 두면 "국회의원 선거구 찾아줘" 에
+# 장소를 대라고 답하게 된다.
 NO_PLACE_ANSWER = (
     "어느 장소인지 알 수 없습니다. '오송역' 처럼 장소를 함께 말씀해 주세요."
 )
+NO_KEYWORD_ANSWER = (
+    "무엇을 찾을지 알 수 없습니다. '전기차 충전소' 처럼 찾을 것을 함께 말씀해 주세요."
+)
+NO_IDENTIFIER_ANSWER = (
+    "어느 것인지 알 수 없습니다. '충북 제1선거구' 처럼 이름이나 코드를 함께 말씀해 주세요."
+)
+
+# given -> 안내 문구. key 는 온톨로지의 데이터 노드 id 이고 축 선택지와 같은 값이다.
+# given 이 null 이거나 여기 없는 값이면 장소 문구로 떨어진다.
+NO_ARGUMENT_ANSWER = {
+    "spoken_place": NO_PLACE_ANSWER,
+    "spoken_keyword": NO_KEYWORD_ANSWER,
+    "spoken_identifier": NO_IDENTIFIER_ANSWER,
+}
 
 # 도구가 아직 안 붙은 노드가 경로에 있을 때의 답. 이름을 적어 무엇이 없는지 알린다.
 UNWIRED_ANSWER = "{names} 기능이 아직 붙지 않아 실행할 수 없습니다."
@@ -56,10 +73,10 @@ STEP_JOIN = " -> "
 UNWIRED_MARK = " (아직 실행할 수 없음)"
 
 
-async def run(recipe_id: str, place: str, text: str = "", context: dict | None = None):
+async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
     """recipe 의 노드 순서대로 도구를 부름. 이벤트를 차례로 냄.
 
-    입력  recipe id · 장소 · 원 발화 · 저쪽 화면이 보낸 context
+    입력  recipe id · 발화에서 뽑은 인자 · 원 발화 · 저쪽 화면이 보낸 context
     출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
           step_start / step_end 는 실제로 불린 단계마다 한 쌍
     규칙  경로에 도구가 안 붙은 노드가 있으면 하나도 안 부르고 그렇다고 답함.
@@ -75,7 +92,7 @@ async def run(recipe_id: str, place: str, text: str = "", context: dict | None =
         yield _result(_unwired_answer(recipe_id, missing), [])
         return
 
-    plan = step_service.plan(recipe_id, place)
+    plan = step_service.plan(recipe_id, argument)
     if not plan["steps"]:
         yield _result("부를 도구가 없습니다.", [])
         return
@@ -111,7 +128,9 @@ async def chat(text: str, llm_client, reason_max_length: int, context: dict | No
     규칙  해석도 한 단계로 냄. 저쪽 화면이 진행 상황을 그림
           SELECT 가 아니면 도구를 하나도 안 부름. CLARIFY 는 후보가 여럿이라
           무엇을 부를지 정해지지 않았고, NO_MATCH 는 부를 것이 없음
-          장소를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
+          인자는 LLM 이 argument 로 준 것을 먼저 씀. 그것이 없을 때만
+          place_in 이 장소를 뽑음. 정규식은 장소 어절 하나밖에 못 봄
+          인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           demo.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
@@ -131,13 +150,24 @@ async def chat(text: str, llm_client, reason_max_length: int, context: dict | No
         yield _result(_no_recipe_answer(resolved), [])
         return
 
-    place = step_service.place_in(text)
-    if place is None:
-        yield _result(NO_PLACE_ANSWER, [])
+    argument = resolved.get("argument") or step_service.place_in(text)
+    if not argument:
+        yield _result(_no_argument_answer(resolved.get("given")), [])
         return
 
-    async for payload in run(recipe_id, place, text=text, context=context):
+    async for payload in run(recipe_id, argument, text=text, context=context):
         yield payload
+
+
+def _no_argument_answer(given: str | None) -> str:
+    """부를 인자를 못 뽑았을 때의 답.
+
+    입력  발화 해석이 쓴 given. 없으면 None
+    출력  무엇을 더 말해 달라는 한 문장
+    규칙  given 으로 가름. 그 값이 이미 장소인지 키워드인지 식별자인지 말함
+          모르는 given 과 None 은 장소 문구. 지금까지의 문구가 그것임
+    """
+    return NO_ARGUMENT_ANSWER.get(given, NO_PLACE_ANSWER)
 
 
 def _result(answer: str, commands: list) -> dict:
