@@ -51,3 +51,8 @@ desktop.ini
 node_modules/
 npm-debug.log*
 yarn-error.log*
+
+# --- 도구 훑기 응답 전문 ---
+# tools/probe_tools.py 가 남긴다. 배선을 적을 때 필드 이름을 보는 실측 자산이지만
+# 응답이 커서 저장소에 담을 것이 아니다.
+tools/probe_out/
