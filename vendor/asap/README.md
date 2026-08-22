@@ -40,7 +40,7 @@ import 하지 않는 잎이라 그대로 가져왔다.
 |---|---|
 | `config.py` | 원본 `app/config.py` 자리. vendor 가 읽는 다섯 값만 둠 |
 | `schemas_chat.py` | 원본 `app/schemas/chat.py` 의 `Command` 만 옮김 |
-| `workflow_answer.py` | Gemini 로 답을 다듬던 자리를 대신함 |
+| `workflow_answer.py` | Gemini 로 답을 다듬던 자리를 대신함. 성공·빈 결과·오류 판정도 여기서 함 |
 | `__init__.py` | 패키지 표시 |
 
 ## 고친 곳 — 이것 말고는 한 줄도 안 고쳤다
@@ -87,11 +87,25 @@ _compose_workflow_answer  아래 3번으로 통째로 대체됨
 문장에 녹아 사라지고, JSON 덤프는 사람이 읽을 것이 못 된다.
 
 본문은 `workflow_answer.compose_workflow_answer(intent, trace)` 한 줄이 되었다.
-첫 줄은 `intent["answer_instruction"]` 을 그대로 쓴다 — 우리 쪽
+성공한 실행의 첫 줄은 `intent["answer_instruction"]` 을 그대로 쓴다 — 우리 쪽
 `demo/api/services/step_service.py` 의 `STEP_OF` 가 노드마다 적어 넣는다.
 
 원본 `_fallback_workflow_answer` 는 지우지 않았다. 다른 곳에서 쓰이지 않지만
 지우면 병합할 것이 늘어난다.
+
+**`compose_workflow_answer` 를 부르는 자리는 둘이다.** 여기가 하나이고, 우리 쪽
+`demo/api/services/execute_service.run` 이 또 하나다. vendor 는 실패하면
+`_failed_workflow_result` 로 **여기까지 오지 않고** 자기 문구를 `answer_draft` 에
+담아 돌아간다. 그 문구가 사용자 화면에 나가면 안 되는 것을 담고 있어(실측 :
+HTTP 오류 문장 · `http://localhost:3000/api/tools/execute` · Gateway 응답 본문
+원문) `execute_service` 가 `executed["errors"]` 를 보고 같은 함수를 trace 로 다시
+부른다. 문구를 두 벌 쓰지 않으려는 것이다.
+
+`compose_workflow_answer` 가 성공/실패를 스스로 가르는 이유도 여기 있다.
+Gateway 는 실패를 `200` + `{"error": {...}}` 로도 돌려주고(실물 :
+`asap_probe_out/geo.geocode.english_notfound.json`), `mcp_client` 가 예외를 안
+올리므로 vendor 는 그것을 성공한 호출로 보고 `answer_draft` 에 성공 문구를 적는다.
+`errors` 만 보고서는 못 가른다.
 
 ### 4. `config.py` 의 두 값이 원본 기본값과 다르다
 

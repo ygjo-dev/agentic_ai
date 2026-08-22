@@ -13,12 +13,18 @@ _execute_generic_mcp_workflow 가 steps 배열 하나를 받아 참조 해석($s
 **step_start / step_end 는 실행이 끝난 뒤에 나간다.** vendor 는 steps 전부를
 한 번에 돌리고 trace 를 돌려주므로 중간에 끼어들 자리가 없다. 단계마다 한 쌍이
 recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
+
+**답 문구를 만드는 우리 쪽 vendor/asap/workflow_answer 를 부르는 자리가 둘이다.**
+성공한 실행은 vendor 안에서 _compose_workflow_answer 가 부르고, 실패한 실행은
+vendor 가 자기 문구(_failed_workflow_result)로 돌아오므로 아래 run 이 trace 로
+다시 부른다. 같은 함수라 문구가 갈라지지 않는다.
 """
 
 from collections import Counter
 
 from demo.api.services import ontology_service, resolve_service, step_service
 from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
+from vendor.asap.workflow_answer import compose_workflow_answer
 
 # 우리가 누구인지. 이 값으로 Gateway 가 권한을 찾는다.
 #
@@ -84,8 +90,14 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
           부를 것이 없으면 곧장 result. vendor 는 빈 steps 를 실패로 봄
           한 단계가 실패하면 vendor 가 거기서 멈춤. trace 에 그 단계까지만
           담기므로 이벤트도 거기까지만 나감
-    제약  실패 문구를 우리가 다시 쓰지 않는다.
-          vendor 가 무엇이 비었는지까지 적어 answer_draft 로 돌려줌
+          실패한 실행의 답은 vendor 의 answer_draft 를 버리고 trace 로 다시
+          만듦. vendor 문구가 HTTP 오류 원문 · 내부 URL · Gateway 응답 본문을
+          그대로 담음 (실측 : "s1 단계 MCP tool 실행에 실패했습니다: Server
+          error '500 Internal Server Error' for url
+          'http://localhost:3000/api/tools/execute' … Response body: …")
+    제약  실패 문구를 vendor 에서 가져오지 않는다.
+          무엇이 비었는지는 vendor 가 적어 주지만 그 문장이 사용자에게 보일
+          것이 아님. 무엇이 비었는지만 workflow_answer 가 골라 씀
     """
     missing = step_service.unwired(recipe_id)
     if missing:
@@ -117,7 +129,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         outcome = "실패" if item.get("error") else "완료"
         yield {"type": "step_end", "node": node_id, "message": f"{tool} {outcome}"}
 
-    yield _result(executed.get("answer_draft") or "", _commands(executed))
+    yield _result(_answer(intent, executed), _commands(executed))
 
 
 async def chat(text: str, llm_client, reason_max_length: int, context: dict | None = None):
@@ -173,6 +185,23 @@ def _no_argument_answer(given: str | None) -> str:
 def _result(answer: str, commands: list) -> dict:
     """마지막 이벤트. 저쪽 화면이 읽는 두 칸."""
     return {"type": "result", "answer": answer, "commands": commands}
+
+
+def _answer(intent: dict, executed: dict) -> str:
+    """이 실행에 보일 답 한 벌.
+
+    입력  vendor 에 넘긴 intent · vendor 가 돌려준 것
+    출력  화면에 그대로 나갈 문자열
+    규칙  errors 가 비어 있으면 vendor 의 answer_draft. 그 안에서 이미
+          workflow_answer 가 만든 것임
+          errors 가 있으면 trace 로 우리가 다시 만듦. 이때 failed 를 넘김.
+          vendor 는 중단할 때 대개 trace 에 아무것도 안 남기고, 남은 마지막
+          항목은 성공한 앞 단계라 trace 만 보면 성공으로 읽힘
+          trace 가 비면 단계 목록 없이 첫 줄만 나옴
+    """
+    if executed.get("errors"):
+        return compose_workflow_answer(intent, _trace(executed), failed=True)
+    return executed.get("answer_draft") or ""
 
 
 def _trace(executed: dict) -> list[dict]:
