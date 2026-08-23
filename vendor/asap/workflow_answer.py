@@ -64,6 +64,24 @@ LIST_KEYS = ("features", "items", "results", "data")
 COUNT_KEY = "count"
 TOTAL_KEY = "totalMatches"
 
+# 0건일 때 그 이유가 실려 오는 최상위 칸. 실측으로 본 이름만 둔다.
+#
+# warning   adminBoundary.searchBoundaries · adminBoundary.findBoundaryByPoint
+#           election.searchLocalPledgeSummaries              (2026-08-22 실측)
+# message   election.getLocalPledgeSummary
+#           election.findLocalPledgeSummaryByPoint           (status "not_found" 와 함께)
+#
+# knowledge.query · knowledge.listDocs · bim.listModels 는 응답이 [] 하나라
+# 안내 문장이 실릴 자리가 없다(실측). 그 셋은 0건까지만 나오는 것이 맞고,
+# 이유가 안 뜬다고 다시 조사할 것이 아니다.
+#
+# tools/probe_tools.py 의 find_warning 이 같은 일을 하는데 가져다 쓰지 않는다.
+# vendor 가 tools 를 import 하면 의존이 거꾸로 선다. 짧아서 여기 따로 둔다.
+NOTICE_KEYS = ("warning", "message")
+
+# 건수와 안내 문장 사이 표시.
+NOTICE_JOIN = " · "
+
 # 도구 호출이 터진 사유를 가르는 유일한 영어 조각.
 #
 # 실측 : web-search/web.search 를 부르면 Gateway 가 500 과 함께
@@ -140,7 +158,7 @@ def summarize(tool_input: Any, result: Any) -> str:
           배열이면 건수. 0건도 배열임
           location 이 [lon, lat] 이면 주소와 좌표. 어디를 찍었는지 사람이
           알아볼 수 있어야 함
-          건수를 세는 칸이 있으면 건수
+          건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄
           그 밖에는 최상위 칸 이름만
     제약  결과 값을 문자열에 담지 않는다.
           geojson · cctvUrl · features 가 raw JSON 으로 화면에 새던 자리다
@@ -158,7 +176,8 @@ def summarize(tool_input: Any, result: Any) -> str:
 
         counted = _counted(result)
         if counted:
-            return _count_line(*counted)
+            notice = _notice(result) if counted[0] == 0 else ""
+            return _count_line(*counted, notice=notice)
 
         return _keys_line(result)
 
@@ -253,11 +272,33 @@ def _place_line(tool_input: Any, result: Dict[str, Any], point: Tuple[float, flo
     return f"{query} → {tail}" if query else tail
 
 
-def _count_line(count: int, total: Optional[int]) -> str:
-    """건수 한 줄. 받은 것과 전체가 다르면 둘 다."""
+def _count_line(count: int, total: Optional[int], notice: str = "") -> str:
+    """건수 한 줄. 받은 것과 전체가 다르면 둘 다. 안내 문장이 있으면 뒤에 붙임.
+
+    규칙  안내 문장은 0건일 때만 옴. 부르는 쪽이 가름
+          빈 문자열이면 안 붙임. "0건 · " 만 남으면 안 됨
+    """
     if total is not None and total != count:
-        return f"{count}건 (전체 {total:,}건)"
-    return f"{count}건"
+        line = f"{count}건 (전체 {total:,}건)"
+    else:
+        line = f"{count}건"
+
+    return line + NOTICE_JOIN + notice if notice else line
+
+
+def _notice(result: Dict[str, Any]) -> str:
+    """0건의 이유로 응답에 실려 온 안내 문장. 없으면 "".
+
+    규칙  NOTICE_KEYS 를 순서대로 봄. 먼저 걸리는 것 하나만 씀
+          최상위만 봄. dataset.message 처럼 중첩된 것은 안 봄
+          문자열이 아니면 무시함
+          SUMMARY_LIMIT 에서 자름
+    """
+    for key in NOTICE_KEYS:
+        value = result.get(key)
+        if isinstance(value, str) and value.strip():
+            return _clip(value)
+    return ""
 
 
 def _keys_line(result: Dict[str, Any]) -> str:

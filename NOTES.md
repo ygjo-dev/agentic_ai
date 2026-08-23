@@ -106,6 +106,42 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   headline 을 명사형(`"{arg} 행정구역"`)으로 바꾸면 성공 · 빈 결과 · 오류 셋을
   한 문장 틀로 합칠 수 있다. `STEP_OF` 48줄을 다시 쓰는 일이라 이번에 안 했다.
 
+### 막힌 노드 여덟과 그것이 지나는 recipe 18개 (2026-08-23 실측)
+
+recipe 가 될 수 있는 노드 28개 중 여덟이 데이터가 없거나 권한이 없다.
+recipe 48개 중 18개가 그 여덟 중 하나를 지난다.
+
+```
+search_admin_boundaries             0건   shapefile 원본이 저장소에 없다
+find_admin_boundary_by_point        0건   같은 이유.  ★ 이것 하나가 일곱을 막는다
+                                          042 043 044 045 046 047 048
+search_documents                    0건   지식베이스에 문서가 0개
+search_local_pledge_summaries       0건   2026 지방선거 공약 미적재
+get_local_pledge_summary            0건   같은 데이터셋
+find_local_pledge_summary_by_point  0건   같은 데이터셋
+web_search                          권한   user_context 에 web-search 가 안 열려 있다
+web_fetch                           권한   같은 서버.  안 눌러봐서 추정이다
+
+막힌 노드를 지나는 recipe 18개
+  004 006 010 014 018 022 023 032 033 037 041 042 043 044 045 046 047 048
+```
+
+**전부 저쪽 데이터이고 우리가 못 채운다.** 오늘 철도가 보여준 대로, 채워지면
+코드를 한 줄도 안 고치고 그대로 돈다 — `import_railways.py` 한 번에
+`rail.sections` 2,243건이 들어가자 `rail.getSectionGeometry` 가 답하기 시작했다.
+
+**조대표님께 여쭐 것.** `import_admin_boundaries.py` 는 `--source-root` 로
+shapefile 폴더를 받는데 그 `.shp` 원본이 저장소에 없다(`find` 로 0개).
+그것만 받으면 일곱이 살아난다.
+
+**이 여덟은 개편이 못 고친다.** 개편이 고치는 것은 "경로가 진짜인가" 이고
+이것은 "데이터가 있는가" 다. 층이 다르다.
+
+이 여덟이 0건일 때 그 이유는 이제 답에 실린다 — `workflow_answer` 가
+0건이면서 `warning` · `message` 가 온 응답의 그 문장을 건수 뒤에 붙인다.
+`knowledge.query` · `knowledge.listDocs` · `bim.listModels` 셋은 응답이 `[]`
+하나라 실릴 자리가 없어 "0건" 까지만 나온다.
+
 ### 배선이 온톨로지의 선언을 반만 따른다 — 34개 중 13개
 
 노드 아홉이 입력 타입을 **둘** 선언했는데 `STEP_OF` 는 노드 하나당 한 줄이라

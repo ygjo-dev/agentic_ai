@@ -222,3 +222,45 @@ def test_a_successful_trace_keeps_its_shape():
         "1. geo.geocode       오송역 → 충청북도 청주시 흥덕구 오송읍 봉산리 369-1 "
         "(127.3277, 36.6200)"
     )
+
+
+def test_an_empty_result_carries_its_reason():
+    """0건이 우리 배선 탓인지 저쪽 데이터 탓인지가 화면에서 갈려야 함.
+
+    실측 : adminBoundary.findBoundaryByPoint 가 0건과 함께 warning 을 실어 보냄.
+    이유가 응답에 이미 있는데 답에는 "0건" 까지만 나왔음.
+    """
+    trace = [
+        geocode_step(OSONG),
+        {
+            "id": "s2",
+            "tool": "adminBoundary.findBoundaryByPoint",
+            "input": {"lon": 127.3, "lat": 36.6},
+            "result": {
+                "features": [],
+                "count": 0,
+                "warning": "행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다.",
+            },
+        },
+    ]
+    answer = compose_workflow_answer({"answer_instruction": "오송역 행정구역을 조회했습니다."}, trace)
+
+    assert answer.startswith("찾지 못했습니다.")
+    assert "0건 · 행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다." in answer
+
+
+def test_a_warning_next_to_a_count_never_shows():
+    """건수가 있으면 답이 나온 것임. 거기 warning 을 붙이면 사람이 헷갈림."""
+    trace = [
+        geocode_step(OSONG),
+        {
+            "id": "s2",
+            "tool": "adminBoundary.searchBoundaries",
+            "input": {"query": "오송읍"},
+            "result": {"features": [{"id": "오송읍"}], "count": 1, "warning": "일부만 반환했습니다."},
+        },
+    ]
+    answer = compose_workflow_answer({"answer_instruction": "오송읍 행정구역을 조회했습니다."}, trace)
+
+    assert "1건" in answer
+    assert "일부만 반환했습니다." not in answer
