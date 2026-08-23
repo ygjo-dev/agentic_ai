@@ -79,9 +79,9 @@
 # "지도 범위" 가 나오지만 지도 범위를 내놓게 하지 않았다 — 그렇게 하면 지도
 # 범위를 받는 도구 열 개가 그 뒤에 줄줄이 붙는다.
 #
-# ## 대상을 어떻게 갈랐나 — 섞이면 말이 안 되는 것 다섯
+# ## 대상을 어떻게 갈랐나 — 섞이면 말이 안 되는 것 넷
 #
-#   group_transport · group_election · group_population · group_ev · group_document
+#   group_transport · group_election · group_population · group_ev
 #
 # 계열 이름(election · population …)을 그대로 쓰지 않고 굵게 묶었다.
 # road.getCctv · rail.getSectionGeometry · geo.getRailwayLines 는 계열이 셋이지만
@@ -89,7 +89,14 @@
 # crosses_groups 에 걸려 죽는다.
 #
 # **범용 도구에는 about 을 붙이지 않았다.** 어느 분야에서나 쓰이는 것들이다 —
-# 장소 좌표 변환 · adminBoundary 셋 · vworld 둘 · dem.getInfo · web 둘, 아홉 개.
+# 장소 좌표 변환 · adminBoundary 셋 · vworld 둘 · dem.getInfo · web 둘 · 자료실 셋,
+# 열두 개.
+#
+# 자료실 셋(문서 검색 · 문서 목록 조회 · 3D 모델 목록 조회)은 원래 group_document
+# 라는 대상에 매여 있었다. 그것 하나만 성격이 달랐다 — 교통 · 선거 · 인구 ·
+# 전기차 충전은 주제인데 자료실은 그릇이다. "철도 안전 문서" 의 대상은 교통이지
+# 자료실이 아니므로 문서 검색이 shortlist 에서 걸러졌다. 대상에서 빼 범용으로
+# 돌렸다 (2026-08-23. 판정 61~62/90 -> 80/90. NOTES 「열한째」).
 # about 이 붙은 노드가 경로에 하나뿐이면 crosses_groups 는 거짓이므로
 # "범용 -> 특정분야" 경로가 살아남는다. 말한 장소 -> 장소 좌표 변환 -> CCTV 조회가
 # 그것이다.
@@ -200,10 +207,6 @@ nodes:
   group_ev:
     name: 전기차 충전
     description: 전기차 충전소와 충전기에 관한 것.
-
-  group_document:
-    name: 자료실
-    description: 쌓아 둔 문서와 3D 모델에 관한 것.
 
   # ---------------------------------------------------------- 기능 : 범용 (about 없음)
 
@@ -548,6 +551,3 @@ edges:
   - { from: get_ev_station,     to: group_ev, predicate: about }
   - { from: search_ev_chargers, to: group_ev, predicate: about }
 
-  - { from: search_documents,  to: group_document, predicate: about }
-  - { from: list_documents,    to: group_document, predicate: about }
-  - { from: list_bim_models,   to: group_document, predicate: about }
