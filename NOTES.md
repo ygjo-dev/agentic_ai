@@ -256,6 +256,178 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 
 ## 측정 기록
 
+### 2026-08-23 (다섯째) · 온톨로지 타입 쪼개기 일곱 안을 미리 잼 · 재기만 함
+
+**왜 쟀는가.** 개편에서 `record_key` 와 `place_name` 을 쪼갤 참인데, 쪼갰을 때
+경로가 몇 개가 되는지 아무도 몰랐다. 고르기 전에 숫자를 본다.
+**어느 안이 낫다는 판단은 여기 안 적는다.** 재기만 했다.
+
+**어떻게 쟀는가.** `tools/rebuild_init.py` 의 `rebuild(write=False)` 를 그대로
+돌렸다. 바꾼 것은 그것이 읽는 온톨로지 경로 둘(`paths.ONTOLOGY_PATH` ·
+`paths.INIT_ONTOLOGY_PATH`)뿐이다.
+
+```
+변형 온톨로지   /tmp/rework_sim/V*.yaml   버릴 파일이라 yaml.dump 로 다시 씀
+실행 스크립트   /tmp/rework_sim/run.py    변형마다 새 파이썬 프로세스
+INIT_RECIPES_DIR · INIT_MENU_YAML_PATH 는 진짜를 그대로 뒀다.
+그래야 "사라진 recipe" 가 지금 48개와 맞대어진다.
+```
+
+저장소 파일은 이 NOTES.md 하나만 고쳤다. `ontology/ontology.yaml` ·
+`ontology/_init/ontology.yaml` · recipe · menu · `STEP_OF` · 코드 전부 무수정이고
+`--write` 는 한 번도 안 붙였다. (`tools/probe_out/` 는 `.gitignore` 라
+아래 Gateway 응답 전문은 git 에 안 잡힌다.)
+
+#### 변형 일곱이 무엇인가
+
+```
+V0  지금 그대로. 기준선
+V1  식별자를 셋으로(admin_code · district_code · station_id).
+    record_key 는 지움. spoken_identifier is-a 는 셋 다
+V2  V1 인데 spoken_identifier is-a 는 district_code 하나만
+V3  V2 + search_ev_stations · search_ev_chargers 가 station_id 를 내놓음
+V4  장소 이름을 넷으로(place_label · station_name · line_name · section_name).
+    place_name 은 지움. spoken_place is-a 는 place_label · station_name 둘
+V5  V3 + V4
+V6  V5 + 시작 데이터 노드 spoken_section (「말한 구간」) is-a section_name
+```
+
+#### 표 — 변형 일곱
+
+```
+변형  노드  전체   버림  2단   남은      새로    사라진   menu    앞토막   최대   묶음 크기
+            경로         미만  recipe    생긴것  recipe   자수     묶음     묶음   변화
+V0     58    54     6     0     48★        0       0     4,315★     2      23     기준
+V1     60    50     6     0     44          0       4     3,815      2      19     -4
+V2     60    46     6     0     40          0       8     3,510      2      19     -4
+V3     60    52     8     0     44          4       8     3,962      4      21     -2
+V4     61    43     0     0     43          0       5     3,860      1      23      0
+V5     63    39     0     0     39          4      13     3,507      3      21     -2
+V6     64    52     8     0     44          9      13     3,967      4      21     -2
+
+★ V0 재현 확인. recipe 48개 · menu 미리보기 4,315자.
+  앞토막 묶음 = 문장 앞 30자가 같은 것이 2개 이상인 묶음의 수
+  최대 묶음   = 그중 가장 큰 것의 크기. 앞토막은 일곱 변형 모두 같다 —
+                "말한 장소로 장소 이름으로 위치 좌표와 지도 범위를 찾"
+  남은 recipe = 48 - 사라진 + 새로 생긴 것. 일곱 다 맞는다
+```
+
+사라진 recipe 를 이름으로 편 것.
+
+```
+recipe_002  말한 장소 → 철도 구간 형상 조회                         V4 V5
+recipe_018  말한 식별자 → 지방선거 교통 공약 상세                    V2 V3 V5 V6
+recipe_019  말한 식별자 → 연령별 인구 구성 조회                      V2 V3 V5 V6
+recipe_020  말한 식별자 → 인구 변화 추이 조회                        V2 V3 V5 V6
+recipe_021  말한 식별자 → 충전소 상세 조회                           V2 V3 V5 V6
+recipe_037  말한 장소 → 철도 구간 형상 조회 → 행정구역 조회           V4 V5
+recipe_038  말한 장소 → 철도 구간 형상 조회 → VWorld 행정경계 조회    V4 V5
+recipe_039  말한 장소 → 철도 구간 형상 조회 → CCTV 조회               V4 V5
+recipe_040  말한 장소 → 철도 구간 형상 조회 → 철도 노선 조회          V4 V5
+recipe_042  말한 장소 → 좌표 → 지점 행정구역 판별 → 국회의원 지역구 상세        V1 V2 V3 V5 V6
+recipe_043  말한 장소 → 좌표 → 지점 행정구역 판별 → 국회의원 전체 선거구 상세   V1 V2 V3 V5 V6
+recipe_044  말한 장소 → 좌표 → 지점 행정구역 판별 → 국회의원 선거구 공약 상세   V1 V2 V3 V5 V6
+recipe_048  말한 장소 → 좌표 → 지점 행정구역 판별 → 충전소 상세 조회           V1 V2 V3 V5 V6
+```
+
+V6 의 사라진 열셋 중 037~040 과 002 는 없어진 것이 아니라 **시작 데이터가
+바뀐 것**이다. `말한 구간 → 철도 구간 형상 조회 → …` 넷과 `말한 구간 → 철도
+구간 형상 조회` 하나가 새로 생겨 자리를 메운다. 사슬이 달라졌으므로 번호 대응은
+끊긴다.
+
+#### 사슬 판정 넷
+
+```
+                                  V0  V1  V2  V3  V4  V5  V6
+가짜 넷이 사라졌는가              X   O   O   O   X   O   O
+  (042·043·044·048 의 사슬)      4   0   0   0   4   0   0   ← 남은 개수
+새 경로가 생겼는가                X   X   X   O   X   O   O
+  search_ev_stations → get_ev_station   0   0   0   2   0   2   2
+  search_ev_chargers → get_ev_station   0   0   0   2   0   2   2
+구간 → CCTV 가 남았나             O   O   O   O   X   X   O
+  (get_railway_section → find_cctv)
+025 CCTV 가 살아 있나             O   O   O   O   O   O   O
+  (spoken_place → geocode_place → find_cctv)
+```
+
+**025 는 일곱 변형 전부에서 살아 있다.** 시연에서 도는 유일한 경로가 어느 안에서도
+안 죽는다.
+
+#### 앞토막 충돌을 편 것
+
+```
+V0  23  말한 장소로 장소 이름으로 위치 좌표와 지도 범위를 찾
+     5  말한 장소로 구간 이름으로 철도 선형 좌표와 지도 범위
+V1  19 / 5   (같은 둘)
+V2  19 / 5   (같은 둘)
+V3  21 / 5 + 2 말한 키워드로 지도 범위와 지역, 충전기 유형으로 전기
+                2 말한 키워드로 지도 범위와 지역으로 전기차 충전기를 조
+V4  23       (구간 묶음 5 가 통째로 사라져 묶음이 하나만 남음)
+V5  21 / 2 / 2
+V6  21 / 5 / 2 / 2   구간 묶음의 앞토막이 "말한 구간으로 …" 로 바뀜
+```
+
+#### 타입 노드는 menu 문장에 안 나온다 — 확인했다
+
+`function_for` 는 사슬의 실행 노드 description 과 시작 데이터 노드 이름만 쓴다.
+타입 노드는 사슬에 못 들어가므로 이름을 무엇으로 붙이든 문장이 안 바뀐다.
+문장에 보이는 "장소 이름으로" 는 `place_name` 의 이름이 아니라
+`geocode_place` 의 description 문구다. **그래서 V4 처럼 `place_name` 을 넷으로
+쪼개도 남아 있는 문장은 한 글자도 안 바뀐다.** 자수가 준 것은 경로가 준 탓이다.
+
+#### 덤 — `geo.getRailwayLines` 를 railwayName 으로 눌렀다
+
+```
+railwayName="경부선"   HTTP 200   features 224건   3,405,330자
+railwayName="호남선"   HTTP 200   features  79건   1,408,664자
+
+최상위 칸   type("FeatureCollection") · features
+features[0] type · properties · geometry(MultiLineString)
+properties  AF_F_N · AF_T_N · RA_F_N · RA_T_N · F_NAME · T_NAME ·
+            R_NAME_1 · R_NAME_2 · R_NAME_3 · AVG_DIST · AVG_TIME ·
+            L_TRANS · L_RAPID · SPEED · L_TYPE · railCode
+전문        tools/probe_out/geo.getRailwayLines.railwayName-<값>.json
+```
+
+`stationName="경부선"` 은 0건이었다(2026-08-23 실측). 같은 값을 `railwayName`
+으로 넣으면 224건이다. **한 도구가 받는 두 칸이 서로 다른 이름 체계다** —
+V4 가 `station_name` 과 `line_name` 을 가른 근거가 이것이다.
+
+#### 예상과 어긋난 것
+
+1. **경로 수가 늘어난 변형이 하나도 없다.** 타입을 쪼개면 경로가 늘 줄 알았는데
+   일곱 다 V0(54)보다 적다. 가장 적은 것은 V5 의 39개로 **0.72배**다. 늘어난
+   변형이 없으므로 "가장 많이 늘어난 변형" 은 없다. 이유는 단순하다 — 쪼개면
+   `can_connect` 가 맞춰 볼 타입이 좁아져 이어지던 것이 끊긴다.
+2. **V2 에서 가짜 넷 말고 넷이 더 죽는다.** `spoken_identifier` 를
+   `district_code` 하나에만 매면 recipe_018~021(말한 식별자로 바로 상세를 무는
+   경로 넷)이 통째로 사라진다. V1(셋 다 매는 것)에서는 안 사라진다. 발화가
+   "충북 제1선거구 알려줘" 하나뿐이라는 근거로 좁혔을 때 같이 딸려 나가는 것이다.
+3. **V4·V5 에서 039(구간 → CCTV)가 죽는다.** `get_railway_section` 이
+   `section_name` 만 받는데 `spoken_place` 는 `place_label` 과 `station_name`
+   에만 매여 있어 시작점이 없다. 철도 구간에서 출발하던 다섯(002 · 037~040)이
+   한꺼번에 사라진다. V6 의 `spoken_section` 노드 하나가 그것을 되살린다.
+4. **V4·V5 에서 버린 수가 6 에서 0 이 된다.** `crosses_groups` 에 걸리던 여섯이
+   전부 철도 구간에서 출발하던 경로라, 경로 자체가 없어지면서 거를 것도 없어졌다.
+   차단기가 좋아진 것이 아니라 차단할 대상이 사라진 것이다.
+5. **V3 에서 앞토막 충돌 묶음이 2 에서 4 로 는다.** 새로 생긴 충전소 경로 넷이
+   기존 문장과 앞 30자를 나눠 갖는다. 경로를 늘리면 앞토막도 같이 는다.
+6. **최대 묶음은 거의 안 움직인다.** 19~23 사이다. `geocode_place` 로 시작하는
+   묶음이 제일 큰데 어느 안도 그것을 안 건드린다.
+7. **미리보기 자수는 실측보다 1자 적다.** V0 이 4,315자로 찍히는데 실제
+   `_init/menu/menu.yaml` 은 4,316자다. 추정식이 덩어리 사이 빈 줄을 문장 수(48)
+   만큼 세는데 실제 이어붙임은 47개다. NOTES 에 적힌 4,316 은 실측이라 어긋난
+   것이 아니다. **표의 자수는 전부 미리보기 값이라 서로 견주는 데만 쓴다.**
+
+#### 안 한 것
+
+- 어느 안을 고를지 안 정했다. 고르는 것은 사람이 한다.
+- `--write` 를 안 붙였다. `_init` 은 그대로다.
+- 발화를 안 돌렸다. 이 표는 전부 경로 생성 결과지 발화 해석 결과가 아니다.
+  앞토막 묶음이 실제로 판정을 가르는지는 재봐야 안다.
+- `MIN_STEPS` · `MAX_STEPS` 를 안 건드렸다. 일곱 다 2 와 4 그대로다.
+
+
 ### 2026-08-23 (넷째) · 개편의 계기판 둘 · check_wiring · probe_shapes
 
 **왜 만들었는가.** 개편에서 배선을 노드별에서 간선별로 다시 적는다. 그때 계속
