@@ -6,4 +6,4 @@ steps:
 
   - node: find_admin_boundary_by_point
 
-  - node: get_assembly_pledge_district
+  - node: get_local_pledge_summary
