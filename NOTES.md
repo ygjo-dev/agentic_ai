@@ -256,6 +256,116 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 
 ## 측정 기록
 
+### 2026-08-23 (여섯째) · 8안 하나를 더 잼 · 철도 적재 뒤의 실측 · 재기만 함
+
+**왜 쟀는가.** 어젯밤 일곱 안에 없던 조합 하나가 남아 있었다.
+3안(식별자 셋 + `ev` 가 번호를 내놓음)에서 `spoken_identifier` 의 `is-a` 만
+셋으로 넓힌 것이다. **어느 안이 낫다는 판단은 여기 안 적는다.**
+
+```
+3안   spoken_identifier is-a district_code                        하나만
+8안   spoken_identifier is-a admin_code · district_code · station_id  셋 다
+```
+
+**장소 이름은 안 쪼갰다.** 오늘 철도 적재로 근거가 사라졌다 — 아래 실측 ④.
+
+**어떻게 쟀는가.** 어젯밤과 같다. `/tmp/rework_sim/run.py` 에 `V8` 갈래만 더했다.
+`rebuild(write=False)` · 온톨로지 경로 둘만 교체 · `--write` 안 붙임.
+
+```
+                     V0(지금)   V3         V8
+전체 경로              54        52         56
+버린 수                 6         8          8
+  그중 2단 미만          0         0          0
+남은 recipe            48        44         48
+새로 생긴 것            0         4          4
+사라진 recipe           0         8          4
+                                018·019·020·021    042·043·044·048
+                                042·043·044·048
+menu 자수            4315      3962       4267    (MENU_BUDGET 6000)
+앞토막 충돌 묶음         2         4          4
+최대 묶음              23        21         21
+```
+
+최대 앞토막은 셋 다 같다 : `말한 장소로 장소 이름으로 위치 좌표와 지도 범위를 찾`.
+노드 수 V0 58 · V3 60 · V8 60. `MAX_STEPS` 4.
+
+**사슬 판정 넷.**
+
+```
+                              V0      V3      V8
+가짜 넷이 남았나             4개남음  0 사라짐  0 사라짐
+search_ev_stations→get_ev_station   0       2       2
+search_ev_chargers→get_ev_station   0       2       2
+get_railway_section→find_cctv       1       1       1
+025  spoken_place→geocode_place→find_cctv   있음   있음   있음
+```
+
+**3안에서 죽었던 넷이 8안에서 살아났는가** (`spoken_identifier` 로 시작하는 2단).
+
+```
+             V0   V3   V8
+recipe_018    O    X    O    말한 식별자 → 지방선거 교통 공약 상세
+recipe_019    O    X    O    말한 식별자 → 연령별 인구 구성 조회
+recipe_020    O    X    O    말한 식별자 → 인구 변화 추이 조회
+recipe_021    O    X    O    말한 식별자 → 충전소 상세 조회
+```
+
+8안에서 새로 생긴 넷은 이것이다.
+
+```
+말한 키워드 → 전기차 충전소 검색 → 충전소 상세 조회
+말한 키워드 → 전기차 충전기 조회 → 충전소 상세 조회
+말한 장소 → 장소 좌표 변환 → 전기차 충전소 검색 → 충전소 상세 조회
+말한 장소 → 장소 좌표 변환 → 전기차 충전기 조회 → 충전소 상세 조회
+```
+
+**8안은 어젯밤 V7 과 글자 그대로 같은 온톨로지다.** `run.py` 의 `V7` 갈래가 이미
+`split_identifier(셋) + EV_SEARCH_EDGES` 였다. 어젯밤에 이미 잰 조합이고,
+숫자도 그대로 나온다. 새로 잰 것은 018~021 살아남 판정뿐이다.
+
+#### 철도 적재 — 오늘 한 일
+
+```
+적재      docker exec krri_asap-mcp-1 python scripts/import_railways.py
+          Imported 2243 railway sections from /app/2022_rail_utmk_updated.geojson
+          rail 스키마가 새로 생겼다. 전에는 스키마 자체가 없었다
+```
+
+**눌러본 결과 (실측).**
+
+```
+"대전~김천"     NOT_FOUND        그런 이름은 DB 에 없다
+"오송역"        성공  coords 18  bbox [[126.8686, 36.6196], [127.3281, 37.5546]]
+"서울역"        성공  coords 10
+"경부선"        성공  ★ 서울역과 sectionId 가 같다
+"경부선(고속)"  성공  ★ 역시 같다
+응답 칸 : sectionId · geometry(MultiLineString) · bbox
+location 칸은 없다
+```
+
+**무엇이 갈렸나.**
+
+```
+① location 이 없다. recipe_039 의 $prev.location 배선은 못 쓴다
+② bbox 가 [[a,b],[c,d]] 중첩형이라 vendor 의 $prev.minLon 이 푼다.
+   find_cctv 를 bbox 넷으로 배선하면 「구간 → CCTV」가 바로 돈다
+③ geocode 의 bbox 는 한 변 1km 라 그것으로 CCTV 를 뽑으면 0건이다.
+   같은 find_cctv 인데 앞이 geocode 면 좌표+반경, 앞이 구간 조회면 bbox 다.
+   노드당 한 줄로는 못 적는다는 실측 사례다
+④ 역 이름으로도 노선 이름으로도 같은 한 건이 나온다.
+   rail_repository 가 f_name · t_name · r_name_1~3 을 ILIKE 로 훑고 LIMIT 1 이다.
+   「구간 이름」이 별도 타입으로 안 갈린다
+⑤ sectionId 는 sha256 해시다. 사람이 말할 수 있는 값이 아니다
+```
+
+**정정.** 옛 기록의 「`"오송역"` 은 역 이름이지 구간명이 아니다 · 구간명 하나를
+알면 다시 재야 한다」(이 문서 아래쪽 2026-08-22 · 2026-08-21 대목)는 **틀렸다.**
+적재 뒤 실측에서 `"오송역"` 은 성공한다. 옛 오류는 인자 탓이 아니라 `rail.sections`
+테이블 자체가 없었기 때문이다. 구간을 「출발역~도착역」으로 식별한다는 이해도
+틀렸다 — `"대전~김천"` 은 NOT_FOUND 이고, 역 이름 하나 · 노선 이름 하나가
+똑같이 통한다. 옛 기록은 지우지 않고 그 자리에 둔다.
+
 ### 2026-08-23 (다섯째) · 온톨로지 타입 쪼개기 일곱 안을 미리 잼 · 재기만 함
 
 **왜 쟀는가.** 개편에서 `record_key` 와 `place_name` 을 쪼갤 참인데, 쪼갰을 때
@@ -664,6 +774,12 @@ infoSyncedAt    2026-08-22T13:36:10Z
 
 **`rail.getSectionGeometry` 는 어제와 같이 오류다.** `"오송역"` 은 역 이름이지
 구간명이 아니다. 구간명을 하나도 못 얻어 이번에도 못 눌렀다.
+
+> **정정 (2026-08-23 여섯째).** 위는 틀렸다. `import_railways.py` 로
+> `rail.sections` 2,243건을 넣은 뒤 `"오송역"` 은 성공한다. 옛 오류는 인자 탓이
+> 아니라 테이블이 없었기 때문이다. 구간이 「출발역~도착역」이라는 이해도 틀렸다 —
+> `"대전~김천"` 은 NOT_FOUND 이고 `"서울역"` · `"경부선"` 이 같은 한 건을 돌려준다.
+> 근거는 맨 앞 2026-08-23 (여섯째) 항목.
 
 #### 안 한 것
 
@@ -1119,6 +1235,12 @@ web.search                MCP tool 'web-search/web.search' is not applied for th
 `rail.getSectionGeometry` 는 도구가 아니라 인자 탓이다. `"오송역"` 은 역 이름이지
 구간명이 아니다. 구간명 하나를 알면 다시 재야 한다. 배선(`get_railway_section`)은
 이미 적혀 있고 `sectionName` 을 발화에서 받으므로 이대로 둔다.
+
+> **정정 (2026-08-23 여섯째).** 위는 틀렸다. `import_railways.py` 로
+> `rail.sections` 2,243건을 넣은 뒤 `"오송역"` 은 성공한다. 옛 오류는 인자 탓이
+> 아니라 테이블이 없었기 때문이다. 구간이 「출발역~도착역」이라는 이해도 틀렸다 —
+> `"대전~김천"` 은 NOT_FOUND 이고 `"서울역"` · `"경부선"` 이 같은 한 건을 돌려준다.
+> 근거는 맨 앞 2026-08-23 (여섯째) 항목.
 
 `dem.getInfo` 는 DEM 타일셋이 컨테이너 안에 없다. `MEMORY.md` 에 적어 둔 그
 누락이다.
