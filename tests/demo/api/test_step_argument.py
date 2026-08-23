@@ -1,7 +1,10 @@
 """발화에서 온 인자가 step 의 @arg 자리에 들어가는 것.
 
-LLM 을 부르지 않는다. 온톨로지도 안 읽는다 — 경로와 배선을 가짜로 주고
-치환 결과만 본다. 실제 노드 이름이 바뀌어도 흔들리지 않게 하려는 것.
+LLM 을 부르지 않는다. 경로와 배선을 가짜로 주고 치환 결과만 본다.
+
+**배선 줄을 고르는 것이 타입이라 타입만은 있어야 한다.** 실제 노드를 쓰는
+시험은 온톨로지의 타입을 그대로 읽고, 가짜 노드를 쓰는 시험은 handed 로
+건네는 타입을 준다. 치환 규칙을 보는 시험이 노드 이름에 매이지 않게 하려는 것.
 
 인자를 뽑는 자리가 둘이다. 발화 해석 LLM 의 argument 가 먼저이고, 그것이
 없을 때만 정규식(place_in)이 돈다. 아래에서 둘 다 본다.
@@ -15,16 +18,45 @@ from demo.api.services import execute_service, step_service
 
 ARG = step_service.SPOKEN_VALUE
 
+# 가짜 노드 사이에 흐르는 타입 하나. 온톨로지의 어느 타입도 아니다 —
+# 배선 줄을 고르는 데만 쓰이므로 이름은 아무래도 좋다.
+FAKE_TYPE = "가짜형식"
 
-def wire(monkeypatch, node_ids, **extra):
-    """가짜 경로를 plan 에 연결. STEP_OF 에 없는 노드는 extra 로 얹음."""
+
+def wire(monkeypatch, node_ids, rows=None, handed=None, tools=None):
+    """가짜 경로를 plan 에 연결.
+
+    node_ids  경로. **데이터 노드부터 적는다** — 첫 실행 노드의 배선 줄을
+              고르는 것이 그 앞 칸이다
+    rows      {(노드, 받는 타입): 배선}. STEP_OF 에 없는 자리를 얹을 때 씀
+    handed    {노드: [건네는 타입, ...]}. 안 적은 노드는 온톨로지를 그대로 봄
+    tools     {노드: {server_id, tool, headline}}. TOOL_OF 에 없는 노드용
+    """
     monkeypatch.setattr(
         step_service.ontology_service,
         "path_of",
         lambda recipe_id: [{"node_id": node_id} for node_id in node_ids],
     )
-    for node_id, wiring in extra.items():
-        monkeypatch.setitem(step_service.STEP_OF, node_id, wiring)
+    if handed:
+        real = step_service.ontology_service.handed_types
+        monkeypatch.setattr(
+            step_service.ontology_service,
+            "handed_types",
+            lambda node_id: handed.get(node_id) or real(node_id),
+        )
+    for key, wiring in (rows or {}).items():
+        monkeypatch.setitem(step_service.STEP_OF, key, wiring)
+    for node_id, tool in (tools or {}).items():
+        monkeypatch.setitem(step_service.TOOL_OF, node_id, tool)
+
+
+def fake_tool(name):
+    """가짜 노드의 TOOL_OF 한 줄."""
+    return {
+        "server_id": "asap-mcp-core",
+        "tool": name,
+        "headline": "{arg} 를 조회했습니다.",
+    }
 
 
 def collect(events):
@@ -38,7 +70,7 @@ def collect(events):
 
 def test_발화에서_온_값이_arg_자리에_들어간다(monkeypatch):
     """@place 를 @arg 로 바꾼 뒤에도 장소 발화가 그대로 돌아야 함."""
-    wire(monkeypatch, ["geocode_place"])
+    wire(monkeypatch, ["spoken_place", "geocode_place"])
 
     plan = step_service.plan("recipe_001", "오송역")
 
@@ -50,12 +82,11 @@ def test_장소가_아닌_값도_같은_자리에_들어간다(monkeypatch):
 
     키워드를 받는 도구도 같은 칸을 쓴다. 그것을 막으려고 이름을 바꿨음.
     """
-    wire(monkeypatch, ["search_documents"], search_documents={
-        "server_id": "asap-mcp-core",
-        "tool": "doc.search",
-        "input": {"query": ARG},
-        "headline": "{arg} 문서를 조회했습니다.",
-    })
+    wire(
+        monkeypatch,
+        ["spoken_keyword", "search_documents"],
+        rows={("search_documents", "keyword"): {"input": {"query": ARG}}},
+    )
 
     plan = step_service.plan("recipe_014", "철도 안전")
 
@@ -64,15 +95,16 @@ def test_장소가_아닌_값도_같은_자리에_들어간다(monkeypatch):
 
 def test_중첩된_input_안까지_바뀐다(monkeypatch):
     """도구에 따라 input 이 한 겹이 아님. dict 안에도 list 안에도 있을 수 있음."""
-    wire(monkeypatch, ["nested"], nested={
-        "server_id": "asap-mcp-core",
-        "tool": "x.nested",
-        "input": {
+    wire(
+        monkeypatch,
+        ["start", "nested"],
+        rows={("nested", FAKE_TYPE): {"input": {
             "filter": {"name": ARG, "limit": 10},
             "names": [ARG, "고정값"],
-        },
-        "headline": "{arg} 를 조회했습니다.",
-    })
+        }}},
+        handed={"start": [FAKE_TYPE]},
+        tools={"nested": fake_tool("x.nested")},
+    )
 
     plan = step_service.plan("recipe_x", "오송역")
 
@@ -84,19 +116,21 @@ def test_중첩된_input_안까지_바뀐다(monkeypatch):
 
 def test_arg_와_prev_가_섞여도_각각_제_값이_된다(monkeypatch):
     """둘은 다른 것을 가리킴. @arg 는 발화, $prev 는 앞 step 의 결과."""
-    wire(monkeypatch, ["mixed_first", "mixed_second"],
-         mixed_first={
-             "server_id": "asap-mcp-core",
-             "tool": "x.first",
-             "input": {"query": ARG},
-             "headline": "{arg} 첫 단계.",
-         },
-         mixed_second={
-             "server_id": "asap-mcp-core",
-             "tool": "x.second",
-             "input": {"name": ARG, "location": "$prev.location", "radius": 15000},
-             "headline": "{arg} 두 번째 단계.",
-         })
+    wire(
+        monkeypatch,
+        ["start", "mixed_first", "mixed_second"],
+        rows={
+            ("mixed_first", FAKE_TYPE): {"input": {"query": ARG}},
+            ("mixed_second", FAKE_TYPE): {"input": {
+                "name": ARG, "location": "$prev.location", "radius": 15000,
+            }},
+        },
+        handed={"start": [FAKE_TYPE], "mixed_first": [FAKE_TYPE]},
+        tools={
+            "mixed_first": fake_tool("x.first"),
+            "mixed_second": fake_tool("x.second"),
+        },
+    )
 
     plan = step_service.plan("recipe_x", "오송역")
 
@@ -109,7 +143,7 @@ def test_arg_와_prev_가_섞여도_각각_제_값이_된다(monkeypatch):
 
 def test_headline_의_arg_도_바뀐다(monkeypatch):
     """답 첫 줄에 그 값이 그대로 보임. 치환이 빠지면 화면에 {arg} 가 뜸."""
-    wire(monkeypatch, ["geocode_place", "find_cctv"])
+    wire(monkeypatch, ["spoken_place", "geocode_place", "find_cctv"])
 
     plan = step_service.plan("recipe_025", "오송역")
 
@@ -187,25 +221,40 @@ def test_둘_다_없으면_given_에_맞는_안내가_나간다(
 
 # ── 앞 단계가 없을 때 ───────────────────────────────────────────────
 #
-# 같은 노드가 두 자리에 쓰인다. search_ev_stations 는 keyword 뒤(recipe 012 ·
-# 013)에도 오고 geocode 뒤(recipe 035 · 036)에도 온다. 배선은 한 벌뿐이라
-# $prev 를 쓰는 칸이 첫 step 에 놓이는 일이 생긴다.
+# 같은 노드가 두 자리에 쓰인다. search_ev_stations 는 말한 키워드 뒤(recipe 012 ·
+# 013)에도 오고 geocode 뒤(recipe 035 · 036)에도 온다.
 #
-# 예전에는 그때 ValueError 로 멈춰 recipe 012 · 013 이 도구를 하나도 못 불렀다.
-# 지금은 그 칸을 빼고 부른다 — 아래가 그 규칙이다.
+# 예전에는 배선이 노드당 한 줄이라 $prev 를 쓰는 칸이 첫 step 에 놓였고,
+# recipe 012 · 013 이 발화에서 온 값을 버리고 전국을 검색했다. 이제 그 자리는
+# 키워드 줄이 걸린다 — 아래 첫 시험이 그것이다.
+#
+# 그래도 $prev 칸이 첫 step 에 놓이는 자리가 생길 수 있어 "빼고 부른다" 규칙은
+# 남는다. 아래 넷이 그 규칙을 가짜 배선으로 본다.
+#
+# 첫 자리에서 키워드 줄이 걸리는지는 여기서 안 본다. demo/ 테스트를 늘리지
+# 않는 규칙(CLAUDE.md)이라 tools/check_wiring.py 의 A 가 그것을 센다.
 
 
 def test_앞_단계가_없으면_prev_칸을_빼고_부른다(monkeypatch):
     """멈추지 않고 그 칸만 빠져야 함.
 
-    ev.searchStations 의 bbox 넷은 전부 optional 이라 없어도 도구가 돌고
-    전국을 검색한다. 좌표를 지어내는 것보다 안 보내는 것이 낫다.
+    값을 지어내는 것보다 안 보내는 것이 낫다는 규칙이다. 그 칸이 required 면
+    도구가 거부하고 그것은 배선이 틀린 것이다.
     """
-    wire(monkeypatch, ["search_ev_stations"])
+    wire(
+        monkeypatch,
+        ["start", "lonely"],
+        rows={("lonely", FAKE_TYPE): {
+            "input": {"center": "$prev.location", "radiusMeters": 15000},
+            "adapter": step_service.POINT_RADIUS_TO_BBOX,
+        }},
+        handed={"start": [FAKE_TYPE]},
+        tools={"lonely": fake_tool("x.lonely")},
+    )
 
-    plan = step_service.plan("recipe_012", "충전소")
+    plan = step_service.plan("recipe_x", "오송역")
 
-    assert plan["steps"][0]["input"] == {"radiusMeters": step_service.RADIUS_METERS}
+    assert plan["steps"][0]["input"] == {"radiusMeters": 15000}
     assert "center" not in plan["steps"][0]["input"]
 
 
@@ -215,16 +264,25 @@ def test_앞_단계가_없으면_inputAdapter_도_안_싣는다(monkeypatch):
     _point_radius_to_bbox_input 이 center/location 을 못 찾으면 예외다.
     배선에 adapter 가 적혀 있어도 실을 수 없는 자리가 있다.
     """
-    wire(monkeypatch, ["search_ev_stations"])
+    wire(
+        monkeypatch,
+        ["start", "lonely"],
+        rows={("lonely", FAKE_TYPE): {
+            "input": {"center": "$prev.location", "radiusMeters": 15000},
+            "adapter": step_service.POINT_RADIUS_TO_BBOX,
+        }},
+        handed={"start": [FAKE_TYPE]},
+        tools={"lonely": fake_tool("x.lonely")},
+    )
 
-    plan = step_service.plan("recipe_012", "충전소")
+    plan = step_service.plan("recipe_x", "오송역")
 
     assert "inputAdapter" not in plan["steps"][0]
 
 
 def test_앞_단계가_있으면_inputAdapter_를_그대로_싣는다(monkeypatch):
     """빼는 것은 앞 단계가 없을 때뿐임. geocode 뒤에서는 예전 그대로여야 함."""
-    wire(monkeypatch, ["geocode_place", "search_ev_stations"])
+    wire(monkeypatch, ["spoken_place", "geocode_place", "search_ev_stations"])
 
     plan = step_service.plan("recipe_035", "오송역")
 
@@ -234,12 +292,15 @@ def test_앞_단계가_있으면_inputAdapter_를_그대로_싣는다(monkeypatc
 
 def test_빠지는_것은_prev_칸_하나뿐이다(monkeypatch):
     """@arg 와 상수는 그대로 남아야 함. 통째로 비우는 것이 아님."""
-    wire(monkeypatch, ["lonely"], lonely={
-        "server_id": "asap-mcp-core",
-        "tool": "x.lonely",
-        "input": {"query": ARG, "location": "$prev.location", "limit": 50},
-        "headline": "{arg} 를 조회했습니다.",
-    })
+    wire(
+        monkeypatch,
+        ["start", "lonely"],
+        rows={("lonely", FAKE_TYPE): {
+            "input": {"query": ARG, "location": "$prev.location", "limit": 50},
+        }},
+        handed={"start": [FAKE_TYPE]},
+        tools={"lonely": fake_tool("x.lonely")},
+    )
 
     plan = step_service.plan("recipe_x", "오송역")
 
@@ -248,12 +309,15 @@ def test_빠지는_것은_prev_칸_하나뿐이다(monkeypatch):
 
 def test_list_안의_prev_도_빠진다(monkeypatch):
     """중첩된 자리도 같은 규칙. dict 만 보고 list 를 빠뜨리면 참조가 새어 나감."""
-    wire(monkeypatch, ["nested_prev"], nested_prev={
-        "server_id": "asap-mcp-core",
-        "tool": "x.nested",
-        "input": {"names": [ARG, "$prev.name", "고정값"]},
-        "headline": "{arg} 를 조회했습니다.",
-    })
+    wire(
+        monkeypatch,
+        ["start", "nested_prev"],
+        rows={("nested_prev", FAKE_TYPE): {
+            "input": {"names": [ARG, "$prev.name", "고정값"]},
+        }},
+        handed={"start": [FAKE_TYPE]},
+        tools={"nested_prev": fake_tool("x.nested")},
+    )
 
     plan = step_service.plan("recipe_x", "오송역")
 

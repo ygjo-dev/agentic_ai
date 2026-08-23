@@ -1,9 +1,18 @@
 """recipe 의 노드 사슬을 vendor 실행기가 받는 steps 배열로 바꾼다. **우리 코드다.**
 
 **온톨로지는 무엇을 어떤 순서로 하는지만 말한다.** 그 노드가 어느 도구인지,
-input 을 어떻게 채우는지는 온톨로지에 없다 — 아래 STEP_OF 표가 갖는다.
+input 을 어떻게 채우는지는 온톨로지에 없다 — 아래 두 표가 갖는다.
 온톨로지에 도구 이름을 적으면 노드가 특정 MCP 서버에 묶여, 같은 일을 하는
 도구로 갈아끼울 때 도메인을 고쳐야 한다.
+
+    TOOL_OF   노드            -> 서버 · 도구 · 답 첫 줄
+    STEP_OF   (노드, 받는 타입) -> input
+
+**같은 노드가 두 자리에 온다.** 전기차 충전소 검색은 말한 키워드 뒤에도 오고
+장소 좌표 변환 뒤에도 온다. 그때 받는 것이 query 와 center 로 달라서 노드당
+한 줄로는 적을 수 없다. 그래서 STEP_OF 의 키가 (노드, 받는 타입)이고, 그
+타입은 온톨로지의 hasInput 선언과 1:1 이다. 어느 줄을 쓸지는 plan 이 앞
+단계가 내놓는 타입을 보고 고른다 — 타입 판정은 ontology_service 를 거친다.
 
 **배선은 여기서 끝난다.** 앞 단계 결과를 다음 input 에 어떻게 넣을지는
 vendor/asap/generic_mcp_executor 의 _resolve_reference 가 안다 — 도구별이 아니라
@@ -45,6 +54,27 @@ SPOKEN_VALUE = "@arg"
 # 앞 단계를 가리키는 표시. 실제 step id 로 바꿔서 vendor 에 넘긴다.
 PREVIOUS_STEP = "$prev"
 
+# 앞 단계의 지도 범위를 받는 두 모양. 여러 줄이 똑같이 쓰므로 상수로 둔다 —
+# 줄마다 베껴 적으면 한 곳만 고쳤을 때 조용히 어긋난다.
+#
+# vendor 의 _resolve_reference 가 minLon · minLat · maxLon · maxLat 를
+# 앞 단계 bbox 의 [0][0] · [0][1] · [1][0] · [1][1] 로 푼다. geocode 도
+# rail.getSectionGeometry 도 bbox 를 [[minLon, minLat], [maxLon, maxLat]] 로
+# 내놓으므로 같은 표시가 둘 다에 걸린다.
+#
+# 받는 쪽 모양은 도구마다 다르다. road.getCctv 는 네 칸을 따로 받고
+# (required 넷), 나머지는 bbox 한 칸에 평평한 네 수를 받는다
+# ("[minLon, minLat, maxLon, maxLat] 조회 범위", tools.json).
+BBOX_FROM_PREVIOUS = [
+    f"{PREVIOUS_STEP}.minLon",
+    f"{PREVIOUS_STEP}.minLat",
+    f"{PREVIOUS_STEP}.maxLon",
+    f"{PREVIOUS_STEP}.maxLat",
+]
+
+# 앞 단계의 지점 좌표를 받는 모양. find…ByPoint 다섯이 똑같이 쓴다.
+POINT_FROM_PREVIOUS = {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"}
+
 # 중심 좌표와 반경을 bbox 넷으로 바꾸는 vendor 어댑터의 이름.
 #
 # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 저절로 건다.
@@ -65,130 +95,239 @@ CENTER_KEYS = ("center", "point", "coordinate", "coordinates", "location")
 # 보내라" 가 안 갈린다.
 DROP = object()
 
-# 노드 -> step. **온톨로지 밖이다.**
+# 노드 -> 도구. **온톨로지 밖이다.**
 #
 #   server_id · tool  vendor 가 Gateway 에 보낼 것
-#   input             그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
-#   adapter           vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
 #   headline          그 노드에서 끝나는 경로의 답 첫 줄
+#
+# **한 노드는 한 도구이고 한 headline 이다.** 받는 것이 둘이어도 부르는 도구는
+# 같다. 그래서 이 표는 노드당 한 줄이고, 아래 STEP_OF 만 (노드 × 받는 타입)
+# 이다. 둘을 한 표에 합치면 도구 이름과 답 문장이 줄마다 복사되고, 한 쪽만
+# 고쳤을 때 조용히 어긋난다.
 #
 # headline 은 마지막 노드의 것만 쓰인다. 도구 이름으로는 만들 수 없는 문장이라
 # (road.getCctv -> "CCTV 를 조회했습니다") 노드가 들고 있어야 한다.
-STEP_OF = {
+TOOL_OF = {
     "geocode_place": {
         "server_id": SERVER_ID,
         "tool": "geo.geocode",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} 좌표를 조회했습니다.",
     },
     "find_cctv": {
         "server_id": SERVER_ID,
         "tool": "road.getCctv",
-        "input": {"location": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "headline": "{arg} CCTV 를 조회했습니다.",
     },
     "get_railway_section": {
         "server_id": SERVER_ID,
         "tool": "rail.getSectionGeometry",
-        "input": {"sectionName": SPOKEN_VALUE},
         "headline": "{arg} 철도 구간 형상을 조회했습니다.",
     },
     "get_railway_lines": {
         "server_id": SERVER_ID,
         "tool": "geo.getRailwayLines",
-        "input": {"stationName": SPOKEN_VALUE},
         "headline": "{arg} 철도 노선을 조회했습니다.",
     },
     "find_admin_boundary_by_point": {
         "server_id": SERVER_ID,
         "tool": "adminBoundary.findBoundaryByPoint",
-        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
         "headline": "{arg} 행정구역을 조회했습니다.",
     },
     "find_election_district_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findDistrictByPoint",
-        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
         "headline": "{arg} 국회의원 지역구를 조회했습니다.",
     },
     "find_assembly_district_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findAssemblyDistrictByPoint",
-        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
         "headline": "{arg} 국회의원 전체 선거구를 조회했습니다.",
     },
     "find_assembly_pledge_district_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findAssemblyPledgeDistrictByPoint",
-        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
         "headline": "{arg} 국회의원 선거구 공약을 조회했습니다.",
     },
     "find_local_pledge_summary_by_point": {
         "server_id": SERVER_ID,
         "tool": "election.findLocalPledgeSummaryByPoint",
-        "input": {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"},
         "headline": "{arg} 지방선거 교통 공약을 조회했습니다.",
     },
     "search_admin_boundaries": {
         "server_id": SERVER_ID,
         "tool": "adminBoundary.searchBoundaries",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} 행정구역 경계를 조회했습니다.",
     },
     "get_vworld_boundaries": {
         "server_id": SERVER_ID,
         "tool": "vworld.getAdministrativeBoundaries",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} VWorld 행정경계를 조회했습니다.",
     },
     "search_population_statistics": {
         "server_id": SERVER_ID,
         "tool": "population.searchStatistics",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} 인구 통계를 조회했습니다.",
     },
     "search_ev_stations": {
         "server_id": SERVER_ID,
         "tool": "ev.searchStations",
-        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
-        "adapter": POINT_RADIUS_TO_BBOX,
         "headline": "{arg} 전기차 충전소를 조회했습니다.",
     },
     "search_ev_chargers": {
         "server_id": SERVER_ID,
         "tool": "ev.searchChargers",
-        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
-        "adapter": POINT_RADIUS_TO_BBOX,
         "headline": "{arg} 전기차 충전기를 조회했습니다.",
     },
-    # ── 발화에서 온 말로 찾는 것 ────────────────────────────────────
-    #
-    # 아래 일곱은 앞 단계가 필요 없다. 받는 것이 좌표가 아니라 발화에서 온
-    # 말이라 첫 step 으로도 돈다.
-    #
-    # 노드와 도구의 짝은 온톨로지 노드 description 과 tools.json description 을
-    # 맞대어 정했다. 아래 셋은 2026-08-22 실측으로 query 가 실제로 거르는 것도
-    # 확인했다 — 인자 없이 부르면 254 · 254 · 476 건이고 query="청주" 로 부르면
-    # 4 · 5 건, query="철도" 로 부르면 206 건이다.
+    "get_ev_station": {
+        "server_id": SERVER_ID,
+        "tool": "ev.getStation",
+        "headline": "{arg} 충전소 상세를 조회했습니다.",
+    },
     "search_election_districts": {
         "server_id": SERVER_ID,
         "tool": "election.searchDistricts",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} 국회의원 지역구 목록을 조회했습니다.",
     },
     "search_assembly_districts": {
         "server_id": SERVER_ID,
         "tool": "election.searchAssemblyDistricts",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} 국회의원 전체 선거구 목록을 조회했습니다.",
     },
     "search_assembly_pledge_districts": {
         "server_id": SERVER_ID,
         "tool": "election.searchAssemblyPledgeDistricts",
-        "input": {"query": SPOKEN_VALUE},
         "headline": "{arg} 국회의원 선거구 공약 목록을 조회했습니다.",
     },
-    # 아래 넷은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
+    "search_local_pledge_summaries": {
+        "server_id": SERVER_ID,
+        "tool": "election.searchLocalPledgeSummaries",
+        "headline": "{arg} 지방선거 교통 공약 목록을 조회했습니다.",
+    },
+    "search_documents": {
+        "server_id": SERVER_ID,
+        "tool": "knowledge.query",
+        "headline": "{arg} 문서를 조회했습니다.",
+    },
+    "web_search": {
+        "server_id": WEB_SERVER_ID,
+        "tool": "web.search",
+        "headline": "{arg} 웹 검색 결과를 조회했습니다.",
+    },
+}
+
+# (노드, 받는 타입) -> 그 자리에서 input 을 어떻게 채우는가. **온톨로지 밖이다.**
+#
+#   input        그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
+#   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀
+#   adapter      vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
+#
+# **키의 타입은 온톨로지의 hasInput 선언과 1:1 이다.** 선언에 없는 타입으로
+# 줄을 적으면 plan 이 그 줄을 영영 못 고른다 — 줄을 고르는 것이 선언이기
+# 때문이다. 반대로 선언에는 있는데 줄이 없으면 그 자리는 unwired 다.
+# tools/check_wiring.py 가 양쪽을 센다.
+#
+# 예전에는 노드당 한 줄이었다. 같은 노드가 두 자리에 오는데 받는 것이 달라서
+# 한 줄로는 못 적었다.
+#
+#   말한 장소 → 좌표 변환 → 전기차 충전소 검색     center 를 받아야 한다
+#   말한 키워드 →           전기차 충전소 검색     query 를 받아야 한다
+#
+# 그 탓에 recipe 012 · 013 은 발화에서 온 값을 통째로 버리고 전국을 검색했다.
+STEP_OF = {
+    ("geocode_place", "place_name"): {"input": {"query": SPOKEN_VALUE}},
+
+    # 앞이 무엇이냐에 따라 채우는 칸이 갈린다(2026-08-23 실측).
+    #
+    #   철도 구간 형상 조회 뒤   그 bbox 를 그대로 넘긴다.
+    #                            rail.getSectionGeometry 의 bbox 는
+    #                            [[126.868587, 36.619576], [127.328115, 37.554557]]
+    #                            처럼 두 겹인데 vendor 의 _resolve_reference 가
+    #                            $prev.minLon 을 bbox[0][0] 으로 푼다
+    #   장소 좌표 변환 뒤        좌표를 반경 15km 로 넓힌다.
+    #                            geocode 의 bbox 는 한 변이 1km 라 그것을 그대로
+    #                            넘기면 0건이다
+    #
+    # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 어댑터를 저절로 건다.
+    ("find_cctv", "map_extent"): {
+        "input": {
+            "minLon": f"{PREVIOUS_STEP}.minLon",
+            "minLat": f"{PREVIOUS_STEP}.minLat",
+            "maxLon": f"{PREVIOUS_STEP}.maxLon",
+            "maxLat": f"{PREVIOUS_STEP}.maxLat",
+        },
+    },
+    ("find_cctv", "point"): {
+        "input": {"location": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+    },
+
+    ("get_railway_section", "place_name"): {"input": {"sectionName": SPOKEN_VALUE}},
+
+    # railwayName 은 안 건드린다. stationName 과 같은 "장소 이름" 이라 줄이
+    # 갈리지 않는다 — 역명으로 볼지 노선명으로 볼지는 사람이 정할 일이다.
+    ("get_railway_lines", "place_name"): {"input": {"stationName": SPOKEN_VALUE}},
+    ("get_railway_lines", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+
+    ("find_admin_boundary_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
+    ("find_election_district_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
+    ("find_assembly_district_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
+    ("find_assembly_pledge_district_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
+    ("find_local_pledge_summary_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
+
+    ("search_admin_boundaries", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("search_admin_boundaries", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+
+    ("get_vworld_boundaries", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("get_vworld_boundaries", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+
+    ("search_population_statistics", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("search_population_statistics", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+
+    # ev.searchStations · ev.searchChargers 의 inputSchema 에 query 가 있다 —
+    # "충전소명, 주소, 운영기관 키워드". 말한 키워드가 갈 자리가 여기다.
+    ("search_ev_stations", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    # bbox 넷이 전부 optional 이라 vendor 가 어댑터를 저절로 안 건다. 그래서
+    # 이 줄에만 이름을 적는다. 오송역에서 83건이 나왔다(실측).
+    ("search_ev_stations", "map_extent"): {
+        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+        "adapter": POINT_RADIUS_TO_BBOX,
+    },
+    ("search_ev_chargers", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("search_ev_chargers", "map_extent"): {
+        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+        "adapter": POINT_RADIUS_TO_BBOX,
+    },
+
+    # ev.getStation 의 statId 는 **stationId 이지 id 가 아니다**(2026-08-23 실측).
+    #
+    #   statId="PL033780"            item 이 온다
+    #   statId="ev_station_PL033780" item null · 0건 ·
+    #                                "충전소 ev_station_PL033780를 찾지 못했거나…"
+    #
+    # tools/probe_out/ev.getStation.statId-stationId.json 과
+    # tools/probe_out/ev.getStation.statId-id.json 이 그 둘이다.
+    # 앞 단계가 없으면(말한 식별자 → 충전소 상세) 발화에서 온 값이 곧 그 번호다.
+    ("get_ev_station", "station_id"): {
+        "input": {"statId": f"{PREVIOUS_STEP}.items.0.stationId"},
+        "input_first": {"statId": SPOKEN_VALUE},
+    },
+
+    # ── 발화에서 온 말로 찾는 것 ────────────────────────────────────
+    #
+    # 노드와 도구의 짝은 온톨로지 노드 description 과 tools.json description 을
+    # 맞대어 정했다. 아래 셋은 2026-08-22 실측으로 query 가 실제로 거르는 것도
+    # 확인했다 — 인자 없이 부르면 254 · 254 · 476 건이고 query="청주" 로 부르면
+    # 4 · 5 건, query="철도" 로 부르면 206 건이다.
+    ("search_election_districts", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+
+    ("search_assembly_districts", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("search_assembly_districts", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+
+    ("search_assembly_pledge_districts", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("search_assembly_pledge_districts", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
+    },
+
+    # 아래 셋은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
     # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
     # 데이터가 들어오면 고칠 것 없이 그대로 돈다. 왜 비었는지는 각 줄 위에
     # 적었고 NOTES.md 「2026-08-22 (셋째)」 에 응답 전문 근거가 있다.
@@ -196,70 +335,65 @@ STEP_OF = {
     # election.searchLocalPledgeSummaries : 0건.
     #   "2026 지방선거 시도별 공약 요약 데이터를 조회하지 못했습니다."
     #   같은 데이터셋의 getDatasetInfo 도 미적재라고 답한다. 저쪽 데이터다.
-    "search_local_pledge_summaries": {
-        "server_id": SERVER_ID,
-        "tool": "election.searchLocalPledgeSummaries",
-        "input": {"query": SPOKEN_VALUE},
-        "headline": "{arg} 지방선거 교통 공약 목록을 조회했습니다.",
+    ("search_local_pledge_summaries", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    ("search_local_pledge_summaries", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
     },
+
     # knowledge.query : 0건. 지식베이스가 비었다. knowledge.listDocs 도 [] 라
     #   질의가 틀린 것이 아니라 문서가 하나도 없는 것이다.
-    "search_documents": {
-        "server_id": SERVER_ID,
-        "tool": "knowledge.query",
-        "input": {"query": SPOKEN_VALUE},
-        "headline": "{arg} 문서를 조회했습니다.",
-    },
+    ("search_documents", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+
     # web.search : 실패. "MCP tool 'web-search/web.search' is not applied for
     #   this user." 데이터가 없는 것이 아니라 우리 user_context 에 web-search
     #   서버가 안 열려 있는 것이다. KRRI_ASAP 쪽 권한이라 우리가 못 연다.
-    "web_search": {
-        "server_id": WEB_SERVER_ID,
-        "tool": "web.search",
-        "input": {"query": SPOKEN_VALUE},
-        "headline": "{arg} 웹 검색 결과를 조회했습니다.",
-    },
-    # web.fetch : 안 눌러봤다. required 가 url 하나인데 probe 가 URL 을 지어내지
-    #   않는다. 같은 web-search 서버라 web.search 와 같은 권한에 막힐 것으로
-    #   본다 — 확인은 못 했다.
-    "web_fetch": {
-        "server_id": WEB_SERVER_ID,
-        "tool": "web.fetch",
-        "input": {"url": SPOKEN_VALUE},
-        "headline": "{arg} 웹 문서를 조회했습니다.",
-    },
+    ("web_search", "keyword"): {"input": {"query": SPOKEN_VALUE}},
 }
 
-# 아직 배선을 안 적은 노드와 그 이유. 다음 사람이 왜 비어 있는지 알아야 한다.
+# 아직 배선을 안 적은 (노드 × 받는 타입)과 그 이유. 다음 사람이 왜 비어 있는지
+# 알아야 한다. tools/check_wiring.py 가 이 일곱을 센다.
 #
-# 1. 앞 단계가 내놓는 식별자와 이 도구가 받는 식별자의 체계가 다르다
+# 1. 응답의 어느 칸에 그 값이 오는지 아직 모른다
 #
-#    get_election_district · get_assembly_district · get_assembly_pledge_district
-#    get_ev_station
+#    web_fetch × 웹 주소
 #
-#    앞 단계가 find_admin_boundary_by_point 이고 그것이 내놓는 것은 행정구역
-#    코드다. 위 넷이 받는 것은 선거구 코드(code · name)와 충전소 번호(statId)라
-#    체계가 다르다. 값을 옮겨 적을 수가 없어 배선을 안 적었다.
-#    온톨로지의 식별자 타입이 셋을 하나로 묶은 탓이다. NOTES.md
-#    「적을 수 없었던 경로」 참고.
-#    recipe 042 · 043 · 044 · 048 이 여기 걸린다. 앞 단계 없이 이 도구만 부르는
-#    recipe 015 · 016 · 017 · 021 도 같은 이유로 막힌다 — 발화에서 온 말을
-#    선거구 코드나 충전소 번호로 그대로 쓸 수는 없다.
-#
-# 2. 받을 것은 행정구역 코드가 맞지만 어느 필드에 오는지 아직 모른다
+#    web.fetch 의 required 는 url 하나이고 그 값은 앞 단계인 web.search 의
+#    결과에서 꺼내야 한다. 그런데 web.search 가 권한에 막혀
+#    ("MCP tool 'web-search/web.search' is not applied for this user")
+#    응답 모양을 한 번도 못 봤다. **모르면 배선을 적지 않는다.**
+#    예전에는 {url: @arg} 라고 적혀 있었다. 발화에서 온 말을 URL 로 쓰는
+#    것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
+#    recipe 041 이 여기 걸린다.
 #
 #    get_local_pledge_summary · get_age_profile · get_population_trend
+#    × 행정구역 코드
 #
 #    population.getAgeProfile · population.getTrend 는 level 과 code 를 받고
-#    그것이 행정구역 코드다. 다만 adminBoundary.findBoundaryByPoint 가 그 코드를
-#    어떤 필드 이름으로 내놓는지 여전히 모른다.
+#    그것이 행정구역 코드가 맞다. 다만 adminBoundary.findBoundaryByPoint 가
+#    그 코드를 어떤 필드 이름으로 내놓는지 여전히 모른다.
 #    2026-08-22 에 눌렀고 0건이었다 — "행정구역 DB 데이터가 없거나 PostGIS
 #    연결을 사용할 수 없습니다". features 가 비어 있어 필드 이름을 볼 것이
 #    없었다. 저쪽 PostGIS 에 경계가 적재되면 응답을 보고 적는다.
 #    getDatasetInfo 가 layers 의 codeField 로 ctprvn_cd · SIG_CD · emd_cd 를
 #    말하지만 그것은 shapefile 의 컬럼 이름이지 응답 필드 이름이 아니다.
 #    짐작으로 적지 않는다.
-#    recipe 018 · 019 · 020 · 045 · 046 · 047 이 여기 걸린다.
+#    recipe 018 · 019 · 020 · 044 · 045 · 046 이 여기 걸린다.
+#
+# 2. 그 값을 낼 앞 단계가 온톨로지에 없다
+#
+#    get_election_district · get_assembly_district · get_assembly_pledge_district
+#    × 선거구 코드
+#
+#    선거구 코드를 내놓는 도구가 없다. 사람이 발화로 말해야만 들어오는데,
+#    "충북 제1선거구" 같은 말을 election.getDistrict 의 code(SGG_Code)로
+#    그대로 쓸 수는 없다. name 칸이 따로 있으므로 그리로 보내는 것이 맞을
+#    수 있으나 눌러서 확인하지 않았다. 짐작으로 적지 않는다.
+#    recipe 015 · 016 · 017 이 여기 걸린다.
+#
+# 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
+# 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가
+# 생기지 않는다.
+
 
 # 장소로 볼 어절의 끝 글자.
 PLACE_SUFFIXES = "역시군구읍면동리"
@@ -293,20 +427,66 @@ def place_in(text: str) -> str | None:
     return None
 
 
+def wiring_at(node_id: str, source_id: str) -> dict | None:
+    """그 자리에서 쓸 배선 한 줄.
+
+    입력  부를 노드 id · 그 앞에 선 노드 id. 앞이 실행 노드일 수도 있고
+          경로의 첫 칸인 데이터 노드일 수도 있음
+    출력  STEP_OF 의 한 줄. 맞는 줄이 없으면 None
+    규칙  앞 노드가 건네는 타입을 순서대로 보고 먼저 걸리는 줄을 씀.
+          그 순서가 온톨로지에 적힌 hasOutput 순서임
+          둘 이상 맞으면 앞 노드가 먼저 내놓는 것을 씀. 장소 좌표 변환은
+          지점 좌표를 먼저 내놓으므로 CCTV 조회가 좌표 줄을 씀
+          데이터 노드가 앞이면 그것이 is-a 로 가리키는 타입을 봄.
+          말한 식별자는 코드 셋을 가리키고 그중 줄이 있는 것 하나가 걸림
+    제약  온톨로지를 직접 읽지 않는다. 타입 판정은 ontology_service 가 함
+    """
+    for type_id in ontology_service.handed_types(source_id):
+        wiring = STEP_OF.get((node_id, type_id))
+        if wiring is not None:
+            return wiring
+    return None
+
+
+def input_of(wiring: dict, first: bool) -> dict:
+    """그 줄이 이 자리에서 쓸 input.
+
+    입력  STEP_OF 한 줄 · 이것이 첫 step 인지
+    출력  input 한 벌. 아직 @arg 와 $prev 가 그대로 들어 있음
+    규칙  첫 step 이고 input_first 가 적혀 있으면 그것을 씀. 같은 타입을
+          앞 단계에서 받을 수도 발화에서 받을 수도 있는 자리가 있음
+          충전소 상세 조회가 그것임. 검색 뒤에 오면 앞 결과의 stationId 를
+          쓰고, 말한 식별자 뒤에 오면 발화에서 온 값이 곧 그 번호임
+    """
+    if first and "input_first" in wiring:
+        return wiring["input_first"]
+    return wiring["input"]
+
+
 def unwired(recipe_id: str) -> list[str]:
-    """아직 도구가 안 붙은 노드.
+    """아직 배선이 안 붙은 노드.
 
     입력  recipe id
-    출력  STEP_OF 에 없는 실행 노드 id 목록. 경로 순서. 전부 있으면 빈 목록
+    출력  맞는 배선 줄이 없는 실행 노드 id 목록. 경로 순서. 전부 있으면 빈 목록
     규칙  실행 노드만 셈. 데이터 노드는 부를 것이 없어 세지 않음
+          노드가 STEP_OF 에 있어도 이 자리에서 받는 타입에 줄이 없으면 셈.
+          배선은 이제 (노드, 받는 타입)마다 있고 자리마다 갈림
           부르는 쪽(execute_service.run)이 비어 있지 않으면 도구를 하나도
-          안 부름. 배선을 안 적은 노드와 그 이유는 STEP_OF 아래 주석에 있음
+          안 부름. 배선을 안 적은 자리와 그 이유는 STEP_OF 아래 주석에 있음
     """
-    return [
-        node_id
-        for node_id in ontology_service.executable_in(recipe_id)
-        if node_id not in STEP_OF
-    ]
+    executable = set(ontology_service.executable_in(recipe_id))
+
+    missing, source_id = [], None
+    for entry in ontology_service.path_of(recipe_id):
+        node_id = entry["node_id"]
+        if (
+            source_id is not None
+            and node_id in executable
+            and wiring_at(node_id, source_id) is None
+        ):
+            missing.append(node_id)
+        source_id = node_id
+    return missing
 
 
 def plan(recipe_id: str, argument: str) -> dict:
@@ -318,42 +498,49 @@ def plan(recipe_id: str, argument: str) -> dict:
           nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
           headline  답의 첫 줄. 마지막 step 의 노드가 정함
     규칙  step id 는 s1 · s2 … 로 붙음. $prev 를 앞 step 의 id 로 바꿈
-          STEP_OF 에 없는 노드는 step 을 만들지 않음. 데이터 노드
-          (spoken_place)는 값을 준비할 뿐 부를 것이 없음
-          adapter 가 있는 노드만 step 에 inputAdapter 칸이 생김. 없는 것은
+          어느 배선 줄을 쓸지는 앞 노드가 건네는 타입이 정함. wiring_at 이 그것임
+          맞는 줄이 없는 노드는 step 을 만들지 않음. 데이터 노드
+          (spoken_place)도 값을 준비할 뿐 부를 것이 없어 빠짐
+          adapter 가 적힌 줄만 step 에 inputAdapter 칸이 생김. 없는 것은
           vendor 가 도구 스키마를 보고 스스로 정함
           앞 단계가 없어 중심 좌표 칸이 빠졌으면 inputAdapter 도 안 실음.
           걸 것이 없는데 걸면 vendor 어댑터가 ValueError 를 올림
           실행 노드가 빠져 반쪽으로 도는 것은 부르기 전에 unwired 가 막음
     제약  첫 step 의 input 에 $prev 를 쓸 수는 있으나 그 칸은 빠진 채로 나간다.
           required 인 칸이면 도구가 거부하고 그것은 배선이 틀린 것이다
-    이력  예전에는 첫 step 이 $prev 를 가리키면 _filled 이 ValueError 로
-          멈췄음. recipe 012 · 013 이 그것에 걸려 도구를 하나도 못 불렀음.
-          _filled 의 이력 절 참고
+    이력  예전에는 배선이 노드당 한 줄이었고 첫 step 이 $prev 를 가리키면
+          _filled 이 그 칸을 빼고 불렀음. recipe 012 · 013 이 그것에 걸려
+          발화에서 온 값을 버리고 전국을 검색했음. 이제 그 자리는 키워드 줄이
+          걸림. _filled 의 이력 절 참고
     """
     steps: list[dict] = []
     nodes: list[str] = []
     headline = ""
     previous_id = None
+    source_id = None
 
     for entry in ontology_service.path_of(recipe_id):
         node_id = entry["node_id"]
-        wiring = STEP_OF.get(node_id)
+        wiring = wiring_at(node_id, source_id) if source_id is not None else None
+        source_id = node_id
         if wiring is None:
             continue
 
+        tool = TOOL_OF[node_id]
         step_id = f"s{len(steps) + 1}"
         step = {
             "id": step_id,
-            "server_id": wiring["server_id"],
-            "tool": wiring["tool"],
-            "input": _filled(wiring["input"], argument, previous_id),
+            "server_id": tool["server_id"],
+            "tool": tool["tool"],
+            "input": _filled(
+                input_of(wiring, first=previous_id is None), argument, previous_id
+            ),
         }
         if wiring.get("adapter") and _has_center(step["input"]):
             step["inputAdapter"] = wiring["adapter"]
         steps.append(step)
         nodes.append(node_id)
-        headline = wiring["headline"].format(arg=argument)
+        headline = tool["headline"].format(arg=argument)
         previous_id = step_id
 
     return {"steps": steps, "nodes": nodes, "headline": headline}

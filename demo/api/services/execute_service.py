@@ -24,7 +24,7 @@ from collections import Counter
 
 from demo.api.services import ontology_service, resolve_service, step_service
 from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
-from vendor.asap.workflow_answer import compose_workflow_answer
+from vendor.asap.workflow_answer import compose_workflow_answer, step_failed
 
 # 우리가 누구인지. 이 값으로 Gateway 가 권한을 찾는다.
 #
@@ -126,7 +126,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
     for node_id, item in zip(plan["nodes"], _trace(executed)):
         tool = item.get("tool") or ""
         yield {"type": "step_start", "node": node_id, "message": f"{tool} 호출 중입니다..."}
-        outcome = "실패" if item.get("error") else "완료"
+        outcome = "실패" if step_failed(item) else "완료"
         yield {"type": "step_end", "node": node_id, "message": f"{tool} {outcome}"}
 
     yield _result(_answer(intent, executed), _commands(executed))
@@ -225,7 +225,7 @@ def _commands(executed: dict) -> list[dict]:
 def _unwired_answer(recipe_id: str, missing: list[str]) -> str:
     """도구가 안 붙은 노드가 있을 때의 답.
 
-    입력  recipe id · STEP_OF 에 없는 실행 노드 id 목록
+    입력  recipe id · 맞는 배선 줄이 없는 실행 노드 id 목록
     출력  무엇이 아직 없는지 적은 한 문장
     규칙  id 가 아니라 노드 이름으로 적음. 사람이 읽는 문장임
     """

@@ -15,16 +15,22 @@ tools/check_resolve.py · tools/probe_tools.py 와 같은 성격이라 그 파�
 어긋나고, 그러면 이 도구가 세는 숫자를 믿을 수 없게 된다. @arg · $prev 도
 문자열로 박지 않고 SPOKEN_VALUE · PREVIOUS_STEP 을 쓴다.
 
-세는 규칙은 둘뿐이다.
+세는 규칙은 셋이다.
 
     A  첫 실행 노드인데 input 이 $prev 만 쓴다      발화 인자를 버린다
     B  앞 실행 노드가 있는데 input 이 @arg 만 쓴다  앞 단계 결과를 안 쓴다
+    C  hasInput 에는 있는데 STEP_OF 에 줄이 없다    그 자리는 부를 수 없다
 
-배선이 다 있는 recipe 만 본다(unwired 가 빈 것). 배선이 없는 recipe 는
+A 와 B 는 배선이 다 있는 recipe 만 본다(unwired 가 빈 것). 배선이 없는 recipe 는
 execute_service.run 이 도구를 하나도 안 부르므로 맞고 틀리고를 따질 것이 없다.
 
+C 는 recipe 를 안 본다. 온톨로지의 hasInput 선언과 STEP_OF 의 키를 맞대는 것뿐이다.
+**C 가 0 이어야 하는 것은 아니다.** 응답 모양을 못 본 자리는 지어내지 않고 비워
+두는 것이 규칙이라(STEP_OF 아래 주석) 비어 있는 이유가 적혀 있으면 그것이 맞다.
+A 와 B 는 0 이어야 한다.
+
 **테스트를 두지 않는다.** tools/ 는 재는 도구이고 제품 경로가 아니다. 이 파일이
-틀리면 NOTES.md 에 적힌 A 2 · B 11 이 안 나와 바로 드러난다.
+틀리면 NOTES.md 에 적힌 숫자가 안 나와 바로 드러난다.
 """
 
 import argparse
@@ -40,13 +46,19 @@ from demo.api.services.step_service import (  # noqa: E402
     PREVIOUS_STEP,
     SPOKEN_VALUE,
     STEP_OF,
+    TOOL_OF,
+    input_of,
     unwired,
+    wiring_at,
 )
+from ontology.graph import inputs_of, is_executable  # noqa: E402
+from ontology.store import nodes as all_nodes  # noqa: E402
 
-# 표에 찍는 부류 둘. NOTES.md 「배선이 온톨로지의 선언을 반만 따른다」의 이름과
+# 표에 찍는 부류 셋. NOTES.md 「배선이 온톨로지의 선언을 반만 따른다」의 이름과
 # 같아야 한다 — 표를 옮겨 적을 때 사람이 짝을 못 찾는다.
 DISCARDS_SPOKEN = "A"
 IGNORES_PREVIOUS = "B"
+UNDECLARED_WIRING = "C"
 
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
@@ -88,19 +100,52 @@ def marks_in(value) -> set:
 
 
 def wired_chain(recipe_id: str) -> list:
-    """recipe 한 벌에서 실제로 도구를 부르는 노드만.
+    """recipe 한 벌에서 실제로 도구를 부르는 노드만. 그 자리에서 고른 배선까지.
 
     입력  recipe id
-    출력  [{node_id, name}, ...] 경로 순서
-    규칙  path_of 의 순서를 그대로 두고 STEP_OF 에 있는 것만 남김.
-          step_service.plan 이 step 을 만드는 조건과 같음
+    출력  [{node_id, name, wiring}, ...] 경로 순서
+    규칙  step_service.plan 이 step 을 만드는 조건과 같음. 앞 노드가 건네는
+          타입으로 배선 줄을 고르고 맞는 줄이 없으면 빠짐
           데이터 노드(말한 장소)는 부를 것이 없어 빠짐
+    제약  배선을 고르는 규칙을 여기 옮겨 적지 않는다.
+          step_service.wiring_at 을 부른다. 옮겨 적으면 두 곳이 어긋남
     """
-    return [
-        entry
-        for entry in ontology_service.path_of(recipe_id)
-        if entry["node_id"] in STEP_OF
-    ]
+    chain, source_id = [], None
+    for entry in ontology_service.path_of(recipe_id):
+        node_id = entry["node_id"]
+        wiring = wiring_at(node_id, source_id) if source_id is not None else None
+        source_id = node_id
+        if wiring is not None:
+            chain.append({**entry, "wiring": wiring})
+    return chain
+
+
+def undeclared() -> list:
+    """hasInput 에는 있는데 STEP_OF 에 줄이 없는 (노드 × 받는 타입).
+
+    출력  [{kind, node_id, name, type_id, type_name, tool}, ...]
+    규칙  실행 노드만 봄. 받는 것이 없는 노드는 셀 것이 없음
+          도구 이름은 TOOL_OF 가 앎. 그것조차 없으면 빈 문자열
+    """
+    nodes = all_nodes()
+    found = []
+    for node_id in nodes:
+        if not is_executable(node_id):
+            continue
+        for type_id in inputs_of(node_id):
+            if (node_id, type_id) in STEP_OF:
+                continue
+            found.append(
+                {
+                    "kind": UNDECLARED_WIRING,
+                    "node_id": node_id,
+                    "name": nodes[node_id]["name"],
+                    "type_id": type_id,
+                    "type_name": nodes[type_id]["name"],
+                    "tool": (TOOL_OF.get(node_id) or {}).get("tool", ""),
+                }
+            )
+    return found
 
 
 def findings() -> tuple:
@@ -115,6 +160,7 @@ def findings() -> tuple:
           첫 실행 노드가 $prev 만 쓰면 A. 발화에서 온 값이 갈 곳이 없음
           앞 실행 노드가 있는데 @arg 만 쓰면 B. 앞 단계 결과가 버려짐
           둘 다 쓰거나 둘 다 안 쓰는 것은 세지 않음
+          첫 자리인지에 따라 input 이 갈리는 줄이 있으므로 input_of 로 고름
     제약  무엇이 맞는 배선인지 정하지 않는다. 어긋난 자리를 셀 뿐이고 어느
           쪽으로 고칠지는 사람이 정한다
     """
@@ -129,8 +175,8 @@ def findings() -> tuple:
         previous = None
         for entry in wired_chain(recipe_id):
             node_id = entry["node_id"]
-            wiring = STEP_OF[node_id]
-            marks = marks_in(wiring["input"])
+            wiring = entry["wiring"]
+            marks = marks_in(input_of(wiring, first=previous is None))
 
             kind = None
             if previous is None:
@@ -147,7 +193,7 @@ def findings() -> tuple:
                         "previous": previous,
                         "node_id": node_id,
                         "name": entry["name"],
-                        "tool": wiring["tool"],
+                        "tool": TOOL_OF[node_id]["tool"],
                     }
                 )
             previous = node_id
@@ -205,19 +251,34 @@ def _print_ignores(rows: list) -> None:
         )
 
 
-def _print_total(total: int, wired: int, found: list) -> None:
-    """합계 한 줄. recipe 총수 · 배선이 다 있는 것 · A · B."""
+def _print_undeclared(rows: list) -> None:
+    """C 표. hasInput 에는 있는데 STEP_OF 에 줄이 없는 자리."""
+    print()
+    print(f"  C  선언에는 있는데 배선이 없다 ({len(rows)}개)")
+    print("  " + _pad("노드 × 받는 타입", NODE_WIDTH) + "도구")
+    for row in rows:
+        print(
+            "  "
+            + _pad(f"{row['node_id']} × {row['type_name']}", NODE_WIDTH)
+            + row["tool"]
+        )
+
+
+def _print_total(total: int, wired: int, found: list, missing: list) -> None:
+    """합계 한 줄. recipe 총수 · 배선이 다 있는 것 · 배선 줄 수 · A · B · C."""
     discards = [row for row in found if row["kind"] == DISCARDS_SPOKEN]
     ignores = [row for row in found if row["kind"] == IGNORES_PREVIOUS]
     print()
     print(
         f"  recipe {total}개 · 배선이 다 있는 것 {wired}개"
-        f" · A {len(discards)}개 · B {len(ignores)}개"
-        f" · 합계 {len(found)}개"
+        f" · STEP_OF {len(STEP_OF)}줄"
+        f" · A {len(discards)}개 · B {len(ignores)}개 · C {len(missing)}개"
     )
     for label, rows in ((DISCARDS_SPOKEN, discards), (IGNORES_PREVIOUS, ignores)):
         if rows:
             print(f"  {label}  " + " ".join(_short(row["recipe_id"]) for row in rows))
+    if missing:
+        print("  C  " + " ".join(f"{row['node_id']}×{row['type_id']}" for row in missing))
 
 
 def main() -> int:
@@ -228,6 +289,7 @@ def main() -> int:
     args = parser.parse_args()
 
     total, wired, found = findings()
+    missing = undeclared()
 
     if not args.quiet:
         discards = [row for row in found if row["kind"] == DISCARDS_SPOKEN]
@@ -236,8 +298,10 @@ def main() -> int:
             _print_discards(discards)
         if ignores:
             _print_ignores(ignores)
+        if missing:
+            _print_undeclared(missing)
 
-    _print_total(total, wired, found)
+    _print_total(total, wired, found, missing)
     return 0
 
 

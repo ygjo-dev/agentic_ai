@@ -77,10 +77,6 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
-- **온톨로지의 식별자 타입이 셋을 하나로 묶고 있다.** 행정구역 코드 · 선거구
-  코드 · 충전소 번호가 한 타입이라 recipe 042 · 043 · 044 · 048 이 배선을
-  적을 수 없는 경로로 만들어졌다. 쪼개면 사라지지만 recipe 번호가 통째로
-  바뀐다. 시연 뒤에 한다 (아래 2026-08-21 (셋째) 참고).
 - **배선을 적은 도구 넷을 아직 안 눌러봤다.** `rail.getSectionGeometry` ·
   `geo.getRailwayLines` · `vworld.getAdministrativeBoundaries` ·
   `population.searchStatistics`. 응답 모양과 역 이름 검색이 되는지를 모른다.
@@ -142,95 +138,6 @@ shapefile 폴더를 받는데 그 `.shp` 원본이 저장소에 없다(`find` �
 `knowledge.query` · `knowledge.listDocs` · `bim.listModels` 셋은 응답이 `[]`
 하나라 실릴 자리가 없어 "0건" 까지만 나온다.
 
-### 배선이 온톨로지의 선언을 반만 따른다 — 34개 중 13개
-
-노드 아홉이 입력 타입을 **둘** 선언했는데 `STEP_OF` 는 노드 하나당 한 줄이라
-하나만 적을 수 있다. 어느 쪽을 골랐느냐에 따라 오류가 거울처럼 갈린다.
-
-```
-                                   선언              배선이 고른 쪽
-search_admin_boundaries            keyword+extent     keyword
-get_vworld_boundaries              keyword+extent     keyword
-get_railway_lines                  place_name+extent  place_name
-search_assembly_districts          keyword+extent     keyword
-search_assembly_pledge_districts   keyword+extent     keyword
-search_local_pledge_summaries      keyword+extent     keyword
-search_population_statistics       keyword+extent     keyword
-search_ev_stations                 keyword+extent     extent
-search_ev_chargers                 keyword+extent     extent
-```
-
-**A. 발화 인자를 버린다 (2개).** 첫 실행 노드인데 배선이 `$prev` 만 쓴다.
-
-```
-recipe_012  말한 키워드 -> search_ev_stations   ev.searchStations
-recipe_013  말한 키워드 -> search_ev_chargers   ev.searchChargers
-```
-
-`_filled` 이 앞 단계 없는 `$prev` 칸을 빼므로 `{"radiusMeters": 15000}` 만
-나간다. bbox 넷이 전부 optional 이라 오류 없이 전국 검색이 된다.
-
-```
-발화        "청주오스코 충전소 알려줘"
-나가는 것    {"radiusMeters": 15000}      키워드가 사라졌다
-```
-
-`ev.searchStations` 스키마에 칸이 있다 (`KRRI_ASAP/ASAP-mcp/main.py:532`).
-
-```
-"query": { "type": "string", "description": "충전소명, 주소, 운영기관 키워드" }
-```
-
-**B. 앞 단계 결과를 안 쓴다 (11개).** 앞 단계가 있는데 배선이 `@arg` 만 쓴다.
-
-```
-recipe_022  geocode_place       -> search_admin_boundaries
-recipe_024  geocode_place       -> get_vworld_boundaries
-recipe_026  geocode_place       -> get_railway_lines
-recipe_028  geocode_place       -> search_assembly_districts
-recipe_030  geocode_place       -> search_assembly_pledge_districts
-recipe_032  geocode_place       -> search_local_pledge_summaries
-recipe_034  geocode_place       -> search_population_statistics
-recipe_037  get_railway_section -> search_admin_boundaries
-recipe_038  get_railway_section -> get_vworld_boundaries
-recipe_040  get_railway_section -> get_railway_lines
-recipe_041  web_search          -> web_fetch
-```
-
-recipe_022 가 화면에서 CLARIFY 후보로 나온 그것이다.
-
-```
-menu 문장   "말한 장소로 위치 좌표와 지도 범위를 찾고, 이름이나 코드, 지도
-             범위로 시도와 시군구, 읍면동 경계를 조회한다."
-실제        s1 geo.geocode                    {"query": "오송역"}
-            s2 adminBoundary.searchBoundaries {"query": "오송역"}   앞 결과를 안 쓴다
-```
-
-geocode 를 부르고 버린다. 행정구역 DB 에 "오송역" 이라는 경계 이름이 없으니
-0건이다. **menu 문장이 약속한 것과 실행되는 것이 다르다.**
-
-B 가 전부 틀린 답인 것은 아니다.
-
-```
-낭비일 뿐    recipe_026  getRailwayLines(stationName="오송역")
-             stationName 에 역 이름은 맞는 값이다. geocode 단계만 헛돈다
-명백히 틀림  나머지 열.  역 이름 · 구간 이름을 경계 · 선거구 · 인구 검색어로 보낸다
-             recipe_041 은 web_fetch 의 url 자리에 발화 인자를 넣는다.
-             검색 결과에서 URL 을 꺼내야 맞다
-```
-
-**지금 고치지 않는다.** 한 줄을 채우면 반대쪽이 깨진다. 제대로 된 답은 배선을
-노드별이 아니라 **간선별**(무엇에서 무엇으로)로 적는 것이고, 개편의
-「도구를 온톨로지에 넣을 것인가」와 같은 결정이다.
-
-**설명도 함께 빠졌다.** `search_ev_stations` 의 `description` 이 "지도 범위와
-지역, 충전기 유형으로 전기차 충전소를 검색한다" 라 키워드로 찾는다는 말이 없다.
-도구 description 을 옮기며 빠진 것이다. 개편에서 description 을 다시 쓸 때
-**도구 `inputSchema` 의 입력 칸을 전부 훑어 빠진 능력이 없는지 본다.**
-
-**세 층 중 관계만 맞았다.** 관계(hasInput 둘)는 정확했고 그 덕에 경로가 생겼다.
-못 따라간 것은 파생물 둘(`description` · `STEP_OF`)이다.
-
 ### 화면 실측으로 셋이 한꺼번에 보였다 (2026-08-23 · 1회)
 
 ```
@@ -291,6 +198,202 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-23 (일곱째) · 온톨로지 개편 8안을 실제로 넣음 · 네 커밋
+
+**왜 했는가.** 여섯째 항목에서 8안이 확정됐다. `record_key`("식별자") 하나가
+자릿수도 발급처도 다른 값 셋을 묶고 있었고, 그래서 행정구역 코드가 충전소
+상세로, 충전소 번호가 연령별 인구 구성으로 흘러가는 **가짜 경로 넷**이
+만들어졌다 — 실행하면 반드시 터지는 경로다.
+
+```
+행정구역 코드   43113 (5자리).  find_admin_boundary_by_point 가 내놓는다
+선거구 코드     4311101 (7자리)
+충전소 번호     ev_station_PW012325.  ev.searchStations 도 내놓는다
+```
+
+3안(말한 식별자를 코드 하나에만 거는 것)은 018~021 을 함께 죽인다.
+8안은 말한 식별자에 코드 셋 모두를 걸어 그 넷을 살리고 가짜만 없앤다.
+
+네 커밋으로 나눴다. 판정이 달라졌을 때 무엇 탓인지 갈리게 하려는 것이다.
+
+```
+08e8a8e  0건일 때 그 이유를 답에 적는다              개편 전에 있던 것
+2f8b926  식별자 타입을 셋으로 쪼개 가짜 경로 넷을 없앤다
+ce13dfb  GT 를 개편 뒤 번호로 옮긴다
+(이 커밋) 배선을 노드와 입력 타입의 짝마다 한 줄로
+```
+
+되돌리는 길은 `git reset --hard before-ontology-rework` 하나다.
+
+#### ① 온톨로지를 쪼갠 전후
+
+**시뮬레이션 숫자와 실제가 한 자리도 다르지 않았다.**
+
+```
+                    여섯째의 시뮬레이션    실제
+남은 recipe         48개                   48개
+전체 경로           56개 · 버림 8개        56개 · 버림 8개
+menu.yaml           약 4,267자             4,268자 (MENU_BUDGET 6000)
+```
+
+recipe 번호 대응표 전문. **041 까지는 그대로이고 042 부터 밀렸다.**
+
+```
+새 번호     옛 번호      경로
+001~041     같음         (변화 없음)
+042         (새것)       말한 키워드 → 전기차 충전소 검색 → 충전소 상세 조회
+043         (새것)       말한 키워드 → 전기차 충전기 조회 → 충전소 상세 조회
+044         045          말한 장소 → 좌표 → 지점 행정구역 판별 → 지방선거 교통 공약 상세
+045         046          말한 장소 → 좌표 → 지점 행정구역 판별 → 연령별 인구 구성 조회
+046         047          말한 장소 → 좌표 → 지점 행정구역 판별 → 인구 변화 추이 조회
+047         (새것)       말한 장소 → 좌표 → 전기차 충전소 검색 → 충전소 상세 조회
+048         (새것)       말한 장소 → 좌표 → 전기차 충전기 조회 → 충전소 상세 조회
+
+사라진 넷   옛 042 · 043 · 044 · 048.  전부 가짜다
+살아남은 것 025(좌표 → CCTV) · 039(철도 구간 → CCTV) · 018~021(말한 식별자 2단)
+```
+
+새로 생긴 넷의 근거는 `ev.searchStations` 응답의 `items[0].id` 다. 검색이
+충전소 번호를 내놓으므로 검색 → 상세가 진짜 경로다.
+
+`pytest` 173 passed / 1 failed. 실패 1건은 graphviz 버전 차이에서 오는 음성
+대조군이고 개편과 무관하다.
+
+#### ② GT 를 새 번호로 옮긴 뒤의 세 묶음
+
+**기대값은 한 글자도 안 바꿨다. 번호만 옮겼다.** 사슬이 같은 recipe 를 찾아
+그 새 번호를 넣었다. 사라진 사슬은 없다. 움직인 것은 발화 4 하나뿐이다
+(`recipe_046` → `recipe_045`).
+
+```
+발화                        기준선(밤)   개편 뒤
+1 오송역 위치 보여줘        10/10        10/10
+2 오송역 좌표 알려줘        10/10        10/10
+3 오송역 CCTV 보여줘        10/10        10/10
+4 청주시 인구 구성 알려줘   10/10         0/10   ★ 떨어졌다
+5 오송역 근처 충전소 찾아줘  0/10         1/10   ★ 올랐다
+6 국회의원 선거구 찾아줘     0/10         0/10
+7 전기차 충전소 데이터 검색  0/10         0/10
+8 철도 안전 문서 찾아줘      0/10         0/10
+9 충북 제1선거구 알려줘     10/10        10/10
+                            ─────        ─────
+                            50/90        41/90
+                            56%          46%
+
+qwen3:32b · 발화 9개 × 10회 · _init(recipe 48) · 묶음 셋
+세 묶음이 md5 까지 같다. 기준선도 그랬다.
+```
+
+**판정이 열 점 떨어졌다. 전부 발화 4 한 건이다.**
+
+```
+            LLM 후보 수   조회 후보 수   status
+기준선      1             3              SELECT   10회
+개편 뒤     3             3              CLARIFY  10회
+```
+
+**조회 후보 수는 3 으로 그대로다.** 온톨로지가 후보를 넓힌 것이 아니다.
+LLM 이 `{034, 045, 046}` 을 셋 다 내놓아 SELECT 가 CLARIFY 로 바뀌었다.
+셋은 인구 통계 조회 · 연령별 인구 구성 · 인구 변화 추이이고 "인구 구성" 이라는
+말만으로는 실제로 갈리지 않는다. menu 문장의 번호가 바뀌면서 LLM 이 다르게
+답한 것으로 본다.
+
+발화 6 의 튀는 한 번은 후보 14개에서 3개로 줄었다(`{007, 008, 009, 015, 016,
+017, 027, 028, 029, 030, 031, 042, 043, 044}` → `{007, 008, 009}`).
+발화 7 의 조회 후보 수는 2 에서 4 로 늘었다.
+
+**숫자를 좋게 만들려고 기대값이나 규칙을 고치지 않았다.** 이것이 개편 직후의
+사실이다. `description` 을 사람이 손보면 다시 잰다.
+
+#### ③ 배선을 (노드 × 입력 타입)당 한 줄로
+
+`STEP_OF` 가 노드당 한 줄이라 같은 노드가 두 자리에 올 때 한쪽을 버렸다.
+키를 `(노드 id, 입력 타입 id)` 로 바꾸고 온톨로지의 `hasInput` 선언과 1:1 로
+맞췄다. 도구 이름과 답 첫 줄은 노드당 하나이므로 `TOOL_OF` 로 갈랐다 — 한 표에
+두면 줄마다 복사된다.
+
+```
+                          전         후
+TOOL_OF (노드)            —          21줄
+STEP_OF (노드 × 타입)     21줄       31줄
+배선이 다 있는 recipe     34개       38개
+check_wiring  A           2          0
+              B           11         0
+              C (새 규칙) —          7
+pytest                    173/1      175/1
+```
+
+C 는 "선언에는 있는데 배선이 없는 자리" 다. **0 이어야 하는 것이 아니다.**
+응답 모양을 못 본 자리는 지어내지 않고 비워 두는 것이 규칙이다.
+
+```
+web_fetch × 웹 주소                     web.search 가 권한에 막혀 응답 모양을
+                                        한 번도 못 봤다. 예전 {url: @arg} 는
+                                        발화를 URL 로 쓰는 것이라 지웠다
+get_election_district           × 선거구 코드
+get_assembly_district           × 선거구 코드   선거구 코드를 내놓는 도구가 없다.
+get_assembly_pledge_district    × 선거구 코드   name 칸으로 보내는 것이 맞을 수
+                                                있으나 안 눌러봤다
+get_local_pledge_summary        × 행정구역 코드
+get_age_profile                 × 행정구역 코드  findBoundaryByPoint 가 코드를 어느
+get_population_trend            × 행정구역 코드  필드로 내놓는지 아직 모른다(0건)
+```
+
+**오늘 실측이 준 것 셋.**
+
+```
+find_cctv   앞이 철도 구간 조회면   bbox 넷을 그대로.  실측 bbox
+                                    [[126.868587, 36.619576], [127.328115, 37.554557]]
+            앞이 geocode 면         좌표 + 반경 15km.  geocode bbox 는 한 변이
+                                    1km 라 그걸 쓰면 0건
+ev.getStation 의 statId 는 stationId 이지 id 가 아니다
+            statId="PL033780"             item 이 온다
+            statId="ev_station_PL033780"  item null · 0건 ·
+                                          "충전소 …를 찾지 못했거나 DB 연결을…"
+            tools/probe_out/ev.getStation.statId-stationId.json
+            tools/probe_out/ev.getStation.statId-id.json 이 그 둘이다
+ev.searchStations · searchChargers 의 inputSchema 에 query 가 있다
+            "충전소명, 주소, 운영기관 키워드".  말한 키워드가 갈 자리가 여기다
+```
+
+**범위 밖으로 나간 것 하나.** ①에서 안 적은 온톨로지 한 줄을 ③에서 더했다.
+
+```
+- { from: find_cctv, to: point, predicate: hasInput }
+```
+
+받는 것이 하나면 배선 줄도 하나뿐이라 철도 뒤와 geocode 뒤를 못 가른다.
+`road.getCctv` 의 required 는 bbox 넷이지만 노드는 좌표도 받는다 — 예전부터
+`location + radiusMeters` 로 그렇게 불러 왔고 선언만 빠져 있던 것이다.
+이 줄로 recipe 는 하나도 안 바뀐다(`rebuild_init` 미리보기로 확인. 좌표를
+내놓는 것이 `geocode_place` 하나뿐이라 이을 자리가 안 늘어난다).
+
+**진행 표시 판정을 답과 맞췄다.** `execute_service` 가 `item["error"]` 만 봤다.
+Gateway 는 실패를 `200` + `{"error": {...}}` 로도 돌려주고 그것은
+`item["result"]` 에 담기므로 화면이 "완료" 라고 찍었다. **그 탓에 "대전~김천
+구간이 유효하다" 는 틀린 사실이 문서에 박혔다**(아래 2026-08-22 넷째의 정정).
+`workflow_answer.step_failed` 를 새로 두고 `_outcome` · `_verdict` · 진행 표시
+셋이 그것을 부르게 했다. **0건은 실패로 보지 않는다** — 호출은 끝났고 결과가
+없는 것뿐이고 답 문구가 이미 "찾지 못했습니다" 로 말한다.
+`tests/vendor/test_workflow_answer.py` 가 열둘에서 열넷이 됐다.
+
+배선을 바꾼 뒤 세 묶음을 다시 쟀다(`/tmp/after2_*`). **②의 세 묶음과 md5 까지
+같다.** 배선은 판정과 무관하다는 것이 이것으로 확인됐다.
+
+#### 안 한 것
+
+`description` 과 `grounding.yaml` 은 손대지 않았다. 사람이 한다.
+
+「열린 과제」에서 「온톨로지의 식별자 타입이 셋을 하나로 묶고 있다」와
+「배선이 온톨로지의 선언을 반만 따른다 — 34개 중 13개」를 지웠다. 이번에
+해결됐다. 아래 2026-08-23 (넷째)에 그 절을 가리키는 줄이 남아 있는데
+**측정 기록은 한 줄도 안 지우는 것이 규칙이라 그대로 뒀다.**
+
+`search_ev_stations` · `search_ev_chargers` 의 「지도 범위」 줄은 실제로는
+좌표를 받아 반경으로 넓힌다(`center` + `radiusMeters`). `find_cctv` 와 달리
+철도 뒤에 올 일이 없어(대상이 어긋나 걸러진다) 줄이 갈릴 이유가 없었다.
+선언과 어긋난 자리로 남아 있다.
 
 ### 2026-08-23 (여섯째) · 8안 하나를 더 잼 · 철도 적재 뒤의 실측 · 재기만 함
 

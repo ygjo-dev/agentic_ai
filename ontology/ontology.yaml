@@ -416,6 +416,12 @@ edges:
   - { from: web_fetch, to: item_detail, predicate: hasOutput }
 
   # ---------------------------------------------------------- hasInput / hasOutput : 교통
+  # 받는 것이 둘이다. 앞이 무엇이냐에 따라 채우는 칸이 갈린다 —
+  # 철도 구간 형상 조회 뒤에서는 그 bbox 를 그대로 넘기고,
+  # 장소 좌표 변환 뒤에서는 좌표를 반경 15km 로 넓힌다.
+  # geocode 의 bbox 는 한 변이 1km 라 그것을 넘기면 0건이다(실측 2026-08-23).
+  # 두 줄이 갈리려면 받는 타입이 둘로 적혀 있어야 한다.
+  - { from: find_cctv, to: point,      predicate: hasInput }
   - { from: find_cctv, to: map_extent, predicate: hasInput }
   - { from: find_cctv, to: item_list,  predicate: hasOutput }
 

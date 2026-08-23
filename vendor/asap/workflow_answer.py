@@ -139,6 +139,26 @@ def compose_workflow_answer(
     return "\n".join([headline, "", *lines])
 
 
+def step_failed(item: Dict[str, Any]) -> bool:
+    """이 단계가 터졌는가.
+
+    입력  vendor 가 쌓은 trace 항목 하나
+    출력  참이면 도구 호출이 실패한 것
+    규칙  error 칸이 있으면 참. vendor 가 거기서 멈춘 자리임
+          result 가 200 으로 돌아온 오류면 참. Gateway 가 실패를 200 과
+          {"error": {...}} 로도 돌려주고 그것은 result 에 담김
+          0건은 거짓. 호출은 끝났고 결과가 없는 것뿐임. 답 문구가
+          "찾지 못했습니다" 로 이미 말함
+    제약  판정을 여러 곳에 흩어 놓지 않는다.
+          _outcome · _verdict · demo 의 진행 표시가 전부 이것을 부름.
+          200 오류를 안 보는 곳이 하나라도 있으면 그 화면만 "완료" 라고 찍음
+    이력  demo 의 진행 표시가 item["error"] 만 봤음. 200 오류는 그 칸이 비어
+          있어 화면이 "완료" 로 찍혔고, 그 탓에 "대전~김천 구간이 유효하다" 는
+          틀린 사실이 문서에 박혔음. NOTES.md 2026-08-22 넷째의 정정 참고
+    """
+    return "error" in item or _has_error(item.get("result"))
+
+
 def step_line(item: Dict[str, Any]) -> str:
     """단계 하나의 줄. 도구 이름과 결과 한 마디.
 
@@ -191,9 +211,9 @@ def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
     출력  SUCCESS · EMPTY · ERROR 중 하나
     규칙  failed 가 참이면 오류. vendor 는 중단할 때 대개 trace 에 아무것도
           안 남기므로 trace 만으로는 못 가름
-          어느 항목이든 error 칸이 있으면 오류. vendor 가 거기서 멈춘 자리임
-          어느 항목이든 result 가 200 으로 돌아온 오류면 오류. 다음 도구가 그
-          칸을 optional 로 받으면 vendor 가 끝까지 돌고 errors 도 비어 있음
+          어느 항목이든 step_failed 면 오류. 200 으로 돌아온 오류도 거기서 걸림.
+          다음 도구가 그 칸을 optional 로 받으면 vendor 가 끝까지 돌고
+          errors 도 비어 있음
           trace 가 비면 오류. 한 단계도 안 돌았음
           마지막 항목의 센 건수가 0이면 빈 결과. 발화에 답하는 것은 마지막임
           그 밖은 성공
@@ -202,9 +222,7 @@ def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
         return ERROR
 
     for item in trace:
-        if "error" in item:
-            return ERROR
-        if _has_error(item.get("result")):
+        if step_failed(item):
             return ERROR
 
     if not trace:
@@ -218,8 +236,15 @@ def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
 
 
 def _outcome(item: Dict[str, Any]) -> str:
-    """단계 줄의 뒷부분. 실패한 단계면 사유, 아니면 결과 한 마디."""
-    if "error" in item:
+    """단계 줄의 뒷부분. 실패한 단계면 사유, 아니면 결과 한 마디.
+
+    규칙  실패인지는 step_failed 가 가름. 여기서 따로 판정하지 않음
+          실패 모양이 둘임. error 칸이 있으면 vendor 가 거기서 멈춘 것이라
+          result 가 없고 _failure_reason 이 사유를 씀
+          200 오류는 사유가 result 안에 있어 summarize 가 씀.
+          둘 다 앞에 FAILED_MARK 가 붙음
+    """
+    if step_failed(item) and "error" in item:
         return FAILED_MARK + _failure_reason(item)
     return summarize(item.get("input"), item.get("result"))
 

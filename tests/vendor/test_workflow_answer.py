@@ -9,7 +9,7 @@
 문자열뿐이라 그 계층의 구조가 바뀌어도 따라다니지 않는다.
 """
 
-from vendor.asap.workflow_answer import compose_workflow_answer
+from vendor.asap.workflow_answer import compose_workflow_answer, step_failed
 
 # asap_probe_out/geo.geocode.osong.json 실물.
 OSONG = {
@@ -264,3 +264,43 @@ def test_a_warning_next_to_a_count_never_shows():
 
     assert "1건" in answer
     assert "일부만 반환했습니다." not in answer
+
+
+# ── 단계 하나가 터졌는가 ────────────────────────────────────────────
+#
+# 답과 진행 표시가 같은 판정을 써야 한다. demo 의 진행 표시가 item["error"] 만
+# 봐서 200 오류를 "완료" 로 찍었고, 그 탓에 "대전~김천 구간이 유효하다" 는 틀린
+# 사실이 문서에 박혔다 (NOTES.md 2026-08-22 넷째의 정정).
+
+
+def test_200_으로_돌아온_오류도_실패다():
+    """Gateway 는 실패를 200 과 {"error": {...}} 로도 돌려줌.
+
+    그것은 item["result"] 에 담기고 item["error"] 는 비어 있음. 그 칸만 보면
+    터진 호출이 "완료" 로 찍힘.
+    """
+    item = {
+        "id": "s1",
+        "tool": "rail.getSectionGeometry",
+        "input": {"sectionName": "대전~김천"},
+        "result": {"error": {"code": "NOT_FOUND", "message": "구간을 찾지 못했습니다."}},
+    }
+
+    assert step_failed(item)
+    assert "error" not in item, "이 항목의 error 칸은 비어 있어야 시험이 성립함"
+
+
+def test_0건은_실패가_아니다():
+    """호출은 끝났고 결과가 없는 것뿐임.
+
+    답 문구가 "찾지 못했습니다" 로 이미 말하므로 진행 표시까지 "실패" 라고
+    찍으면 도구가 터진 것과 안 갈림.
+    """
+    item = {
+        "id": "s2",
+        "tool": "adminBoundary.findBoundaryByPoint",
+        "input": {"lon": 127.3, "lat": 36.6},
+        "result": {"features": [], "count": 0, "warning": "행정구역 DB 데이터가 없거나…"},
+    }
+
+    assert not step_failed(item)
