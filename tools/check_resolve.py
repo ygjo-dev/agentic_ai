@@ -30,6 +30,33 @@ recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 
 발화에서 뽑은 인자(argument)도 함께 찍는다 — 축이 맞아도 인자가 흔들리면
 실행이 엉뚱한 것을 조회한다.
 
+## 적중 표의 네 칸 — 「빗나감」을 지우지 말 것
+
+적중 표는 틀린 것을 셋으로 가른다. **넷을 더하면 시행 횟수가 된다.**
+
+    적중     set(후보) == 기대값.  판정 규칙은 예전 그대로다
+    근접     정답이 후보 안에 남아 있는데 하나로 못 좁혔다 (CLARIFY).
+             사람이 고르면 되는 상태다
+    빗나감   정답이 후보에 아예 없다.  ★ 제일 나쁘다
+    못 붙음  NO_MATCH · 후보가 빔 · 호출 오류
+
+**왜 「빗나감」이 제일 나쁜가.** 점수로는 근접도 빗나감도 똑같이 0 이다.
+그런데 사람이 겪는 것은 전혀 다르다.
+
+    근접     CLARIFY {034, 045, 046}   정답 045 가 후보 안에 있다. 사람이 고르면 된다
+    빗나감   SELECT  {011}             확신하고 틀린다. 사람이 알 방법이 없다
+
+「틀린 답보다 정직한 되물음이 낫다」가 이 저장소의 원칙이다. 한 칸짜리 적중률은
+그 차이를 못 본다 — 되물음이 확신하고 틀린 것으로 바뀌어도 숫자는 안 움직인다.
+실제로 그런 적이 있다(발화 4, 2026-08-24). 표가 못 보면 아무도 못 본다.
+
+그러니 **이 칸을 합치지 말 것.** 적중률만 남기면 품질이 무너지는 것을 다시 놓친다.
+빗나감이 늘고 근접이 줄었으면 적중률이 그대로여도 나빠진 것이다.
+
+「빗나감」에는 SELECT 로 하나 고르고 틀린 것과, CLARIFY 인데 정답이 후보에 아예
+없는 것이 함께 들어간다. 둘 다 사람이 정답에 닿을 길이 없다. 어느 쪽인지는 옆의
+「틀렸을 때 나온 것」 칸에서 갈린다.
+
 후보 표는 모델을 바꿔 재는 데 쓴다. 축 셋이 같아 조회로는 못 가르는 발화
 (5번 충전소 · recipe_035 대 recipe_036)에서 조회 후보 수는 그대로인데 LLM
 후보 수만 줄면 모델 크기 탓이고, 둘 다 그대로면 menu 문장 탓이다.
@@ -190,10 +217,12 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, 축 넷, 후보 수 셋).
+    출력  (후보 집합, status, 축 넷, 후보 수 셋).
           후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
+          status 를 후보와 함께 냄. 적중 표가 근접·빗나감을 가르는 데 씀 —
+          후보 집합만으로는 CLARIFY 와 SELECT 가 안 갈림
     """
     params = {"utterance": utterance}
     if model:
@@ -209,7 +238,12 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     response.raise_for_status()
     result = response.json()
     found = [result.get("recipe_id"), *(result.get("candidate_recipe_ids") or [])]
-    return frozenset(rid for rid in found if rid), _axes(result), _tally(result)
+    return (
+        frozenset(rid for rid in found if rid),
+        result.get("status") or "-",
+        _axes(result),
+        _tally(result),
+    )
 
 
 # ── 측정 ────────────────────────────────────────────────────────────
@@ -222,7 +256,9 @@ def _measure(
     """발화마다 runs 회 돌려 결과를 쌓음.
 
     입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 셋 · 모델 이름
-    규칙  outcomes[번호] 에 나온 후보 집합들의 Counter 를 쌓음
+    규칙  outcomes[번호] 에 나온 (후보 집합, status) 조합의 Counter 를 쌓음.
+          status 를 함께 묶는 것은 적중 표가 근접·빗나감을 가르기 위함임.
+          적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
           axes[번호] 에 나온 (given, want, about, argument) 조합의 Counter 를 쌓음
           tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status) 의 Counter 를 쌓음
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
@@ -244,8 +280,8 @@ def _measure(
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                found, axis, tally = _call_resolve(utterance, model)
-                counter[found] += 1
+                found, status, axis, tally = _call_resolve(utterance, model)
+                counter[(found, status)] += 1
                 axis_counter[axis] += 1
                 tally_counter[tally] += 1
                 sys.stdout.write(".")
@@ -253,7 +289,7 @@ def _measure(
                 sys.stdout.write("\n")
                 raise
             except Exception as exc:  # noqa: BLE001 — 오류도 결과의 하나로 표에 남긴다.
-                counter[f"오류: {type(exc).__name__}"] += 1
+                counter[(f"오류: {type(exc).__name__}", "-")] += 1
                 sys.stdout.write("!")
             sys.stdout.flush()
         sys.stdout.write("\n")
@@ -263,20 +299,58 @@ def _measure(
 # ── 표 ──────────────────────────────────────────────────────────────
 
 
+# 적중 표의 네 칸. 자세한 뜻과 「빗나감」이 왜 제일 나쁜지는 파일 맨 위 주석에 있다.
+HIT, NEAR, MISS, UNATTACHED = "적중", "근접", "빗나감", "못 붙음"
+
+# 칸 폭. 머리글보다 좁으면 표가 어긋난다 ("못 붙음" 이 폭 7).
+NEAR_WIDTH = 8
+MISS_WIDTH = 9
+UNATTACHED_WIDTH = 10
+
+
+def _grade(result, status: str, expected: set) -> str:
+    """한 번의 결과를 네 칸 중 하나로 가름.
+
+    입력  후보 집합(오류면 문자열) · 최종 status · 기대 recipe 집합
+    출력  HIT · NEAR · MISS · UNATTACHED 중 하나
+    규칙  넷이 서로 안 겹치고 빠짐이 없음. 그래야 넷의 합이 시행 횟수가 됨
+          **적중 판정은 예전 그대로 set(result) == expected 임.**
+          아래 순서를 바꿔도 적중 수는 안 변함 — 못 붙음이 먼저지만
+          NO_MATCH 일 때 후보가 기대값과 같을 수는 없기 때문
+          오류는 못 붙음에 넣음. 답이 안 붙은 것은 마찬가지임.
+          몇 번이 오류였는지는 옆 "틀렸을 때 나온 것" 칸에 그대로 보임
+    """
+    if not isinstance(result, frozenset):  # 오류
+        return UNATTACHED
+    if status == "NO_MATCH" or not result:
+        return UNATTACHED
+    if set(result) == expected:
+        return HIT
+    if expected <= set(result):  # 하나로 못 좁혔을 뿐 정답이 남아 있다
+        return NEAR
+    return MISS
+
+
 def _print_table(entries, outcomes: dict, runs: int) -> None:
     hit_column = 2 + 3 + UTTERANCE_WIDTH + 4  # 표의 "적중" 칸이 시작하는 자리.
     hit_width = len(f"{runs}/{runs}") + 4
+    grade_width = hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
+    detail_column = hit_column + grade_width  # "틀렸을 때 나온 것" 칸이 시작하는 자리.
 
     print()
     print(
         "  "
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 4)
-        + _pad("적중", hit_width)
+        + _pad(HIT, hit_width)
+        + _pad(NEAR, NEAR_WIDTH)
+        + _pad(MISS, MISS_WIDTH)
+        + _pad(UNATTACHED, UNATTACHED_WIDTH)
         + "틀렸을 때 나온 것"
     )
 
-    total_hits = total_runs = 0
+    total = Counter()
+    total_runs = 0
     imperfect = []
 
     for number, utterance, expected, _default in entries:
@@ -284,20 +358,27 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
         done = sum(counter.values()) if counter else 0
         if done == 0:  # 끊겨서 아직 한 번도 안 돈 발화. 0/0 을 적으면 오해한다.
             continue
-        hits = sum(
-            count for result, count in counter.items()
-            if isinstance(result, frozenset) and set(result) == expected
-        )
-        total_hits, total_runs = total_hits + hits, total_runs + done
+
+        graded = Counter()
+        for (result, status), count in counter.items():
+            graded[_grade(result, status, expected)] += count
+
+        hits = graded[HIT]
+        total.update(graded)
+        total_runs += done
         if hits < done:
             imperfect.append(number)
 
         misses = sorted(
             (
-                (result, count) for result, count in counter.items()
-                if not (isinstance(result, frozenset) and set(result) == expected)
+                (result, status, count)
+                for (result, status), count in counter.items()
+                if _grade(result, status, expected) != HIT
             ),
-            key=lambda item: (-item[1], _short(item[0]) if isinstance(item[0], frozenset) else item[0]),
+            key=lambda item: (
+                -item[2],
+                _short(item[0]) if isinstance(item[0], frozenset) else item[0],
+            ),
         )
 
         head = (
@@ -305,23 +386,48 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
             + _pad(str(number), 3)
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
             + _pad(f"{hits}/{done}", hit_width)
+            + _pad(str(graded[NEAR]), NEAR_WIDTH)
+            + _pad(str(graded[MISS]), MISS_WIDTH)
+            + _pad(str(graded[UNATTACHED]), UNATTACHED_WIDTH)
         )
         if not misses:
             print(head.rstrip())
             continue
 
-        for index, (result, count) in enumerate(misses):
+        for index, (result, status, count) in enumerate(misses):
             shown = _short(result) if isinstance(result, frozenset) else result
-            prefix = head if index == 0 else " " * hit_column
-            print(prefix + _pad(shown, 20) + f"{count}회")
+            prefix = head if index == 0 else " " * detail_column
+            print(
+                prefix
+                + _pad(shown, 20)
+                + _pad(_grade(result, status, expected), 9)
+                + _pad(status, 10)
+                + f"{count}회"
+            )
 
-    percent = round(100 * total_hits / total_runs) if total_runs else 0
-    print(" " * hit_column + "─" * hit_width)
-    print(" " * hit_column + _pad(f"{total_hits}/{total_runs}", hit_width) + f"{percent}%")
+    hits = total[HIT]
+    percent = round(100 * hits / total_runs) if total_runs else 0
+    print(" " * hit_column + "─" * grade_width)
+    print(
+        " " * hit_column
+        + _pad(f"{hits}/{total_runs}", hit_width)
+        + _pad(str(total[NEAR]), NEAR_WIDTH)
+        + _pad(str(total[MISS]), MISS_WIDTH)
+        + _pad(str(total[UNATTACHED]), UNATTACHED_WIDTH)
+        + f"{percent}%"
+    )
+
+    # 넷을 더하면 시행 횟수여야 한다. 아니면 _grade 에 구멍이 난 것이다.
+    counted = hits + total[NEAR] + total[MISS] + total[UNATTACHED]
+    if counted != total_runs:
+        print()
+        print(f"  ⚠ 네 칸의 합 {counted} 가 시행 횟수 {total_runs} 와 다르다 — _grade 를 본다")
 
     if imperfect:
         print()
         print("  ⚠ 완전 적중이 아닌 발화 : " + " · ".join(str(n) for n in imperfect))
+        if total[MISS]:
+            print("  ★ 빗나감 " + str(total[MISS]) + "회 — 확신하고 틀린 것이다. 근접보다 나쁘다")
 
 
 AXIS_WIDTH = 46  # 축 표에서 (given, want, about) 칸의 폭.
