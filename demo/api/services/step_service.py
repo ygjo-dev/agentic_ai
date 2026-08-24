@@ -219,6 +219,11 @@ TOOL_OF = {
         "tool": "election.getAssemblyPledgeDistrict",
         "headline": "{arg} 국회의원 선거구 공약을 조회했습니다.",
     },
+    "get_local_pledge_summary": {
+        "server_id": SERVER_ID,
+        "tool": "election.getLocalPledgeSummary",
+        "headline": "{arg} 지방선거 교통 공약 요약을 조회했습니다.",
+    },
     "search_documents": {
         "server_id": SERVER_ID,
         "tool": "knowledge.query",
@@ -360,18 +365,43 @@ STEP_OF = {
     #   getAssemblyPledgeDistrict {name: "청주시 상당구"}  feature 1건
     #   getLocalPledgeSummary     {sidoName: "충청북도"}   0건 · featureCount 0
     #
-    # **셋만 적는다. getLocalPledgeSummary 는 아래 주석에 남긴다.**
-    # 0건이어서가 아니다 — 0건인 것은 저쪽 데이터가 미적재여서이고
-    # (getLocalPledgeSummaryDatasetInfo 의 featureCount 0 · available false),
+    # 0건인 것은 저쪽 데이터가 미적재여서다
+    # (getLocalPledgeSummaryDatasetInfo 의 featureCount 0 · available false).
     # 배선이 없는 것과 데이터가 없는 것은 다르므로 그것만으로는 안 적을 이유가
-    # 못 된다. 못 적는 진짜 이유는 **받는 타입이 두 자리에 걸린다**는 것이다.
-    # 그 사정은 STEP_OF 아래 「아직 배선을 안 적은」 주석에 적었다.
+    # 못 된다.
     #
     # 위 셋은 district_code 를 건네는 앞 노드가 spoken_identifier 하나뿐이라
-    # 그런 겹침이 없다. 그래서 @arg 한 줄로 끝난다.
+    # 자리가 겹치지 않는다. 그래서 @arg 한 줄로 끝난다.
+    # getLocalPledgeSummary 는 자리가 둘이라 아래에 따로 적는다.
     ("get_election_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
     ("get_assembly_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
     ("get_assembly_pledge_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
+
+    # ── 지방선거 교통 공약 요약 : 한 줄이 두 자리를 맡는다 ──────────
+    #
+    # 이 줄만 (노드 × 받는 타입) 하나로 **두 자리**에 걸린다.
+    #
+    #   recipe_018  말한 식별자 -> 공약 요약                      첫 step
+    #   recipe_044  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약  앞이 있다
+    #
+    # 그래서 input_first 로 갈라 적는다. 2026-08-24 에 양쪽을 다 눌렀다.
+    #
+    #   {sidoName: "충청북도"}  query.sidoName 으로 되받음
+    #   {sidoCode: "43"}        query.sidoCode 로 되받음
+    #
+    # 둘 다 status not_found 인데 그것은 **저쪽 데이터가 미적재**여서다
+    # (dataset.available false · featureCount 0). 인자는 파싱됐다.
+    #
+    # 앞 단계 쪽은 adminBoundary.findBoundaryByPoint 의 items.0 이다.
+    # 여섯 지점(오송·강남·부산·제주·금산·세종)에서 items 가 늘 3건이고
+    # 순서가 sido -> sigungu -> emd 로 고정이었다. items.0 이 시도이고
+    # 그 code 가 두 자리 시도 코드라 sidoCode 와 맞는다. 세종처럼 시군구가
+    # 없는 곳도 sigungu 자리를 같은 이름으로 채워 순서가 안 밀린다.
+    # 응답 전문은 tools/probe_out/ 에 있다.
+    ("get_local_pledge_summary", "admin_code"): {
+        "input": {"sidoCode": f"{PREVIOUS_STEP}.items.0.code"},
+        "input_first": {"sidoName": SPOKEN_VALUE},
+    },
 
     # 아래 셋은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
     # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
@@ -397,14 +427,13 @@ STEP_OF = {
 }
 
 # 아직 배선을 안 적은 (노드 × 받는 타입)과 그 이유. 다음 사람이 왜 비어 있는지
-# 알아야 한다. tools/check_wiring.py 가 이 넷을 센다.
+# 알아야 한다. tools/check_wiring.py 가 이 셋을 센다.
 #
-# **2026-08-24 에 셋이 빠졌다.** get_election_district ·
-# get_assembly_district · get_assembly_pledge_district × 선거구 코드다.
-# 여기에 「체계가 다른 식별자라 못 적는다」고 적혀 있었는데 **그 판단이
-# 지나쳤다.** 셋 다 code 말고 name 칸을 따로 갖고 required 가 없다.
-# 눌러서 확인했다 — 위 STEP_OF 의 「선거 상세 셋」 절에 결과가 있다.
-# 짐작이 아니라 안 눌러본 것이었다.
+# **2026-08-24 에 get_local_pledge_summary × 행정구역 코드가 빠졌다.**
+# 여기에 「한 줄이 두 자리에 걸려 못 적는다」고 적혀 있었다. 막고 있던 것은
+# 두 자리라는 것 자체가 아니라 **앞 단계 쪽 칸 이름을 몰랐다**는 것이었고,
+# adminBoundary.findBoundaryByPoint 에 데이터가 들어오면서 그것이 풀렸다.
+# 자리마다 갈라 적는 input_first 로 두 자리를 다 적었다 — 위 절에 근거가 있다.
 #
 # 1. 응답의 어느 칸에 그 값이 오는지 아직 모른다
 #
@@ -418,39 +447,34 @@ STEP_OF = {
 #    것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
 #    recipe 041 이 여기 걸린다.
 #
+# 2. 한 줄이 두 자리에 걸리는데 발화 쪽 자리를 적을 수가 없다
+#
 #    get_age_profile · get_population_trend × 행정구역 코드
 #
-#    population.getAgeProfile · population.getTrend 는 level 과 code 를 받고
-#    그것이 행정구역 코드가 맞다. 다만 adminBoundary.findBoundaryByPoint 가
-#    그 코드를 어떤 필드 이름으로 내놓는지 여전히 모른다.
-#    2026-08-22 에 눌렀고 0건이었다 — "행정구역 DB 데이터가 없거나 PostGIS
-#    연결을 사용할 수 없습니다". features 가 비어 있어 필드 이름을 볼 것이
-#    없었다. 저쪽 PostGIS 에 경계가 적재되면 응답을 보고 적는다.
-#    getDatasetInfo 가 layers 의 codeField 로 ctprvn_cd · SIG_CD · emd_cd 를
-#    말하지만 그것은 shapefile 의 컬럼 이름이지 응답 필드 이름이 아니다.
-#    짐작으로 적지 않는다.
+#    **앞 단계 쪽은 이제 안다.** adminBoundary.findBoundaryByPoint 가
+#    items 를 sido -> sigungu -> emd 순서로 늘 3건 내놓고(여섯 지점 실측,
+#    tools/probe_out/ 참고) items.N 의 layerId 가 sido·sigungu·emd 이며
+#    population 두 도구의 level enum 이 정확히 같은 낱말이다. 그래서
+#    {level: $prev.items.1.layerId, code: $prev.items.1.code} 로 적을 수 있다.
+#    getAgeProfile 을 세 level 로 다 눌러 봤고 다 답한다.
+#
+#    **막는 것은 발화 쪽 자리다.** recipe 019 · 020 은 말한 식별자가 곧
+#    첫 step 이라 $prev 가 없다. 그런데 level 은 required 이고 발화에 없다 —
+#    menu 가 recipe_019 를 "행정구역 코드와 기준월로 본다" 라고 적는다.
+#    눌러서 확인했다(2026-08-24).
+#
+#      {code: "43113"}                 {"error": "level과 code가 필요합니다."}
+#      {level: "", code: "43113"}      같은 오류
+#      {level: "sigungu", code: "43"}  {"error": "시군구 코드는 최소 5자리여야 합니다"}
+#
+#    level 을 한 낱말로 박으면 자릿수가 다른 코드에서 반드시 틀린다. 발화에
+#    없는 값이라 @arg 로도 못 받는다. **반만 알고 한 줄을 적으면 다른 자리가
+#    틀린다** — $prev 쪽만 적어 보니 check_wiring 의 A 가 0 에서 2 로 늘었다
+#    (recipe 019 · 020). 그래서 되돌렸다.
 #    recipe 019 · 020 · 045 · 046 이 여기 걸린다.
-#    get_local_pledge_summary 도 같은 이유에 걸리는데 그쪽은 발화 자리를
-#    적을 수 있어서 사정이 하나 더 있다. 아래 2번에 따로 적었다.
 #
-# 2. 한 줄이 두 자리에 걸리는데 한 자리를 아직 못 적는다
-#
-#    get_local_pledge_summary × 행정구역 코드
-#
-#    말한 식별자가 행정구역 코드를 건네고 find_admin_boundary_by_point 도
-#    행정구역 코드를 건넨다. 그래서 이 한 줄이 두 자리에 걸린다.
-#
-#      recipe 018  말한 식별자 -> 공약 요약              {sidoName: @arg} 로 맞다
-#      recipe 044  ... -> 지점 행정구역 판별 -> 공약 요약  앞 단계 결과를 써야 한다
-#
-#    election.getLocalPledgeSummary 의 sidoName 은 눌러서 확인했다(위 절).
-#    발화 쪽 자리는 적을 수 있다. 그런데 이 한 줄로 적으면 recipe 044 도
-#    함께 걸려 "청주시" 를 sidoName 으로 보내고 행정구역 판별 결과를 버린다 —
-#    check_wiring 의 B 다. 자리마다 갈라 적는 칸(input_first)이 있지만
-#    그러려면 앞 단계 쪽 input 을 함께 적어야 하고, 그 값이 어느 칸에 오는지를
-#    위 1번 그대로 아직 모른다(2026-08-24 에 다시 눌렀고 features 가 여전히
-#    비었다). **반만 알고 한 줄을 적으면 다른 자리가 틀린다.**
-#    PostGIS 에 경계가 적재되면 1번과 함께 풀린다.
+#    코드 자릿수로 level 을 정하면 풀리지만 그것은 배선 한 줄이 아니라
+#    _filled 에 변환을 넣는 일이다. 「열린 과제」에 물음으로 남긴다.
 #
 # 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
 # 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가

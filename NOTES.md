@@ -77,6 +77,34 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
+- **`말한 식별자 is-a 행정구역 코드` 가 맞는가.** 사람이 "43113" 이라고 말하지는
+  않는다. 이 관계 때문에 recipe 018 · 019 · 020 이 생기고, 그래서
+  `(get_age_profile, 행정구역 코드)` 한 줄이 발화 자리와 앞 단계 자리를 **둘 다**
+  맡아야 한다. 발화 자리에는 `level` 을 넣을 수가 없어서 (2026-08-24 「열일곱째」)
+  앞 단계 자리까지 함께 막힌다. 이 관계를 떼면 018 · 019 · 020 이 사라지고
+  한 줄이 한 자리만 맡아 `$prev` 로 자유롭게 적을 수 있다.
+  **이번에 안 고쳤다.** recipe 번호가 통째로 밀리고 GT 를 다시 옮겨야 한다.
+  판단은 사람이 한다.
+- **코드 자릿수로 `level` 을 정하는 안.** 2 자리면 `sido` · 5 자리면 `sigungu` ·
+  8 자리면 `emd` 다 (2026-08-24 실측). 이러면 위 항목을 안 건드리고도
+  `get_age_profile` · `get_population_trend` 의 발화 자리를 적을 수 있다.
+  다만 배선 한 줄이 아니라 `step_service._filled` 에 변환을 넣는 일이다.
+  **배선 표에 값을 계산하는 규칙이 처음 들어오는 것**이라 그만한 값이 있는지를
+  먼저 정해야 한다.
+- **발화 4 는 지명마다 판정이 갈린다** (2026-08-24 실측, 각 3회).
+  같은 문형인데 지명만 바꿔도 갈린다.
+
+  ```
+  청주시 인구 구성 알려줘   SELECT  {011}                    3/3
+  대전시 인구 구성 알려줘   CLARIFY {034, 045} 1 · SELECT {045} 2
+  오송시 인구 구성 알려줘   CLARIFY {034, 045, 046} 1 · SELECT {045} 2
+  서울시 인구 구성 알려줘   CLARIFY {034, 045, 046}          3/3
+  ```
+
+  **"청주시" 만 `{011}` 로 간다.** 나머지 셋은 `045` 를 맞히거나 후보에 담는다.
+  체계적 편향이 아니라 경계선이다 — GT 발화가 하필 그 선 위에 있다.
+  위의 「발화 4 가 안 갈린다」 항목과 같은 자리인데, 지명을 바꾸면 지금도
+  `045` 가 나온다는 것이 새로 안 것이다. **GT 를 다시 볼 근거가 하나 늘었다.**
 - **배선을 적은 도구 넷을 아직 안 눌러봤다.** `rail.getSectionGeometry` ·
   `geo.getRailwayLines` · `vworld.getAdministrativeBoundaries` ·
   `population.searchStatistics`. 응답 모양과 역 이름 검색이 되는지를 모른다.
@@ -233,6 +261,161 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-24 (열일곱째) · 데이터가 들어온 뒤 C 부류를 다시 봄 · recipe 48
+
+**왜 다시 봤나.** 저쪽 PostGIS 에 데이터가 들어왔다
+(`admin_boundary.areas` 5,335 · `population.resident_counts` 18,623 ·
+`ev.stations` 92,863 · `ev.chargers` 488,162 · `rail.sections` 2,243 · knowledge 4건).
+`check_wiring` 의 C 넷 중 셋이 「응답 모양을 못 봐서」 비어 있었다.
+이제 응답을 볼 수 있으니 못 채우는 것이 정말 못 채우는 것인지 다시 본다.
+
+#### 결론 한 줄
+
+**하나를 채웠다. C 4 → 3.** `get_local_pledge_summary × 행정구역 코드` 다.
+`get_age_profile` · `get_population_trend` 은 **여전히 못 채운다.** 막는 것이
+바뀌었다 — 응답 모양은 이제 알고, `level` 이 발화에 없다는 것이 남았다.
+
+#### 데이터가 들어와도 판정은 한 점도 안 움직였다
+
+```
+                LLM 단독   최종
+묶음 1          61/90      80/90
+묶음 2          61/90      80/90
+묶음 3          61/90      80/90
+                68%        89%
+```
+
+「열여섯째」와 같다. 발화 4 만 0/10 이고 빗나감 10 인 것까지 같다.
+**판정과 데이터가 독립이라는 근거다.** 도구가 0건을 답하든 실제 값을 답하든
+recipe 를 고르는 일은 그 앞에서 끝난다. 기준선이 그만큼 단단해졌다.
+
+#### findBoundaryByPoint 의 items 는 순서가 안정적이다
+
+여덟 지점을 눌렀다. 응답 전문은 `tools/probe_out/*-2026-08-24.json` 에 있다.
+
+```
+지점                    count  items[0]        items[1]              items[2]
+오송역 127.33 36.62     3      sido 43         sigungu 43113         emd 43113250
+강남역 127.03 37.50     3      sido 11         sigungu 11650         emd 11650108
+부산   129.08 35.18     3      sido 26         sigungu 26470         emd 26470102
+제주시 126.53 33.50     3      sido 50         sigungu 50110         emd 50110104
+금산군 127.50 36.00     3      sido 44         sigungu 44710         emd 44710350
+세종시 127.29 36.48     3      sido 36         sigungu 36110         emd 36110103
+서해바다 125.00 34.00   0      items []
+동해바다 131.00 37.00   0      items []
+```
+
+**`layerId` 가 늘 `sido` -> `sigungu` -> `emd` 순서다.** 육지 여섯 지점이 전부
+3건이고 밀리지 않는다. `$prev.items.N.code` 로 적어도 된다.
+
+**세종시도 안 밀린다.** 시군구가 없는 곳인데 `sigungu` 자리를
+`36110 세종특별자치시` 로 채워 세 칸을 유지한다. 걱정한 자리가 아니었다.
+
+**0건일 때는 조용하다.** `items` 가 `[]` 이고 `count` 0 이다. `warning` 도
+`message` 도 없다. 바다를 찍으면 배선이 `null` 을 넘기게 된다 — 지금은 실제
+발화가 지명에서 오므로 안 걸리지만 적어 둔다.
+
+「빈 곳」으로 고른 127.50 36.00 은 빈 곳이 아니라 충남 금산군 남일면이었다.
+0건을 보려면 바다로 나가야 했다.
+
+#### `level` 은 `layerId` 와 같은 낱말이다
+
+`population.getAgeProfile` · `population.getTrend` 의 `inputSchema` 가
+`"level": {"enum": ["sido", "sigungu", "emd"]}` 다 (`ASAP-mcp/main.py:402`).
+`findBoundaryByPoint` 의 `layerId` 와 **글자까지 같다.** 매핑 표가 필요 없다.
+
+셋 다 눌렀고 셋 다 실제 값을 답한다.
+
+```
+{level: sigungu, code: 43113}     청주시 흥덕구  292,625명  boundaryMatch exact
+{level: sido,    code: 43}        충청북도     1,600,787명  boundaryMatch exact
+{level: emd,     code: 43113250}  오송읍         49,405명  boundaryMatch exact
+getTrend {level: sigungu, code: 43113}  points 1건 (2026-06-30)
+```
+
+#### 채운 배선 하나 — 한 줄이 두 자리를 맡는다
+
+`get_local_pledge_summary × 행정구역 코드` 를 `input_first` 로 갈라 적었다.
+
+```
+recipe_018  말한 식별자 -> 공약 요약                       input_first {sidoName: @arg}
+recipe_044  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약  input      {sidoCode: $prev.items.0.code}
+```
+
+`election.getLocalPledgeSummary` 는 `sidoCode` 와 `sidoName` 을 둘 다 갖는다
+("시도 코드 또는 이름으로 조회", `main.py:791`). 양쪽을 다 눌렀고 둘 다
+`query` 로 되받는다. `status` 가 `not_found` 인 것은 **저쪽 데이터가 미적재**
+여서다 (`available` false · `featureCount` 0). 인자는 파싱됐다.
+
+recipe_044 를 끝까지 실행해 봤다. 세 단계가 다 돌았다.
+
+```
+s1 geo.geocode                        {query: "오송역"}
+s2 adminBoundary.findBoundaryByPoint  {lon: 127.3276666, lat: 36.6199528}
+s3 election.getLocalPledgeSummary     {sidoCode: "43"}      <- $s2.items.0.code 가 풀렸다
+```
+
+**`$prev.items.0.code` 가 실제로 "43" 으로 풀린다.** 짐작이 아니다.
+
+#### 못 채운 배선 둘 — 발화 쪽 자리에 `level` 을 넣을 수가 없다
+
+`get_age_profile` · `get_population_trend` 은 **앞 단계 쪽은 이제 적을 수 있다.**
+`{level: $prev.items.1.layerId, code: $prev.items.1.code}` 면 된다.
+막는 것은 반대쪽이다. recipe 019 · 020 은 말한 식별자가 곧 첫 step 이라
+`$prev` 가 없는데, `level` 이 required 이고 발화에 없다.
+menu 가 recipe_019 를 "행정구역 코드와 기준월로 본다" 라고 적는다.
+
+눌러서 확인했다.
+
+```
+{code: "43113"}                 {"error": "level과 code가 필요합니다."}
+{level: "", code: "43113"}      같은 오류
+{level: "sigungu", code: "43"}  {"error": "시군구 코드는 최소 5자리여야 합니다"}
+```
+
+`level` 을 한 낱말로 박으면 자릿수가 다른 코드에서 반드시 틀린다. 빼면 오류다.
+발화에 없는 값이라 `@arg` 로도 못 받는다. **셋 다 막힌다.**
+
+시키는 대로 `$prev` 쪽만 적어 보고 세어 봤다.
+
+```
+$prev 만 적음   A 0 -> 2  (recipe 019 · 020)   되돌림
+```
+
+**되돌렸다.** 세는 규칙은 안 고쳤다.
+
+#### 채우려면 TOOL_OF 도 함께 있어야 한다
+
+C 부류 넷은 `STEP_OF` 뿐 아니라 **`TOOL_OF` 에도 줄이 없었다.** 그래서 C 표의
+「도구」 칸이 비어 있었던 것이다. `STEP_OF` 만 채우면 `check_wiring` 이
+`KeyError: 'get_age_profile'` 로 죽는다. 배선 한 자리는 표 두 줄이다.
+채운 하나만 `TOOL_OF` 에 넣었고, 되돌린 둘은 `TOOL_OF` 도 함께 되돌렸다 —
+부를 일이 없는 노드에 도구 이름만 남기지 않는다.
+
+#### 구조적 문제 — 행정구역 코드를 건네는 자리가 둘이다
+
+`(노드 × 받는 타입)` 이 키인데 `행정구역 코드` 를 건네는 앞 노드가 둘이다.
+
+```
+말한 식별자              is-a      행정구역 코드     recipe 018 · 019 · 020
+지점 행정구역 판별       hasOutput 행정구역 코드     recipe 044 · 045 · 046
+```
+
+**한 줄이 두 자리를 다 맡아야 한다.** 가르는 수단은 `input_first` 하나뿐이고
+그것은 「첫 step 인가」로만 가른다. 마침 두 자리가 정확히 그렇게 갈려서
+`get_local_pledge_summary` 는 풀렸다. 두 자리를 다 적을 수 있을 때만 풀린다 —
+`get_age_profile` 은 한 자리를 못 적어서 못 푼다.
+
+#### 관문
+
+```
+check_wiring  A 0 · B 0 · C 4 -> 3   배선이 다 있는 recipe 41 -> 43 · STEP_OF 34 -> 35줄
+pytest        175 passed / 1 failed  (graphviz 버전 차이. 「열셋째」와 같음)
+최종 적중     80/90 (89%) 세 묶음 모두. LLM 단독 61/90 (68%)
+```
+
+---
 
 ### 2026-08-24 (열여섯째) · 선거 상세 도구를 눌러 보고 배선을 채움 · recipe 48
 
