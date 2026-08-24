@@ -203,6 +203,22 @@ TOOL_OF = {
         "tool": "election.searchLocalPledgeSummaries",
         "headline": "{arg} 지방선거 교통 공약 목록을 조회했습니다.",
     },
+    # 선거 상세 셋. 목록 검색(search_…)과 짝이고 하나를 집어 오는 쪽이다.
+    "get_election_district": {
+        "server_id": SERVER_ID,
+        "tool": "election.getDistrict",
+        "headline": "{arg} 국회의원 지역구를 조회했습니다.",
+    },
+    "get_assembly_district": {
+        "server_id": SERVER_ID,
+        "tool": "election.getAssemblyDistrict",
+        "headline": "{arg} 국회의원 전체 선거구를 조회했습니다.",
+    },
+    "get_assembly_pledge_district": {
+        "server_id": SERVER_ID,
+        "tool": "election.getAssemblyPledgeDistrict",
+        "headline": "{arg} 국회의원 선거구 공약을 조회했습니다.",
+    },
     "search_documents": {
         "server_id": SERVER_ID,
         "tool": "knowledge.query",
@@ -327,6 +343,36 @@ STEP_OF = {
         "input": {"bbox": BBOX_FROM_PREVIOUS},
     },
 
+    # ── 선거 상세 셋 : 말한 이름을 그대로 보낸다 ──────────────────
+    #
+    # 넷 다 code 말고 **이름 칸을 따로 갖는다**(ASAP-mcp/main.py inputSchema).
+    # required 는 없다.
+    #
+    #   election.getDistrict                name      "선거구명. 예: 서울 강서갑, 의왕과천"
+    #   election.getAssemblyDistrict        name      "선거구명 또는 검색어"
+    #   election.getAssemblyPledgeDistrict  name      "선거구명 또는 검색어"
+    #   election.getLocalPledgeSummary      sidoName  "시도명. 예: 서울특별시"
+    #
+    # 눌러서 확인했다(2026-08-24). 응답 전문은 tools/probe_out/ 에 있다.
+    #
+    #   getDistrict               {name: "충북 청주서원"}  feature 1건
+    #   getAssemblyDistrict       {name: "청주시 상당구"}  feature 1건
+    #   getAssemblyPledgeDistrict {name: "청주시 상당구"}  feature 1건
+    #   getLocalPledgeSummary     {sidoName: "충청북도"}   0건 · featureCount 0
+    #
+    # **셋만 적는다. getLocalPledgeSummary 는 아래 주석에 남긴다.**
+    # 0건이어서가 아니다 — 0건인 것은 저쪽 데이터가 미적재여서이고
+    # (getLocalPledgeSummaryDatasetInfo 의 featureCount 0 · available false),
+    # 배선이 없는 것과 데이터가 없는 것은 다르므로 그것만으로는 안 적을 이유가
+    # 못 된다. 못 적는 진짜 이유는 **받는 타입이 두 자리에 걸린다**는 것이다.
+    # 그 사정은 STEP_OF 아래 「아직 배선을 안 적은」 주석에 적었다.
+    #
+    # 위 셋은 district_code 를 건네는 앞 노드가 spoken_identifier 하나뿐이라
+    # 그런 겹침이 없다. 그래서 @arg 한 줄로 끝난다.
+    ("get_election_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
+    ("get_assembly_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
+    ("get_assembly_pledge_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
+
     # 아래 셋은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
     # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
     # 데이터가 들어오면 고칠 것 없이 그대로 돈다. 왜 비었는지는 각 줄 위에
@@ -351,7 +397,14 @@ STEP_OF = {
 }
 
 # 아직 배선을 안 적은 (노드 × 받는 타입)과 그 이유. 다음 사람이 왜 비어 있는지
-# 알아야 한다. tools/check_wiring.py 가 이 일곱을 센다.
+# 알아야 한다. tools/check_wiring.py 가 이 넷을 센다.
+#
+# **2026-08-24 에 셋이 빠졌다.** get_election_district ·
+# get_assembly_district · get_assembly_pledge_district × 선거구 코드다.
+# 여기에 「체계가 다른 식별자라 못 적는다」고 적혀 있었는데 **그 판단이
+# 지나쳤다.** 셋 다 code 말고 name 칸을 따로 갖고 required 가 없다.
+# 눌러서 확인했다 — 위 STEP_OF 의 「선거 상세 셋」 절에 결과가 있다.
+# 짐작이 아니라 안 눌러본 것이었다.
 #
 # 1. 응답의 어느 칸에 그 값이 오는지 아직 모른다
 #
@@ -365,8 +418,7 @@ STEP_OF = {
 #    것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
 #    recipe 041 이 여기 걸린다.
 #
-#    get_local_pledge_summary · get_age_profile · get_population_trend
-#    × 행정구역 코드
+#    get_age_profile · get_population_trend × 행정구역 코드
 #
 #    population.getAgeProfile · population.getTrend 는 level 과 code 를 받고
 #    그것이 행정구역 코드가 맞다. 다만 adminBoundary.findBoundaryByPoint 가
@@ -377,18 +429,28 @@ STEP_OF = {
 #    getDatasetInfo 가 layers 의 codeField 로 ctprvn_cd · SIG_CD · emd_cd 를
 #    말하지만 그것은 shapefile 의 컬럼 이름이지 응답 필드 이름이 아니다.
 #    짐작으로 적지 않는다.
-#    recipe 018 · 019 · 020 · 044 · 045 · 046 이 여기 걸린다.
+#    recipe 019 · 020 · 045 · 046 이 여기 걸린다.
+#    get_local_pledge_summary 도 같은 이유에 걸리는데 그쪽은 발화 자리를
+#    적을 수 있어서 사정이 하나 더 있다. 아래 2번에 따로 적었다.
 #
-# 2. 그 값을 낼 앞 단계가 온톨로지에 없다
+# 2. 한 줄이 두 자리에 걸리는데 한 자리를 아직 못 적는다
 #
-#    get_election_district · get_assembly_district · get_assembly_pledge_district
-#    × 선거구 코드
+#    get_local_pledge_summary × 행정구역 코드
 #
-#    선거구 코드를 내놓는 도구가 없다. 사람이 발화로 말해야만 들어오는데,
-#    "충북 제1선거구" 같은 말을 election.getDistrict 의 code(SGG_Code)로
-#    그대로 쓸 수는 없다. name 칸이 따로 있으므로 그리로 보내는 것이 맞을
-#    수 있으나 눌러서 확인하지 않았다. 짐작으로 적지 않는다.
-#    recipe 015 · 016 · 017 이 여기 걸린다.
+#    말한 식별자가 행정구역 코드를 건네고 find_admin_boundary_by_point 도
+#    행정구역 코드를 건넨다. 그래서 이 한 줄이 두 자리에 걸린다.
+#
+#      recipe 018  말한 식별자 -> 공약 요약              {sidoName: @arg} 로 맞다
+#      recipe 044  ... -> 지점 행정구역 판별 -> 공약 요약  앞 단계 결과를 써야 한다
+#
+#    election.getLocalPledgeSummary 의 sidoName 은 눌러서 확인했다(위 절).
+#    발화 쪽 자리는 적을 수 있다. 그런데 이 한 줄로 적으면 recipe 044 도
+#    함께 걸려 "청주시" 를 sidoName 으로 보내고 행정구역 판별 결과를 버린다 —
+#    check_wiring 의 B 다. 자리마다 갈라 적는 칸(input_first)이 있지만
+#    그러려면 앞 단계 쪽 input 을 함께 적어야 하고, 그 값이 어느 칸에 오는지를
+#    위 1번 그대로 아직 모른다(2026-08-24 에 다시 눌렀고 features 가 여전히
+#    비었다). **반만 알고 한 줄을 적으면 다른 자리가 틀린다.**
+#    PostGIS 에 경계가 적재되면 1번과 함께 풀린다.
 #
 # 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
 # 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가

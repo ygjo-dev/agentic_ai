@@ -234,6 +234,130 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 
 ## 측정 기록
 
+### 2026-08-24 (열여섯째) · 선거 상세 도구를 눌러 보고 배선을 채움 · recipe 48
+
+**왜 눌렀나.** 발화 9 "충북 제1선거구 알려줘" 가 판정 10/10 인데 화면에서
+아무것도 못 한다. `recipe_015` 에 배선이 없다. `check_wiring` 의 C 부류다.
+
+`STEP_OF` 주석에 「선거구 코드를 내놓는 도구가 없다 … name 칸이 따로 있으므로
+그리로 보내는 것이 맞을 수 있으나 눌러서 확인하지 않았다」고 적혀 있었다.
+**안 눌러본 것이지 못 적을 것이 아니었다.**
+
+#### 결론 한 줄
+
+**셋을 채웠다. C 7 → 4.** 넷째(`get_local_pledge_summary`)는 못 채웠고
+그 이유가 처음 생각과 달랐다. 아래에 적는다.
+
+#### 스키마 — 넷 다 이름 칸을 갖는다
+
+`KRRI_ASAP/ASAP-mcp/main.py` 의 inputSchema 다. **required 가 넷 다 없다.**
+
+```
+election.getDistrict                code · name      "선거구명. 예: 서울 강서갑, 의왕과천"
+election.getAssemblyDistrict        code · name      "선거구명 또는 검색어"
+election.getAssemblyPledgeDistrict  pledgeId · code · name  "선거구명 또는 검색어"
+election.getLocalPledgeSummary      sidoCode · sidoName     "시도명. 예: 서울특별시"
+```
+
+#### 눌러 본 결과
+
+실제 이름은 `election.searchDistricts` · `searchAssemblyDistricts` 를 `query="청주"`
+로 조회해 얻었다(`SGG_Code 2431401` 「충북 청주서원」 · `district_code 4311101`
+「청주시 상당구」). 응답 전문은 `tools/probe_out/` 에 있다.
+
+```
+election.getDistrict                {name: "충북 청주서원"}   feature 1건   4004자
+election.getDistrict                {name: "충북 제1선거구"}  not_found     ★
+election.getAssemblyDistrict        {name: "청주시 상당구"}   feature 1건  51975자
+election.getAssemblyDistrict        {name: "충북 제1선거구"}  not_found     ★
+election.getAssemblyPledgeDistrict  {name: "청주시 상당구"}   feature 1건  31787자
+election.getAssemblyPledgeDistrict  {name: "충북 제1선거구"}  not_found     ★
+election.getLocalPledgeSummary      {sidoName: "충청북도"}    0건 · featureCount 0
+```
+
+**`name` 은 통한다.** 「체계가 달라 못 적는다」는 옛 판단이 지나쳤다.
+
+#### "충북 제1선거구" 는 안 걸린다 — 그러나 배선 문제가 아니다
+
+254개 선거구에 그런 이름이 없다. 이름 체계가 「충북 청주서원」 처럼
+`SIDO + SGG` 다. 이것은 **인자 추출이나 어휘 층의 문제이지 배선 문제가 아니다.**
+배선은 그대로 채웠다. 같은 도구에 DB 에 있는 이름을 넣으면 1건이 온다.
+
+넷째의 0건은 또 다르다. **저쪽 데이터가 미적재다.**
+`getLocalPledgeSummaryDatasetInfo` 가 `featureCount 0 · available false ·
+"2026 지방선거 시도별 공약 요약 DB 데이터가 적재되지 않았습니다"` 라고 답한다.
+배선이 없는 것 · 발화의 말이 DB 와 다른 것 · 데이터가 미적재인 것은 셋 다 다르다.
+
+#### 채운 배선 — 셋
+
+```
+("get_election_district",        "district_code")  {"name": @arg}
+("get_assembly_district",        "district_code")  {"name": @arg}
+("get_assembly_pledge_district", "district_code")  {"name": @arg}
+```
+
+`TOOL_OF` 에도 셋을 더했다. 그 셋은 `TOOL_OF` 에 아예 없어서 배선만 적으면
+`plan` 이 `KeyError` 를 냈을 것이다.
+
+#### 넷째는 못 채웠다 — 이유가 처음 생각과 다르다
+
+`get_local_pledge_summary × 행정구역 코드` 는 **한 줄이 두 자리에 걸린다.**
+
+```
+recipe_018  말한 식별자 -> 공약 요약                            {sidoName: @arg} 로 맞다
+recipe_044  말한 장소 -> 좌표 -> 지점 행정구역 판별 -> 공약 요약   앞 단계 결과를 써야 한다
+```
+
+`말한 식별자` 도 `find_admin_boundary_by_point` 도 `admin_code` 를 건네므로
+`STEP_OF` 키가 하나뿐이다. `{sidoName: @arg}` 한 줄로 적어 보았더니
+**check_wiring 의 B 가 0 에서 1 로 늘었다** — recipe_044 가 "청주시" 를
+`sidoName` 으로 보내고 행정구역 판별 결과를 버린다. 관문이 잡아냈다.
+
+자리마다 갈라 적는 칸(`input_first`)이 있지만 그러려면 앞 단계 쪽 input 을
+함께 적어야 한다. 그 값이 `adminBoundary.findBoundaryByPoint` 응답의 어느 칸에
+오는지는 **오늘 다시 눌러도 여전히 모른다.**
+
+```
+adminBoundary.findBoundaryByPoint {lon: 127.3273, lat: 36.6207}
+  features [] · count 0 · "행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다"
+```
+
+**반만 알고 한 줄을 적으면 다른 자리가 틀린다.** 그래서 셋만 적고 넷째는
+`STEP_OF` 아래 주석 2번에 사정을 적어 남겼다. 저쪽 PostGIS 에 경계가 적재되면
+`get_age_profile` · `get_population_trend` 와 함께 풀린다.
+
+#### check_wiring 변화
+
+```
+전  A 0 · B 0 · C 7   배선이 다 있는 recipe 38 · STEP_OF 31줄
+후  A 0 · B 0 · C 4   배선이 다 있는 recipe 41 · STEP_OF 34줄
+```
+
+남은 C 넷 : `web_fetch × 웹 주소` · `get_local_pledge_summary × 행정구역 코드` ·
+`get_age_profile × 행정구역 코드` · `get_population_trend × 행정구역 코드`.
+
+#### 발화 9 가 이제 실행까지 간다
+
+```
+unwired("recipe_015")  []
+plan("recipe_015", "충북 제1선거구")
+  steps  [{id: s1, server_id: asap-mcp-core, tool: election.getDistrict,
+           input: {name: "충북 제1선거구"}}]
+  nodes  [get_election_district]
+  headline  "충북 제1선거구 국회의원 지역구를 조회했습니다."
+```
+
+예전에는 `unwired` 가 비지 않아 `execute_service.run` 이 도구를 하나도 안 불렀다.
+이제 step 이 하나 선다. **부르지는 않았다** — plan 까지만 확인했다.
+그 도구가 이 이름으로는 not_found 를 답하는 것은 위에 적은 어휘 층의 문제다.
+
+#### 판정은 안 움직였다
+
+배선은 판정과 무관하다. 채운 뒤 10회 × 아홉 발화를 다시 쟀고
+**최종 80/90 (89%) · LLM 단독 61/90 (68%)** 로 「열다섯째」와 같다.
+
+---
+
 ### 2026-08-24 (열다섯째) · LLM 단독 대 검산까지 · recipe 48 · qwen3:32b · 10회 × 세 묶음
 
 **왜 쟀나.** 판정은 두 단계다.
