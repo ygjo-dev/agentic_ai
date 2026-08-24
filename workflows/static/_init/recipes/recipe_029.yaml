@@ -4,4 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: find_assembly_district_by_point
+  - node: search_local_pledge_summaries

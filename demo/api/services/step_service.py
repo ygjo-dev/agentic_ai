@@ -75,6 +75,21 @@ BBOX_FROM_PREVIOUS = [
 # 앞 단계의 지점 좌표를 받는 모양. find…ByPoint 다섯이 똑같이 쓴다.
 POINT_FROM_PREVIOUS = {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"}
 
+# 앞 단계의 행정구역을 층위와 코드로 받는 모양. population 두 도구가 똑같이 쓴다.
+#
+# adminBoundary.findBoundaryByPoint 가 여덟 지점에서 늘 items 3건을
+# sido -> sigungu -> emd 순서로 내놓고(2026-08-24 실측, 응답 전문은
+# tools/probe_out/), items.N.layerId 의 낱말이 population 두 도구의 level
+# enum 과 글자까지 같다 (ASAP-mcp/main.py:402).
+#
+# **items.1 은 시군구다. 지금은 시군구 한 자리로 박는다.** 발화가 시도를
+# 말했는지 읍면동을 말했는지는 이 자리에서 알 수 없다 — 발화 해석이 층위를
+# 함께 내놓지 않는다. NOTES.md 「열린 과제」에 남겼다.
+ADMIN_LEVEL_FROM_PREVIOUS = {
+    "level": f"{PREVIOUS_STEP}.items.1.layerId",
+    "code": f"{PREVIOUS_STEP}.items.1.code",
+}
+
 # 중심 좌표와 반경을 bbox 넷으로 바꾸는 vendor 어댑터의 이름.
 #
 # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 저절로 건다.
@@ -167,6 +182,16 @@ TOOL_OF = {
         "server_id": SERVER_ID,
         "tool": "population.searchStatistics",
         "headline": "{arg} 인구 통계를 조회했습니다.",
+    },
+    "get_age_profile": {
+        "server_id": SERVER_ID,
+        "tool": "population.getAgeProfile",
+        "headline": "{arg} 연령대별 인구 구성을 조회했습니다.",
+    },
+    "get_population_trend": {
+        "server_id": SERVER_ID,
+        "tool": "population.getTrend",
+        "headline": "{arg} 인구 변화 추이를 조회했습니다.",
     },
     "search_ev_stations": {
         "server_id": SERVER_ID,
@@ -303,6 +328,14 @@ STEP_OF = {
     ("search_population_statistics", "keyword"): {"input": {"query": SPOKEN_VALUE}},
     ("search_population_statistics", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
 
+    # 인구 두 도구는 자리가 하나다. 앞 단계는 지점 행정구역 판별
+    # (adminBoundary.findBoundaryByPoint)뿐이고, 발화에서 곧바로 오는 자리는
+    # 없다 — 사람이 "43113" 이라고 말하지 않아 온톨로지에서
+    # `말한 식별자 is-a 행정구역 코드` 를 뗐다. 그래서 level 이 발화에 없어
+    # 못 적던 것이 풀린다. 받는 모양의 근거는 ADMIN_LEVEL_FROM_PREVIOUS 에 있다.
+    ("get_age_profile", "admin_code"): {"input": ADMIN_LEVEL_FROM_PREVIOUS},
+    ("get_population_trend", "admin_code"): {"input": ADMIN_LEVEL_FROM_PREVIOUS},
+
     # ev.searchStations · ev.searchChargers 의 inputSchema 에 query 가 있다 —
     # "충전소명, 주소, 운영기관 키워드". 말한 키워드가 갈 자리가 여기다.
     ("search_ev_stations", "keyword"): {"input": {"query": SPOKEN_VALUE}},
@@ -377,22 +410,18 @@ STEP_OF = {
     ("get_assembly_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
     ("get_assembly_pledge_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
 
-    # ── 지방선거 교통 공약 요약 : 한 줄이 두 자리를 맡는다 ──────────
+    # ── 지방선거 교통 공약 요약 : 자리가 하나다 ────────────────────
     #
-    # 이 줄만 (노드 × 받는 타입) 하나로 **두 자리**에 걸린다.
+    #   recipe_041  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약
     #
-    #   recipe_018  말한 식별자 -> 공약 요약                      첫 step
-    #   recipe_044  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약  앞이 있다
+    # 발화에서 곧바로 오는 자리는 없다. `말한 식별자 is-a 행정구역 코드` 를
+    # 떼면서 그 경로가 사라졌다.
     #
-    # 그래서 input_first 로 갈라 적는다. 2026-08-24 에 양쪽을 다 눌렀다.
-    #
-    #   {sidoName: "충청북도"}  query.sidoName 으로 되받음
-    #   {sidoCode: "43"}        query.sidoCode 로 되받음
-    #
-    # 둘 다 status not_found 인데 그것은 **저쪽 데이터가 미적재**여서다
+    # 2026-08-24 에 {sidoCode: "43"} 을 눌렀다. query.sidoCode 로 되받았고
+    # status 는 not_found 인데 그것은 **저쪽 데이터가 미적재**여서다
     # (dataset.available false · featureCount 0). 인자는 파싱됐다.
     #
-    # 앞 단계 쪽은 adminBoundary.findBoundaryByPoint 의 items.0 이다.
+    # 앞 단계는 adminBoundary.findBoundaryByPoint 의 items.0 이다.
     # 여섯 지점(오송·강남·부산·제주·금산·세종)에서 items 가 늘 3건이고
     # 순서가 sido -> sigungu -> emd 로 고정이었다. items.0 이 시도이고
     # 그 code 가 두 자리 시도 코드라 sidoCode 와 맞는다. 세종처럼 시군구가
@@ -400,7 +429,6 @@ STEP_OF = {
     # 응답 전문은 tools/probe_out/ 에 있다.
     ("get_local_pledge_summary", "admin_code"): {
         "input": {"sidoCode": f"{PREVIOUS_STEP}.items.0.code"},
-        "input_first": {"sidoName": SPOKEN_VALUE},
     },
 
     # 아래 셋은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
@@ -427,54 +455,19 @@ STEP_OF = {
 }
 
 # 아직 배선을 안 적은 (노드 × 받는 타입)과 그 이유. 다음 사람이 왜 비어 있는지
-# 알아야 한다. tools/check_wiring.py 가 이 셋을 센다.
+# 알아야 한다. tools/check_wiring.py 가 이것을 센다. 하나뿐이다.
 #
-# **2026-08-24 에 get_local_pledge_summary × 행정구역 코드가 빠졌다.**
-# 여기에 「한 줄이 두 자리에 걸려 못 적는다」고 적혀 있었다. 막고 있던 것은
-# 두 자리라는 것 자체가 아니라 **앞 단계 쪽 칸 이름을 몰랐다**는 것이었고,
-# adminBoundary.findBoundaryByPoint 에 데이터가 들어오면서 그것이 풀렸다.
-# 자리마다 갈라 적는 input_first 로 두 자리를 다 적었다 — 위 절에 근거가 있다.
+# 응답의 어느 칸에 그 값이 오는지 아직 모른다
 #
-# 1. 응답의 어느 칸에 그 값이 오는지 아직 모른다
+#   web_fetch × 웹 주소
 #
-#    web_fetch × 웹 주소
-#
-#    web.fetch 의 required 는 url 하나이고 그 값은 앞 단계인 web.search 의
-#    결과에서 꺼내야 한다. 그런데 web.search 가 권한에 막혀
-#    ("MCP tool 'web-search/web.search' is not applied for this user")
-#    응답 모양을 한 번도 못 봤다. **모르면 배선을 적지 않는다.**
-#    예전에는 {url: @arg} 라고 적혀 있었다. 발화에서 온 말을 URL 로 쓰는
-#    것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
-#    recipe 041 이 여기 걸린다.
-#
-# 2. 한 줄이 두 자리에 걸리는데 발화 쪽 자리를 적을 수가 없다
-#
-#    get_age_profile · get_population_trend × 행정구역 코드
-#
-#    **앞 단계 쪽은 이제 안다.** adminBoundary.findBoundaryByPoint 가
-#    items 를 sido -> sigungu -> emd 순서로 늘 3건 내놓고(여섯 지점 실측,
-#    tools/probe_out/ 참고) items.N 의 layerId 가 sido·sigungu·emd 이며
-#    population 두 도구의 level enum 이 정확히 같은 낱말이다. 그래서
-#    {level: $prev.items.1.layerId, code: $prev.items.1.code} 로 적을 수 있다.
-#    getAgeProfile 을 세 level 로 다 눌러 봤고 다 답한다.
-#
-#    **막는 것은 발화 쪽 자리다.** recipe 019 · 020 은 말한 식별자가 곧
-#    첫 step 이라 $prev 가 없다. 그런데 level 은 required 이고 발화에 없다 —
-#    menu 가 recipe_019 를 "행정구역 코드와 기준월로 본다" 라고 적는다.
-#    눌러서 확인했다(2026-08-24).
-#
-#      {code: "43113"}                 {"error": "level과 code가 필요합니다."}
-#      {level: "", code: "43113"}      같은 오류
-#      {level: "sigungu", code: "43"}  {"error": "시군구 코드는 최소 5자리여야 합니다"}
-#
-#    level 을 한 낱말로 박으면 자릿수가 다른 코드에서 반드시 틀린다. 발화에
-#    없는 값이라 @arg 로도 못 받는다. **반만 알고 한 줄을 적으면 다른 자리가
-#    틀린다** — $prev 쪽만 적어 보니 check_wiring 의 A 가 0 에서 2 로 늘었다
-#    (recipe 019 · 020). 그래서 되돌렸다.
-#    recipe 019 · 020 · 045 · 046 이 여기 걸린다.
-#
-#    코드 자릿수로 level 을 정하면 풀리지만 그것은 배선 한 줄이 아니라
-#    _filled 에 변환을 넣는 일이다. 「열린 과제」에 물음으로 남긴다.
+#   web.fetch 의 required 는 url 하나이고 그 값은 앞 단계인 web.search 의
+#   결과에서 꺼내야 한다. 그런데 web.search 가 권한에 막혀
+#   ("MCP tool 'web-search/web.search' is not applied for this user")
+#   응답 모양을 한 번도 못 봤다. **모르면 배선을 적지 않는다.**
+#   예전에는 {url: @arg} 라고 적혀 있었다. 발화에서 온 말을 URL 로 쓰는
+#   것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
+#   recipe 038 이 여기 걸린다.
 #
 # 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
 # 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가
@@ -524,7 +517,8 @@ def wiring_at(node_id: str, source_id: str) -> dict | None:
           둘 이상 맞으면 앞 노드가 먼저 내놓는 것을 씀. 장소 좌표 변환은
           지점 좌표를 먼저 내놓으므로 CCTV 조회가 좌표 줄을 씀
           데이터 노드가 앞이면 그것이 is-a 로 가리키는 타입을 봄.
-          말한 식별자는 코드 셋을 가리키고 그중 줄이 있는 것 하나가 걸림
+          말한 식별자는 선거구 코드와 충전소 번호를 가리키고 그중 줄이 있는
+          것 하나가 걸림
     제약  온톨로지를 직접 읽지 않는다. 타입 판정은 ontology_service 가 함
     """
     for type_id in ontology_service.handed_types(source_id):

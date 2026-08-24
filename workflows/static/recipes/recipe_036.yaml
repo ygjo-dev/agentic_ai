@@ -2,6 +2,6 @@ steps:
 
   - node: spoken_place
 
-  - node: geocode_place
+  - node: get_railway_section
 
-  - node: search_ev_chargers
+  - node: find_cctv

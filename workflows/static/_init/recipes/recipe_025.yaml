@@ -4,4 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: find_cctv
+  - node: search_assembly_districts

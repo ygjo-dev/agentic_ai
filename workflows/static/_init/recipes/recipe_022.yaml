@@ -4,4 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: search_admin_boundaries
+  - node: find_cctv

@@ -107,11 +107,18 @@
 #   말한 키워드   is-a 키워드      키워드만 받는 search… 와 웹 검색 · 문서 검색
 #                                  열 개가 여기서 출발한다. 시작점이 없으면
 #                                  그 열 개는 어느 경로에도 못 들어간다
-#   말한 식별자   is-a 코드 셋     행정구역 코드 · 선거구 코드 · 충전소 번호
-#                                  셋 모두에 is-a 를 건다. get… 일곱 개가
-#                                  같은 이유로 필요하다.
+#   말한 식별자   is-a 코드 셋     선거구 코드 · 충전소 번호
+#                                  둘에 is-a 를 건다. get… 넷이 같은 이유로
+#                                  필요하다 — 국회의원 지역구 상세 · 국회의원
+#                                  전체 선거구 상세 · 국회의원 선거구 공약 상세 ·
+#                                  충전소 상세 조회.
 #                                  "충북 제1선거구 알려줘" 처럼 사람이 이름을
 #                                  바로 대는 발화가 여기서 출발한다
+#                                  행정구역 코드만 뺐다(2026-08-24). 사람은
+#                                  "43113" 이라고 말하지 않고, 그 관계 탓에
+#                                  (연령별 인구 구성 조회 × 행정구역 코드) 한 줄이
+#                                  발화 자리와 앞 단계 자리를 둘 다 맡아야 해서
+#                                  배선을 적을 수가 없었다
 #
 # **hasInput 이 하나도 없는 도구는 recipe 가 될 수 없다.** getDatasetInfo 아홉과
 # knowledge.listDocs · bim.listModels 는 인자를 안 받아서 can_connect 가 누구
@@ -382,7 +389,6 @@ edges:
   # ---------------------------------------------------------- is-a : 형식 계층
   - { from: spoken_place,      to: place_name, predicate: is-a }
   - { from: spoken_keyword,    to: keyword,    predicate: is-a }
-  - { from: spoken_identifier, to: admin_code,    predicate: is-a }
   - { from: spoken_identifier, to: district_code, predicate: is-a }
   - { from: spoken_identifier, to: station_id,    predicate: is-a }
 
