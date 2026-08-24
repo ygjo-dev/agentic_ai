@@ -25,7 +25,7 @@
 **여기와 NOTES.md 에 적힌 알아낸 것은 예전 온톨로지(철도 CCTV 14노드)와 예전
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:32b 다.
 
-표를 세 장 찍는다. 적중 표 · 축 표 · 후보 표다. 후보가 안 맞을 때 LLM 이
+표를 네 장 찍는다. 적중 표 · 축 표 · 후보 표 · 검산 표다. 후보가 안 맞을 때 LLM 이
 recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다. 축 표에는
 발화에서 뽑은 인자(argument)도 함께 찍는다 — 축이 맞아도 인자가 흔들리면
 실행이 엉뚱한 것을 조회한다.
@@ -60,6 +60,42 @@ recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 
 후보 표는 모델을 바꿔 재는 데 쓴다. 축 셋이 같아 조회로는 못 가르는 발화
 (5번 충전소 · recipe_035 대 recipe_036)에서 조회 후보 수는 그대로인데 LLM
 후보 수만 줄면 모델 크기 탓이고, 둘 다 그대로면 menu 문장 탓이다.
+
+## 「LLM 단독」 칸 — 검산이 값을 하는지 재는 자리
+
+판정은 두 단계다.
+
+    1  LLM 이 recipe_id 와 candidate_recipe_ids 를 쓴다
+    2  LLM 이 쓴 축 셋으로 온톨로지를 조회하고(shortlist) 둘을 대조한다(_verdict)
+
+**적중률은 2단계까지 거친 값이다.** 1단계만이면 몇 %인지 한 번도 안 쟀다.
+「LLM 단독」 칸이 그 1단계다. 세는 법은 이렇다.
+
+    LLM 이 쓴 recipe_id 하나가 기대값과 같은가
+    recipe_id 가 비어 있으면 candidate_recipe_ids 를 본다
+    둘 다 없으면 「없음」 으로 센다
+
+**LLM 을 더 부르지 않는다.** /resolve 응답의 llm_recipe_id ·
+llm_candidate_recipe_ids 를 읽을 뿐이라 기존 측정에 칸만 붙는다.
+(그 두 key 는 이 칸을 재려고 2026-08-24 에 더했다. resolve_service.resolve 가
+`**verdict` 로 recipe_id 와 candidate_recipe_ids 를 덮어써서 날것이 응답에
+안 실리고 있었다. **덮어쓰는 쪽은 그대로 뒀다** — 적중 판정은 안 건드린다.)
+
+## 세 갈래로 읽는다
+
+    LLM 단독 ≈ 최종      검산이 하는 일이 없다. shortlist 를 걷어낼 수 있다
+    LLM 단독 ≪ 최종      검산이 값을 한다. 남긴다
+    LLM 단독 > 최종      ★ 검산이 맞는 답을 덮고 있다. _verdict 를 다시 봐야 한다
+
+세 번째가 실제로 있었다. "철도 안전 문서 찾아줘" 는 LLM 이 문서 검색을 골랐는데
+_verdict 의 「겹치는 것 0개면 조회 후보를 쓴다」 규칙이 웹 검색으로 덮었다
+(NOTES 2026-08-23 열한째).
+
+**이 칸은 적중 판정을 안 건드린다.** 적중 · 근접 · 빗나감 · 못 붙음 네 칸과
+그 합계는 칸을 더하기 전과 같은 숫자가 나와야 한다. 달라지면 표가 아니라
+코드가 틀린 것이다.
+
+어느 자리에서 검산이 답을 바꿨는지는 네 번째 표(검산 표)가 발화별로 찍는다.
 """
 
 import argparse
@@ -213,16 +249,36 @@ def _tally(result: dict) -> tuple:
     return llm_count, lookup_count, result.get("status") or "-"
 
 
+def _alone(result: dict):
+    """검산을 거치기 전에 LLM 이 쓴 후보 집합.
+
+    입력  /resolve 응답
+    출력  frozenset. 아무것도 안 썼으면 None
+    규칙  llm_recipe_id 가 있으면 그 하나. **status 가 SELECT 가 아니어도
+          recipe_id 는 오므로 그것을 봄**
+          비어 있으면 llm_candidate_recipe_ids 를 봄
+          둘 다 없으면 None. 표에서 「없음」 으로 셈
+    제약  recipe_id · candidate_recipe_ids 를 보지 않는다.
+          그 둘은 resolve_service._verdict 를 지난 값이라 LLM 이 쓴 것이 아님
+    """
+    chosen = result.get("llm_recipe_id")
+    if chosen:
+        return frozenset({chosen})
+    spoken = result.get("llm_candidate_recipe_ids") or []
+    return frozenset(spoken) if spoken else None
+
+
 def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, status, 축 넷, 후보 수 셋).
+    출력  (후보 집합, status, 축 넷, 후보 수 셋, LLM 단독 후보 집합).
           후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
           status 를 후보와 함께 냄. 적중 표가 근접·빗나감을 가르는 데 씀 —
           후보 집합만으로는 CLARIFY 와 SELECT 가 안 갈림
+          LLM 단독 후보는 같은 응답에서 읽음. 부르는 횟수가 안 늘어남
     """
     params = {"utterance": utterance}
     if model:
@@ -243,6 +299,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
         result.get("status") or "-",
         _axes(result),
         _tally(result),
+        _alone(result),
     )
 
 
@@ -250,21 +307,25 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
 
 
 def _measure(
-    entries, runs: int, outcomes: dict, axes: dict, tallies: dict,
+    entries, runs: int, outcomes: dict, axes: dict, tallies: dict, alones: dict,
     model: str | None = None,
 ) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
-    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 셋 · 모델 이름
+    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 넷 · 모델 이름
     규칙  outcomes[번호] 에 나온 (후보 집합, status) 조합의 Counter 를 쌓음.
           status 를 함께 묶는 것은 적중 표가 근접·빗나감을 가르기 위함임.
           적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
           axes[번호] 에 나온 (given, want, about, argument) 조합의 Counter 를 쌓음
           tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status) 의 Counter 를 쌓음
+          alones[번호] 에 나온 (LLM 단독 후보, 최종 후보, status) 의 Counter 를 쌓음.
+          **outcomes 와 따로 둠.** 한 Counter 에 합치면 적중 표의 "틀렸을 때
+          나온 것" 줄이 LLM 단독 값에 따라 더 쪼개져 표 모양이 바뀜.
+          숫자는 안 바뀌지만 예전 표와 눈으로 못 맞대게 됨
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
-          오류도 결과의 하나로 Counter 에 남김. 그때 축과 후보 수는 안 쌓음.
-          응답이 없음
+          오류도 결과의 하나로 Counter 에 남김. 그때 축과 후보 수와 LLM 단독은
+          안 쌓음. 응답이 없음
     제약  결과를 돌려주지 않는다.
           받은 dict 에 채움. 중간에 끊겨도(Ctrl-C · 서버 중단) 거기까지의
           결과가 부르는 쪽에 남아 있어야 표를 찍을 수 있음
@@ -273,17 +334,20 @@ def _measure(
         counter = Counter()
         axis_counter = Counter()
         tally_counter = Counter()
+        alone_counter = Counter()
         outcomes[number] = counter
         axes[number] = axis_counter
         tallies[number] = tally_counter
+        alones[number] = alone_counter
         sys.stdout.write(f"  {number} ")
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                found, status, axis, tally = _call_resolve(utterance, model)
+                found, status, axis, tally, alone = _call_resolve(utterance, model)
                 counter[(found, status)] += 1
                 axis_counter[axis] += 1
                 tally_counter[tally] += 1
+                alone_counter[(alone, found, status)] += 1
                 sys.stdout.write(".")
             except ServerDown:
                 sys.stdout.write("\n")
@@ -301,6 +365,11 @@ def _measure(
 
 # 적중 표의 네 칸. 자세한 뜻과 「빗나감」이 왜 제일 나쁜지는 파일 맨 위 주석에 있다.
 HIT, NEAR, MISS, UNATTACHED = "적중", "근접", "빗나감", "못 붙음"
+
+# 다섯째 칸. 검산을 거치기 전에 LLM 이 쓴 것만으로 잰 적중이다. **네 칸과 더하지
+# 않는다** — 같은 시행을 다른 눈으로 본 것이라 합이 시행 횟수가 되지 않는다.
+# 읽는 법은 파일 맨 위 주석에 있다.
+ALONE = "LLM 단독"
 
 # 칸 폭. 머리글보다 좁으면 표가 어긋난다 ("못 붙음" 이 폭 7).
 NEAR_WIDTH = 8
@@ -331,10 +400,31 @@ def _grade(result, status: str, expected: set) -> str:
     return MISS
 
 
-def _print_table(entries, outcomes: dict, runs: int) -> None:
-    hit_column = 2 + 3 + UTTERANCE_WIDTH + 4  # 표의 "적중" 칸이 시작하는 자리.
+def _alone_hits(alone_counter, expected: set) -> tuple:
+    """LLM 단독 적중 수.
+
+    입력  alones[번호] Counter · 기대 recipe 집합
+    출력  (적중 수, 잰 횟수, LLM 이 아무것도 안 쓴 횟수)
+    규칙  적중 판정은 최종과 같은 모양임 — set(후보) == 기대값.
+          최종은 검산을 지난 후보를 보고 여기는 LLM 이 쓴 후보를 봄.
+          그 차이만이 두 칸의 차이임
+          잰 횟수는 오류를 뺀 것임. 오류 회차는 alone_counter 에 안 쌓임
+    """
+    hits = done = missing = 0
+    for (alone, _found, _status), count in (alone_counter or {}).items():
+        done += count
+        if alone is None:
+            missing += count
+        elif set(alone) == expected:
+            hits += count
+    return hits, done, missing
+
+
+def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
+    hit_column = 2 + 3 + UTTERANCE_WIDTH + 4  # 표의 "LLM 단독" 칸이 시작하는 자리.
     hit_width = len(f"{runs}/{runs}") + 4
-    grade_width = hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
+    alone_width = max(hit_width, _width(ALONE) + 3)
+    grade_width = alone_width + hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
     detail_column = hit_column + grade_width  # "틀렸을 때 나온 것" 칸이 시작하는 자리.
 
     print()
@@ -342,6 +432,7 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
         "  "
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad(ALONE, alone_width)
         + _pad(HIT, hit_width)
         + _pad(NEAR, NEAR_WIDTH)
         + _pad(MISS, MISS_WIDTH)
@@ -351,6 +442,7 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
 
     total = Counter()
     total_runs = 0
+    alone_total = alone_measured = alone_missing = 0
     imperfect = []
 
     for number, utterance, expected, _default in entries:
@@ -362,6 +454,11 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
         graded = Counter()
         for (result, status), count in counter.items():
             graded[_grade(result, status, expected)] += count
+
+        alone_hits, alone_done, missing = _alone_hits(alones.get(number), expected)
+        alone_total += alone_hits
+        alone_measured += alone_done
+        alone_missing += missing
 
         hits = graded[HIT]
         total.update(graded)
@@ -385,6 +482,7 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
             "  "
             + _pad(str(number), 3)
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+            + _pad(f"{alone_hits}/{alone_done}" if alone_done else "-", alone_width)
             + _pad(f"{hits}/{done}", hit_width)
             + _pad(str(graded[NEAR]), NEAR_WIDTH)
             + _pad(str(graded[MISS]), MISS_WIDTH)
@@ -407,15 +505,24 @@ def _print_table(entries, outcomes: dict, runs: int) -> None:
 
     hits = total[HIT]
     percent = round(100 * hits / total_runs) if total_runs else 0
+    alone_percent = round(100 * alone_total / alone_measured) if alone_measured else 0
     print(" " * hit_column + "─" * grade_width)
     print(
         " " * hit_column
+        + _pad(f"{alone_total}/{alone_measured}" if alone_measured else "-", alone_width)
         + _pad(f"{hits}/{total_runs}", hit_width)
         + _pad(str(total[NEAR]), NEAR_WIDTH)
         + _pad(str(total[MISS]), MISS_WIDTH)
         + _pad(str(total[UNATTACHED]), UNATTACHED_WIDTH)
         + f"{percent}%"
     )
+    if alone_measured:
+        print(
+            " " * hit_column
+            + _pad(f"{alone_percent}%", alone_width)
+            + f"← {ALONE}"
+            + (f" · LLM 이 아무것도 안 쓴 것 {alone_missing}회" if alone_missing else "")
+        )
 
     # 넷을 더하면 시행 횟수여야 한다. 아니면 _grade 에 구멍이 난 것이다.
     counted = hits + total[NEAR] + total[MISS] + total[UNATTACHED]
@@ -528,6 +635,104 @@ def _print_candidates(entries, tallies: dict) -> None:
             )
 
 
+# 검산 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
+# LLM 이 CLARIFY 로 아홉 개를 늘어놓는 발화가 있다(6번). 그것이 한 줄에 들어가야
+# 무엇을 골랐는지 보인다 — 잘라 놓으면 검산이 무엇을 걷어냈는지 못 읽는다.
+ALONE_SET_WIDTH = 48
+FINAL_SET_WIDTH = 24
+CHANGE_WIDTH = 22
+
+# 검산이 답을 바꾼 자리의 세 갈래. 파일 맨 위 주석의 세 갈래와 짝이다.
+COVERED = "★ 맞는 답을 덮었다"
+RESCUED = "검산이 살렸다"
+NEUTRAL = "바꿨지만 판정은 같다"
+
+
+def _print_verdict_changes(entries, alones: dict) -> None:
+    """검산이 답을 바꾼 자리 전부.
+
+    입력  발화 목록 · {번호: (LLM 단독 후보, 최종 후보, status) Counter}
+    규칙  후보 집합이 달라진 회차만 찍음. 같으면 검산이 한 일이 없음
+          바꾼 것이 좋게였는지 나쁘게였는지를 기대값으로 가름.
+          맞는 답을 덮은 자리(COVERED)가 _verdict 를 다시 볼 근거임
+          LLM 이 아무것도 안 쓴 회차(단독이 None)도 바꾼 것으로 셈 —
+          없던 답을 검산이 만들어 준 것이라 그것도 검산이 한 일임
+    제약  무엇이 맞는 배선인지 정하지 않는다. 바뀐 자리를 늘어놓을 뿐이고
+          shortlist 를 어떻게 할지는 사람이 정한다
+    """
+    rows_by_number = {}
+    for number, _utterance, expected, _default in entries:
+        counter = alones.get(number)
+        if not counter:
+            continue
+        rows = []
+        for (alone, found, status), count in counter.items():
+            if alone is not None and set(alone) == set(found):
+                continue  # 검산이 한 일이 없다
+            alone_hit = alone is not None and set(alone) == expected
+            final_hit = _grade(found, status, expected) == HIT
+            if alone_hit and not final_hit:
+                change = COVERED
+            elif final_hit and not alone_hit:
+                change = RESCUED
+            else:
+                change = NEUTRAL
+            rows.append((alone, found, status, change, count))
+        if rows:
+            rows_by_number[number] = sorted(rows, key=lambda row: -row[4])
+
+    print()
+    if not rows_by_number:
+        print("  검산이 답을 바꾼 자리 : 없다 — LLM 단독과 최종이 회차마다 같았다")
+        return
+
+    print(
+        "  "
+        + _pad("#", 3)
+        + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad(ALONE, ALONE_SET_WIDTH)
+        + _pad("최종", FINAL_SET_WIDTH)
+        + _pad("status", STATUS_WIDTH)
+        + _pad("검산이 한 일", CHANGE_WIDTH)
+        + "횟수"
+    )
+
+    tally = Counter()
+    for number, utterance, _expected, _default in entries:
+        rows = rows_by_number.get(number)
+        if not rows:
+            continue
+        head = (
+            "  "
+            + _pad(str(number), 3)
+            + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+        )
+        for index, (alone, found, status, change, count) in enumerate(rows):
+            tally[change] += count
+            prefix = head if index == 0 else " " * _width(head)
+            print(
+                prefix
+                + _pad(
+                    "없음" if alone is None else _clip(_short(alone), ALONE_SET_WIDTH - 2),
+                    ALONE_SET_WIDTH,
+                )
+                + _pad(_clip(_short(found), FINAL_SET_WIDTH - 2), FINAL_SET_WIDTH)
+                + _pad(status, STATUS_WIDTH)
+                + _pad(change, CHANGE_WIDTH)
+                + f"{count}회"
+            )
+
+    print()
+    print(
+        "  검산이 바꾼 회차 "
+        + " · ".join(
+            f"{label} {tally[label]}회" for label in (RESCUED, COVERED, NEUTRAL) if tally[label]
+        )
+    )
+    if tally[COVERED]:
+        print("  ★ 맞는 답을 덮은 자리가 있다 — resolve_service._verdict 를 다시 본다")
+
+
 def _recipe_state() -> str:
     """표 머리에 적을 지금 recipe 상태. _init 그대로인지, 노드가 등록됐는지."""
     current = sorted(p.stem for p in RECIPES_DIR.glob("recipe_*.yaml"))
@@ -560,9 +765,9 @@ def main() -> int:
     )
     print()
 
-    outcomes, axes, tallies, note, status = {}, {}, {}, "", 0
+    outcomes, axes, tallies, alones, note, status = {}, {}, {}, {}, "", 0
     try:
-        _measure(entries, args.runs, outcomes, axes, tallies, args.model)
+        _measure(entries, args.runs, outcomes, axes, tallies, alones, args.model)
     except ServerDown:
         # 재시도하지 않는다. 여기까지 잰 것이 있으면 표는 찍는다.
         note, status = "uvicorn 을 먼저 실행하세요", 1
@@ -571,11 +776,13 @@ def main() -> int:
         note = "(중단됨 — 여기까지의 결과)"
 
     if any(outcomes.values()):
-        _print_table(entries, outcomes, args.runs)
+        _print_table(entries, outcomes, alones, args.runs)
     if any(axes.values()):
         _print_axes(entries, axes)
     if any(tallies.values()):
         _print_candidates(entries, tallies)
+    if any(alones.values()):
+        _print_verdict_changes(entries, alones)
     if note:
         print()
         print(note)

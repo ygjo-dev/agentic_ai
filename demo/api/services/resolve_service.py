@@ -22,8 +22,12 @@ def resolve(utterance: str, llm_client, reason_max_length: int) -> dict:
 
     입력  발화 · LLM 클라이언트 · reason 길이 상한(모델마다 다름)
     출력  LLM 응답(reason · given · want · about 포함) +
-          status · recipe_id · candidate_recipe_ids · shortlist_recipe_ids · paths
+          status · recipe_id · candidate_recipe_ids · shortlist_recipe_ids ·
+          llm_recipe_id · llm_candidate_recipe_ids · paths
     규칙  축 선택지도 조회 후보도 온톨로지에서 옴. 노드를 등록하면 함께 늘어남
+          recipe_id 와 candidate_recipe_ids 는 _verdict 를 지난 값임.
+          검산 전에 LLM 이 쓴 날것은 llm_ 이 붙은 두 key 에 따로 실림 —
+          검산이 답을 바꾼 자리를 세려면 둘이 다 있어야 함
           paths 는 LLM 이 만드는 게 아님. 최종 후보로 다시 계산해 덧붙임.
           프론트엔드가 recipe 파일을 직접 읽지 않게 하려는 것
     제약  여기서 LLM 클라이언트를 만들지 않는다.
@@ -77,6 +81,16 @@ def resolve(utterance: str, llm_client, reason_max_length: int) -> dict:
         **result,
         **verdict,
         "shortlist_recipe_ids": looked_up,
+        # 검산을 거치기 전에 LLM 이 쓴 것. **날것이다.**
+        #
+        # 위의 **verdict 가 recipe_id 와 candidate_recipe_ids 를 덮는다. 그래서
+        # 응답에 실리는 그 두 key 는 조회 후보와 대조한 뒤의 값이지 LLM 이 쓴
+        # 값이 아니다. 검산이 얼마나 값을 하는지 재려면 날것이 있어야 한다.
+        #
+        # **덮어쓰는 쪽은 그대로 둔다.** 기존 key 의 뜻을 바꾸면 화면과
+        # tools/check_resolve.py 가 함께 흔들린다. key 를 둘 더할 뿐이다.
+        "llm_recipe_id": result.get("recipe_id"),
+        "llm_candidate_recipe_ids": list(result.get("candidate_recipe_ids") or []),
         "paths": ontology_service.paths_for(wanted),
     }
 
