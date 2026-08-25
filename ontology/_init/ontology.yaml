@@ -275,15 +275,15 @@ nodes:
 
   search_election_districts:
     name: 국회의원 지역구 검색
-    description: 제22대 국회의원 지역구를 선거구명과 시도, 코드로 검색한다.
+    description: 제22대 국회의원 선거구를 충북 청주서원 같은 선거구명과 시도 약칭, 코드로 검색한다.
 
   get_election_district:
     name: 국회의원 지역구 상세
-    description: 선거구 코드나 이름으로 제22대 국회의원 지역구 한 곳을 조회한다.
+    description: 선거구 코드나 충북 청주서원 같은 선거구명으로 제22대 국회의원 선거구 한 곳을 조회한다.
 
   find_election_district_by_point:
     name: 지점 국회의원 지역구 판별
-    description: 그 지점의 제22대 국회의원 지역구를 찾는다.
+    description: 그 지점의 제22대 국회의원 선거구를 충북 청주흥덕 같은 선거구명으로 찾는다.
 
   assembly_district_dataset_info:
     name: 국회의원 전체 선거구 데이터 정보
@@ -291,15 +291,15 @@ nodes:
 
   search_assembly_districts:
     name: 국회의원 전체 선거구 검색
-    description: 제22대 국회의원 전체 선거구를 공약 수와 분야 집계로 검색한다.
+    description: 제22대 국회의원 선거구 254곳을 청주시 흥덕구 같은 행정구역명과 공약 본문으로 검색하고, 77곳에 붙은 공약 476건을 분야 여섯으로 집계해 낸다.
 
   get_assembly_district:
     name: 국회의원 전체 선거구 상세
-    description: 코드나 이름으로 제22대 국회의원 전체 선거구 한 곳을 조회한다.
+    description: 선거구 코드나 청주시 흥덕구 같은 행정구역명으로 제22대 국회의원 선거구 한 곳을 당선인과 정당, 공약과 함께 조회한다.
 
   find_assembly_district_by_point:
     name: 지점 국회의원 전체 선거구 판별
-    description: 그 지점의 제22대 국회의원 전체 선거구를 공약 집계와 함께 찾는다.
+    description: 그 지점의 제22대 국회의원 선거구를 청주시 흥덕구 같은 행정구역명과 당선인, 정당, 공약 집계로 찾는다.
 
   assembly_pledge_dataset_info:
     name: 국회의원 공약 데이터 정보
