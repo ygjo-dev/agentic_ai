@@ -31,11 +31,18 @@
 #   필요 없다. recipe 는 데이터 노드에서 시작한다.
 #
 # ---------------------------------------------------------------------------
-# 이 온톨로지가 담은 것 : Gateway catalog 의 MCP 도구 39개
+# 이 온톨로지가 담은 것 : Gateway catalog 의 MCP 도구 38개
 #
 # catalog 는 42개다. 그중 셋(knowledge.deleteDoc · bim.updateModel ·
 # bim.deleteModel)은 데이터를 지우거나 바꾸는 도구라 넣지 않았다. 시연에서
 # 눌리면 되돌릴 곳이 없다.
+#
+# 넷째로 `ev.searchChargers` 를 뺐다(2026-08-26). **저쪽이 폐기 예정이라고
+# 도구 설명에 적어 둔 것이다** — "기존 호출 호환용 전기차 충전소 조회.
+# 신규 목록·지도 조회는 ev.searchStations 사용 권장". 같은 일을 하는 도구
+# 둘을 대등하게 두니 전기차 후보가 늘 두 배였고(012/013 · 032/033 ·
+# 039/040 · 044/045), "옛 호출 호환용으로 보여줘" 라고 말하는 사람은 없어서
+# 발화로는 가를 수가 없었다. 문장을 고쳐서 될 일이 아니라 노드를 뺄 자리다.
 #
 # ## 타입을 무엇으로 묶었나 — 받는 것과 내놓는 것, 두 축뿐이다
 #
@@ -71,8 +78,8 @@
 #
 # **다음 도구가 받는 타입을 함부로 내놓게 하지 않는다.** 경로가 폭발하는 원인이
 # 그것 하나다. 좌표를 내놓는 것은 장소 좌표 변환과 철도 구간 형상 조회 둘뿐이고,
-# 코드를 내놓는 것은 셋이다 — 행정구역 코드는 지점 행정구역 판별이,
-# 충전소 번호는 전기차 충전소 검색과 전기차 충전기 조회가 내놓는다
+# 코드를 내놓는 것은 둘이다 — 행정구역 코드는 지점 행정구역 판별이,
+# 충전소 번호는 전기차 충전소 검색이 내놓는다
 # (`ev.searchStations` 응답의 items[0].id, 2026-08-23 실측).
 # 선거구 코드를 내놓는 도구는 없다. 사람이 말해야만 들어온다.
 # 인구 통계 조회는 설명에
@@ -365,10 +372,6 @@ nodes:
     name: 충전소 상세 조회
     description: 충전소 한 곳의 충전기별 현재 상태를 번호로 조회한다.
 
-  search_ev_chargers:
-    name: 전기차 충전기 조회
-    description: 옛 호출 호환용으로 충전소를 지도에 뿌린다.
-
   # ---------------------------------------------------------- 기능 : 자료실
 
   search_documents:
@@ -513,11 +516,6 @@ edges:
   - { from: get_ev_station, to: station_id,  predicate: hasInput }
   - { from: get_ev_station, to: item_detail, predicate: hasOutput }
 
-  - { from: search_ev_chargers, to: keyword,    predicate: hasInput }
-  - { from: search_ev_chargers, to: map_extent, predicate: hasInput }
-  - { from: search_ev_chargers, to: item_list,  predicate: hasOutput }
-  - { from: search_ev_chargers, to: station_id, predicate: hasOutput }
-
   # ---------------------------------------------------------- hasInput / hasOutput : 자료실
   - { from: search_documents, to: keyword,   predicate: hasInput }
   - { from: search_documents, to: item_list, predicate: hasOutput }
@@ -555,5 +553,4 @@ edges:
   - { from: ev_dataset_info,    to: group_ev, predicate: about }
   - { from: search_ev_stations, to: group_ev, predicate: about }
   - { from: get_ev_station,     to: group_ev, predicate: about }
-  - { from: search_ev_chargers, to: group_ev, predicate: about }
 

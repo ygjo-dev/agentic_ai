@@ -94,16 +94,18 @@ def test_three_axes_together_narrow_to_what_the_utterance_asked():
     """셋을 다 주면 발화 하나가 가리키는 자리까지 좁혀짐.
 
     "오송역 근처 충전소 찾아줘" 는 말한 장소에서 시작해 목록을 돌려받는
-    전기차 충전 이야기다. 45개가 충전소와 충전기 둘로 준다. 그 둘은 발화만으로는
-    갈리지 않으므로 되묻는 것이 맞다.
+    전기차 충전 이야기다. 41개가 그 하나로 준다.
 
-    "오송역 위치 보여줘" 는 하나로 정해진다. 좌표를 돌려받는 recipe 는
-    하나뿐이라 앞토막이 같은 나머지 22개가 전부 빠진다.
+    **둘로 줄던 자리였다.** 충전소 검색과 충전기 조회가 축 셋이 똑같아
+    조회로는 못 갈렸고, "옛 호출 호환용으로 보여줘" 라고 말하는 사람이 없어
+    발화로도 못 갈렸다. 2026-08-26 에 충전기 조회 노드를 뺐다 — 저쪽이
+    폐기 예정이라 도구 설명에 적어 둔 `ev.searchChargers` 다. 축이 좁히지
+    못한 것이 아니라 온톨로지가 같은 것을 둘 두고 있었다.
+
+    "오송역 위치 보여줘" 도 하나로 정해진다. 좌표를 돌려받는 recipe 는
+    하나뿐이라 앞토막이 같은 나머지 18개가 전부 빠진다.
     """
-    assert candidates("spoken_place", "item_list", "group_ev") == [
-        "recipe_032",
-        "recipe_033",
-    ]
+    assert candidates("spoken_place", "item_list", "group_ev") == ["recipe_031"]
     assert candidates("spoken_place", "point", None) == ["recipe_001"]
 
 

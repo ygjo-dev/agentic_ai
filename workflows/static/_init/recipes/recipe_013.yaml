@@ -2,4 +2,4 @@ steps:
 
   - node: spoken_keyword
 
-  - node: search_ev_chargers
+  - node: search_documents

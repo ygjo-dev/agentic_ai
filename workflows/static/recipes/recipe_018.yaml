@@ -1,5 +1,7 @@
 steps:
 
-  - node: spoken_identifier
+  - node: spoken_place
 
-  - node: get_ev_station
+  - node: geocode_place
+
+  - node: search_admin_boundaries

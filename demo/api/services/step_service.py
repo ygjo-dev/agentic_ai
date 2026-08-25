@@ -33,8 +33,8 @@ SERVER_ID = "asap-mcp-core"
 # 여기를 틀리면 Gateway 가 도구를 못 찾는다 — tools.json 의 serverId 가 근거다.
 WEB_SERVER_ID = "web-search"
 
-# 좌표 하나를 지도 범위로 넓힐 때의 반경. road.getCctv 와 ev.searchStations ·
-# ev.searchChargers 가 같은 값을 쓴다. vendor 의 point_radius_to_bbox 어댑터가
+# 좌표 하나를 지도 범위로 넓힐 때의 반경. road.getCctv 와 ev.searchStations 가
+# 같은 값을 쓴다. vendor 의 point_radius_to_bbox 어댑터가
 # 중심 좌표와 이 값으로 bbox 를 만든다 — 대상 도구의 required 에 bbox 넷이
 # 있으면 저절로 걸리고, 아니면 단계에 adapter 를 적어야 걸린다.
 #
@@ -93,8 +93,8 @@ ADMIN_LEVEL_FROM_PREVIOUS = {
 # 중심 좌표와 반경을 bbox 넷으로 바꾸는 vendor 어댑터의 이름.
 #
 # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 저절로 건다.
-# ev.searchStations · ev.searchChargers 는 넷 다 optional 이라 안 걸린다 —
-# 그래서 그 둘의 단계에만 이 이름을 적는다.
+# ev.searchStations 는 넷 다 optional 이라 안 걸린다 —
+# 그래서 그 단계에만 이 이름을 적는다.
 POINT_RADIUS_TO_BBOX = "point_radius_to_bbox"
 
 # point_radius_to_bbox 가 중심 좌표를 찾는 칸 이름. vendor 의
@@ -197,11 +197,6 @@ TOOL_OF = {
         "server_id": SERVER_ID,
         "tool": "ev.searchStations",
         "headline": "{arg} 전기차 충전소를 조회했습니다.",
-    },
-    "search_ev_chargers": {
-        "server_id": SERVER_ID,
-        "tool": "ev.searchChargers",
-        "headline": "{arg} 전기차 충전기를 조회했습니다.",
     },
     "get_ev_station": {
         "server_id": SERVER_ID,
@@ -336,17 +331,12 @@ STEP_OF = {
     ("get_age_profile", "admin_code"): {"input": ADMIN_LEVEL_FROM_PREVIOUS},
     ("get_population_trend", "admin_code"): {"input": ADMIN_LEVEL_FROM_PREVIOUS},
 
-    # ev.searchStations · ev.searchChargers 의 inputSchema 에 query 가 있다 —
+    # ev.searchStations 의 inputSchema 에 query 가 있다 —
     # "충전소명, 주소, 운영기관 키워드". 말한 키워드가 갈 자리가 여기다.
     ("search_ev_stations", "keyword"): {"input": {"query": SPOKEN_VALUE}},
     # bbox 넷이 전부 optional 이라 vendor 가 어댑터를 저절로 안 건다. 그래서
     # 이 줄에만 이름을 적는다. 오송역에서 83건이 나왔다(실측).
     ("search_ev_stations", "map_extent"): {
-        "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
-        "adapter": POINT_RADIUS_TO_BBOX,
-    },
-    ("search_ev_chargers", "keyword"): {"input": {"query": SPOKEN_VALUE}},
-    ("search_ev_chargers", "map_extent"): {
         "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "adapter": POINT_RADIUS_TO_BBOX,
     },
