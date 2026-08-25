@@ -304,3 +304,180 @@ def test_0건은_실패가_아니다():
     }
 
     assert not step_failed(item)
+
+
+# ── 목록형이 아닌 응답 · 여럿 중 하나 ──────────────────────────────
+#
+# 건수 칸이 없는 응답은 칸 이름만 찍혔고(인구), 여덟 건 중 하나를 줄 때
+# 나머지 일곱을 안 알렸다(선거). 아래 결과는 전부 tools/probe_out 의 실물에서
+# 필요한 만큼만 잘라 온 것이다.
+
+
+# tools/probe_out/population.getAgeProfile.sigungu-43113-2026-08-24.json 실물.
+# ageBands 23건 · ages 111건 중 각 한 건만 남겼다. 나머지는 같은 모양의 반복이다.
+AGE_PROFILE = {
+    "datasetId": "mois-legal-dong-resident-population",
+    "referenceDate": "2026-06-30",
+    "level": "sigungu",
+    "code": "43113",
+    "sourceAreaCodes": ["43113"],
+    "boundaryMatch": "exact",
+    "name": "청주시 흥덕구",
+    "totalPopulation": 292625,
+    "malePopulation": 149484,
+    "femalePopulation": 143141,
+    "ageBands": [
+        {"label": "0~4세", "minAge": 0, "maxAge": 4, "total": 10849, "male": 5479,
+         "female": 5370, "rate": 3.71},
+    ],
+    "ages": [{"age": 0, "total": 1875, "male": 964, "female": 911}],
+}
+
+
+def age_profile_step(result=AGE_PROFILE):
+    return {
+        "id": "s3",
+        "tool": "population.getAgeProfile",
+        "input": {"level": "sigungu", "code": "43113"},
+        "result": result,
+    }
+
+
+def test_인구_응답의_수치가_답에_실린다():
+    """건수 칸이 없는 응답이 칸 이름만 찍혔음.
+
+    실측 (2026-08-24 화면) : "춘천역 연령대별 인구 구성을 조회했습니다" 뒤에
+    "칸: datasetId · referenceDate · level · code · sourceAreaCodes ·
+    boundaryMatch" 만 나왔음. 일곱째 name 과 여덟째 totalPopulation 이
+    KEY_LIMIT 6 에서 잘려 수치가 하나도 안 실렸음.
+    """
+    answer = compose_workflow_answer(
+        {"answer_instruction": "청주시 흥덕구 연령대별 인구 구성을 조회했습니다."},
+        [age_profile_step()],
+    )
+
+    assert "청주시 흥덕구 292,625명 (남 149,484 · 여 143,141) · 2026-06-30 기준" in answer
+    assert "칸: datasetId" not in answer
+
+
+def test_인구_응답의_목록_값은_안_샌다():
+    """ageBands 23건 · ages 111건이 답에 통째로 실리면 화면이 raw JSON 이 됨."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "청주시 흥덕구 연령대별 인구 구성을 조회했습니다."},
+        [age_profile_step()],
+    )
+
+    assert "0~4세" not in answer
+    assert "minAge" not in answer
+    assert "10,849" not in answer
+
+
+def test_여럿_중_하나를_준_것을_밝힌다():
+    """여덟 건이 맞는데 하나만 주면서 나머지 일곱을 안 알렸음.
+
+    실물 : tools/probe_out/election.getDistrict.name-앞두글자충북-2026-08-25.json.
+    name="충북" 이 부분 이름으로 걸려 count 1 · totalMatches 8 이 왔고 답은
+    "1건 (전체 8건)" 이라 무엇을 받았는지도 여럿 중 하나인지도 안 보였음.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "election.getDistrict",
+        "input": {"name": "충북"},
+        "result": {
+            "type": "FeatureCollection",
+            "features": [],
+            "item": {"code": "2431401", "name": "충북 청주서원", "sido": "충북",
+                     "district": "청주서원"},
+            "count": 1,
+            "totalMatches": 8,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "충북 선거구를 조회했습니다."}, trace)
+
+    assert "충북 청주서원" in answer
+    assert "전체 8건 중 하나" in answer
+
+
+def test_전체가_받은_것과_같으면_중_하나라고_안_한다():
+    """totalMatches 1 은 여럿이 아님. 실물 : election.getDistrict.name-실제이름.json."""
+    trace = [{
+        "id": "s1",
+        "tool": "election.getDistrict",
+        "input": {"name": "충북 청주서원"},
+        "result": {
+            "features": [],
+            "item": {"code": "2431401", "name": "충북 청주서원", "sido": "충북"},
+            "count": 1,
+            "totalMatches": 1,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "선거구를 조회했습니다."}, trace)
+
+    assert "충북 청주서원 · 1건" in answer
+    assert "중 하나" not in answer
+
+
+def test_totalMatches_가_없으면_지어내지_않는다():
+    """그 칸을 안 주는 도구가 있음. 실물 : ev.getStation.statId-stationId.json."""
+    trace = [{
+        "id": "s1",
+        "tool": "ev.getStation",
+        "input": {"statId": "PL033780"},
+        "result": {
+            "item": {"id": "ev_station_PL033780", "stationId": "PL033780", "name": "포빌",
+                     "address": "충북 청주시 흥덕구 사직대로 38"},
+            "chargers": [{"chargerId": "00", "outputKw": 7}],
+            "count": 1,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "포빌 충전소를 조회했습니다."}, trace)
+
+    assert "포빌 · 1건" in answer
+    assert "중 하나" not in answer
+    assert "전체" not in answer
+
+
+def test_단위를_모르는_수치는_이름_옆에_안_붙인다():
+    """무엇의 수인지 못 말하는 숫자는 딴 뜻으로 읽힘.
+
+    실물 : ev.getDatasetInfo.기본.json 의 totalRegionCount 는 17 인데,
+    이름 옆에 "17" 만 붙으면 충전소 수로 읽힘. 그 도구는 충전소가 93,353 이다.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "ev.getDatasetInfo",
+        "input": {},
+        "result": {
+            "id": "kr-ev-chargers-keco-current",
+            "name": "한국환경공단 전기자동차 충전소",
+            "stationCount": 93353,
+            "chargerCount": 492390,
+            "readyRegionCount": 15,
+            "totalRegionCount": 17,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+
+    assert "ev.getDatasetInfo  한국환경공단 전기자동차 충전소" in answer
+    assert "17" not in answer
+
+
+def test_이름도_수치도_없으면_칸_이름_그대로():
+    """모르는 모양은 여전히 칸 이름만. 실물 : rail.getSectionGeometry.nm-오송역.json.
+
+    geometry 를 값으로 내면 화면이 raw JSON 이 됨.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "rail.getSectionGeometry",
+        "input": {"sectionName": "오송역"},
+        "result": {
+            "sectionId": 1234,
+            "geometry": {"type": "LineString", "coordinates": [[127.3, 36.6]]},
+            "bbox": [[127.3, 36.6], [127.4, 36.7]],
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "오송역 구간을 조회했습니다."}, trace)
+
+    assert "칸: sectionId · geometry · bbox" in answer
+    assert "LineString" not in answer

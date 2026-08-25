@@ -77,25 +77,41 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
-- **`workflow_answer` 가 인구 응답의 수치를 못 싣는다.** 화면 실측
-  (2026-08-24) : `"춘천역 연령대별 인구 구성을 조회했습니다"` 뒤에
-  `칸: datasetId · referenceDate · level · code · sourceAreaCodes ·
-  boundaryMatch` 만 나온다. **수치가 없다.**
-  원인은 `summarize` 다. 건수 칸(`LIST_KEYS` = `features` · `items` ·
-  `results` · `data`)과 `count` 를 찾는데 인구 응답에는 하나도 없어
-  (`ageBands` · `ages` 는 list 지만 그 이름이 아니다) `_keys_line` 으로
-  떨어지고, `KEY_LIMIT = 6` 이라 앞 여섯 칸 **이름만** 찍힌다
-  (`vendor/asap/workflow_answer.py:63` · `:100` · `:329`).
-  **응답에는 있다.** 칸 순서가 이렇다 —
-  `datasetId` · `referenceDate` · `level` · `code` · `sourceAreaCodes` ·
-  `boundaryMatch` · `name` · `totalPopulation` · `malePopulation` ·
-  `femalePopulation` · `ageBands[]` · `ages[]`. 일곱째가 `name` 이고
-  여덟째가 `totalPopulation` 이라 둘 다 잘린다.
-  `tools/probe_out/population.getAgeProfile.sigungu-43113-2026-08-24.json`
-  에서 `name` 은 `"청주시 흥덕구"` · `totalPopulation` 은 292625 ·
-  `ageBands` 23건 · `ages` 111건이다.
-  **배선도 도구도 정상이다. 답 문구 층이다.** 목록형이 아닌 응답을 요약하는
-  첫 사례라 건수 표 하나로는 안 되고 표를 하나 더 만드는 일이 된다.
+- **`workflow_answer` 의 한 건 요약을 언제 다른 안으로 옮기나.**
+  인구 수치를 못 싣던 것은 풀렸다 (2026-08-25 「스물셋째」). 목록형이 아닌
+  응답을 요약하는 갈래를 칸 이름 규칙(`name` · `total…` · `male/female…` ·
+  `referenceDate`)으로 만들었고 화면에
+  `청주시 흥덕구 292,625명 (남 149,484 · 여 143,141) · 2026-06-30 기준` 이 뜬다.
+  **남은 것은 그 규칙의 수명이다.** 규칙이라 틀린 칸을 집을 수 있고 실제로
+  집었다 — `ev.getDatasetInfo` 의 `totalRegionCount` 17. 단위를 아는 수치만
+  쓰도록 막았지만 그 사전(`SUBJECT_UNITS` · `PART_WORDS`)이 늘면 규칙이 아니라
+  표가 된다. **예닐곱 줄을 넘거나 한 도구만을 위한 줄이 들어가면** 도구별
+  표(가)나 배선표(다)로 옮긴다.
+  **연령대별은 아직 안 싣는다** — `ageBands` 23건 · `ages` 111건을 한 줄에
+  담는 방법을 안 정했다.
+  **남은 것이 셋 더 있다. 인구는 그중 하나였을 뿐이다** (2026-08-25 「스물셋째」의
+  「★ 미완성이다」). ㉠ **단계별 인자가 안 보인다** — `"전기차 충전소 데이터
+  검색해줘"` 가 `ev.searchStations 120건` 까지만 나오고 무엇으로 검색했는지가
+  없다. `trace` 항목에는 `input` 이 담겨 있고 답 문구가 안 쓸 뿐이다.
+  ㉡ **not_found 문구를 못 읽는다** — `status` · `message` 만 있는 응답은 건수
+  칸이 없어 0건 판정에 안 걸리고 칸 이름으로 나간다.
+  ㉢ **목록형 응답의 내용을 안 쓴다** — `knowledge.query` 가
+  `[{content, metadata}, …]` 를 주는데 세기만 한다. **RAG 시연이 여기 걸린다.**
+- **여럿 중 하나를 화면에서 못 봤다.** `totalMatches` 가 `count` 보다 크면
+  답이 `"충북 청주서원 · 전체 8건 중 하나"` 로 나가게 했고 응답 전문으로는
+  확인했다 (2026-08-25 「스물셋째」). **화면 발화로는 다섯 번 눌러 그 자리에
+  못 갔다** — 되물음이 실행까지 안 가고, 가더라도 인자가 `"충북 인"` 처럼
+  발화 토막째 실린다. **번호로 답한 것을 받아 실행하는 경로**가 생기면 그때
+  다시 본다.
+  `getDistrict.name` 이 여덟 중 무엇을 기준으로 하나를 고르는지는 **여전히
+  모른다**(「물음 4」). 답 문구는 여덟 중 하나라는 사실까지만 말한다.
+- **되묻기 뒤 번호로 답할 수 없다.** CLARIFY 가 후보에 번호를 붙여 내놓는데
+  `"2번"` 이라고 답해 실행하는 길이 없다. 발화를 처음부터 다시 말해야 한다
+  (`execute_service._clarify_head` 의 제약 절이 "번호로 답한 것을 받아 실행하지
+  않는다. 세션 상태와 저쪽 화면 계약이 필요함. 지금은 문구만 냄" 이라고 적어 뒀다).
+  **2026-08-25 화면 실측에서 실제로 막혔다** (「스물셋째」) — `"춘천역 인구
+  알려줘"` 의 되물음 뒤를 보려고 `"춘천역 연령대별 인구 구성 알려줘"` 를 다시
+  말했고, 여럿 중 하나를 화면에서 못 본 원인의 절반도 이것이다.
 - **`items.1` 로 시군구에 고정된다.** `get_age_profile` ·
   `get_population_trend` 의 배선이 `$prev.items.1.layerId` 와
   `$prev.items.1.code` 를 쓴다 (2026-08-24 「열여덟째」).
@@ -198,6 +214,14 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   **어떻게 고칠지는 안 정했다** — 프롬프트를 손볼지, `given` 축을 보고 뽑는 법을
   가를지, 도구 쪽 검색을 넓힐지가 다 다른 일이다. `tools/check_argument.py` 로
   고치기 전후를 잴 수 있다.
+  **정정 (2026-08-25 「스물셋째」). 대표 예시가 풀렸다.**
+  `"전기차 충전소 데이터 검색해줘"` 가 화면에서 `ev.searchStations 120건` 이다.
+  「열셋째」에 0건이라고 적힌 그 발화다. `check_resolve` 의 축 표를 보면 인자가
+  `"전기차 충전소 데이터"` 에서 `"전기차 충전소"` 로 바뀌어 있다 —
+  `말한 식별자 is-a 행정구역 코드` 를 뗀 뒤다(「열여덟째」). 두 묶음 모두
+  10/10 로 같은 인자가 나온다.
+  **남은 것이 무엇인지는 다시 재야 안다.** 발화 아홉의 인자가 다 좋아진 것인지
+  이 하나만인지를 안 쟀다. `tools/check_argument.py` 로 잰다.
 - **발화 9 는 `given` 축 선택지에 민감하다** (2026-08-25 「스물두째」, 세 묶음).
   `말한 식별자` 의 description 을 "한 건을 집어내는 코드나 정식 이름.
   검색어로는 안 걸린다." 로 바꾸자 `{015, 016, 017}` 로 벌어지고, 되돌리자
@@ -210,6 +234,11 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   표만 보면 안 보이는 자리다. 「막힌 노드 여덟」과는 다른 것이다 — 저건 데이터가
   없는 것이고 이건 `STEP_OF` 에 줄이 없는 것이다. `tools/check_wiring.py` 의 C
   부류다.
+  **정정 (2026-08-25 「스물셋째」).** `STEP_OF` 에 `get_election_district` 줄이
+  있고 화면 발화 `"선거구명 충북 인 지역구 하나만 집어줘"` 가
+  `election.getDistrict` 를 실제로 불렀다. **지금 막는 것은 배선이 아니라
+  되물음과 인자다** — 대개 CLARIFY 로 끝나고, 가더라도 인자가 `"충북 인"` 이라
+  not_found 다.
 - **머리말이 겹친다.** `"전기차 충전소 데이터 검색해줘"` 의 답이
   `"전기차 충전소 전기차 충전소를 조회했습니다."` 로 나온다 (2026-08-23 화면).
   `{arg}` 가 `"전기차 충전소"` 로 뽑히고 headline 이 `"{arg} 전기차 충전소를…"`
@@ -329,6 +358,285 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-25 (스물셋째) · 답 문구가 응답의 수치를 싣게 한다 · 화면 실측
+
+**고친 것은 `vendor/asap/workflow_answer.py` 하나다.** 온톨로지 · menu · 배선표
+(`step_service.py`) · 정답표를 안 건드렸다. 프롬프트에 안 들어가는 층이라
+판정이 움직이면 안 되는 변경이다.
+
+#### 고치기 전에 무엇을 무엇으로 요약했나
+
+`summarize` 가 위에서부터 걸리는 데서 멈춘다. 갈래가 다섯이었다.
+
+```
+결과 모양                              무엇으로 판정          나오던 줄
+dict 에 error 칸                       _has_error            실패 · {message}
+list                                   isinstance            {len}건
+dict 에 location=[lon,lat]             _lon_lat              {query} → {주소} (경도, 위도)
+dict 에 count(int) 또는                _counted              {count}건 (전체 {total}건)
+  features·items·results·data(list)                          0건이면 뒤에 warning·message
+그 밖의 dict                           —                     칸: 앞 여섯 칸 이름 (KEY_LIMIT 6)
+그 밖(문자열 · 수 · None)              —                     결과를 받았습니다
+```
+
+빈 결과 · 오류는 `_verdict` 가 따로 가른다. 마지막 단계의 센 건수가 0이면 빈
+결과, 어느 단계든 `step_failed` 면 오류, `trace` 가 비어도 오류다. 여기는 안
+건드렸다.
+
+**막힌 자리 둘.**
+
+```
+인구 응답      건수 칸이 하나도 없어 마지막에서 두 번째 갈래로 떨어진다.
+               ageBands · ages 는 list 지만 LIST_KEYS 에 없는 이름이다.
+               앞 여섯 칸이 datasetId · referenceDate · level · code ·
+               sourceAreaCodes · boundaryMatch 라 일곱째 name 과 여덟째
+               totalPopulation 이 잘린다 — 수치가 하나도 안 나간다
+여럿 중 하나   count 1 · totalMatches 8 이면 "1건 (전체 8건)" 까지는 나왔다.
+               무엇을 받았는지(item 의 이름)를 안 말하고, 여덟 중 하나라는
+               것이 괄호 안 숫자로만 있었다
+```
+
+#### 고른 안 — 나) 칸 이름 규칙
+
+세 안이 있었다.
+
+```
+가) 도구마다 표          정확하다. 이 파일이 도구 이름을 알게 되고 도구가 늘 때마다 줄이 는다
+나) 칸 이름 규칙         새 도구에도 통한다. 틀린 칸을 집을 수 있다      ← 골랐다
+다) 배선표(STEP_OF)      이미 도구별 표가 있는 곳이다. 배선 한 줄이 답 문구까지 맡는다
+```
+
+**다) 는 먼저 빠졌다.** 배선표는 프롬프트와 판정이 함께 걸린 곳이고 이번
+변경은 "판정이 안 움직여야 한다" 가 관문이다. 답 문구를 고치려고 그 표를
+건드리면 관문 자체를 못 믿는다.
+
+**가) 와 나) 중 나) 를 고른 이유는 파일의 계약이다.** `workflow_answer.py` 의
+첫 문단이 "여기는 도구 이름을 모른다. 도구가 늘어도 이 파일은 그대로다" 라고
+적고 있다. 가) 는 그 한 줄을 깨는 일이고, 깨야 할 만큼 급하지 않았다.
+
+규칙은 넷이다. 전부 실측으로 본 칸 이름뿐이다.
+
+```
+name                          이름                     "청주시 흥덕구" · "충북 청주서원"
+total+대문자로 시작하는 뒷이름  대표 수치                 totalPopulation 292625
+그 뒷이름이 같은 male·female   곁수치                   malePopulation · femalePopulation
+referenceDate                 언제 기준인가             2026-06-30
+```
+
+**나) 의 대가가 실제로 나왔다.** `ev.getDatasetInfo` 의 `totalRegionCount` 17 을
+집어 "한국환경공단 전기자동차 충전소 17" 이 나왔다. 그 도구의 충전소는 93,353
+이므로 17 을 이름 옆에 놓으면 딴 뜻으로 읽힌다. **단위를 아는 수치만 쓰도록
+막았다** — 뒷이름이 `SUBJECT_UNITS`(지금 `population` → `명`) 에 없으면 그
+수치를 안 쓴다. 그래서 저 응답은 이름만 나간다.
+
+**언제 뒤집나.** `PART_WORDS` · `SUBJECT_UNITS` 가 예닐곱 줄을 넘거나 한
+도구만을 위한 줄이 들어가야 할 때. 그때는 규칙이 아니라 표가 된 것이므로
+가) 나 다) 로 옮기는 것이 정직하다. **`KEY_LIMIT` 를 늘리는 것으로는 안
+때웠다** — 칸 이름을 여덟 개 찍는 것은 수치를 싣는 것이 아니다.
+
+#### 화면 문구 전후 (실제로 나온 문자열)
+
+uvicorn 을 고치기 전 코드로 띄운 채 먼저 받고, `pkill -f "demo.api.main"` 뒤
+다시 띄워 받았다. 모델은 `qwen3:32b`, 온톨로지는 HEAD(a4ae834) 그대로다.
+
+```
+"오송역 인구 구성 알려줘"
+
+전   오송역 연령대별 인구 구성을 조회했습니다.
+
+     1. geo.geocode       오송역 → 충청북도 청주시 흥덕구 오송읍 봉산리 369-1 (127.3277, 36.6200)
+     2. adminBoundary.findBoundaryByPoint  3건
+     3. population.getAgeProfile  칸: datasetId · referenceDate · level · code · sourceAreaCodes · boundaryMatch
+
+후   오송역 연령대별 인구 구성을 조회했습니다.
+
+     1. geo.geocode       오송역 → 충청북도 청주시 흥덕구 오송읍 봉산리 369-1 (127.3277, 36.6200)
+     2. adminBoundary.findBoundaryByPoint  3건
+     3. population.getAgeProfile  청주시 흥덕구 292,625명 (남 149,484 · 여 143,141) · 2026-06-30 기준
+```
+
+**"춘천역 인구 알려줘" 는 전후 모두 되묻는다.** 후보 셋(인구 통계 조회 ·
+연령별 인구 구성 조회 · 인구 변화 추이 조회)을 내놓고 끝난다. 문구가 전후로
+한 글자도 안 다르다 — 이 변경이 해석 층에 안 걸린다는 것을 화면에서도 본
+셈이다. **번호로 답한 것을 받아 실행하는 경로가 아직 없으므로**(`_clarify_head`
+의 제약 절) 고른 뒤를 보려면 발화를 다시 해야 한다. 그렇게 했다.
+
+```
+"춘천역 연령대별 인구 구성 알려줘"   (되물음 뒤 2번을 발화로 다시 말한 셈)
+
+후   춘천역 연령대별 인구 구성을 조회했습니다.
+
+     1. geo.geocode       춘천역 → 강원특별자치도 춘천시 근화동 558 (127.7166, 37.8844)
+     2. adminBoundary.findBoundaryByPoint  3건
+     3. population.getAgeProfile  춘천시 285,027명 (남 140,401 · 여 144,626) · 2026-06-30 기준
+```
+
+#### 여럿 중 하나 — 화면으로는 못 봤다
+
+`totalMatches` 가 `count` 보다 크면 "전체 8건 중 하나" 를 붙인다. 응답 전문으로는
+확인했다.
+
+```
+election.getDistrict(name="충북")   실물 응답
+전   1건 (전체 8건)
+후   충북 청주서원 · 전체 8건 중 하나
+```
+
+**화면 발화로는 그 자리에 못 갔다. 다섯 번 눌렀다.**
+
+```
+"충북 국회의원 지역구 알려줘"              CLARIFY (검색 셋)
+"충북 지역구 상세 보여줘"                  CLARIFY (상세 셋)
+"충북 이라는 이름의 국회의원 지역구 상세…"  CLARIFY (상세 둘)
+"선거구명 충북 으로 지역구 집어줘"          searchDistricts 8건 (get 이 아니다)
+"선거구명 충북 인 지역구 하나만 집어줘"     getDistrict 는 갔는데 인자가 "충북 인" 이라
+                                           not_found. 답은 "칸: status · message ·
+                                           dataset · query"
+```
+
+**두 가지가 함께 막는다** — 되물음이 실행까지 안 가는 것과, 인자를 발화에서
+통째로 옮겨 담는 것(위 「열린 과제」의 인자 항목). **그 not_found 응답 모양
+(`status` · `message`)이 아직 칸 이름으로 나가는 것도 이번에 화면에서 봤다.**
+0건 판정이 안 걸리는 자리라 `_notice` 가 안 붙는다. 이번 범위 밖이라 안 고쳤다.
+
+**「열린 과제」의 `recipe_015` 항목은 낡았다.** "배선이 없어 도구를 하나도 안
+부른다" 고 적혀 있는데 `STEP_OF` 에 `get_election_district` 줄이 있고 위
+네 번째 발화에서 `election.getDistrict` 를 실제로 불렀다. 그 항목에 정정을
+붙였다.
+
+#### `totalMatches` 를 주는 도구와 안 주는 도구
+
+`tools/probe_out` 의 응답 중 건수를 셀 수 있는 것만 셌다(오류 응답 제외).
+**응답마다 갈리는 도구는 없다.** 도구별로 늘 주거나 늘 안 준다.
+
+```
+준다 (14)     adminBoundary.findBoundaryByPoint · adminBoundary.searchBoundaries
+              election.findAssemblyDistrictByPoint · election.findAssemblyPledgeDistrictByPoint
+              election.getAssemblyDistrict · election.getAssemblyPledgeDistrict
+              election.getDistrict · election.searchAssemblyDistricts
+              election.searchAssemblyPledgeDistricts · election.searchDistricts
+              election.searchLocalPledgeSummaries · ev.searchChargers
+              ev.searchStations · population.searchStatistics
+
+안 준다 (5)   election.findDistrictByPoint · ev.getStation · geo.getRailwayLines
+              population.getTrend · vworld.getAdministrativeBoundaries
+```
+
+안 주는 다섯에는 아무 말도 안 붙인다. 없는 칸을 지어내지 않는다 —
+`ev.getStation` 은 "포빌 · 1건" 까지만 나온다.
+
+#### 관문
+
+```
+pytest              182 passed / 1 failed (graphviz 음성 대조군)
+                    175 + 새 테스트 7. 기존 테스트는 하나도 안 지웠다
+check_wiring        recipe 45 · 완비 44 · STEP_OF 37줄 · A 0 · B 0 · C 1
+                    HEAD 와 같다
+check_resolve       두 묶음 · qwen3:32b · 발화 9개 × 10회
+                    적중 70/90 · 근접 20 · 빗나감 0 · 못 붙음 0. 두 묶음이 같다
+                    LLM 단독은 50/90 이다. 관문 문구의 60/90 과 한 칸 다르다 —
+                    아래를 본다
+vendor 다섯 무결    git diff 에 workflow_answer.py 말고 vendor/asap/ 파일 없음
+```
+
+#### LLM 단독 50/90 은 이 변경 탓이 아니다
+
+관문은 `LLM 단독 60/90` 인데 두 묶음 모두 `50/90` 이 나왔다. **갈린 칸은 발화 2
+하나다** — "오송역 좌표 알려줘" 의 LLM 단독이 10/10 이 아니라 0/10 이고, LLM 이
+`{001, 020}` 을 내면 검산이 `{001}` 로 살린다. 최종 판정은 10/10 적중이다.
+
+**작업본을 통째로 치우고 같은 발화를 다시 쟀다.**
+
+```
+작업본            발화 2   LLM 단독 0/10 · 적중 10/10
+git stash 후     발화 2   LLM 단독 0/10 · 적중 10/10      ← HEAD 코드다
+```
+
+`git stash` 로 세 파일을 다 치우고 uvicorn 을 다시 띄워 잰 것이다. **HEAD 에서도
+같다.** `check_resolve` 는 `POST /resolve` 만 부르고 그 경로는
+`workflow_answer` 를 지나지 않는다. 이 칸이 언제 60/90 에서 50/90 이 됐는지는
+이 작업의 범위 밖이고, **관문이 보는 적중 · 근접 · 빗나감은 세 칸 다
+안 움직였다.**
+
+#### 안 한 것
+
+- **번호로 답한 것을 받아 실행하는 경로.** 되물음 뒤를 화면에서 못 본 원인
+  절반이 이것이다. 세션 상태와 저쪽 화면 계약이 필요하다
+- **`status`/`message` 만 있는 not_found 응답.** 칸 이름으로 나간다.
+  0건 판정에 안 걸려 `_notice` 가 안 붙는 자리다
+- **`getDistrict.name` 이 여덟 중 무엇을 기준으로 하나를 고르는지.**
+  「물음 4」 때와 같다. 응답에 안 적혀 있고 저쪽 코드를 안 읽었다.
+  답 문구는 "여덟 중 하나" 라고만 말하고 어느 하나인지는 안 설명한다
+- **`ageBands` 23건 · `ages` 111건을 안 쓴다.** 이름 · 합계 · 남녀 · 기준일까지다.
+  연령대별을 한 줄에 담는 방법을 안 정했다
+
+#### ★ 미완성이다
+
+**사람이 바란 것은 이것이 아니다.** 바란 것은 "모든 도구가 실행될 때 **어떤
+인자로 불렀고 DB 에서 무엇이 나왔는지**가 화면에 보인다" 였다. 그래야 인자가
+잘못 들어갔는지, 데이터가 있는지 없는지를 사람이 안다. 프롬프트가 그중 둘만
+집어 시켰고(인구 응답 수치 · 여럿 중 하나) **나머지가 그대로 남았다.**
+
+아래 넷은 오늘(2026-08-25) 고친 코드로 화면에서 다시 눌러 받은 문자열이다.
+
+```
+① 인자가 안 보인다
+
+   "전기차 충전소 데이터 검색해줘"
+   → 1. ev.searchStations  120건
+
+   무엇으로 검색해 120건인지 화면에 없다. geo.geocode 만 "오송역 →" 로 인자를
+   보여주는데 그것은 좌표 갈래가 query 를 쓰기 때문이지 인자를 보여주려고
+   만든 자리가 아니다. trace 항목에는 단계마다 input 이 담겨 있다.
+   답 문구가 안 쓸 뿐이다
+
+② 못 찾은 것을 못 찾았다고 말 못 한다
+
+   "충북 제1선거구 알려줘"
+   → 1. election.getDistrict  칸: status · message · dataset · query
+
+   응답의 message 에 못 찾은 이유가 들어 있는데 칸 이름만 찍힌다.
+   status 가 "not_found" 인 것도 안 읽는다. 건수 칸이 없어 0건 판정에 안 걸리고
+   _notice 가 안 붙는 자리다
+
+③ 목록형 응답이 건수만 낸다 — RAG 가 여기 걸린다
+
+   "철도 안전 문서 찾아줘"
+   → 1. knowledge.query   4건
+
+   knowledge.query 는 [{content: 본문, metadata: 출처}, …] 를 돌려준다
+   (ASAP-mcp/app/tools/knowledge.py:14). 오늘 Gateway 로 직접 눌러 확인했다 —
+   네 건의 content 가 962~995자이고 metadata.source 가 파일 이름이다.
+   **본문이 오는데 세기만 한다.** 시연 요구사항인 "문서 내용을 찾아온다" 가
+   도구 쪽은 되고 화면 쪽만 안 되는 상태다.
+   그 "4건" 은 문서 수가 아니라 k 의 기본값 4다 (ASAP-mcp/main.py:472).
+   **문서는 두 건이다** — knowledge.listDocs 가 철도안전법과 그 시행규칙 둘을
+   돌려준다(오늘 실측). 4 는 잘라 온 조각 수이지 문서 수가 아니다
+
+④ 머리말이 겹친다
+
+   "전기차 충전소 데이터 검색해줘"
+   → "전기차 충전소 전기차 충전소를 조회했습니다."
+
+   「열린 과제」에 이미 있는 항목이다. 이번에 화면으로 다시 확인됐다
+```
+
+**그리고 이번에 고른 방법 자체가 좁다.** `probe_out` 의 응답 전부에서 최상위
+`total<대문자>` 꼴 정수 칸을 셌다. **이름이 넷뿐이다.**
+
+```
+칸 이름            응답 수   도구 수   지금 쓰나
+totalMatches         55       14      아니다. 여럿 중 하나를 밝히는 데만 쓴다
+totalPopulation       6        2      쓴다 (SUBJECT_UNITS 의 유일한 항목)
+totalFetched          3        1      버린다
+totalRegionCount      2        1      버린다 (충전소 수로 읽혀서 일부러 막았다)
+```
+
+**모양은 칸 이름 규칙인데 실질은 표에 가깝다.** 지금 이 갈래를 타는 응답은
+인구 하나뿐이고, 새 수치가 나올 때마다 `SUBJECT_UNITS` 에 한 줄씩 는다.
+뒤집는 조건은 위에 적은 대로다 — 예닐곱 줄을 넘거나 한 도구만을 위한 줄이
+들어가면 도구별 표(가)나 배선표(다)로 옮긴다.
 
 ### 2026-08-25 (스물두째) · 시작 데이터 노드 셋만 되돌려 교락을 가름 · 세 묶음
 

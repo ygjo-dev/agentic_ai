@@ -101,6 +101,35 @@ KEY_LIMIT = 6
 KEY_JOIN = " · "
 KEY_PREFIX = "칸: "
 
+# 목록형이 아닌 한 건짜리 응답에서 사람이 볼 것을 고르는 칸 이름. 실측으로 본
+# 이름만 둔다. 어느 안을 왜 골랐는지와 언제 뒤집는지는 NOTES.md 「스물셋째」.
+#
+# NAME_KEY      인구 응답의 "청주시 흥덕구" · election.getDistrict item 의
+#               "충북 청주서원"
+# TOTAL_PREFIX  대표 수치의 앞토막. totalPopulation 292625 (실측)
+# PART_WORDS    대표 수치와 뒤 이름이 같은 곁수치의 앞토막과 그 이름표.
+#               malePopulation · femalePopulation (실측)
+# SUBJECT_UNITS 뒤 이름의 단위. 여기 없는 수치는 안 보여준다
+# DATE_KEY      언제 기준인가. 인구는 기준일마다 값이 통째로 바뀐다
+NAME_KEY = "name"
+TOTAL_PREFIX = "total"
+PART_WORDS = (("male", "남"), ("female", "여"))
+SUBJECT_UNITS = {"population": "명"}
+DATE_KEY = "referenceDate"
+
+# 한 건 줄의 조각 사이 표시와 기준일 꼬리말.
+RECORD_JOIN = " · "
+DATE_SUFFIX = " 기준"
+
+# get* 이 여러 건 중 하나를 집어 줄 때 그 한 건이 담겨 오는 칸.
+#
+# 실측 : election.getDistrict(name="충북") 가 count 1 · totalMatches 8 로
+# "충북 청주서원" 하나를 item 에 담아 준다. features 는 비어 있다.
+ITEM_KEY = "item"
+
+# 여럿 중 하나를 준 것을 밝히는 문구. totalMatches 가 count 보다 클 때만 쓴다.
+ONE_OF_MANY = "전체 {total:,}건 중 하나"
+
 
 def compose_workflow_answer(
     intent: Dict[str, Any],
@@ -178,7 +207,11 @@ def summarize(tool_input: Any, result: Any) -> str:
           배열이면 건수. 0건도 배열임
           location 이 [lon, lat] 이면 주소와 좌표. 어디를 찍었는지 사람이
           알아볼 수 있어야 함
-          건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄
+          건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
+          한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
+          그보다 많으면 여럿 중 하나라는 것을 밝힘
+          건수가 없어도 이름 · 수치를 고를 수 있으면 한 건으로 요약함.
+          목록형이 아닌 응답(인구)이 여기로 옴
           그 밖에는 최상위 칸 이름만
     제약  결과 값을 문자열에 담지 않는다.
           geojson · cctvUrl · features 가 raw JSON 으로 화면에 새던 자리다
@@ -196,8 +229,11 @@ def summarize(tool_input: Any, result: Any) -> str:
 
         counted = _counted(result)
         if counted:
-            notice = _notice(result) if counted[0] == 0 else ""
-            return _count_line(*counted, notice=notice)
+            return _counted_line(result, *counted)
+
+        record = _record_line(result)
+        if record:
+            return record
 
         return _keys_line(result)
 
@@ -309,6 +345,103 @@ def _count_line(count: int, total: Optional[int], notice: str = "") -> str:
         line = f"{count}건"
 
     return line + NOTICE_JOIN + notice if notice else line
+
+
+def _counted_line(result: Dict[str, Any], count: int, total: Optional[int]) -> str:
+    """건수를 센 결과 한 줄.
+
+    입력  결과 dict · 보여줄 건수 · 전체 건수(없으면 None)
+    출력  건수 줄. 한 건을 집어 준 것이면 그 한 건의 요약
+    규칙  0건이면 안내 문장을 함께 냄. 건수가 있으면 안 냄 — 답이 나온 자리에
+          warning 을 붙이면 사람이 헷갈림
+          한 건이고 item 에 그 한 건이 담겨 있고 거기서 이름이나 수치를 고를 수
+          있으면 건수 대신 그것을 보여줌. "1건" 은 무엇을 받았는지 안 말함
+          전체가 받은 것보다 많으면 여럿 중 하나라는 것을 밝힘. 여덟 중 하나를
+          확신에 찬 한 줄로 주면 사람은 그것이 전부인 줄 앎
+          totalMatches 를 안 주는 도구가 있음. 없으면 조용히 넘어감
+    """
+    if count == 0:
+        return _count_line(count, total, notice=_notice(result))
+
+    record = _record_line(result.get(ITEM_KEY)) if count == 1 else ""
+    if not record:
+        return _count_line(count, total)
+
+    if total is not None and total > count:
+        return record + RECORD_JOIN + ONE_OF_MANY.format(total=total)
+    return record + RECORD_JOIN + _count_line(count, total)
+
+
+def _record_line(record: Any) -> str:
+    """한 건에서 사람이 볼 것만 골라 한 줄로. 고를 것이 없으면 "".
+
+    입력  결과 dict 하나 (응답 전체이거나 그 안의 item)
+    출력  이름 · 수치 · 기준일을 이어 붙인 줄
+    규칙  이름이나 수치 중 하나는 있어야 함. 기준일만 있는 줄은 안 만듦 —
+          무엇의 기준일인지 말하지 않으므로 칸 이름을 찍는 것만 못함
+          없는 칸은 뺌. 지어내지 않음
+    제약  값을 고를 뿐 만들지 않는다. 응답에 없는 칸은 안 읽는다
+    """
+    if not isinstance(record, dict):
+        return ""
+
+    name = record.get(NAME_KEY)
+    name = name.strip() if isinstance(name, str) else ""
+    measure = _measure_text(record)
+    if not name and not measure:
+        return ""
+
+    head = f"{name} {measure}".strip() if name and measure else (name or measure)
+
+    date = record.get(DATE_KEY)
+    if isinstance(date, str) and date.strip():
+        return head + RECORD_JOIN + date.strip() + DATE_SUFFIX
+    return head
+
+
+def _measure_text(record: Dict[str, Any]) -> str:
+    """대표 수치와 곁수치 한 마디. 고를 것이 없으면 "".
+
+    규칙  대표 수치를 고르는 것은 _total_field 임. 단위를 모르는 수치는 안 씀 —
+          무엇의 수인지 못 말하는 숫자를 이름 옆에 놓으면 딴 뜻으로 읽힘.
+          실측 : ev.getDatasetInfo 의 totalRegionCount 17 이 충전소 수로 읽힘
+          곁수치는 뒤 이름이 같고 앞토막이 PART_WORDS 에 있는 칸.
+          사전에 없는 앞토막은 안 보여줌
+    """
+    found = _total_field(record)
+    if not found:
+        return ""
+
+    subject, value = found
+
+    parts = []
+    for prefix, word in PART_WORDS:
+        part = _int_value(record.get(prefix + subject))
+        if part is not None:
+            parts.append(f"{word} {part:,}")
+
+    text = f"{value:,}{SUBJECT_UNITS[subject.lower()]}"
+    return f"{text} ({RECORD_JOIN.join(parts)})" if parts else text
+
+
+def _total_field(record: Dict[str, Any]):
+    """쓸 수 있는 대표 수치의 (뒤 이름, 값). 없으면 None.
+
+    규칙  TOTAL_PREFIX 로 시작하고 뒤가 대문자로 시작해야 함 — total 하나뿐인
+          칸은 무엇의 합인지 모름
+          정수여야 함. 뒤 이름이 SUBJECT_UNITS 에 있어야 함
+          먼저 걸리는 것 하나만 씀
+    """
+    for key, value in record.items():
+        if not isinstance(key, str) or not key.startswith(TOTAL_PREFIX):
+            continue
+        subject = key[len(TOTAL_PREFIX):]
+        if not subject[:1].isupper() or subject.lower() not in SUBJECT_UNITS:
+            continue
+        number = _int_value(value)
+        if number is not None:
+            return subject, number
+    return None
 
 
 def _notice(result: Dict[str, Any]) -> str:
