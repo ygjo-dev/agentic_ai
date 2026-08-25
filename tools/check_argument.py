@@ -27,6 +27,10 @@
     3  @arg 자리에 뽑힌 인자를 넣고 Gateway 를 직접 부른다
     4  건수를 적는다
 
+표에는 그 회차의 축 셋(given · want · about)도 함께 찍는다. 어미만 바꾼
+변주(VARIATIONS, 2026-08-25)에서 어미가 인자를 흔드는지 축을 흔드는지가
+여기서 갈린다.
+
 **첫 단계만 잰다.** `@arg` 를 쓰는 배선만 본다. `$prev` 만 쓰는 자리는 앞 단계가
 있어야 부를 수 있으므로 이번 범위 밖이다 — 그런 자리는 표에 "$prev" 로 적고
 안 부른다. 그래서 **여기 건수는 사슬 끝의 답이 아니다.** 3번 CCTV 는 첫 단계가
@@ -80,6 +84,24 @@ from tools.check_resolve import (  # noqa: E402
     _width,
 )
 
+# 어미만 바꾼 변주 (2026-08-25 더함). 낱말은 같고 말투만 다르다.
+# 2026-08-25 화면 실측에서 "…데이터 검색해줘" 는 SELECT 인데 "…데이터 줘" 는
+# CLARIFY 로 갈렸다. 어미가 축(given)을 흔드는지 인자를 흔드는지를 가르려고
+# 잰다.
+#
+# **check_resolve.UTTERANCES 의 아홉은 한 글자도 안 건드린다** — 스물일곱
+# 항목의 기록이 그 아홉으로 재어져 있다. 번호만 이어 붙인다.
+# 기대 recipe 는 빈 집합으로 둔다. 이 도구는 기대값을 안 읽고, 무엇이
+# 정답인지는 표를 보고 사람이 정한다.
+VARIATIONS = [
+    (10, "전기차 충전소 데이터 줘", set(), True),  # 7번의 어미 변주
+    (11, "전기차 충전소 알려줘",    set(), True),  # 7번의 어미 변주
+    (12, "철도 안전 문서 보여줘",   set(), True),  # 8번의 어미 변주
+    (13, "청주시 인구 알려줘",      set(), True),  # 4번의 어미 변주
+]
+
+ALL_UTTERANCES = UTTERANCES + VARIATIONS
+
 # 사람이 발화에서 뽑았을 값. **추측이다.** LLM 이 뽑은 값과 견주는 기준일 뿐이고
 # 정답이 아니다. 표에 "사람추측" 으로 표시된다.
 #
@@ -97,6 +119,10 @@ HUMAN_ARGUMENT = {
     7: "전기차 충전소",
     8: "철도 안전",
     9: "충북 제1선거구",
+    10: "전기차 충전소",
+    11: "전기차 충전소",
+    12: "철도 안전",
+    13: "청주시",
 }
 
 # 도구와 데이터가 살아 있는지만 보는 값. **사람이 말할 값이 아니다.**
@@ -142,10 +168,14 @@ TOOL_WIDTH = 30
 PICKER_WIDTH = 10
 ARGUMENT_WIDTH = 22
 COUNT_WIDTH = 8
+RUNS_WIDTH = 6
 
 LLM_PICKER = "LLM"
 HUMAN_PICKER = "사람추측"
 ALIVE_PICKER = "확인용"
+
+# status 칸 폭. CLARIFY 가 폭 7이다.
+STATUS_WIDTH = 9
 
 
 # ── 배선 읽기 ────────────────────────────────────────────────────────
@@ -274,12 +304,15 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
         picked, errors = {}, 0
         for _ in range(runs):
             try:
-                found, status, axes, _tally = _call_resolve(utterance, model)
+                # _call_resolve 는 다섯을 돌려준다. LLM 단독 칸을 더한 뒤
+                # (4dd552a) 여기 언팩이 넷이라 매 호출이 ValueError 로 떨어져
+                # 전부 "!" 가 됐다. 뒤에 무엇이 더 붙어도 안 깨지게 받는다.
+                found, status, axes, *_rest = _call_resolve(utterance, model)
                 recipe_id = sorted(found)[0] if found else None
-                argument = axes[3]  # (given, want, about, argument)
-                picked[(recipe_id, argument, status)] = (
-                    picked.get((recipe_id, argument, status), 0) + 1
-                )
+                given_want_about = axes[:3]  # (given, want, about, argument)
+                argument = axes[3]
+                key = (recipe_id, argument, status, given_want_about)
+                picked[key] = picked.get(key, 0) + 1
                 sys.stdout.write(".")
             except ServerDown:
                 sys.stdout.write("\n")
@@ -291,13 +324,13 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
 
         calls = []
         seen_recipes = set()
-        for (recipe_id, argument, status), count in sorted(
+        for (recipe_id, argument, status, given_want_about), count in sorted(
             picked.items(), key=lambda item: -item[1]
         ):
             step = _first_step(recipe_id) if recipe_id else None
-            calls.append(
-                _one_call(LLM_PICKER, recipe_id, status, step, argument, count)
-            )
+            call = _one_call(LLM_PICKER, recipe_id, status, step, argument, count)
+            call["axes"] = " · ".join(given_want_about)
+            calls.append(call)
             seen_recipes.add(recipe_id)
 
         # 사람이 골랐을 값과 확인용 값. LLM 이 고른 recipe 위에서 인자만 갈아
@@ -341,6 +374,9 @@ def _one_call(picker, recipe_id, status, step, argument, count) -> dict:
         "fields": [],
         "hits": "-",
         "body": None,
+        # LLM 줄만 /resolve 가 쓴 축 셋(given · want · about)으로 채워진다.
+        # 사람추측 · 확인용 줄은 축이 없다 — 인자만 갈아 끼운 호출이다.
+        "axes": "-",
     }
     if step is None:
         # 배선이 안 붙은 노드가 있으면 execute_service.run 이 하나도 안 부른다.
@@ -369,14 +405,19 @@ def _print_table(rows) -> None:
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 2)
         + _pad("recipe", RECIPE_WIDTH)
+        + _pad("status", STATUS_WIDTH)
         + _pad("첫 도구", TOOL_WIDTH)
         + _pad("뽑은 이", PICKER_WIDTH)
         + _pad("인자", ARGUMENT_WIDTH)
         + _pad("건수", COUNT_WIDTH)
-        + "횟수"
+        + _pad("횟수", RUNS_WIDTH)
+        + "given · want · about"
     )
 
     for row in rows:
+        # 옛 아홉과 변주가 표에서 갈려 보여야 한다. 변주의 첫 번호 앞에 금을 긋는다.
+        if VARIATIONS and row["number"] == VARIATIONS[0][0]:
+            print("  ── 변주 · 어미만 다름 (2026-08-25 더함) " + "─" * 40)
         head = (
             "  "
             + _pad(str(row["number"]), 3)
@@ -394,11 +435,15 @@ def _print_table(rows) -> None:
             print(
                 prefix
                 + _pad(recipe, RECIPE_WIDTH)
+                # CLARIFY 줄의 건수는 "만약 이것을 골랐다면" 이다. 화면은
+                # 되묻지 실행하지 않는다. status 없이 읽으면 그것이 안 보인다.
+                + _pad(str(call["status"]), STATUS_WIDTH)
                 + _pad(_clip(call["tool"], TOOL_WIDTH - 2), TOOL_WIDTH)
                 + _pad(call["picker"], PICKER_WIDTH)
                 + _pad(_clip(str(call["argument"]), ARGUMENT_WIDTH - 2), ARGUMENT_WIDTH)
                 + _pad(str(call["hits"]), max(COUNT_WIDTH, _width(str(call["hits"])) + 2))
-                + runs
+                + _pad(runs, RUNS_WIDTH)
+                + call["axes"]
             )
         if row["errors"]:
             print(" " * _width(head) + f"/resolve 오류 {row['errors']}회")
@@ -489,13 +534,13 @@ def main() -> int:
 
     if args.only:
         wanted = [int(part) for part in args.only.replace(" ", "").split(",") if part]
-        entries = [entry for entry in UTTERANCES if entry[0] in wanted]
+        entries = [entry for entry in ALL_UTTERANCES if entry[0] in wanted]
         missing = sorted(set(wanted) - {entry[0] for entry in entries})
         if missing:
             print(f"목록에 없는 번호 : {missing}")
             return 2
     else:
-        entries = [entry for entry in UTTERANCES if entry[3]]
+        entries = [entry for entry in ALL_UTTERANCES if entry[3]]
 
     print(
         f"발화 {len(entries)}개 × {args.runs}회 · 모델 {args.model or '서버 기본'}"
