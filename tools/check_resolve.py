@@ -96,6 +96,37 @@ _verdict 의 「겹치는 것 0개면 조회 후보를 쓴다」 규칙이 웹 �
 코드가 틀린 것이다.
 
 어느 자리에서 검산이 답을 바꿨는지는 네 번째 표(검산 표)가 발화별로 찍는다.
+
+## 후보 표의 「조회 판정」 — 온톨로지만으로 좁혔을 때 정답이 살아남는가
+
+지금은 LLM 을 부르면서 프롬프트에 menu 45문장을 통째로 넣는다. LLM 이 그중에서
+고르고, 그 답을 온톨로지 조회(shortlist)와 교집합 내어 좁힌다. 순서를 뒤집는
+안이 있다 — **온톨로지가 먼저 몇 개로 좁히고, LLM 은 그 몇 개 중에서 고른다.**
+프롬프트가 45문장에서 몇 문장으로 줄면 「프롬프트 길이가 판정을 흔든다」는
+문제가 대부분 사라진다.
+
+**그 대신 안전장치가 없어진다.** 지금은 LLM 후보와 겹치는 것이 없으면 조회
+후보를 쓰는 길이 있는데, 먼저 좁히면 축이 틀린 순간 정답이 후보에서 아예
+빠진다. 되물음이 아니라 확신하고 틀리는 것이 된다.
+
+그래서 좁히기를 만들기 전에 이것부터 잰다 — **기대값이 `shortlist_recipe_ids`
+안에 들어 있는가.** 네 갈래로 센다. 넷을 더하면 시행 횟수가 된다.
+
+    조회 적중   기대값 ⊆ 조회 후보 · 조회 후보가 기대값과 같다   좁히면 바로 SELECT 다
+    조회 근접   기대값 ⊆ 조회 후보 · 조회 후보가 더 많다         좁힌 뒤 LLM 이 고르면 된다
+    조회 빠짐   ★ 기대값이 조회 후보에 없다                      좁히면 정답에 못 닿는다
+    조회 없음   조회 후보가 빈 목록                              축이 셋 다 null 인 자리
+
+**「조회 빠짐」이 보려는 숫자다.** 0 이면 좁히기가 안전하고, 0 이 아니면 그
+발화는 좁히기로 손해를 본다.
+
+**`_verdict`(검산)를 지나기 전 값을 본다.** 최종 후보가 아니라
+`shortlist_recipe_ids` 그대로를 기대값과 맞댄다. LLM 을 더 부르지 않으므로
+기존 측정에 칸만 붙는다. 축 셋에서 결정론적으로 나오는 값이라 축이 같으면
+이 칸도 같다 — 한 묶음이면 된다.
+
+**이 칸도 적중 판정을 안 건드린다.** 적중 · 근접 · 빗나감 · 못 붙음 네 칸과
+그 합계는 칸을 더하기 전과 같아야 한다.
 """
 
 import argparse
@@ -230,16 +261,21 @@ def _axes(result: dict) -> tuple:
 
 
 def _tally(result: dict) -> tuple:
-    """응답의 후보 수 셋. 후보 표에 한 줄로 찍을 형태.
+    """응답의 후보 수 셋과 조회 후보 집합. 후보 표에 한 줄로 찍을 형태.
 
-    출력  (LLM 후보 수, 조회 후보 수, 최종 status). 없는 key 는 "-"
+    출력  (LLM 후보 수, 조회 후보 수, 최종 status, 조회 후보 집합).
+          없는 key 는 "-", 조회 후보가 안 실렸으면 집합 자리가 None
     규칙  LLM 후보 수는 candidate_recipe_ids 의 길이.
           recipe_id 가 있고 그 목록에 없으면 하나 더 셈
           조회 후보 수는 shortlist_recipe_ids 의 길이
-          Counter 의 key 라 문자열 튜플로 둠. 리스트는 해시가 안 됨
+          Counter 의 key 라 문자열 튜플로 둠. 리스트는 해시가 안 됨.
+          조회 후보 집합은 같은 이유로 frozenset 으로 둠
     이력  candidate_recipe_ids 는 resolve_service._verdict 를 지난 값이라
           LLM 이 부른 날것이 아니라 조회 후보와 겹친 것임. 날것은 응답에
           안 실림. 조회 후보 수와 나란히 보면 어느 쪽이 좁혔는지는 갈림
+          집합을 함께 실은 것은 「조회 판정」 칸(2026-08-25) 때문임. 개수만으로는
+          정답이 그 안에 들어 있는지 못 봄. **`_verdict` 를 지나기 전 값이라
+          최종 후보와 다름 — 그것이 이 칸의 요점임**
     """
     spoken = result.get("candidate_recipe_ids")
     if spoken is None:
@@ -250,8 +286,9 @@ def _tally(result: dict) -> tuple:
 
     looked_up = result.get("shortlist_recipe_ids")
     lookup_count = "-" if looked_up is None else str(len(looked_up))
+    shortlist = None if looked_up is None else frozenset(looked_up)
 
-    return llm_count, lookup_count, result.get("status") or "-"
+    return llm_count, lookup_count, result.get("status") or "-", shortlist
 
 
 def _alone(result: dict):
@@ -277,7 +314,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, status, 축 넷, 후보 수 셋, LLM 단독 후보 집합).
+    출력  (후보 집합, status, 축 넷, 후보 수와 조회 후보 집합, LLM 단독 후보 집합).
           후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
@@ -322,7 +359,8 @@ def _measure(
           status 를 함께 묶는 것은 적중 표가 근접·빗나감을 가르기 위함임.
           적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
           axes[번호] 에 나온 (given, want, about, argument) 조합의 Counter 를 쌓음
-          tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status) 의 Counter 를 쌓음
+          tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status, 조회 후보 집합)
+          의 Counter 를 쌓음. 조회 후보 집합은 후보 표의 「조회 판정」 칸이 씀
           alones[번호] 에 나온 (LLM 단독 후보, 최종 후보, status) 의 Counter 를 쌓음.
           **outcomes 와 따로 둠.** 한 Counter 에 합치면 적중 표의 "틀렸을 때
           나온 것" 줄이 LLM 단독 값에 따라 더 쪼개져 표 모양이 바뀜.
@@ -595,9 +633,42 @@ LLM_COUNT_WIDTH = 15
 LOOKUP_COUNT_WIDTH = 16
 STATUS_WIDTH = 12
 
+# 후보 표의 「조회 판정」 네 갈래. 뜻은 파일 맨 위 주석에 있다. **적중 표의 네 칸과
+# 다른 것을 센다** — 이쪽은 검산을 지나기 전 shortlist_recipe_ids 만 본다.
+LOOKUP_HIT, LOOKUP_NEAR = "조회 적중", "조회 근접"
+LOOKUP_MISS, LOOKUP_NONE = "★ 조회 빠짐", "조회 없음"
+
+# 칸 폭. 머리글보다 좁으면 표가 어긋난다 ("★ 조회 빠짐" 이 폭 11).
+LOOKUP_GRADE_WIDTH = 14
+
+
+def _grade_lookup(shortlist, expected: set) -> str:
+    """조회 후보만으로 정답에 닿는지를 네 갈래 중 하나로 가름.
+
+    입력  조회 후보 집합(응답에 안 실렸으면 None) · 기대 recipe 집합
+    출력  LOOKUP_HIT · LOOKUP_NEAR · LOOKUP_MISS · LOOKUP_NONE 중 하나
+    규칙  넷이 서로 안 겹치고 빠짐이 없음. 그래야 넷의 합이 시행 횟수가 됨
+          빈 목록과 응답에 안 실린 것을 함께 LOOKUP_NONE 으로 셈.
+          둘 다 조회로는 아무 데도 못 닿는 자리임
+          기대값과 같으면 적중, 기대값을 품고 더 많으면 근접,
+          기대값을 못 품으면 빠짐
+    제약  최종 후보를 보지 않는다. resolve_service._verdict 를 지나기 전
+          shortlist_recipe_ids 그대로를 봄. 좁히기를 먼저 했을 때
+          무엇이 남는지가 이 칸이 재려는 것임
+    이력  「LLM 이 고를 범위를 온톨로지가 먼저 좁히는 안」의 전제를 재려고
+          더함 (2026-08-25). 적중 표의 네 칸은 안 건드림
+    """
+    if not shortlist:
+        return LOOKUP_NONE
+    if set(shortlist) == expected:
+        return LOOKUP_HIT
+    if expected <= set(shortlist):
+        return LOOKUP_NEAR
+    return LOOKUP_MISS
+
 
 def _print_candidates(entries, tallies: dict) -> None:
-    """발화마다 후보가 몇 개까지 좁혀졌는지.
+    """발화마다 후보가 몇 개까지 좁혀졌는지, 조회 후보에 정답이 남는지.
 
     입력  발화 목록 · {번호: 후보 수 조합 Counter}
     규칙  많이 나온 것부터. 조합이 하나면 한 줄, 갈리면 여러 줄
@@ -605,6 +676,9 @@ def _print_candidates(entries, tallies: dict) -> None:
           모델을 바꿔 잰 두 표를 견주는 것이 이 표의 쓸모.
           조회 후보 수는 그대로인데 LLM 후보 수만 줄면 모델이 문장을 읽어
           가른 것이고, 둘 다 그대로면 문장으로는 못 가르는 것
+          「조회 판정」 칸은 조회 후보 수와 같은 줄에서 갈림. 개수가 같아도
+          정답이 안 들어 있으면 좁히기로 손해를 보는 자리임
+          표 아래에 네 갈래의 합계를 한 줄 적음
     """
     print()
     print(
@@ -613,11 +687,13 @@ def _print_candidates(entries, tallies: dict) -> None:
         + _pad("발화", UTTERANCE_WIDTH + 4)
         + _pad("LLM 후보 수", LLM_COUNT_WIDTH)
         + _pad("조회 후보 수", LOOKUP_COUNT_WIDTH)
+        + _pad("조회 판정", LOOKUP_GRADE_WIDTH)
         + _pad("status", STATUS_WIDTH)
         + "횟수"
     )
 
-    for number, utterance, _expected, _default in entries:
+    total = Counter()
+    for number, utterance, expected, _default in entries:
         counter = tallies.get(number)
         if not counter:
             continue
@@ -627,17 +703,39 @@ def _print_candidates(entries, tallies: dict) -> None:
             + _pad(str(number), 3)
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
         )
-        rows = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
+        rows = sorted(counter.items(), key=lambda item: (-item[1], item[0][:3]))
         for index, (tally, count) in enumerate(rows):
-            llm_count, lookup_count, status = tally
+            llm_count, lookup_count, status, shortlist = tally
+            grade = _grade_lookup(shortlist, expected)
+            total[grade] += count
             prefix = head if index == 0 else " " * _width(head)
             print(
                 prefix
                 + _pad(llm_count, LLM_COUNT_WIDTH)
                 + _pad(lookup_count, LOOKUP_COUNT_WIDTH)
+                + _pad(grade, LOOKUP_GRADE_WIDTH)
                 + _pad(status, STATUS_WIDTH)
                 + f"{count}회"
             )
+
+    if not total:
+        return
+    print()
+    print(
+        "  조회 판정 합계  "
+        + " · ".join(
+            f"{label} {total[label]}회"
+            for label in (LOOKUP_HIT, LOOKUP_NEAR, LOOKUP_MISS, LOOKUP_NONE)
+        )
+        + f"  (합 {sum(total.values())}회)"
+    )
+    if total[LOOKUP_MISS]:
+        print(
+            "  ★ 조회 후보에 정답이 없는 자리가 있다 — 지금 축으로 먼저 좁히면"
+            " 그 발화는 정답에 못 닿는다"
+        )
+    else:
+        print("  조회 빠짐 0 — 지금 축으로 먼저 좁혀도 정답이 후보에 남는다")
 
 
 # 검산 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
