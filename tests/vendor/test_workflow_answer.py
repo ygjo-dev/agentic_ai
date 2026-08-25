@@ -481,3 +481,368 @@ def test_이름도_수치도_없으면_칸_이름_그대로():
 
     assert "칸: sectionId · geometry · bbox" in answer
     assert "LineString" not in answer
+
+
+# ── 무엇으로 불렀는가 ───────────────────────────────────────────────
+#
+# 화면에 건수만 나와 인자가 잘못 들어갔는지 · 데이터가 없는 것인지 · 도구가
+# 터진 것인지를 사람이 못 갈랐다 (2026-08-25 화면 실측, NOTES.md 「스물셋째」의
+# 「★ 미완성이다」). 아래 input 은 전부 그 실측에서 실제로 나간 값이다.
+
+
+def test_무엇으로_불렀는지_단계_줄에_적힌다():
+    """"전기차 충전소 데이터 검색해줘" 가 "ev.searchStations 120건" 만 냈음.
+
+    무엇으로 검색해 120건인지가 화면에 없었음.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "ev.searchStations",
+        "input": {"query": "전기차 충전소"},
+        "result": {"count": 120, "totalMatches": 120},
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "전기차 충전소를 조회했습니다."}, trace)
+
+    assert 'query="전기차 충전소"' in answer
+    assert "120건" in answer
+
+
+def test_결과에_이미_나온_인자는_다시_안_적는다():
+    """geo.geocode 는 "오송역 → 주소 (경도, 위도)" 로 인자를 이미 말함.
+
+    앞에 query="오송역" 을 또 적으면 같은 값이 한 줄에 두 번 나감.
+    """
+    answer = compose_workflow_answer(
+        {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
+    )
+
+    assert 'query=' not in answer
+    assert answer.count("오송역") == 2, "머리말 하나와 단계 줄 하나뿐이어야 함"
+
+
+def test_인자가_비면_그_자리가_통째로_빠진다():
+    """빈 dict 에 "input: {}" 를 찍으면 읽을 것이 없는 칸이 화면을 먹음."""
+    trace = [{"id": "s1", "tool": "bim.listModels", "input": {}, "result": []}]
+    answer = compose_workflow_answer({"answer_instruction": "모델을 조회했습니다."}, trace)
+
+    assert answer.endswith("bim.listModels    0건")
+
+
+def test_인자의_목록값은_안_적는다():
+    """bbox 두 겹 · 좌표 배열이 인자 자리로 새면 결과 쪽을 막은 뜻이 없음.
+
+    실측 : rail.getSectionGeometry 뒤에 오는 단계가 bbox 를 두 겹으로 받음.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "geo.getRailwayLines",
+        "input": {"bbox": [[126.868587, 36.619576], [127.328115, 37.554557]], "limit": 50},
+        "result": [],
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "철도 노선을 조회했습니다."}, trace)
+
+    assert "bbox" not in answer
+    assert "126.868587" not in answer
+    assert "limit=50" in answer
+
+
+def test_실수_인자는_좌표_자리수로_자른다():
+    """어댑터가 만든 bbox 는 소수점이 열대여섯 자리임. 그대로 적으면 줄이 넘침."""
+    trace = [{
+        "id": "s2",
+        "tool": "road.getCctv",
+        "input": {
+            "minLon": 127.15983291624491,
+            "minLat": 36.48522063242652,
+            "maxLon": 127.49556031538508,
+            "maxLat": 36.75467936757348,
+        },
+        "result": [],
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "오송역 CCTV 를 조회했습니다."}, trace)
+
+    assert "minLon=127.1598" in answer
+    assert "127.15983291624491" not in answer
+
+
+# ── 못 찾은 것을 못 찾았다고 말한다 ─────────────────────────────────
+#
+# 건수 칸이 아예 없는 응답은 0건 판정에 안 걸려 _notice 가 안 붙었다. 화면에
+# "칸: status · message · dataset · query" 만 나왔다 (2026-08-25 화면 실측).
+
+
+# tools/probe_out/election.getDistrict.name-발화.json 실물.
+# dataset 의 나머지 칸은 같은 모양의 설명이라 뺐다.
+NOT_FOUND = {
+    "status": "not_found",
+    "message": "조건에 맞는 선거구를 찾지 못했습니다.",
+    "dataset": {
+        "datasetId": "kr-assembly-districts-2024",
+        "name": "2024 제22대 국회의원 선거구",
+        "districtCount": 254,
+        "bbox": [[124.61169218381582, 33.11579804189935],
+                 [130.91785921273643, 38.61114065497731]],
+    },
+    "query": {"code": None, "name": "충북 제1선거구"},
+}
+
+
+def test_못_찾았다는_응답이_제_사유를_말한다():
+    """message 에 사유가 있는데 칸 이름만 찍혔음."""
+    trace = [{
+        "id": "s1",
+        "tool": "election.getDistrict",
+        "input": {"name": "충북 제1선거구"},
+        "result": NOT_FOUND,
+    }]
+    answer = compose_workflow_answer(
+        {"answer_instruction": "충북 제1선거구 국회의원 지역구를 조회했습니다."}, trace
+    )
+
+    assert answer.startswith("찾지 못했습니다.")
+    assert "충북 제1선거구 국회의원 지역구를 조회했습니다." not in answer
+    assert "조건에 맞는 선거구를 찾지 못했습니다." in answer
+    assert "칸: status" not in answer
+
+
+def test_못_찾았을_때_무엇으로_물었는지도_남는다():
+    """인자가 틀려서 못 찾은 것인지 데이터가 없는 것인지를 갈라야 함."""
+    trace = [{
+        "id": "s1",
+        "tool": "election.getDistrict",
+        "input": {"name": "충북 제1선거구"},
+        "result": NOT_FOUND,
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "지역구를 조회했습니다."}, trace)
+
+    assert 'name="충북 제1선거구"' in answer
+
+
+def test_못_찾았다는_응답도_큰_값은_안_샌다():
+    """dataset 안에 bbox 와 설명이 통째로 들어 있음."""
+    trace = [{
+        "id": "s1",
+        "tool": "election.getDistrict",
+        "input": {"name": "충북 제1선거구"},
+        "result": NOT_FOUND,
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "지역구를 조회했습니다."}, trace)
+
+    assert "kr-assembly-districts-2024" not in answer
+    assert "124.61169218381582" not in answer
+
+
+def test_데이터가_있는_status_는_못_찾았다고_안_한다():
+    """status 넷 중 ready · syncing 은 데이터가 있는 상태임.
+
+    실물 : ev.getDatasetInfo.기본.json 이 status "syncing" 인데 충전소가
+    93,353건 들어 있음. 그것을 "찾지 못했습니다" 로 내면 거짓말이 됨.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "ev.getDatasetInfo",
+        "input": {},
+        "result": {
+            "id": "kr-ev-chargers-keco-current",
+            "name": "한국환경공단 전기자동차 충전소",
+            "status": "syncing",
+            "stationCount": 93353,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+
+    assert answer.startswith("충전소 데이터를 조회했습니다.")
+    assert "찾지 못했습니다" not in answer
+    assert "한국환경공단 전기자동차 충전소" in answer
+
+
+def test_적재된_것이_없으면_없다고_한다():
+    """status "empty" 는 데이터가 하나도 안 들어온 것임. message 는 안 옴.
+
+    실물 : ev.getDatasetInfo.json 이 stationCount 0 · totalRegionCount 17 임.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "ev.getDatasetInfo",
+        "input": {},
+        "result": {
+            "id": "kr-ev-chargers-keco-current",
+            "name": "한국환경공단 전기자동차 충전소",
+            "status": "empty",
+            "stationCount": 0,
+            "totalRegionCount": 17,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+
+    assert answer.startswith("찾지 못했습니다.")
+    assert "데이터가 없습니다" in answer
+
+
+# ── 목록형 응답의 내용 ──────────────────────────────────────────────
+#
+# knowledge.query 가 본문을 돌려주는데 화면에는 "4건" 만 나왔다. 시연
+# 요구사항인 "문서에서 내용을 찾아온다" 가 도구 쪽은 되고 화면 쪽만 안 됐다.
+
+
+# tools/probe_out/knowledge.query.철도안전-2026-08-25.json 실물.
+# 네 건 중 첫 건만 남기고 content 는 앞 120자까지만 남겼다 (원문은 964자).
+# metadata 는 열여섯 칸 중 화면이 읽는 둘과 그 옆 몇을 남겼다.
+KNOWLEDGE = [{
+    "content": (
+        "법제처                                                            1"
+        "                                                       국가법령정보센터\n"
+        "철도안전법\n철도안전법\n[시행 2026. 3. 3.] [법률 제21188호, 2025. 3. 4., 일부개정]"
+    ),
+    "metadata": {
+        "producer": "iText 2.1.7 by 1T3XT",
+        "title": "",
+        "file_path": "/tmp/철도안전법(법률)(제21188호)(20260303).pdf",
+        "page": "0",
+        "total_pages": "47",
+        "source": "철도안전법(법률)(제21188호)(20260303).pdf",
+    },
+}]
+
+
+def knowledge_step(result=KNOWLEDGE):
+    return {"id": "s1", "tool": "knowledge.query", "input": {"query": "철도 안전"}, "result": result}
+
+
+def test_문서_이름과_본문이_답에_실린다():
+    """본문이 오는데 세기만 했음. "4건" 은 문서 수도 아니고 k 의 기본값임."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+    )
+
+    assert "「철도안전법(법률)(제21188호)(20260303).pdf」" in answer
+    assert "국가법령정보센터" in answer
+    assert "1건" in answer
+
+
+def test_본문은_잘라서_싣고_잘랐다고_밝힌다():
+    """content 가 962~995자임. 통째로 실으면 화면이 응답 전문이 됨."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+    )
+
+    assert "…" in answer
+    assert "일부개정" not in answer, "본문 끝까지 실리면 안 됨"
+
+
+def test_본문의_잇단_공백은_한_칸으로_붙인다():
+    """PDF 본문이 공백 수십 칸을 달고 옴. 그대로 실으면 한 줄이 텅 빔."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+    )
+
+    assert "  " not in answer.split("knowledge.query")[1].split("「")[1]
+
+
+def test_경로는_안_보여준다():
+    """metadata.file_path 는 저쪽 컨테이너의 /tmp 경로임. 사람이 볼 것이 아님."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+    )
+
+    assert "/tmp" not in answer
+    assert "1T3XT" not in answer
+
+
+def test_첫_목록이_비면_다음_목록을_본다():
+    """한 응답이 목록을 둘 담아 오고 첫째가 비어 있음.
+
+    실물 : adminBoundary.findBoundaryByPoint 가 features 0건 · items 3건.
+    features 에서 멈추면 이름이 있는 items 를 못 봄.
+    """
+    trace = [{
+        "id": "s2",
+        "tool": "adminBoundary.findBoundaryByPoint",
+        "input": {"lon": 127.3277, "lat": 36.62},
+        "result": {
+            "type": "FeatureCollection",
+            "features": [],
+            "items": [
+                {"id": "43", "name": "충청북도", "code": "43", "layerId": "sido",
+                 "bbox": [127.275651, 36.01243, 128.652096, 37.258334]},
+                {"id": "43113", "name": "청주시 흥덕구", "code": "43113", "layerId": "sigungu"},
+            ],
+            "count": 2,
+            "totalMatches": 2,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "오송역 행정구역을 조회했습니다."}, trace)
+
+    assert "2건 · 충청북도" in answer
+    assert "청주시 흥덕구" not in answer, "첫 항목 하나만 봄"
+    assert "127.275651" not in answer
+
+
+def test_첫_항목이_좌표_덩어리면_건수만_낸다():
+    """geojson feature 는 {geometry, properties, type} 이라 읽을 칸이 없음.
+
+    properties 안에 name 이 있지만 안 파고듦. 그 안에는 좌표와 목록이 함께 있음.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "election.findAssemblyDistrictByPoint",
+        "input": {"lon": 127.3277, "lat": 36.62},
+        "result": {
+            "type": "FeatureCollection",
+            "features": [{
+                "type": "Feature",
+                "geometry": {"type": "MultiPolygon",
+                             "coordinates": [[[[127.27565045721593, 36.56168453000288]]]]},
+                "properties": {"name": "청주시 흥덕구", "est_color": "#D8E4BC",
+                               "winner_names": ["이연희"]},
+            }],
+            "count": 1,
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "오송역 지역구를 조회했습니다."}, trace)
+
+    assert "election.findAssemblyDistrictByPoint  lon=127.3277 · lat=36.6200  1건" in answer
+    assert "MultiPolygon" not in answer
+    assert "127.27565045721593" not in answer
+    assert "#D8E4BC" not in answer
+
+
+def test_cctv_주소는_첫_항목이어도_안_샌다():
+    """cctvUrl 이 화면에 raw 로 새던 값 중 하나임. 88자짜리 서명 붙은 주소임.
+
+    실물 : tools/probe_out/road.getCctv.cctv-오송역.json 의 첫 항목.
+    """
+    trace = [{
+        "id": "s2",
+        "tool": "road.getCctv",
+        "input": {"minLon": 127.1598, "minLat": 36.4852},
+        "result": [{
+            "cctvId": "its_[수도권제1순환선] 판교분기점",
+            "cctvName": "[수도권제1순환선] 판교분기점",
+            "centerLon": 127.09706,
+            "centerLat": 37.40665,
+            "cctvUrl": ("http://cctvsec.ktict.co.kr/1/ablsJ6ueB0MmE96fJiebiicMsYWjFmEqTpAmr"
+                        "cTpNszF6iT0v3zXs9gjInwfiK54qeyHEF+LDDjdjRDOXeKA5A=="),
+            "cctvFormat": "HLS",
+        }],
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "오송역 CCTV 를 조회했습니다."}, trace)
+
+    assert "1건" in answer
+    assert "http" not in answer
+    assert "ablsJ6ueB0MmE96" not in answer
+
+
+def test_어떤_결과도_긴_토막을_화면에_안_흘린다():
+    """자르는 상한을 하나라도 빠뜨리면 여기서 걸림.
+
+    위 시험들은 아는 값 하나씩을 짚는다. 이것은 모르는 값을 막는다 —
+    답에 든 낱말이 길면 그것은 사람이 읽을 것이 아니라 새어 나온 값이다.
+    """
+    for result in (KNOWLEDGE, NOT_FOUND, AGE_PROFILE):
+        answer = compose_workflow_answer(
+            {"answer_instruction": "조회했습니다."},
+            [{"id": "s1", "tool": "t", "input": {"query": "철도 안전"}, "result": result}],
+        )
+        longest = max(answer.split(), key=len)
+        assert len(longest) <= 60, f"{longest} 가 통째로 나갔음"

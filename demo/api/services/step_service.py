@@ -620,10 +620,35 @@ def plan(recipe_id: str, argument: str) -> dict:
             step["inputAdapter"] = wiring["adapter"]
         steps.append(step)
         nodes.append(node_id)
-        headline = tool["headline"].format(arg=argument)
+        headline = _headline(tool["headline"], argument)
         previous_id = step_id
 
     return {"steps": steps, "nodes": nodes, "headline": headline}
+
+
+def _headline(template: str, argument: str) -> str:
+    """답의 첫 줄. 인자가 이미 문장 안에 있으면 앞에 안 붙임.
+
+    입력  TOOL_OF 의 headline 틀 · 발화에서 뽑은 인자
+    출력  채운 문장
+    규칙  틀은 전부 "{arg} …" 꼴이라 인자가 문장 앞에 붙음. 뒤 문장이 인자로
+          시작하면 같은 말이 두 번 나감
+          겹침은 앞머리 일치로 봄. 인자가 붙는 자리가 앞이라 앞에서만
+          더듬거림
+          겹치면 인자를 빼고 뒤 문장만. 인자가 비어도 마찬가지임
+    제약  TOOL_OF 48줄을 고치지 않는다.
+          겹치는 것은 한 줄이 아니라 「인자 + 도구 이름」이 만나는 자리다.
+          줄마다 고치면 발화가 바뀔 때 또 겹친다
+    이력  "전기차 충전소 데이터 검색해줘" 가 "전기차 충전소 전기차 충전소를
+          조회했습니다." 로 나갔음. 틀이 "{arg} 전기차 충전소를 조회했습니다."
+          이고 인자도 "전기차 충전소" 였음 (2026-08-25 화면 실측).
+          포함(substring)으로 보면 "역" 같은 짧은 인자가 "국회의원 지역구"
+          안에 걸려 멀쩡한 인자까지 빠짐. 앞머리로 좁혔음
+    """
+    rest = template.format(arg="").strip()
+    if not argument or rest.startswith(argument):
+        return rest
+    return template.format(arg=argument)
 
 
 def _has_center(tool_input: dict) -> bool:

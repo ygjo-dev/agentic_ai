@@ -150,6 +150,32 @@ def test_headline_의_arg_도_바뀐다(monkeypatch):
     assert plan["headline"] == "오송역 CCTV 를 조회했습니다."
 
 
+def test_인자가_머리말_안에_이미_있으면_앞에_안_붙인다(monkeypatch):
+    """"전기차 충전소 데이터 검색해줘" 가 "전기차 충전소 전기차 충전소를 조회했습니다."
+
+    틀이 "{arg} 전기차 충전소를 조회했습니다." 이고 인자도 "전기차 충전소" 라
+    같은 말이 두 번 나갔음 (2026-08-25 화면 실측).
+    """
+    wire(monkeypatch, ["spoken_keyword", "search_ev_stations"])
+
+    plan = step_service.plan("recipe_012", "전기차 충전소")
+
+    assert plan["headline"] == "전기차 충전소를 조회했습니다."
+
+
+def test_겹치지_않는_인자는_그대로_앞에_붙는다(monkeypatch):
+    """겹침을 앞머리로만 봄. 인자가 문장 가운데 낱말과 같아도 안 뺌.
+
+    포함(substring)으로 보면 "역" 이 "국회의원 지역구" 안에 걸려 멀쩡한 인자가
+    빠짐. 인자가 붙는 자리는 앞이라 앞에서만 더듬거림.
+    """
+    wire(monkeypatch, ["spoken_identifier", "get_election_district"])
+
+    plan = step_service.plan("recipe_015", "역")
+
+    assert plan["headline"] == "역 국회의원 지역구를 조회했습니다."
+
+
 # ── 인자를 어디서 받는가 ────────────────────────────────────────────
 
 

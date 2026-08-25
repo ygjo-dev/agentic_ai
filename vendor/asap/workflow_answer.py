@@ -16,7 +16,13 @@ english_notfound.json), mcp_client 가 예외를 안 올리므로 vendor 는 그
 
 **결과 값을 문자열에 담지 않는다.** geojson · cctvUrl · features 의 값이 화면에
 raw JSON 으로 새던 자리가 _preview 하나였고 지웠다. 모르는 결과는 칸 이름만
-보여준다.
+보여준다. 값을 실을 때는 **칸 이름을 미리 정해 두고 길이를 잘라서만** 싣는다 —
+모르는 칸은 안 읽으므로 새 도구가 큰 값을 들고 와도 화면에 안 샌다.
+
+**무엇으로 불렀는지도 여기서 적는다.** trace 항목의 input 은 vendor 가 참조
+($s1.location)와 어댑터(point_radius_to_bbox)까지 푼 뒤의 실제 호출 인자다.
+인자가 잘못 들어갔는지 · 데이터가 없는 것인지 · 도구가 터진 것인지를 사람이
+화면만 보고 갈라야 하고, 그 셋 중 첫째는 input 을 안 적으면 알 수가 없다.
 """
 
 from typing import Any, Dict, List, Optional, Tuple
@@ -121,6 +127,9 @@ DATE_KEY = "referenceDate"
 RECORD_JOIN = " · "
 DATE_SUFFIX = " 기준"
 
+# 원문에서 그대로 가져온 값을 감싸는 표시. 인자 값과 본문 첫 대목이 쓴다.
+QUOTE = '"{text}"'
+
 # get* 이 여러 건 중 하나를 집어 줄 때 그 한 건이 담겨 오는 칸.
 #
 # 실측 : election.getDistrict(name="충북") 가 count 1 · totalMatches 8 로
@@ -129,6 +138,80 @@ ITEM_KEY = "item"
 
 # 여럿 중 하나를 준 것을 밝히는 문구. totalMatches 가 count 보다 클 때만 쓴다.
 ONE_OF_MANY = "전체 {total:,}건 중 하나"
+
+# 응답이 스스로 "없다" 고 말하는 status 값과 그때 쓸 문구. 실측으로 본 값만 둔다.
+#
+# tools/probe_out 131건 중 최상위 status 칸이 있는 응답이 14건이고 값은 넷이다
+# (2026-08-25 실측).
+#
+#   not_found  10건  election.getDistrict · getAssemblyDistrict ·
+#                    getAssemblyPledgeDistrict · getLocalPledgeSummary ·
+#                    findLocalPledgeSummaryByPoint.
+#                    열 건 모두 최상위 message 를 함께 준다
+#   empty       2건  ev.getDatasetInfo · population.getDatasetInfo.
+#                    적재된 것이 없다는 뜻이고 message 는 없다
+#   syncing     1건  ev.getDatasetInfo. 93,353건이 들어 있고 동기화 중이다
+#   ready       1건  population.getDatasetInfo. 정상이다
+#
+# 뒤의 둘은 안 쓴다. 데이터가 있는 상태라 "없다" 고 말하면 거짓이 된다.
+#
+# 이 칸을 보는 이유는 건수 칸이 아예 없는 응답이 0건 판정에 안 걸리기
+# 때문이다. not_found 응답은 features 도 count 도 없어 _counted 가 None 을
+# 내고, 그래서 _notice 가 붙는 길로 안 갔다 — 화면에 "칸: status · message ·
+# dataset · query" 만 나왔다 (2026-08-25 화면 실측, NOTES.md 「스물셋째」).
+STATUS_KEY = "status"
+MISSING_STATUS = {
+    "not_found": "찾지 못했습니다",
+    "empty": "데이터가 없습니다",
+}
+
+# ── 무엇으로 불렀는가 ──────────────────────────────────────────────
+#
+# trace 항목의 input 은 vendor 가 참조와 어댑터까지 푼 실제 호출 인자다.
+#
+# 적을 수 있는 것만 적는다. 문자열 · 정수 · 실수만 적고 dict · list 는
+# 통째로 건너뛴다. 목록형 인자를 적기 시작하면 bbox 두 겹 · geojson 이
+# 화면으로 흘러나오고, 그것이 이 파일이 _preview 를 지운 이유다.
+#
+# INPUT_KEY_LIMIT  한 줄에 적을 칸 수. 실측 배선의 최대가 넷이다
+#                  (road.getCctv · ev.searchStations 의 bbox 넷)
+# INPUT_VALUE_LIMIT 문자열 값 하나를 자르는 길이
+# COORD_DIGITS     실수의 소수점 자리. _place_line 이 좌표에 쓰는 것과 같다
+INPUT_JOIN = " · "
+INPUT_FORMAT = "{key}={value}"
+INPUT_KEY_LIMIT = 4
+INPUT_VALUE_LIMIT = 24
+INPUT_MORE = "…"
+COORD_DIGITS = 4
+
+# ── 목록 첫 항목 ──────────────────────────────────────────────────
+#
+# 건수만으로는 무엇이 왔는지 모른다. knowledge.query 가 본문을 돌려주는데
+# 화면에는 "4건" 만 나왔다.
+#
+# 첫 항목 하나만 본다. 전부 늘어놓으면 화면이 응답 전문이 된다.
+# 항목을 요약하는 것은 _record_line 이고 그것은 아래 칸 이름만 읽는다 —
+# geojson feature({geometry, properties, type})는 읽을 칸이 하나도 없어
+# 조용히 건너뛴다.
+#
+# TEXT_KEYS         사람이 읽을 글이 담기는 칸.
+#                   실측은 content 뿐이다 — knowledge.query 항목이
+#                   {content, metadata} 이고 content 가 962~995자다
+#                   (2026-08-25 Gateway 직접 호출).
+#                   text 는 아직 실물을 못 봤고 흔한 이름이라 함께 둔다
+#                   (LIST_KEYS 와 같은 이유)
+# TEXT_LIMIT        본문을 자르는 길이. 자른 것은 _clip 이 "…" 로 밝힌다
+# SOURCE_CONTAINER  출처가 담긴 중첩 칸. knowledge.query 의 metadata 다
+# SOURCE_KEYS       그 안에서 볼 이름. 실측 : title 은 빈 문자열이고
+#                   source 가 "철도안전법(법률)(제21188호)(20260303).pdf" 다.
+#                   최상위 source 는 안 본다 — 그쪽은 데이터셋 설명
+#                   ("한국환경공단 … 정보 API") 이라 뜻이 다르다
+TEXT_KEYS = ("content", "text")
+TEXT_LIMIT = 60
+SOURCE_CONTAINER = "metadata"
+SOURCE_KEYS = ("title", "source")
+SOURCE_FORMAT = "「{name}」"
+SOURCE_LIMIT = 48
 
 
 def compose_workflow_answer(
@@ -189,14 +272,80 @@ def step_failed(item: Dict[str, Any]) -> bool:
 
 
 def step_line(item: Dict[str, Any]) -> str:
-    """단계 하나의 줄. 도구 이름과 결과 한 마디.
+    """단계 하나의 줄. 도구 이름 · 무엇으로 불렀는가 · 결과 한 마디.
 
     규칙  이름이 칸보다 길어도 TOOL_GAP 만큼은 벌림. 안 벌리면 요약과 붙어
           한 낱말로 읽힘 (adminBoundary.findBoundaryByPoint0건)
           짧은 이름의 정렬은 안 달라짐. 칸을 좁힌 만큼 뒤에 다시 붙임
+          인자는 도구 이름과 결과 사이. 적을 것이 없으면 그 자리가 통째로
+          빠짐. 빈 dict 에 "input: {}" 를 찍지 않음
+          결과 줄에 이미 나온 값은 인자로 다시 안 적음. 무엇을 고를지는
+          _input_text 임
     """
     tool = str(item.get("tool") or "")
-    return f"{tool.ljust(TOOL_COLUMN - TOOL_GAP)}{' ' * TOOL_GAP}{_outcome(item)}"
+    outcome = _outcome(item)
+    given = _input_text(item.get("input"), outcome)
+    tail = f"{given}{' ' * TOOL_GAP}{outcome}" if given else outcome
+    return f"{tool.ljust(TOOL_COLUMN - TOOL_GAP)}{' ' * TOOL_GAP}{tail}"
+
+
+def _input_text(tool_input: Any, shown: str) -> str:
+    """무엇으로 불렀는지 한 마디. 적을 것이 없으면 "".
+
+    입력  vendor 가 참조와 어댑터까지 푼 실제 호출 인자 · 같은 줄의 결과 문구
+    출력  key=value 를 INPUT_JOIN 으로 이은 줄. 칸이 남으면 끝에 INPUT_MORE
+    규칙  dict 가 아니면 "". 값이 dict · list · bool · None 인 칸은 건너뜀
+          값이 결과 문구에 이미 있으면 건너뜀. geo.geocode 의 query 가
+          "오송역 → 주소 (경도, 위도)" 의 앞머리로 이미 나와 있음
+          INPUT_KEY_LIMIT 개까지. 넘으면 끝에 INPUT_MORE 를 붙여 밝힘
+    제약  값을 통째로 적지 않는다.
+          목록 · 중첩 dict 는 안 적고 문자열은 INPUT_VALUE_LIMIT 에서 자른다.
+          bbox 두 겹 · geojson 이 화면으로 흘러나오던 자리다
+    """
+    if not isinstance(tool_input, dict):
+        return ""
+
+    parts: List[str] = []
+    more = False
+    for key, value in tool_input.items():
+        pair = _input_pair(value)
+        if pair is None:
+            continue
+        raw, text = pair
+        if raw in shown:
+            continue
+        if len(parts) >= INPUT_KEY_LIMIT:
+            more = True
+            break
+        parts.append(INPUT_FORMAT.format(key=key, value=text))
+
+    if not parts:
+        return ""
+    return INPUT_JOIN.join(parts) + (INPUT_MORE if more else "")
+
+
+def _input_pair(value: Any):
+    """인자 값 하나의 (겹침을 볼 원문, 화면에 적을 것). 적을 수 없으면 None.
+
+    규칙  bool 은 안 적음. 참·거짓만으로는 무엇을 물었는지 못 말하고 실측
+          배선(STEP_OF)에 bool 인자가 없음
+          실수는 COORD_DIGITS 자리까지. 배선의 실수는 전부 좌표임
+          문자열은 한 줄로 붙이고 INPUT_VALUE_LIMIT 에서 자른 뒤 따옴표
+          dict · list · None 은 None 을 냄
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, float):
+        text = f"{value:.{COORD_DIGITS}f}"
+        return text, text
+    if isinstance(value, int):
+        return str(value), str(value)
+    if isinstance(value, str):
+        text = " ".join(value.split())
+        if not text:
+            return None
+        return text, QUOTE.format(text=_clip(text, INPUT_VALUE_LIMIT))
+    return None
 
 
 def summarize(tool_input: Any, result: Any) -> str:
@@ -204,7 +353,9 @@ def summarize(tool_input: Any, result: Any) -> str:
 
     규칙  위에서부터 걸리는 데서 멈춤
           error 칸이 있으면 오류. 200 으로 돌아온 실패가 이 모양임
-          배열이면 건수. 0건도 배열임
+          배열이면 건수. 0건도 배열임. 첫 항목에서 고를 것이 있으면 함께 냄
+          status 가 "없다" 고 말하면 그 사유. 건수 칸이 아예 없는 응답이
+          0건 판정에 안 걸려 칸 이름만 나가던 자리임
           location 이 [lon, lat] 이면 주소와 좌표. 어디를 찍었는지 사람이
           알아볼 수 있어야 함
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
@@ -214,15 +365,20 @@ def summarize(tool_input: Any, result: Any) -> str:
           목록형이 아닌 응답(인구)이 여기로 옴
           그 밖에는 최상위 칸 이름만
     제약  결과 값을 문자열에 담지 않는다.
-          geojson · cctvUrl · features 가 raw JSON 으로 화면에 새던 자리다
+          geojson · cctvUrl · features 가 raw JSON 으로 화면에 새던 자리다.
+          값을 실을 때는 미리 정한 칸 이름만 읽고 길이를 자른다
     """
     if _has_error(result):
         return FAILED_MARK + _error_text(result["error"])
 
     if isinstance(result, list):
-        return f"{len(result)}건"
+        return _list_line(result)
 
     if isinstance(result, dict):
+        missing = _missing_line(result)
+        if missing:
+            return missing
+
         point = _lon_lat(result.get("location"))
         if point:
             return _place_line(tool_input, result, point)
@@ -240,6 +396,45 @@ def summarize(tool_input: Any, result: Any) -> str:
     return UNKNOWN_RESULT
 
 
+def _list_line(items: List[Any]) -> str:
+    """배열 결과 한 줄. 건수와 첫 항목 한 마디.
+
+    규칙  건수는 늘 냄. 0건도 건수임
+          첫 항목에서 고를 것이 없으면 건수만. geojson feature 가 그럼
+    """
+    line = f"{len(items)}건"
+    first = _record_line(items[0]) if items else ""
+    return line + RECORD_JOIN + first if first else line
+
+
+def _missing_status(result: Any) -> str:
+    """응답의 status 가 "없다" 고 말하면 그 값. 아니면 "".
+
+    규칙  최상위 status 만 봄. dataset.status 처럼 중첩된 것은 안 봄
+          MISSING_STATUS 에 있는 값만. ready · syncing 은 데이터가 있는
+          상태라 안 걸림
+    """
+    if not isinstance(result, dict):
+        return ""
+    status = result.get(STATUS_KEY)
+    return status if isinstance(status, str) and status in MISSING_STATUS else ""
+
+
+def _missing_line(result: Dict[str, Any]) -> str:
+    """못 찾았다는 응답 한 줄. 그런 응답이 아니면 "".
+
+    규칙  응답이 제 사유를 실어 보냈으면 그것을 그대로 씀. 우리 문구보다
+          무엇을 어디서 못 찾았는지를 말함 ("조건에 맞는 선거구를 찾지
+          못했습니다.")
+          사유가 없으면 status 값에 매인 우리 문구. ev.getDatasetInfo 의
+          empty 가 그럼
+    """
+    status = _missing_status(result)
+    if not status:
+        return ""
+    return _notice(result) or MISSING_STATUS[status]
+
+
 def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
     """이 실행이 성공인가 빈 결과인가 오류인가.
 
@@ -252,6 +447,8 @@ def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
           errors 도 비어 있음
           trace 가 비면 오류. 한 단계도 안 돌았음
           마지막 항목의 센 건수가 0이면 빈 결과. 발화에 답하는 것은 마지막임
+          마지막 항목의 status 가 "없다" 고 말해도 빈 결과. 건수 칸이 아예
+          없는 응답이라 위 줄에 안 걸림
           그 밖은 성공
     """
     if failed:
@@ -264,8 +461,11 @@ def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
     if not trace:
         return ERROR
 
-    counted = _counted(trace[-1].get("result"))
+    last = trace[-1].get("result")
+    counted = _counted(last)
     if counted and counted[0] == 0:
+        return EMPTY
+    if _missing_status(last):
         return EMPTY
 
     return SUCCESS
@@ -359,13 +559,17 @@ def _counted_line(result: Dict[str, Any], count: int, total: Optional[int]) -> s
           전체가 받은 것보다 많으면 여럿 중 하나라는 것을 밝힘. 여덟 중 하나를
           확신에 찬 한 줄로 주면 사람은 그것이 전부인 줄 앎
           totalMatches 를 안 주는 도구가 있음. 없으면 조용히 넘어감
+          item 이 없으면 센 목록의 첫 항목을 봄. 건수 뒤에 붙임 — 그것은
+          여럿 중 첫째라 건수를 대신할 수 없음
     """
     if count == 0:
         return _count_line(count, total, notice=_notice(result))
 
     record = _record_line(result.get(ITEM_KEY)) if count == 1 else ""
     if not record:
-        return _count_line(count, total)
+        first = _first_record(result)
+        line = _count_line(count, total)
+        return line + RECORD_JOIN + first if first else line
 
     if total is not None and total > count:
         return record + RECORD_JOIN + ONE_OF_MANY.format(total=total)
@@ -375,12 +579,15 @@ def _counted_line(result: Dict[str, Any], count: int, total: Optional[int]) -> s
 def _record_line(record: Any) -> str:
     """한 건에서 사람이 볼 것만 골라 한 줄로. 고를 것이 없으면 "".
 
-    입력  결과 dict 하나 (응답 전체이거나 그 안의 item)
-    출력  이름 · 수치 · 기준일을 이어 붙인 줄
-    규칙  이름이나 수치 중 하나는 있어야 함. 기준일만 있는 줄은 안 만듦 —
-          무엇의 기준일인지 말하지 않으므로 칸 이름을 찍는 것만 못함
+    입력  결과 dict 하나 (응답 전체이거나 그 안의 item 이거나 목록의 첫 항목)
+    출력  이름 · 수치 · 출처 · 본문 · 기준일을 이어 붙인 줄
+    규칙  이름 · 수치 · 출처 · 본문 중 하나는 있어야 함. 기준일만 있는 줄은
+          안 만듦 — 무엇의 기준일인지 말하지 않으므로 칸 이름을 찍는 것만 못함
           없는 칸은 뺌. 지어내지 않음
+          읽는 칸이 정해져 있음. geojson feature({geometry, properties,
+          type})는 하나도 안 걸려 ""
     제약  값을 고를 뿐 만들지 않는다. 응답에 없는 칸은 안 읽는다
+          본문은 통째로 안 싣는다. TEXT_LIMIT 에서 자르고 잘랐다고 밝힌다
     """
     if not isinstance(record, dict):
         return ""
@@ -388,15 +595,64 @@ def _record_line(record: Any) -> str:
     name = record.get(NAME_KEY)
     name = name.strip() if isinstance(name, str) else ""
     measure = _measure_text(record)
-    if not name and not measure:
-        return ""
 
-    head = f"{name} {measure}".strip() if name and measure else (name or measure)
+    parts = []
+    if name and measure:
+        parts.append(f"{name} {measure}")
+    elif name or measure:
+        parts.append(name or measure)
+
+    source = _source_name(record)
+    if source:
+        parts.append(SOURCE_FORMAT.format(name=source))
+
+    excerpt = _excerpt(record)
+    if excerpt:
+        parts.append(excerpt)
+
+    if not parts:
+        return ""
 
     date = record.get(DATE_KEY)
     if isinstance(date, str) and date.strip():
-        return head + RECORD_JOIN + date.strip() + DATE_SUFFIX
-    return head
+        parts.append(date.strip() + DATE_SUFFIX)
+    return RECORD_JOIN.join(parts)
+
+
+def _source_name(record: Dict[str, Any]) -> str:
+    """이 한 건이 어디서 왔는지. 없으면 "".
+
+    규칙  SOURCE_CONTAINER 안만 봄. 최상위 source 는 데이터셋 설명이라
+          뜻이 다름
+          SOURCE_KEYS 를 순서대로 봄. 먼저 걸리는 것 하나만 씀
+          SOURCE_LIMIT 에서 자름
+    """
+    container = record.get(SOURCE_CONTAINER)
+    if not isinstance(container, dict):
+        return ""
+
+    for key in SOURCE_KEYS:
+        value = container.get(key)
+        if isinstance(value, str) and value.strip():
+            return _clip(value, SOURCE_LIMIT)
+    return ""
+
+
+def _excerpt(record: Dict[str, Any]) -> str:
+    """사람이 읽을 글의 첫 대목. 없으면 "".
+
+    규칙  TEXT_KEYS 를 순서대로 봄. 먼저 걸리는 것 하나만 씀
+          최상위만 봄. 문자열이 아니면 무시함
+          TEXT_LIMIT 에서 자름. 자른 것은 _clip 이 밝힘
+    제약  칸 이름을 모르는 값은 안 읽는다.
+          "긴 문자열이면 글" 로 고르면 base64 · geojson 문자열이 그대로
+          화면에 나간다
+    """
+    for key in TEXT_KEYS:
+        value = record.get(key)
+        if isinstance(value, str) and value.strip():
+            return QUOTE.format(text=_clip(value, TEXT_LIMIT))
+    return ""
 
 
 def _measure_text(record: Dict[str, Any]) -> str:
@@ -492,10 +748,14 @@ def _error_text(error: Any) -> str:
     return _clip(text) if text else ERROR_WITHOUT_MESSAGE
 
 
-def _clip(text: str) -> str:
-    """한 줄로 붙이고 SUMMARY_LIMIT 에서 자름."""
+def _clip(text: str, limit: int = SUMMARY_LIMIT) -> str:
+    """한 줄로 붙이고 limit 에서 자름. 자르면 끝에 "…" 를 붙여 밝힘.
+
+    규칙  줄바꿈 · 잇단 공백을 한 칸으로 붙임. PDF 본문이 공백 수십 칸을
+          달고 옴 (knowledge.query 실측)
+    """
     text = " ".join(text.split())
-    return text if len(text) <= SUMMARY_LIMIT else text[:SUMMARY_LIMIT] + "…"
+    return text if len(text) <= limit else text[:limit] + "…"
 
 
 def _counted(result: Any):
@@ -527,6 +787,29 @@ def _first_list_length(result: Dict[str, Any]) -> Optional[int]:
         if isinstance(value, list):
             return len(value)
     return None
+
+
+def _first_record(result: Dict[str, Any]) -> str:
+    """센 목록의 첫 항목 한 마디. 고를 것이 없으면 "".
+
+    규칙  LIST_KEYS 를 순서대로 보고 고를 것이 나오는 첫 목록을 씀.
+          _first_list_length 와 달리 먼저 걸리는 목록에서 멈추지 않음
+          한 응답이 목록을 둘 담아 오고 첫째가 비어 있음 (실측 :
+          adminBoundary.findBoundaryByPoint 가 features 0건 · items 3건,
+          election.searchDistricts 가 features 0건 · items 254건).
+          features 에서 멈추면 이름이 있는 items 를 못 봄
+    제약  최상위만 본다.
+          geojson.features 처럼 중첩된 목록은 안 들어간다. 그 안은 좌표
+          덩어리이고 화면에 낼 것이 아니다
+    """
+    for key in LIST_KEYS:
+        value = result.get(key)
+        if not isinstance(value, list) or not value:
+            continue
+        record = _record_line(value[0])
+        if record:
+            return record
+    return ""
 
 
 def _int_value(value: Any) -> Optional[int]:
