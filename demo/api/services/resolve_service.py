@@ -102,10 +102,13 @@ def _verdict(result: dict, spoken: list[str], looked_up: list[str]) -> dict:
     출력  status · recipe_id · candidate_recipe_ids
     규칙  겹치는 것 1개    SELECT
           겹치는 것 여럿   CLARIFY. 겹치는 것만 후보로. 순서는 뽑힌 후보를 따름
-          겹치는 것 0개    뽑힌 후보를 씀. LLM 이 헛짚은 것으로 봄
+          겹치는 것 0개    축과 LLM 이 어긋난 것임. 둘을 합쳐 CLARIFY.
+                           LLM 이 쓴 것이 앞, 뽑힌 후보가 뒤
           뽑힌 후보 0개    LLM 이 쓴 것을 그대로 둠. 축이 틀린 것이므로
                            조회 결과를 믿지 않음
           둘 다 0개        NO_MATCH
+    이력  2026-08-26 에 「겹치는 것 0개」 규칙을 바꿈. 안 셋을 재고 고른 것이고
+          표와 고른 까닭은 NOTES.md 「서른셋째」에 있음
     """
     if not looked_up:
         if not spoken:
@@ -117,7 +120,19 @@ def _verdict(result: dict, spoken: list[str], looked_up: list[str]) -> dict:
         }
 
     overlap = [recipe_id for recipe_id in looked_up if recipe_id in set(spoken)]
-    final = overlap or looked_up
+
+    # 겹치는 것이 0개면 축과 LLM 이 어긋난 것이다. 어느 쪽이 맞는지 이 자리에서는
+    # 가릴 근거가 없으므로 둘을 합쳐 사람에게 되묻는다.
+    #
+    # **2026-08-26 이전에는 뽑힌 후보만 썼다** ("LLM 이 헛짚은 것으로 봄").
+    # 바로 위의 「뽑힌 후보 0개」 규칙은 같은 어긋남에서 정반대로 LLM 을 믿는데,
+    # 두 규칙이 한 상황을 다르게 처신하고 있었다. 그 탓에 발화 셋(28 · 29 · 30)
+    # 에서 LLM 이 기대값과 똑같이 고른 답을 아홉 번 덮었다 (「서른두째」 실측).
+    #
+    # LLM 을 믿는 안(나)도 함께 쟀다. 적중은 그쪽이 아홉 높지만(62/93 → 71/93)
+    # 확신하고 틀리는 자리가 넷에서 여섯으로 늘어 1순위 기준에서 밀렸다.
+    # 되물음이 늘어나는 것이 이 안의 대가다.
+    final = overlap or list(dict.fromkeys([*spoken, *looked_up]))
 
     if len(final) == 1:
         return {"status": SELECT, "recipe_id": final[0], "candidate_recipe_ids": final}
