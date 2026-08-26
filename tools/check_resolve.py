@@ -7,10 +7,30 @@
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python tools/check_resolve.py                   1~9번 × 5회
-    python tools/check_resolve.py --runs 10         굳히기
+    python tools/check_resolve.py                   1~31번 × 5회
+    python tools/check_resolve.py --runs 3          지금 쓰는 회차. 왜 3 인지는 아래
     python tools/check_resolve.py --only 2          고친 발화만 다시
+    python tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
     python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
+
+## 두 묶음 — 아홉과 열아홉을 갈라 찍는다
+
+발화가 스물여덟이다. **한 백분율로 합치지 않는다.**
+
+    기준선 아홉   1~9번     서른한 번의 측정 기록이 이어져 있는 자
+    확장 열아홉   10~31번   2026-08-26 「서른두째」에 만든 자
+    합계          둘을 더한 값도 내지만 아홉의 값이 그 위에 따로 보인다
+
+**두 묶음의 점수를 서로 견주지 않는다.** 발화가 다르므로 다른 자다.
+한쪽만 돌리려면 `--only` 에 번호를 적는다 — 묶음을 고르는 옵션은 따로 안 만들었다.
+
+**왜 늘렸나.** 커버리지가 첫째 이유가 아니다. 첫째는 한 발화의 무게다. 아홉이면
+발화 하나가 흔들릴 때 점수가 11점 움직인다 — 「서른째」에서 발화 둘이 되묻기가
+되자 100% 가 78% 가 됐다. 스물여덟이면 한 발화가 3.6% 다.
+
+각 발화에 **표시** 한 칸이 붙는다 (`시연` · `위험` · `애매` · `-`). 낮은 점수가
+무엇 때문인지 표에서 바로 읽으라고 둔 칸이고 판정에는 영향이 없다.
+뜻은 `MARKS` 옆 주석에 있다.
 
 화면이 지나는 것과 같은 경로여야 표를 믿을 수 있으므로 POST /resolve 를 부른다.
 서버(uvicorn)가 떠 있어야 한다.
@@ -206,7 +226,143 @@ UTTERANCES = [
     (7, "전기차 충전소 데이터 검색해줘", {"recipe_012"}, True),
     (8, "철도 안전 문서 찾아줘",         {"recipe_013"}, True),  # 옛 recipe_014
     (9, "충북 제1선거구 알려줘",         {"recipe_014"}, True),  # 옛 recipe_015
+
+    # ── 여기부터 확장 열아홉 (2026-08-26 「서른두째」) ──────────────────
+    #
+    # **위의 아홉과 그 기대값은 한 글자도 안 바꿨다.** 서른한 번의 측정 기록이
+    # 그 아홉으로 재어져 있다. 10번부터 이어 붙였을 뿐이다.
+    #
+    # **왜 늘렸나.** 커버리지가 첫째 이유가 아니다. 첫째는 **한 발화의 무게**다.
+    # 아홉이면 발화 하나가 흔들릴 때 점수가 11점 움직인다 — 「서른째」에서
+    # 발화 둘이 되묻기가 되자 100% 가 78% 가 됐다. 변경이 좋은지 나쁜지를 그
+    # 자에 물으면 답이 요동친다. 스물여덟이면 한 발화가 3.6% 다.
+    # 둘째 이유가 커버리지다. 아홉이 덮는 것은 recipe 40개 중 8개였다.
+    #
+    # **아래 열아홉의 기대 사슬은 넣기 전에 하나씩 확인했다** —
+    # `ontology.graph.recipe_nodes` 로 40개를 전부 찍어 맞대 봤다 (2026-08-26).
+    # 옆에 적은 사슬이 그 확인 결과다. 번호가 또 밀리면 여기부터 다시 확인한다.
+    #
+    # 값의 출처는 2026-08-26 쓸기(「스물아홉째」, 60발화 × 2모델 × 10회)다.
+    # 쓸기는 정답을 안 보고 「무엇이 나오는가」만 적은 것이라 여기 기대값은
+    # 그것을 보고 사람이 정한 것이다. **쓸기의 번호는 옛 번호다** — 「서른째」가
+    # 옛 017 을 빼면서 018 이후가 하나씩 당겨졌다. 아래는 당긴 뒤의 번호다.
+
+    # 시연용 열넷 — 쓸기에서 두 모델 모두 하나로 갔고 데이터도 나왔다.
+    (10, "오송역이 어느 동인지 알려줘",   {"recipe_018"}, True),  # 장소 → 좌표 → 지점 행정구역 판별
+    (11, "오송역 행정경계 보여줘",        {"recipe_017"}, True),  # 장소 → 좌표 → 행정구역 조회
+    (12, "청주시 행정경계 보여줘",        {"recipe_004"}, True),  # 키워드 → 행정구역 조회
+    (13, "오송역 국회의원 누구야",        {"recipe_024"}, True),  # 장소 → 좌표 → 지점 전체 선거구 판별
+    (14, "오송역 국회의원 공약 보여줘",   {"recipe_025"}, True),  # 장소 → 좌표 → 선거구 공약 검색
+    (15, "청주 선거구 찾아줘",            {"recipe_007"}, True),  # 키워드 → 지역구 검색
+    (16, "교통 공약 많은 선거구 검색해줘", {"recipe_008"}, True),  # 키워드 → 전체 선거구 검색
+    (17, "청주 국회의원 공약 검색해줘",   {"recipe_009"}, True),  # 키워드 → 선거구 공약 검색
+    (18, "오송역 일대 인구 얼마야",       {"recipe_029"}, True),  # 장소 → 좌표 → 인구 통계
+    (19, "인구 많은 시군구 순위 보여줘",  {"recipe_011"}, True),  # 키워드 → 인구 통계
+    # **20번만 지명이 다르다** (오송역 아닌 대전역). 지명 하나에만 몰리는 것을
+    # 피하려는 것이고, **쓸기에 없던 안 재본 값이다.** 되묻거나 빗나가면
+    # 그 자체가 발견이다 — 지명 탓인지 경로 탓인지를 표에서 가른다.
+    (20, "대전역 연령대별 인구 알려줘",   {"recipe_038"}, True),  # 장소 → 좌표 → 행정구역 판별 → 연령별 인구
+    (21, "경부선 선형 데이터 줘",         {"recipe_002"}, True),  # 장소 → 철도 구간 형상
+    (22, "오송역 지나는 노선 알려줘",     {"recipe_003"}, True),  # 장소 → 철도 노선 조회
+    (23, "경부선 주변 CCTV 보여줘",       {"recipe_033"}, True),  # 장소 → 철도 구간 형상 → CCTV
+    # 사슬이 넷인 유일한 발화다. 4단이 실제로 서는지를 이 한 줄이 지킨다.
+    (24, "오송역 근처 충전소 자세히 알려줘", {"recipe_040"}, True),  # 장소 → 좌표 → 충전소 검색 → 상세
+
+    # 문서 셋 — 시연 요구사항이라 두툼하게 둔다. 셋 다 013(키워드 → 문서 검색)이다.
+    # 25 · 26 은 「서른한째」 화면 실측에서 조각 셋이 문서 이름 · 쪽과 함께
+    # 나오는 것을 확인했다.
+    (25, "문서에서 철도안전법 관련 내용 찾아줘", {"recipe_013"}, True),
+    (26, "문서에서 철도 안전 교육 내용 찾아줘",  {"recipe_013"}, True),
+    # ★ 위험 자리. 지금 웹 검색(006)으로 **확신하고 가서** 권한 없음으로 실패한다
+    # (쓸기 52번, SELECT {006} 10/10). "문서" 라는 낱말이 없으면 새는 것을
+    # 표에 남기려고 넣었다.
+    #
+    # **웹 검색도 말이 되는 읽기다.** 이상적인 답은 되묻기이고, 사슬 조건부
+    # (문서 검색 → 0건이면 웹)나 UX 로 풀 일이다. **이번 범위가 아니다.**
+    # 기대값을 013 으로 두는 이유는 시연 요구가 "문서에서 찾아온다" 이고
+    # 지식베이스에 그 법이 들어 있기 때문이다(철도안전법 47쪽, 「서른한째」).
+    (27, "철도안전법 내용 찾아줘",               {"recipe_013"}, True),
+
+    # ★ 위험 자리 하나 더. 지금 {006, 013}(웹 검색 · 문서 검색)으로 되묻는다 —
+    # 철도가 후보에 아예 안 든다. "경부선" 을 「말한 키워드」로 읽으면
+    # 철도 경로(002 · 003 은 「말한 장소」로 시작한다)가 전부 빠지기 때문이다.
+    (28, "경부선 노선 보여줘",            {"recipe_003"}, True),  # 장소 → 철도 노선 조회
+
+    # ★ 애매 셋. **기대값은 사람이 정한 것이다** (2026-08-26). 셋 다 지금은
+    # 되묻으므로 근접이나 빗나감으로 잡히고, 나중에 고치면 적중이 된다.
+    # **고쳐야 할 자리라는 것이 표에 남는 것이 목적이다.** 기대값을 여럿으로
+    # 적어 지금 상태를 적중으로 만들지 않는다.
+    #
+    # 29  청주시 전체를 물었으니 네 구가 다 나오는 011 이 맞다. 좌표 길(029)은
+    #     `geo.geocode` 가 늘 1.1km 상자라 한 구만 준다(「스물다섯째」).
+    #     지금은 {029, 038, 039} 로 되묻는다 — 011 이 후보에 아예 없다
+    # 30  그 지점이 든 선거구 「이름」을 묻는 것이므로 검색이 아니라 판별(022)이다
+    # 31  발화 6 과 같은 자리다. 선거구명을 달라는 뜻이므로 007
+    (29, "청주시 인구 알려줘",            {"recipe_011"}, True),  # 키워드 → 인구 통계
+    (30, "오송역 선거구 알려줘",          {"recipe_022"}, True),  # 장소 → 좌표 → 지점 선거구 판별
+    (31, "청주 국회의원 선거구 검색해줘", {"recipe_007"}, True),  # 키워드 → 지역구 검색
 ]
+
+# ── 표시 ────────────────────────────────────────────────────────────
+#
+# 적중 표에 한 칸으로 찍는다. **낮은 점수가 무엇 때문인지 표에서 바로 읽히게
+# 하는 것이 전부다.** 판정에는 아무 영향이 없다 — 세는 법은 표시가 없을 때와
+# 글자까지 같다.
+#
+#   시연  쓸기에서 두 모델 모두 하나로 갔고 데이터도 나왔다. 시연에서 쓸 발화다.
+#         여기서 되묻기가 나오면 쓸기 때와 달라진 것이다
+#   위험  **지금 확신하고 틀리는 것을 알고 넣었다.** 빗나감이 나오는 것이 정상이다.
+#         고쳐야 할 자리를 표에 남기려고 둔 것이다
+#   애매  사람이 기대값을 정한 자리. 지금은 되묻는다. 나중에 고치면 적중이 된다
+#   -     기준선 아홉. 표시 없이 재던 것이라 그대로 둔다
+DEMO, RISKY, VAGUE, PLAIN = "시연", "위험", "애매", "-"
+
+# 번호 → 표시. 여기 없는 번호는 PLAIN 이다.
+#
+# **기존 아홉의 줄을 안 건드리려고 목록이 아니라 따로 둔 표다.** 튜플에 칸을
+# 하나 더하면 1~9 번 줄도 함께 고쳐야 하는데, 그러면 `git diff` 만 보고
+# 「아홉이 안 움직였다」를 확인할 수가 없다. 여기 두면 그 줄들의 diff 가 0 이다.
+MARKS = {
+    **{n: DEMO for n in range(10, 25)},   # 10~24  시연용 열넷 (24 는 4단)
+    25: DEMO, 26: DEMO,                   # 문서 둘 — 화면 실측으로 확인했다
+    27: RISKY, 28: RISKY,                 # 위험 둘
+    29: VAGUE, 30: VAGUE, 31: VAGUE,      # 애매 셋
+}
+
+
+def _mark(number: int) -> str:
+    return MARKS.get(number, PLAIN)
+
+
+# ── 두 묶음 ─────────────────────────────────────────────────────────
+#
+# **둘을 합쳐 하나의 백분율로 만들지 않는다.** 1~9 번은 서른한 번의 측정 기록이
+# 이어져 있는 기준선이고, 10 번부터는 이번에 새로 만든 것이다. 합치면 기준선의
+# 값이 옛 기록과 안 맞아 이어 읽을 수가 없다. 합계 한 줄은 내되 아홉의 값이
+# 그 위에 따로 보인다.
+#
+# **두 묶음의 점수를 서로 견주지도 않는다.** 발화가 다르므로 다른 자다.
+BASELINE_LAST = 9
+BASELINE_LABEL = "기준선 아홉"
+EXTENSION_LABEL = "확장 열아홉"
+
+
+def _groups(entries) -> list:
+    """발화 목록을 기준선과 확장으로 가름.
+
+    입력  발화 목록
+    출력  [(묶음 이름, 그 묶음의 발화 목록)] — 빈 묶음은 뺌
+    규칙  --only 로 한쪽만 돌리면 한 묶음만 나옴. 그때는 합계 줄을 안 찍음.
+          소계 한 줄과 합계 한 줄이 같은 값으로 두 번 나오면 읽는 사람이
+          둘을 다른 것으로 본다
+    """
+    baseline = [entry for entry in entries if entry[0] <= BASELINE_LAST]
+    extension = [entry for entry in entries if entry[0] > BASELINE_LAST]
+    return [
+        (label, group)
+        for label, group in ((BASELINE_LABEL, baseline), (EXTENSION_LABEL, extension))
+        if group
+    ]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(REPO_ROOT / ".env")
@@ -480,25 +636,22 @@ def _alone_hits(alone_counter, expected: set) -> tuple:
     return hits, done, missing
 
 
-def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
-    hit_column = 2 + 3 + UTTERANCE_WIDTH + 4  # 표의 "LLM 단독" 칸이 시작하는 자리.
-    hit_width = len(f"{runs}/{runs}") + 4
-    alone_width = max(hit_width, _width(ALONE) + 3)
-    grade_width = alone_width + hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
-    detail_column = hit_column + grade_width  # "틀렸을 때 나온 것" 칸이 시작하는 자리.
+# 표시 칸의 폭. 머리글("표시" 폭 4)보다 좁으면 표가 어긋난다.
+MARK_WIDTH = 6
 
-    print()
-    print(
-        "  "
-        + _pad("#", 3)
-        + _pad("발화", UTTERANCE_WIDTH + 4)
-        + _pad(ALONE, alone_width)
-        + _pad(HIT, hit_width)
-        + _pad(NEAR, NEAR_WIDTH)
-        + _pad(MISS, MISS_WIDTH)
-        + _pad(UNATTACHED, UNATTACHED_WIDTH)
-        + "틀렸을 때 나온 것"
-    )
+
+def _print_rows(entries, outcomes: dict, alones: dict, widths: tuple) -> tuple:
+    """한 묶음의 발화 줄을 찍고 그 묶음의 합을 돌려줌.
+
+    입력  그 묶음의 발화 목록 · outcomes · alones · 칸 폭 묶음
+    출력  (네 칸 Counter, 시행 횟수, LLM 단독 (적중, 잰 횟수, 안 쓴 횟수),
+           완전 적중이 아닌 번호 목록)
+    규칙  줄을 찍는 법은 묶음을 가르기 전과 글자까지 같음.
+          **판정은 표시 칸을 안 봄** — 표시는 사람이 읽으라고 적는 칸이고
+          _grade 는 예전 그대로 후보 집합과 status 만 봄
+    제약  합계 줄은 안 찍는다. 부르는 쪽이 묶음마다 찍음
+    """
+    alone_width, hit_width, detail_column = widths
 
     total = Counter()
     total_runs = 0
@@ -542,6 +695,7 @@ def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
             "  "
             + _pad(str(number), 3)
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+            + _pad(_mark(number), MARK_WIDTH)
             + _pad(f"{alone_hits}/{alone_done}" if alone_done else "-", alone_width)
             + _pad(f"{hits}/{done}", hit_width)
             + _pad(str(graded[NEAR]), NEAR_WIDTH)
@@ -563,18 +717,33 @@ def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
                 + f"{count}회"
             )
 
-    hits = total[HIT]
-    percent = round(100 * hits / total_runs) if total_runs else 0
+    return total, total_runs, (alone_total, alone_measured, alone_missing), imperfect
+
+
+def _print_sum(label: str, total, total_runs: int, alone: tuple, widths: tuple) -> None:
+    """한 줄짜리 합. 묶음마다 한 번, 맨 아래 합계에 한 번 쓴다.
+
+    입력  줄 끝에 적을 이름 · 네 칸 Counter · 시행 횟수 · LLM 단독 셋 · 칸 폭
+    규칙  적중 백분율 뒤에 이름을 붙임. **이름이 붙어야 어느 묶음의 값인지
+          읽힌다** — 백분율 셋이 세로로 놓이면 어느 것이 아홉인지 못 가름
+    """
+    alone_width, hit_width, hit_column = widths
+    grade_width = alone_width + hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
+    alone_total, alone_measured, alone_missing = alone
+
+    percent = round(100 * total[HIT] / total_runs) if total_runs else 0
     alone_percent = round(100 * alone_total / alone_measured) if alone_measured else 0
+
     print(" " * hit_column + "─" * grade_width)
     print(
         " " * hit_column
         + _pad(f"{alone_total}/{alone_measured}" if alone_measured else "-", alone_width)
-        + _pad(f"{hits}/{total_runs}", hit_width)
+        + _pad(f"{total[HIT]}/{total_runs}", hit_width)
         + _pad(str(total[NEAR]), NEAR_WIDTH)
         + _pad(str(total[MISS]), MISS_WIDTH)
         + _pad(str(total[UNATTACHED]), UNATTACHED_WIDTH)
-        + f"{percent}%"
+        + _pad(f"{percent}%", 7)
+        + f"← {label}"
     )
     if alone_measured:
         print(
@@ -584,17 +753,76 @@ def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
             + (f" · LLM 이 아무것도 안 쓴 것 {alone_missing}회" if alone_missing else "")
         )
 
-    # 넷을 더하면 시행 횟수여야 한다. 아니면 _grade 에 구멍이 난 것이다.
-    counted = hits + total[NEAR] + total[MISS] + total[UNATTACHED]
-    if counted != total_runs:
+
+def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
+    """적중 표. **두 묶음을 갈라 찍는다.**
+
+    입력  발화 목록 · outcomes · alones · 반복 횟수
+    규칙  기준선 아홉과 확장 열아홉의 점수를 따로 냄. 합계 한 줄도 내지만
+          아홉의 값이 그 위에 따로 보임. 둘을 한 백분율로 합치지 않음 —
+          왜인지는 BASELINE_LAST 옆 주석에 있음
+          한 묶음만 돌았으면(--only) 합계 줄은 안 찍음. 같은 값이 두 번 나옴
+    """
+    # 표의 "LLM 단독" 칸이 시작하는 자리. 표시 칸이 들어와 MARK_WIDTH 만큼 밀렸다.
+    hit_column = 2 + 3 + UTTERANCE_WIDTH + 4 + MARK_WIDTH
+    hit_width = len(f"{runs}/{runs}") + 4
+    alone_width = max(hit_width, _width(ALONE) + 3)
+    grade_width = alone_width + hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
+    detail_column = hit_column + grade_width  # "틀렸을 때 나온 것" 칸이 시작하는 자리.
+
+    print()
+    print(
+        "  "
+        + _pad("#", 3)
+        + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad("표시", MARK_WIDTH)
+        + _pad(ALONE, alone_width)
+        + _pad(HIT, hit_width)
+        + _pad(NEAR, NEAR_WIDTH)
+        + _pad(MISS, MISS_WIDTH)
+        + _pad(UNATTACHED, UNATTACHED_WIDTH)
+        + "틀렸을 때 나온 것"
+    )
+
+    groups = _groups(entries)
+    grand = Counter()
+    grand_runs = 0
+    grand_alone = [0, 0, 0]
+    imperfect = []
+
+    for label, group in groups:
+        total, total_runs, alone, group_imperfect = _print_rows(
+            group, outcomes, alones, (alone_width, hit_width, detail_column)
+        )
+        if total_runs == 0:  # 그 묶음이 아직 한 번도 안 돌았다
+            continue
+        _print_sum(label, total, total_runs, alone, (alone_width, hit_width, hit_column))
+        grand.update(total)
+        grand_runs += total_runs
+        grand_alone = [a + b for a, b in zip(grand_alone, alone)]
+        imperfect += group_imperfect
+
+    if len(groups) > 1 and grand_runs:
         print()
-        print(f"  ⚠ 네 칸의 합 {counted} 가 시행 횟수 {total_runs} 와 다르다 — _grade 를 본다")
+        _print_sum(
+            "합계", grand, grand_runs, tuple(grand_alone), (alone_width, hit_width, hit_column)
+        )
+
+    # 넷을 더하면 시행 횟수여야 한다. 아니면 _grade 에 구멍이 난 것이다.
+    counted = grand[HIT] + grand[NEAR] + grand[MISS] + grand[UNATTACHED]
+    if counted != grand_runs:
+        print()
+        print(f"  ⚠ 네 칸의 합 {counted} 가 시행 횟수 {grand_runs} 와 다르다 — _grade 를 본다")
 
     if imperfect:
         print()
         print("  ⚠ 완전 적중이 아닌 발화 : " + " · ".join(str(n) for n in imperfect))
-        if total[MISS]:
-            print("  ★ 빗나감 " + str(total[MISS]) + "회 — 확신하고 틀린 것이다. 근접보다 나쁘다")
+        if grand[MISS]:
+            print("  ★ 빗나감 " + str(grand[MISS]) + "회 — 확신하고 틀린 것이다. 근접보다 나쁘다")
+            print(
+                "     위험 · 애매 표시가 붙은 발화라면 그것이 알고 넣은 자리다."
+                " 표시가 「시연」이나 「-」인데 빗나갔으면 ★ 그것이 발견이다"
+            )
 
 
 AXIS_WIDTH = 46  # 축 표에서 (given, want, about) 칸의 폭.
@@ -695,7 +923,8 @@ def _print_candidates(entries, tallies: dict) -> None:
           가른 것이고, 둘 다 그대로면 문장으로는 못 가르는 것
           「조회 판정」 칸은 조회 후보 수와 같은 줄에서 갈림. 개수가 같아도
           정답이 안 들어 있으면 좁히기로 손해를 보는 자리임
-          표 아래에 네 갈래의 합계를 한 줄 적음
+          표 아래에 네 갈래의 합계를 **묶음마다 한 줄씩** 적음. 적중 표와
+          같은 이유로 기준선 아홉의 값이 따로 보여야 함
     """
     print()
     print(
@@ -709,11 +938,12 @@ def _print_candidates(entries, tallies: dict) -> None:
         + "횟수"
     )
 
-    total = Counter()
+    totals = {label: Counter() for label, _group in _groups(entries)}
     for number, utterance, expected, _default in entries:
         counter = tallies.get(number)
         if not counter:
             continue
+        total = totals[BASELINE_LABEL if number <= BASELINE_LAST else EXTENSION_LABEL]
 
         head = (
             "  "
@@ -735,17 +965,32 @@ def _print_candidates(entries, tallies: dict) -> None:
                 + f"{count}회"
             )
 
-    if not total:
+    measured = [(label, total) for label, total in totals.items() if total]
+    if not measured:
         return
-    print()
-    print(
-        "  조회 판정 합계  "
-        + " · ".join(
-            f"{label} {total[label]}회"
-            for label in (LOOKUP_HIT, LOOKUP_NEAR, LOOKUP_MISS, LOOKUP_NONE)
+    # 묶음 이름의 폭이 서로 달라 그냥 이으면 숫자 칸이 세로로 안 맞는다.
+    label_width = max(_width(label) for label, _total in measured)
+
+    def _line(label: str, total) -> None:
+        print(
+            "  조회 판정 · "
+            + _pad(label, label_width)
+            + "  "
+            + " · ".join(
+                f"{grade} {total[grade]}회"
+                for grade in (LOOKUP_HIT, LOOKUP_NEAR, LOOKUP_MISS, LOOKUP_NONE)
+            )
+            + f"  (합 {sum(total.values())}회)"
         )
-        + f"  (합 {sum(total.values())}회)"
-    )
+
+    print()
+    for label, group_total in measured:
+        _line(label, group_total)
+    total = Counter()
+    for _label, group_total in measured:
+        total.update(group_total)
+    if len(measured) > 1:
+        _line("합계", total)
     if total[LOOKUP_MISS]:
         print(
             "  ★ 조회 후보에 정답이 없는 자리가 있다 — 지금 축으로 먼저 좁히면"
@@ -864,7 +1109,11 @@ def _recipe_state() -> str:
 def main() -> int:
     parser = argparse.ArgumentParser(description="후보 발화가 지금 온톨로지에서 통하는지 잰다.")
     parser.add_argument("--runs", type=int, default=5, help="발화마다 몇 번 돌릴지 (기본 5)")
-    parser.add_argument("--only", default="", help="돌릴 발화 번호. 예: 2,4")
+    parser.add_argument(
+        "--only",
+        default="",
+        help="돌릴 발화 번호. 예: 2,4 (기준선 아홉만: 1,2,3,4,5,6,7,8,9)",
+    )
     parser.add_argument("--model", default="", help="쓸 모델. 예: qwen2.5:7b (기본: 서버 기본 모델)")
     args = parser.parse_args()
 
