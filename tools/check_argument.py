@@ -125,6 +125,46 @@ HUMAN_ARGUMENT = {
     13: "청주시",
 }
 
+# 확장 표(check_resolve 10~31, 2026-08-26 「서른두째」)의 사람추측 값.
+# **위의 HUMAN_ARGUMENT 와 마찬가지로 추측이지 정답이 아니다.**
+#
+# 번호가 아니라 발화 문장이 key 다 — check_resolve 가 10~31 을 늘리면서
+# 이 파일의 VARIATIONS(10~13)와 번호가 겹치게 됐다. 번호로 걸면 확장 표
+# 10번(오송역이 어느 동인지)에 변주 10번의 값(전기차 충전소)이 들어간다.
+# 위의 HUMAN_ARGUMENT 는 기록이 걸려 있어 한 글자도 안 바꾸고(2026-08-27
+# 무인 실행 규칙), 여기서 발화로 먼저 걸고 없으면 번호로 떨어진다.
+#
+# 고른 근거는 HUMAN_ARGUMENT 와 같다 — 도구가 받는 것을 보고 그 발화에서
+# 그 자리에 넣을 낱말을 골랐다. 발화를 통째로 옮긴 것은 넣지 않았다.
+#
+#   19  "인구 많은 시군구 순위 보여줘" 는 일부러 뺐다. 도구의 query 는
+#       "행정구역명 또는 코드 검색어" 인데 이 발화에는 행정구역 이름이 없다.
+#       사람도 뽑을 값이 없는 자리다 — 값을 지어 넣으면 "사람 값이면 몇 건"
+#       이라는 비교가 거짓이 된다. 없으면 사람추측 줄이 안 찍힌다
+HUMAN_ARGUMENT_BY_UTTERANCE = {
+    "오송역이 어느 동인지 알려줘": "오송역",
+    "오송역 행정경계 보여줘": "오송역",
+    "청주시 행정경계 보여줘": "청주시",
+    "오송역 국회의원 누구야": "오송역",
+    "오송역 국회의원 공약 보여줘": "오송역",
+    "청주 선거구 찾아줘": "청주",
+    "교통 공약 많은 선거구 검색해줘": "교통",
+    "청주 국회의원 공약 검색해줘": "청주",
+    "오송역 일대 인구 얼마야": "오송역",
+    "대전역 연령대별 인구 알려줘": "대전역",
+    "경부선 선형 데이터 줘": "경부선",
+    "오송역 지나는 노선 알려줘": "오송역",
+    "경부선 주변 CCTV 보여줘": "경부선",
+    "오송역 근처 충전소 자세히 알려줘": "오송역",
+    "문서에서 철도안전법 관련 내용 찾아줘": "철도안전법",
+    "문서에서 철도 안전 교육 내용 찾아줘": "철도 안전 교육",
+    "철도안전법 내용 찾아줘": "철도안전법",
+    "경부선 노선 보여줘": "경부선",
+    "청주시 인구 알려줘": "청주시",
+    "오송역 선거구 알려줘": "오송역",
+    "청주 국회의원 선거구 검색해줘": "청주",
+}
+
 # 도구와 데이터가 살아 있는지만 보는 값. **사람이 말할 값이 아니다.**
 #
 # 사람이 골랐을 값도 0건이면 그것만으로는 "데이터가 없다" 가 안 나온다.
@@ -335,7 +375,11 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
 
         # 사람이 골랐을 값과 확인용 값. LLM 이 고른 recipe 위에서 인자만 갈아
         # 끼운다 — recipe 까지 바꾸면 무엇 때문에 건수가 달라졌는지 안 갈린다.
-        extras = [(HUMAN_PICKER, HUMAN_ARGUMENT.get(number))]
+        # 발화 key 가 번호 key 보다 먼저다. 근거는 HUMAN_ARGUMENT_BY_UTTERANCE 옆에.
+        extras = [(
+            HUMAN_PICKER,
+            HUMAN_ARGUMENT_BY_UTTERANCE.get(utterance, HUMAN_ARGUMENT.get(number)),
+        )]
         if number in ALIVE_ARGUMENT:
             extras.append((ALIVE_PICKER, ALIVE_ARGUMENT[number]))
         for recipe_id in sorted(rid for rid in seen_recipes if rid):
@@ -415,8 +459,14 @@ def _print_table(rows) -> None:
     )
 
     for row in rows:
-        # 옛 아홉과 변주가 표에서 갈려 보여야 한다. 변주의 첫 번호 앞에 금을 긋는다.
-        if VARIATIONS and row["number"] == VARIATIONS[0][0]:
+        # 옛 아홉과 변주가 표에서 갈려 보여야 한다. 변주의 첫 줄 앞에 금을 긋는다.
+        # 번호만 보면 안 된다 — 확장 표(check_resolve 10~31)와 변주(10~13)의
+        # 번호가 겹쳐서, 번호로 그으면 확장 표 10번 앞에도 금이 생긴다.
+        if (
+            VARIATIONS
+            and row["number"] == VARIATIONS[0][0]
+            and row["utterance"] == VARIATIONS[0][1]
+        ):
             print("  ── 변주 · 어미만 다름 (2026-08-25 더함) " + "─" * 40)
         head = (
             "  "
