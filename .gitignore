@@ -56,3 +56,8 @@ yarn-error.log*
 # tools/probe_tools.py 가 남긴다. 배선을 적을 때 필드 이름을 보는 실측 자산이지만
 # 응답이 커서 저장소에 담을 것이 아니다.
 tools/probe_out/
+
+# --- 발화 쓸기 산출물 ---
+# tools/sweep_utterances.py 가 남긴다. 내일 발화를 고를 재료지만 측정
+# 산출물이라 저장소에 담을 것이 아니다.
+tools/sweep_out/
