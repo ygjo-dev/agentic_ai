@@ -833,6 +833,154 @@ def test_cctv_주소는_첫_항목이어도_안_샌다():
     assert "ablsJ6ueB0MmE96" not in answer
 
 
+# ── 글 목록은 조각 두셋을 보여준다 ──────────────────────────────────
+#
+# 조각 하나로는 "문서에서 내용을 찾아온다" 가 안 보인다. 항목이 글(TEXT_KEYS)인
+# 목록만 앞 두셋을 아래 줄로 늘어놓고, 글이 아닌 목록은 예전대로 첫 항목이다.
+# 도구 이름이 아니라 결과 모양으로 가른다 — 이 파일은 도구 이름을 모른다.
+
+
+# tools/probe_out/knowledge.query.2026-08-26.철도_안전_교육.k6.json 실물.
+# 여섯 건 중 앞 넷만 남기고 content 는 앞 토막만, metadata 는 화면이 읽는
+# 칸과 그 옆 몇만 남겼다. page 는 실물 그대로 0부터 세는 정수다.
+KNOWLEDGE_CHUNKS = [
+    {
+        "content": "법제처                                        12    국가법령정보센터\n철도안전법\n제24조",
+        "metadata": {"source": "철도안전법(법률)(제21188호)(20260303).pdf",
+                     "page": 11, "title": "", "total_pages": 47},
+    },
+    {
+        "content": "효기간 만료일”이라 한다) 전 12개월 이내에 실시한다. 이 경우 정기검사의 유효기간은",
+        "metadata": {"source": "철도안전법 시행규칙(국토교통부령)(제01571호)(20260324).pdf",
+                     "page": 16, "title": "", "total_pages": 52},
+    },
+    {
+        "content": "법제처                                        33    국가법령정보센터\n철도안전법\n제41조",
+        "metadata": {"source": "철도안전법(법률)(제21188호)(20260303).pdf",
+                     "page": 32, "title": "", "total_pages": 47},
+    },
+    {
+        "content": "넷째조각표시글 안전관리체계의 승인을 받은 철도운영자등은",
+        "metadata": {"source": "철도안전법(법률)(제21188호)(20260303).pdf",
+                     "page": 33, "title": "", "total_pages": 47},
+    },
+]
+
+
+def knowledge_chunks_step(result=KNOWLEDGE_CHUNKS):
+    return {"id": "s1", "tool": "knowledge.query",
+            "input": {"query": "철도 안전 교육"}, "result": result}
+
+
+def test_글_목록은_조각_두셋이_각각_문서_이름과_쪽으로_나온다():
+    """첫 조각만 보이면 나머지를 찾아온 것이 화면에 없음.
+
+    실측 (2026-08-26) : "철도 안전 교육" k=6 이 법 4 · 시행규칙 2 조각을
+    돌려주는데 화면에는 첫 조각 하나만 나왔음.
+    """
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        [knowledge_chunks_step()],
+    )
+
+    assert "4건" in answer
+    assert answer.count("「철도안전법(법률)(제21188호)(20260303).pdf」") == 2
+    assert "「철도안전법 시행규칙(국토교통부령)(제01571호)(20260324).pdf」" in answer
+    assert "제24조" in answer and "유효기간" in answer and "제41조" in answer
+
+
+def test_넷째_조각부터는_안_실린다():
+    """전부 늘어놓으면 화면이 응답 전문이 됨. 두셋에서 멈춰야 함."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        [knowledge_chunks_step()],
+    )
+
+    assert "넷째조각표시글" not in answer
+
+
+def test_쪽수는_사람이_세는_수로_낸다():
+    """응답의 page 는 0부터 셈. 그대로 내면 문서에 찍힌 쪽과 하나 어긋남.
+
+    실측 : page 11 조각의 본문 머리가 "12", page 50 조각이 "51"
+    (2026-08-26, tools/probe_out 의 knowledge.query 응답 전문).
+    """
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        [knowledge_chunks_step()],
+    )
+
+    assert "12쪽" in answer
+    assert "17쪽" in answer
+    assert "11쪽" not in answer
+
+
+def test_쪽을_못_읽으면_출처만_남는다():
+    """page 가 없거나 수가 아닌 응답도 조용히 돌아야 함. 지어내지 않음."""
+    chunk = {
+        "content": "안전관리체계의 승인을 받은 철도운영자등은",
+        "metadata": {"source": "철도안전법(법률)(제21188호)(20260303).pdf", "title": ""},
+    }
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 문서를 조회했습니다."},
+        [knowledge_chunks_step([chunk])],
+    )
+
+    assert "「철도안전법(법률)(제21188호)(20260303).pdf」" in answer
+    assert "쪽" not in answer
+
+
+def test_글이_아닌_목록은_예전대로_첫_항목만이다():
+    """이름 목록에 두셋 규칙이 걸리면 다른 도구의 답이 세 줄로 늘어남.
+
+    글 목록 판정은 첫 항목의 TEXT_KEYS 임. 이름만 있는 항목은 안 걸림.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "adminBoundary.searchBoundaries",
+        "input": {"query": "청주"},
+        "result": [{"name": "청주시 상당구"}, {"name": "청주시 서원구"},
+                   {"name": "청주시 흥덕구"}],
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "청주 행정구역을 조회했습니다."}, trace)
+
+    assert "3건 · 청주시 상당구" in answer
+    assert "청주시 서원구" not in answer, "첫 항목 하나만 봄"
+
+
+def test_낱자로_풀린_문서_이름은_붙여서_전부_보인다():
+    """실물 source 는 한글이 낱자(NFD)로 풀려 옴. 낱자로 세면 눈에 41자인
+    이름이 len 67 이라 48 한도에서 어중간하게 잘림 (2026-08-26 화면 실측 —
+    "「철도안전법 시행규칙(국토교통부령)(제015…」" 로 나왔음).
+    """
+    import unicodedata
+
+    name = unicodedata.normalize(
+        "NFD", "철도안전법 시행규칙(국토교통부령)(제01571호)(20260324).pdf"
+    )
+    chunk = {
+        "content": "효기간 만료일”이라 한다) 전 12개월 이내에 실시한다.",
+        "metadata": {"source": name, "page": 16, "title": ""},
+    }
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        [knowledge_chunks_step([chunk])],
+    )
+
+    assert "「철도안전법 시행규칙(국토교통부령)(제01571호)(20260324).pdf」" in answer
+
+
+def test_조각_여럿이어도_긴_토막은_안_샌다():
+    """조각마다 본문 · 출처가 실리므로 자르는 상한이 조각 수만큼 돌아야 함."""
+    answer = compose_workflow_answer(
+        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        [knowledge_chunks_step()],
+    )
+
+    longest = max(answer.split(), key=len)
+    assert len(longest) <= 60, f"{longest} 가 통째로 나갔음"
+
+
 def test_어떤_결과도_긴_토막을_화면에_안_흘린다():
     """자르는 상한을 하나라도 빠뜨리면 여기서 걸림.
 

@@ -25,6 +25,7 @@ raw JSON 으로 새던 자리가 _preview 하나였고 지웠다. 모르는 결�
 화면만 보고 갈라야 하고, 그 셋 중 첫째는 input 을 안 적으면 알 수가 없다.
 """
 
+import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
 # 단계 줄에서 도구 이름 칸의 전체 폭. 도구 이름은 전부 ASCII 라 ljust 로 맞는다.
@@ -184,12 +185,15 @@ INPUT_VALUE_LIMIT = 24
 INPUT_MORE = "…"
 COORD_DIGITS = 4
 
-# ── 목록 첫 항목 ──────────────────────────────────────────────────
+# ── 목록의 항목 ──────────────────────────────────────────────────
 #
 # 건수만으로는 무엇이 왔는지 모른다. knowledge.query 가 본문을 돌려주는데
 # 화면에는 "4건" 만 나왔다.
 #
-# 첫 항목 하나만 본다. 전부 늘어놓으면 화면이 응답 전문이 된다.
+# 항목이 글(TEXT_KEYS)인 목록만 앞 두셋을 아래 줄로 늘어놓는다. 조각 하나로는
+# "문서에서 내용을 찾아온다" 가 안 보인다. 글이 아닌 목록(CCTV · 행정구역)은
+# 예전대로 첫 항목 하나다 — 이름 한 줄이 더 늘어야 알려주는 것이 없다.
+# 전부 늘어놓지는 않는다. 화면이 응답 전문이 된다.
 # 항목을 요약하는 것은 _record_line 이고 그것은 아래 칸 이름만 읽는다 —
 # geojson feature({geometry, properties, type})는 읽을 칸이 하나도 없어
 # 조용히 건너뛴다.
@@ -201,17 +205,26 @@ COORD_DIGITS = 4
 #                   text 는 아직 실물을 못 봤고 흔한 이름이라 함께 둔다
 #                   (LIST_KEYS 와 같은 이유)
 # TEXT_LIMIT        본문을 자르는 길이. 자른 것은 _clip 이 "…" 로 밝힌다
+# SHOWN_RECORDS     글 목록에서 늘어놓을 항목 수. 시연 요구가 "조각 두셋" 이다
+# RECORD_INDENT     늘어놓은 항목 줄의 들여쓰기. 단계 번호 "1. " 의 폭이라
+#                   단계 줄에 딸린 줄로 읽힌다
 # SOURCE_CONTAINER  출처가 담긴 중첩 칸. knowledge.query 의 metadata 다
 # SOURCE_KEYS       그 안에서 볼 이름. 실측 : title 은 빈 문자열이고
 #                   source 가 "철도안전법(법률)(제21188호)(20260303).pdf" 다.
 #                   최상위 source 는 안 본다 — 그쪽은 데이터셋 설명
 #                   ("한국환경공단 … 정보 API") 이라 뜻이 다르다
+# PAGE_KEY          그 조각이 문서의 몇 쪽인지. SOURCE_CONTAINER 안만 보고
+#                   출처 이름이 있을 때만 그 옆에 붙는다
 TEXT_KEYS = ("content", "text")
 TEXT_LIMIT = 60
+SHOWN_RECORDS = 3
+RECORD_INDENT = "   "
 SOURCE_CONTAINER = "metadata"
 SOURCE_KEYS = ("title", "source")
 SOURCE_FORMAT = "「{name}」"
 SOURCE_LIMIT = 48
+PAGE_KEY = "page"
+PAGE_FORMAT = "{page}쪽"
 
 
 def compose_workflow_answer(
@@ -397,14 +410,44 @@ def summarize(tool_input: Any, result: Any) -> str:
 
 
 def _list_line(items: List[Any]) -> str:
-    """배열 결과 한 줄. 건수와 첫 항목 한 마디.
+    """배열 결과. 건수와 항목 한 마디 — 항목이 글이면 앞 두셋을 아래 줄로.
 
     규칙  건수는 늘 냄. 0건도 건수임
+          항목이 글이면 앞 SHOWN_RECORDS 개를 건수 아래에 줄마다 늘어놓음.
+          어느 목록이 그런지는 _excerpt_lines 가 결과 모양으로 가름
+          글이 아니면 첫 항목 한 마디만. 예전 그대로임
           첫 항목에서 고를 것이 없으면 건수만. geojson feature 가 그럼
+    이력  첫 항목 하나만 봤음. knowledge.query 조각 두셋을 보여주는 시연
+          요구가 생겨 글 목록만 늘렸음 (2026-08-26, NOTES.md 「서른한째」)
     """
     line = f"{len(items)}건"
+    excerpts = _excerpt_lines(items)
+    if excerpts:
+        return "\n".join([line, *excerpts])
     first = _record_line(items[0]) if items else ""
     return line + RECORD_JOIN + first if first else line
+
+
+def _excerpt_lines(items: List[Any]) -> List[str]:
+    """항목이 글인 목록의 앞 두셋 줄. 글 목록이 아니면 빈 목록.
+
+    규칙  글 목록인지는 첫 항목으로 가름. dict 이고 TEXT_KEYS 글이 있어야 함.
+          도구 이름이 아니라 결과 모양으로 가르는 것이 이 파일의 계약임
+          앞 SHOWN_RECORDS 개만. 항목마다 _record_line 한 줄이고 고를 것이
+          없는 항목은 건너뜀
+          줄 앞에 RECORD_INDENT 를 붙여 단계 줄에 딸린 줄로 보이게 함
+    제약  값을 통째로 싣지 않는다. _record_line 이 정해 둔 칸만 읽고
+          길이를 자른다
+    """
+    if not items or not isinstance(items[0], dict) or not _excerpt(items[0]):
+        return []
+
+    lines = []
+    for record in items[:SHOWN_RECORDS]:
+        line = _record_line(record)
+        if line:
+            lines.append(RECORD_INDENT + line)
+    return lines
 
 
 def _missing_status(result: Any) -> str:
@@ -604,7 +647,9 @@ def _record_line(record: Any) -> str:
 
     source = _source_name(record)
     if source:
-        parts.append(SOURCE_FORMAT.format(name=source))
+        quoted = SOURCE_FORMAT.format(name=source)
+        page = _page_text(record)
+        parts.append(f"{quoted} {page}" if page else quoted)
 
     excerpt = _excerpt(record)
     if excerpt:
@@ -636,6 +681,30 @@ def _source_name(record: Dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return _clip(value, SOURCE_LIMIT)
     return ""
+
+
+def _page_text(record: Dict[str, Any]) -> str:
+    """이 한 건이 문서의 몇 쪽에서 왔는지. 없으면 "".
+
+    규칙  SOURCE_CONTAINER 안의 PAGE_KEY 만 봄. 최상위 page 는 실물을 못 봤음
+          int 로 못 읽는 값은 조용히 넘어감. 정수로도 "0" 같은 문자열로도
+          온 실물이 있음 (2026-08-25 · 2026-08-26 실측)
+          응답의 page 는 0부터 셈. 사람이 세는 쪽수로 1을 더해 냄.
+          실측 : page 0 조각의 본문 머리가 "1", page 50 조각이 "51"
+          (2026-08-26, tools/probe_out 의 knowledge.query 응답 전문)
+    """
+    container = record.get(SOURCE_CONTAINER)
+    if not isinstance(container, dict):
+        return ""
+
+    value = container.get(PAGE_KEY)
+    if isinstance(value, bool):
+        return ""
+    try:
+        page = int(value)
+    except (TypeError, ValueError):
+        return ""
+    return PAGE_FORMAT.format(page=page + 1)
 
 
 def _excerpt(record: Dict[str, Any]) -> str:
@@ -753,8 +822,12 @@ def _clip(text: str, limit: int = SUMMARY_LIMIT) -> str:
 
     규칙  줄바꿈 · 잇단 공백을 한 칸으로 붙임. PDF 본문이 공백 수십 칸을
           달고 옴 (knowledge.query 실측)
+          한글은 낱자를 NFC 로 붙인 뒤에 잼. 실측 : knowledge.query 의
+          source 가 낱자로 풀린(NFD) 한글이라 눈에 41자인 문서 이름이
+          len 67 로 세져 48 한도에서 어중간하게 잘렸음 (2026-08-26 화면,
+          tools/probe_out 의 응답 전문)
     """
-    text = " ".join(text.split())
+    text = unicodedata.normalize("NFC", " ".join(text.split()))
     return text if len(text) <= limit else text[:limit] + "…"
 
 

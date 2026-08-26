@@ -425,7 +425,7 @@ STEP_OF = {
         "input": {"sidoCode": f"{PREVIOUS_STEP}.items.0.code"},
     },
 
-    # 아래 셋은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
+    # 아래 둘은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
     # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
     # 데이터가 들어오면 고칠 것 없이 그대로 돈다. 왜 비었는지는 각 줄 위에
     # 적었고 NOTES.md 「2026-08-22 (셋째)」 에 응답 전문 근거가 있다.
@@ -438,9 +438,21 @@ STEP_OF = {
         "input": {"bbox": BBOX_FROM_PREVIOUS},
     },
 
-    # knowledge.query : 0건. 지식베이스가 비었다. knowledge.listDocs 도 [] 라
-    #   질의가 틀린 것이 아니라 문서가 하나도 없는 것이다.
-    ("search_documents", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+    # knowledge.query : 문서 둘이 들어 있다(2026-08-26 실측 — 철도안전법 47쪽 ·
+    #   철도안전법 시행규칙 52쪽). "지식베이스가 비었다" 는 2026-08-22 기록이고
+    #   그 뒤 문서가 적재됐다.
+    #
+    #   k 는 돌려받을 조각 수다(tools.json, 기본 4). 6 인 근거 : "철도 안전
+    #   교육" 실측에서 k=4 는 시행규칙 조각이 1건인데 k=6 은 법 4 · 시행규칙 2
+    #   로 두 문서가 다 보인다. k=10 은 5 · 5 로 더 고르지만 화면은 조각
+    #   두셋만 실으므로 응답만 무거워진다. 문서가 늘어 보여줄 문서가 조각
+    #   두셋으로 안 덮이면 그때 올린다 (NOTES.md 「서른한째」).
+    #
+    #   문서를 지정하는 filter_docs 는 안 보낸다. 발화 해석이 인자를 하나만
+    #   돌려줘 문서 이름과 검색어를 따로 못 뽑는데, 의미 검색이라 검색어에
+    #   문서 이름이 섞이면 그 문서 조각이 위로 온다(2026-08-26 실측 —
+    #   "철도안전법 시행규칙 교육" k=4 에서 시행규칙 4/4건). NOTES.md 「열린 과제」.
+    ("search_documents", "keyword"): {"input": {"query": SPOKEN_VALUE, "k": 6}},
 
     # web.search : 실패. "MCP tool 'web-search/web.search' is not applied for
     #   this user." 데이터가 없는 것이 아니라 우리 user_context 에 web-search

@@ -93,6 +93,21 @@ def test_장소가_아닌_값도_같은_자리에_들어간다(monkeypatch):
     assert plan["steps"][0]["input"]["query"] == "철도 안전"
 
 
+def test_문서_검색은_발화_값과_조각_수를_함께_보낸다(monkeypatch):
+    """k 를 안 보내면 기본 4 조각이라 화면이 고를 두셋의 여지가 좁음.
+
+    값 6 의 근거는 step_service 의 배선 주석과 NOTES.md 「서른한째」에 있음.
+    여기서는 칸이 나가는 것만 봄 — k 를 다시 재서 고치면 값은 바뀔 수 있음.
+    """
+    wire(monkeypatch, ["spoken_keyword", "search_documents"])
+
+    plan = step_service.plan("recipe_013", "철도 안전")
+
+    assert plan["steps"][0]["input"]["query"] == "철도 안전"
+    assert isinstance(plan["steps"][0]["input"]["k"], int)
+    assert plan["steps"][0]["input"]["k"] >= 1
+
+
 def test_중첩된_input_안까지_바뀐다(monkeypatch):
     """도구에 따라 input 이 한 겹이 아님. dict 안에도 list 안에도 있을 수 있음."""
     wire(
