@@ -22,7 +22,12 @@ vendor 가 자기 문구(_failed_workflow_result)로 돌아오므로 아래 run 
 
 from collections import Counter
 
-from demo.api.services import ontology_service, resolve_service, step_service
+from demo.api.services import (
+    clarify_service,
+    ontology_service,
+    resolve_service,
+    step_service,
+)
 from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 from vendor.asap.workflow_answer import compose_workflow_answer, step_failed
 
@@ -78,6 +83,12 @@ STEP_JOIN = " -> "
 # 배선이 아직 없어 골라도 실행되지 않는 후보에 붙이는 표시.
 UNWIRED_MARK = " (아직 실행할 수 없음)"
 
+# 되묻기 뒤에 고른 것을 되비추는 줄. 답 맨 앞에 붙는다.
+#
+# 조사를 안 쓴다. "{label} 을" 로 적으면 이름의 끝 글자마다 을/를 이 갈려
+# 줄마다 어미가 틀어진다. 화면 목록과 같은 "번호 이름" 꼴로 되뇌기만 한다.
+CHOICE_HEAD = "고르신 것 — {number} {label}"
+
 
 async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
     """recipe 의 노드 순서대로 도구를 부름. 이벤트를 차례로 냄.
@@ -132,21 +143,45 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
     yield _result(_answer(intent, executed), _commands(executed))
 
 
-async def chat(text: str, llm_client, reason_max_length: int, context: dict | None = None):
+async def chat(
+    text: str,
+    llm_client,
+    reason_max_length: int,
+    context: dict | None = None,
+    session_id: str = "",
+):
     """발화 한 건을 끝까지. 해석하고 부르고 답을 만듦.
 
-    입력  발화 · LLM 클라이언트 · reason 길이 상한 · 저쪽 화면의 context
+    입력  발화 · LLM 클라이언트 · reason 길이 상한 · 저쪽 화면의 context ·
+          세션 id(없으면 빈 문자열)
     출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
-    규칙  해석도 한 단계로 냄. 저쪽 화면이 진행 상황을 그림
+    규칙  직전 되묻기를 먼저 본다. 이 발화가 그 후보 중 하나를 고른
+          것이면 해석을 건너뛰고 곧장 부름 — LLM 을 다시 안 부름
+          고르기가 아니면 지금까지와 똑같이 새 발화로 해석함. 그때도
+          직전 되묻기는 지워짐(take 가 꺼내면서 지움) — 두 발화 전의
+          후보를 나중에 고르는 일이 없어야 함
+          해석도 한 단계로 냄. 저쪽 화면이 진행 상황을 그림
           SELECT 가 아니면 도구를 하나도 안 부름. CLARIFY 는 후보가 여럿이라
           무엇을 부를지 정해지지 않았고, NO_MATCH 는 부를 것이 없음
+          번호 붙은 후보를 내놓았으면 그것을 세션에 기억해 둠. 다음 발화가
+          고르기일 수 있음
           인자는 LLM 이 argument 로 준 것을 먼저 씀. 그것이 없을 때만
           place_in 이 장소를 뽑음. 정규식은 장소 어절 하나밖에 못 봄
           인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           demo.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
+          세션이 없으면 되묻기를 기억하지도 고르지도 않는다.
+          지금까지와 똑같이 동작한다
     """
+    pending = clarify_service.take(session_id)
+    if pending is not None:
+        chosen = clarify_service.pick(text, pending)
+        if chosen is not None:
+            async for payload in _run_choice(pending, chosen, context):
+                yield payload
+            return
+
     yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
     resolved = resolve_service.resolve(
         text, llm_client=llm_client, reason_max_length=reason_max_length
@@ -158,17 +193,94 @@ async def chat(text: str, llm_client, reason_max_length: int, context: dict | No
         "message": f"{resolved.get('status')} {recipe_id or ''}".strip(),
     }
 
+    # 인자는 되묻기 때도 뽑아 둔다. 고른 뒤에 다시 뽑을 자리가 없다 —
+    # 그때는 원래 발화가 아니라 "1번" 이 들어온다.
+    argument = resolved.get("argument") or step_service.place_in(text)
+
     if resolved.get("status") != "SELECT" or not recipe_id:
+        _remember_clarify(session_id, resolved, argument, text)
         yield _result(_no_recipe_answer(resolved), [])
         return
 
-    argument = resolved.get("argument") or step_service.place_in(text)
     if not argument:
         yield _result(_no_argument_answer(resolved.get("given")), [])
         return
 
     async for payload in run(recipe_id, argument, text=text, context=context):
         yield payload
+
+
+async def _run_choice(pending: dict, chosen: int, context: dict | None):
+    """되묻기 뒤에 고른 것을 실행. 해석을 다시 안 함.
+
+    입력  기억해 둔 되묻기 · 고른 자리(0부터) · 저쪽 화면의 context
+    출력  chat 과 같은 이벤트 흐름. 마지막은 반드시 type=result
+    규칙  기억해 둔 recipe id 와 인자로 곧장 run 을 부름. resolve 도 LLM 도
+          안 부름 — 무엇을 부를지는 이미 정해졌음
+          무엇을 골랐는지 답 맨 앞에 한 줄 보임. 사람이 잘못 고른 것을
+          그 자리에서 알아야 함
+          인자가 없으면 실행하지 않고 안내만 함. 되묻기 때 인자를 못 뽑았으면
+          고른 뒤에도 없음 — 새 발화가 인자를 못 뽑았을 때와 같이 처신함
+          text 는 원래 발화를 넘김. "1번" 이 아니라 그것이 무엇을 물은 것인지임
+    """
+    head = CHOICE_HEAD.format(number=chosen + 1, label=pending["labels"][chosen])
+
+    yield {"type": "step_start", "node": "choice", "message": "고르신 것을 실행합니다..."}
+    yield {"type": "step_end", "node": "choice", "message": head}
+
+    if not pending["argument"]:
+        yield _result(f"{head}\n\n{_no_argument_answer(pending['given'])}", [])
+        return
+
+    async for payload in run(
+        pending["recipe_ids"][chosen],
+        pending["argument"],
+        text=pending["text"],
+        context=context,
+    ):
+        if payload["type"] == "result":
+            yield _result(f"{head}\n\n{payload['answer']}", payload["commands"])
+        else:
+            yield payload
+
+
+def _remember_clarify(session_id: str, resolved: dict, argument: str, text: str) -> None:
+    """화면에 번호를 보인 되묻기를 세션에 남김.
+
+    입력  세션 id · resolve 결과 · 뽑아둔 인자 · 원래 발화
+    규칙  후보가 있을 때만 남김. 번호가 화면에 보인 것이 곧 고를 수 있다는
+          뜻임 — status 가 아니라 후보 유무로 가름 (_no_recipe_answer 가
+          목록을 그리는 조건과 같음)
+          번호 순서는 화면에 보인 그대로임. 같은 목록으로 이름도 함께 남김
+          배선 표시(UNWIRED_MARK)는 떼고 남김. 사람이 고를 때 되뇌는 것은
+          이름이지 그 표시가 아님
+    제약  라벨을 화면과 따로 만들지 않는다.
+          _candidate_labels 를 다시 부른다. 두 번 도는 값이 아깝지만 화면에
+          보인 줄과 기억해 둔 줄이 갈라지면 이름으로 고를 수가 없다
+    """
+    candidates = resolved.get("candidate_recipe_ids") or []
+    if not candidates:
+        return
+
+    paths = resolved.get("paths") or {}
+    labels = [
+        label.removesuffix(UNWIRED_MARK)
+        for label in _candidate_labels(candidates, paths)
+    ]
+    names = []
+    for recipe_id in candidates:
+        chain = _step_names(recipe_id, paths)
+        names.append(chain[-1] if chain else recipe_id)
+
+    clarify_service.remember(
+        session_id,
+        recipe_ids=candidates,
+        labels=labels,
+        names=names,
+        argument=argument,
+        given=resolved.get("given"),
+        text=text,
+    )
 
 
 def _no_argument_answer(given: str | None) -> str:
@@ -267,8 +379,10 @@ def _clarify_head(candidates: list[str], paths: dict) -> str:
     출력  머리말 한 줄 + 후보마다 한 줄. 앞에 번호가 붙음
     규칙  번호는 1부터. 사용자가 "1번" 이라고 답할 수 있어야 함
           번호 자릿수를 맞춰 이름이 같은 칸에서 시작함
-    제약  번호로 답한 것을 받아 실행하지 않는다.
-          세션 상태와 저쪽 화면 계약이 필요함. 지금은 문구만 냄
+    제약  여기서 만든 줄이 곧 고를 수 있는 이름이다.
+          _remember_clarify 가 같은 함수(_candidate_labels)로 이름을 남기고
+          clarify_service 가 그것과 통째로 같은 문구만 고르기로 봄. 이 줄의
+          모양을 바꾸면 이름으로 고르는 길이 함께 바뀜
     """
     labels = _candidate_labels(candidates, paths)
     width = len(str(len(labels)))

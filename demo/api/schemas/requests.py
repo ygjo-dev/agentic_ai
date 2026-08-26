@@ -42,9 +42,14 @@ class RenderRequest(BaseModel):
 class ChatRequest(BaseModel):
     """ASAP-orchestrator 계약의 POST /chat 요청 본문.
 
-    KRRI_ASAP 이 8000 번으로 보내던 것을 그대로 받는다. 네 필드 모두 지금은
-    읽지 않지만 선언은 해둔다 — 없는 필드가 오면 FastAPI 가 422 를 내고,
-    저쪽 화면에서는 연결이 안 된 것과 구분되지 않는다.
+    KRRI_ASAP 이 8000 번으로 보내던 것을 그대로 받는다. 안 읽는 필드도
+    선언은 해둔다 — 없는 필드가 오면 FastAPI 가 422 를 내고, 저쪽 화면에서는
+    연결이 안 된 것과 구분되지 않는다.
+
+    **sessionId 는 읽는다** (2026-08-26). 되묻기를 세션마다 하나 기억해 두고
+    다음 발화가 그것을 고른 것인지 가르는 데 쓴다 —
+    demo/api/services/clarify_service.py 다. 빈 문자열이면 그 기능을 안 쓴다.
+    text 와 sessionId 말고 둘(context · target_documents)은 여전히 안 읽는다.
     """
 
     text: str

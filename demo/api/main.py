@@ -187,6 +187,7 @@ def _chat_events(form: ChatRequest, model: str | None = None):
         llm_client=make_client(model),
         reason_max_length=profile(model).reason_max_length,
         context=form.context,
+        session_id=form.sessionId,
     )
 
 
@@ -202,6 +203,7 @@ async def chat_endpoint(form: ChatRequest) -> dict:
           result 만 돌려줄 뿐임
     제약  form 의 target_documents 를 해석하지 않는다. 아직 쓰는 곳이 없다.
           context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 함
+          sessionId 는 되묻기를 기억하는 자리로만 씀. 대화 기록을 쌓지 않음
     """
     last = {"answer": "", "commands": []}
     async for payload in _chat_events(form):
