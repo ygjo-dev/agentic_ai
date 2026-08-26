@@ -84,10 +84,10 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   조회로 못 갈리고, "옛 호출 호환용으로 보여줘" 라고 말하는 사람이 없으니
   발화로도 못 갈린다. 그래서 전기차 후보가 늘 두 배였다.
 
-  **다른 도구에도 같은 것이 있는지 안 봤다.** 저쪽 catalog 42개의 설명을
-  훑어 "호환용" · "권장" · "deprecated" 같은 말이 있는지 찾을 일이다.
-  같은 짝이 또 있으면 후보가 또 두 배인 자리가 있다는 뜻이다.
-  **안 했다.**
+  **다른 도구에는 같은 것이 없다** (2026-08-26 「스물여덟째」). catalog 42개의
+  설명을 "호환" · "권장" · "deprecated" · "폐기" · "대신" 으로 훑어 걸리는
+  것이 `ev.searchChargers` 하나뿐임을 확인했다. 후보가 두 배인 자리는 그
+  하나가 전부였다.
 
   판별하는 자리는 이미 있다 — `tools/check_wiring.py` 가 아니라
   `ontology/shortlist.py` 쪽이다. 축 셋이 같은 recipe 짝을 세는 검사를
@@ -276,20 +276,6 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   **정정 (2026-08-24 「열여덟째」).** "청주시" 도 이제 정답으로 간다.
   지명마다 갈리는지는 다시 재봐야 안다 — 위 넷은 옛 온톨로지에서 잰 것이고
   번호도 옛 것이다(`045` 는 지금 `042`).
-- **배선을 적은 도구 넷을 아직 안 눌러봤다.** `rail.getSectionGeometry` ·
-  `geo.getRailwayLines` · `vworld.getAdministrativeBoundaries` ·
-  `population.searchStatistics`. 응답 모양과 역 이름 검색이 되는지를 모른다.
-  **넷 중 `population.searchStatistics` 는 눌러봤다** (2026-08-24 「열셋째」).
-  `query="청주시"` 로 4건. 응답은 `count` · `totalMatches` · `items` 를 함께 낸다.
-  셋은 아직 그대로다.
-  **둘을 더 눌러봤다 (2026-08-25 「스물다섯째」).** `rail.getSectionGeometry` 는
-  `sectionName` ILIKE · `LIMIT 1` 로 구간 하나(`sectionId` · `geometry` ·
-  `bbox`)를 주고 역명이 걸린다. `geo.getRailwayLines` 는 `railwayName` 으로
-  노선 전체(경부선 224 features), `stationName` 으로 그 역을 지나는
-  구간들(오송역 31 features)을 준다. `vworld.getAdministrativeBoundaries` 도
-  `tools/probe_out/` 에 2026-08-23 응답이 있다(청주시 → 시군구경계
-  FeatureCollection) — 눌러는 봤고 여기 적히지 않았던 것뿐이다. 이로써 넷 다
-  응답 모양은 안다.
 - **노드 등록 후(recipe 8)의 판정을 안 쟀다.** 등록 전 6개에서만 30/30 을
   굳혔다. 등록 장면이 시연의 핵심이라 재야 한다. 8개에서 3번 발화가 흔들린
   전례가 있다 (아래 2026-08-19 참고).
@@ -405,50 +391,47 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   headline 을 명사형(`"{arg} 행정구역"`)으로 바꾸면 성공 · 빈 결과 · 오류 셋을
   한 문장 틀로 합칠 수 있다. `STEP_OF` 48줄을 다시 쓰는 일이라 이번에 안 했다.
 
-### 막힌 노드 여덟과 그것이 지나는 recipe 13개 (2026-08-23 실측 · 번호는 2026-08-24 다시 셈)
+### 막힌 노드 — 여덟(2026-08-23)이 다섯(2026-08-26)이 됐다
 
-recipe 가 될 수 있는 노드 28개 중 여덟이 데이터가 없거나 권한이 없다.
-recipe 45개 중 13개가 그 여덟 중 하나를 지난다.
-
-**번호만 다시 셌다. 0건 · 권한 판정은 2026-08-23 것 그대로다.**
-`말한 식별자 is-a 행정구역 코드` 를 떼면서 번호가 셋씩 밀렸고(「열여덟째」),
-그 전에 식별자 타입을 쪼개면서(2026-08-23 일곱째) `find_admin_boundary_by_point`
-뒤에 충전소 상세가 붙던 가짜 경로 넷도 이미 사라져 있었다. 그래서 일곱이 넷으로
-줄고 18개가 13개가 된다. 데이터가 그 뒤에 들어온 것은 「열일곱째」를 본다 —
-아래 0건은 그 이전 값이다.
+2026-08-23 에는 recipe 가 될 수 있는 노드 28개 중 여덟이 데이터가 없거나
+권한이 없었다. **2026-08-26 「스물여덟째」에서 스물일곱을 전부 다시 눌렀다** —
+그 사이 저쪽 PostGIS 에 데이터가 들어와(행정구역 5,335 · 인구 18,623 ·
+충전소 92,863 · 충전기 488,162 · 철도 2,243 · 문서) 셋이 풀렸다.
 
 ```
-search_admin_boundaries             0건   shapefile 원본이 저장소에 없다
-                                          004 019 034
-find_admin_boundary_by_point        0건   같은 이유.  ★ 이것 하나가 넷을 막는다
-                                          020 041 042 043
-search_documents                    0건   지식베이스에 문서가 0개            014
-search_local_pledge_summaries       0건   2026 지방선거 공약 미적재      010 029
-get_local_pledge_summary            0건   같은 데이터셋                     041
-find_local_pledge_summary_by_point  0건   같은 데이터셋                     030
-web_search                          권한   user_context 에 web-search 가 안 열려 있다
-                                          006 038
-web_fetch                           권한   같은 서버.  안 눌러봐서 추정이다  038
-
-막힌 노드를 지나는 recipe 13개
-  004 006 010 014 019 020 029 030 034 038 041 042 043
+                                    2026-08-23      2026-08-26 (지금)
+search_admin_boundaries             0건             있다  청주시 4건
+find_admin_boundary_by_point        0건             있다  오송역 3건 (43 → 43113 → 43113250)
+search_documents                    0건             있다  "철도 안전" 4건 · 철도안전법 본문
+search_local_pledge_summaries       0건             0건   getLocalPledgeSummaryDatasetInfo 가
+get_local_pledge_summary            0건             0건   available false · featureCount 0 ·
+find_local_pledge_summary_by_point  0건             0건   "…DB 데이터가 적재되지 않았습니다"
+web_search                          권한            권한  HTTP 500 · "not applied for this user"
+web_fetch                           권한(추정)      못 부름 (추정 그대로) — url 근원인
+                                                    web.search 가 막혀 여전히 못 눌러봤다
 ```
 
-**전부 저쪽 데이터이고 우리가 못 채운다.** 오늘 철도가 보여준 대로, 채워지면
-코드를 한 줄도 안 고치고 그대로 돈다 — `import_railways.py` 한 번에
-`rail.sections` 2,243건이 들어가자 `rail.getSectionGeometry` 가 답하기 시작했다.
+남은 다섯 중 지방선거 셋은 한 데이터셋
+(`kr-local-election-sido-pledge-summaries-2026`)이고 웹 둘은 한 서버 권한이다 —
+**실질적으로 막힌 자리는 둘이다.** 나머지 스물둘은 전부 실제 데이터가 온다.
+스물일곱 줄 전체 표와 인자·건수·대표 값은 「스물여덟째」에 있다.
 
-**조대표님께 여쭐 것.** `import_admin_boundaries.py` 는 `--source-root` 로
-shapefile 폴더를 받는데 그 `.shp` 원본이 저장소에 없다(`find` 로 0개).
-그것만 받으면 넷이 살아난다.
+옛 목록의 "막힌 노드를 지나는 recipe 13개(004 006 010 014 019 020 029 030
+034 038 041 042 043)" 는 recipe 45개 시절 번호다. 지금은 41개라 번호가
+밀렸을 수 있고 이번에 다시 안 셌다 — 남은 다섯이 지나는 recipe 를 세려면
+번호부터 다시 매겨야 한다.
 
-**이 여덟은 개편이 못 고친다.** 개편이 고치는 것은 "경로가 진짜인가" 이고
-이것은 "데이터가 있는가" 다. 층이 다르다.
+**남은 다섯은 전부 저쪽 것이고 우리가 못 채운다.** 채워지면 코드를 한 줄도
+안 고치고 그대로 돈다 — 행정구역 · 문서가 이번에 그것을 증명했다. 배선은
+2026-08-23 그대로인데 데이터가 들어오자 셋이 저절로 살아났다.
 
-이 여덟이 0건일 때 그 이유는 이제 답에 실린다 — `workflow_answer` 가
-0건이면서 `warning` · `message` 가 온 응답의 그 문장을 건수 뒤에 붙인다.
-`knowledge.query` · `knowledge.listDocs` · `bim.listModels` 셋은 응답이 `[]`
-하나라 실릴 자리가 없어 "0건" 까지만 나온다.
+**이 다섯은 개편이 못 고친다.** 개편이 고치는 것은 "경로가 진짜인가" 이고
+이것은 "데이터가 있는가 · 권한이 열렸는가" 다. 층이 다르다.
+
+이것들이 0건일 때 그 이유는 답에 실린다 — `workflow_answer` 가 0건이면서
+`warning` · `message` 가 온 응답의 그 문장을 건수 뒤에 붙인다.
+`knowledge.query` 처럼 응답이 `[]` 하나인 것은 실릴 자리가 없어 "0건" 까지만
+나온다 (다만 `knowledge.query` 는 이제 4건이 온다).
 
 #### 아홉째 한계 — `geo.geocode` 가 늘 1.1km 다 (2026-08-25 「스물다섯째」)
 
@@ -534,6 +517,89 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-26 (스물여덟째) · 실행 노드 스물일곱을 전부 눌러 「지금 무엇이 답을 내놓는가」를 다시 만든다 · 재기만 했다
+
+**왜 다시 쟀나.** 「막힌 노드 여덟」은 2026-08-23 목록이라 데이터가 들어오기
+전이다. 그 뒤 저쪽 PostGIS 에 데이터가 들어왔고 recipe 도 45개에서 41개가 됐다.
+낡은 목록으로는 다음 작업(발화 확장 표)에서 새 발화가 0건일 때
+「인자가 틀렸나 · 데이터가 없나 · 권한이 없나」를 못 가른다. 그래서 recipe 에
+드는 실행 노드 스물일곱(`TOOL_OF` 26 + 배선 미기록 `web_fetch`)을 Gateway 에
+직접 다 눌렀다. `user_context` 는 `execute_service.USER_CONTEXT` 그대로,
+`includeGeometry` 는 전부 false. 응답 전문은 `tools/probe_out/*-2026-08-26.json`
+(누른 인자 목록은 `probe-index-2026-08-26.json`). 코드는 한 줄도 안 고쳤다.
+
+#### 스물일곱 줄 표
+
+좌표 자리는 전부 오송역 geocode 결과(127.3277, 36.6200)다. 판정은
+HTTP 상태가 아니라 본문으로 했다 — 200 + `{"error"}` 는 실패,
+200 + `[]` · `count 0` · `status not_found` 는 0건.
+
+```
+노드                                    도구                                        누른 인자                            건수  판정      대표 값 · 근거
+geocode_place                           geo.geocode                                 query="오송역"                       1     있다      충청북도 청주시 흥덕구 오송읍 봉산리 369-1 · [127.3277, 36.6200]
+get_railway_section                     rail.getSectionGeometry                     sectionName="오송역"                 1     있다      sectionId e55869e8… · bbox [[126.8686, 36.6196], [127.3281, 37.5546]]
+get_railway_lines                       geo.getRailwayLines                         stationName="오송역"                 31    있다      서울역(고속)→오송역(고속) 구간. includeStations=false 면 15
+find_cctv                               road.getCctv                                오송역 ±15km bbox                    83    있다      [경부선] 천안호두휴게소
+find_admin_boundary_by_point            adminBoundary.findBoundaryByPoint           오송역 좌표                          3     있다      충청북도(43) → 청주시 흥덕구(43113) → 오송읍(43113250)
+search_admin_boundaries                 adminBoundary.searchBoundaries              query="청주시"                       4     있다      청주시 상당구(43111)
+get_vworld_boundaries                   vworld.getAdministrativeBoundaries          query="청주시"                       4     있다      청주시 상당구(lt_c_adsigg_info.66)
+search_population_statistics            population.searchStatistics                 query="청주시"                       4     있다      청주시 흥덕구 · 2026-06-30 기준
+get_age_profile                         population.getAgeProfile                    level=sigungu · code=43113           1     있다      청주시 흥덕구 292,625명 · 연령대 23칸
+get_population_trend                    population.getTrend                         level=sigungu · code=43113           1     있다      2026-06-30 292,625명. point 가 한 달치 하나뿐 — 추이 그래프는 아직 안 나온다
+search_ev_stations                      ev.searchStations                           query="전기차 충전소"                120   있다      일출랜드(MT064039)
+get_ev_station                          ev.getStation                               statId="PL033780"                    1     있다      포빌(플러그링크) · 충전기 1기
+search_election_districts               election.searchDistricts                    query="청주"                         4     있다      충북 청주서원(2431401)
+get_election_district                   election.getDistrict                        name="충북 청주서원"                 1     있다      충북 청주서원(2431401)
+find_election_district_by_point         election.findDistrictByPoint                오송역 좌표                          1     있다      충북 청주흥덕(2430202)
+search_assembly_districts               election.searchAssemblyDistricts            query="청주"                         5     있다      청주시 상당구(4311101)
+get_assembly_district                   election.getAssemblyDistrict                name="청주시 흥덕구"                 1     있다      청주시 흥덕구(4311301) · pledgeCount 1
+find_assembly_district_by_point         election.findAssemblyDistrictByPoint        오송역 좌표                          1     있다      청주시 흥덕구(4311301)
+search_assembly_pledge_districts        election.searchAssemblyPledgeDistricts      query="청주"                         16    있다      보은군_옥천군_영동군_괴산군(4372001) 외
+get_assembly_pledge_district            election.getAssemblyPledgeDistrict          name="청주시 흥덕구"                 1     있다      청주시 흥덕구(4311301)
+find_assembly_pledge_district_by_point  election.findAssemblyPledgeDistrictByPoint  오송역 좌표                          1     있다      청주시 흥덕구(4311301)
+search_local_pledge_summaries           election.searchLocalPledgeSummaries         query="청주" · 2차 sido="충청북도"   0·0   0건       getLocalPledgeSummaryDatasetInfo 가 available false · featureCount 0
+get_local_pledge_summary                election.getLocalPledgeSummary              sidoCode="43" · 2차 sidoName="충청북도"  0·0  0건    status not_found · 같은 데이터셋
+find_local_pledge_summary_by_point      election.findLocalPledgeSummaryByPoint      오송역 · 2차 서울시청 좌표           0·0   0건       status not_found · 같은 데이터셋
+search_documents                        knowledge.query                             query="철도 안전"                    4     있다      「철도안전법 [시행 2026. 3. 3.] 법률 제21188호」 본문까지 온다
+web_search                              web.search                                  query="오송역"                       -     권한 없음  HTTP 500 · "MCP tool 'web-search/web.search' is not applied for this user."
+web_fetch                               web.fetch                                   (못 만듦)                            -     못 부름    url 은 web.search 결과에서만 얻는데 그것이 권한에 막혀 응답 모양을 모른다
+```
+
+```
+판정별 합계   있다 22 · 0건 3 · 권한 없음 1 · 못 부름 1
+```
+
+0건 셋은 인자를 바꿔 두 번씩 눌렀고 두 번째도 0건이다. 데이터 쪽이 근거다 —
+같은 데이터셋의 `getLocalPledgeSummaryDatasetInfo` 가
+`available: false · featureCount: 0 · "2026 지방선거 시도별 공약 요약 DB
+데이터가 적재되지 않았습니다."` 를 그대로 말한다.
+
+#### 「막힌 노드 여덟」(2026-08-23)에서 바뀐 줄
+
+```
+search_admin_boundaries        0건 → 있다 4건     shapefile 이 들어왔다
+find_admin_boundary_by_point   0건 → 있다 3건     같은 데이터. ★ 이것이 막던 recipe 넷이 풀린다
+search_documents               0건 → 있다 4건     지식베이스에 문서가 들어왔다
+지방선거 셋                    0건 그대로          위 근거
+web_search                     권한 그대로         이번에 다시 눌러 같은 문구로 확인
+web_fetch                      권한(추정) 그대로   여전히 못 눌러봤다. 추정이 확인으로 안 바뀌었다
+```
+
+#### 폐기 예정으로 보이는 도구가 또 있는가
+
+catalog 42개의 설명을 "호환" · "권장" · "deprecated" · "폐기" · "대신" 으로
+훑었다. 걸리는 것은 `ev.searchChargers` 하나뿐이다("기존 호출 호환용 …
+ev.searchStations 사용 권장"). **같은 자리는 더 없다.** 「스물일곱째」가 뺀
+그 하나가 전부다.
+
+#### 안 한 것
+
+- recipe 실행(발화 → resolve → vendor) 경로로는 안 쟀다. Gateway 직접
+  호출이라 배선 표시(`@arg` · `$prev`)가 실제로 풀리는지는 이 표가 안 본다.
+- `ev.searchChargers` 는 온톨로지에서 뺀 도구라 안 눌렀다.
+- `get_population_trend` 의 point 가 왜 하나뿐인지(적재가 한 달치인지
+  기본 인자 탓인지) 안 갈랐다. `startMonth` 변주를 안 눌렀다.
 
 ### 2026-08-26 (스물일곱째) · 폐기 예정 도구 하나를 온톨로지에서 뺀다 — 전기차 후보가 늘 두 배이던 원인
 
