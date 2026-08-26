@@ -4,4 +4,4 @@ steps:
 
   - node: get_railway_section
 
-  - node: get_vworld_boundaries
+  - node: find_cctv

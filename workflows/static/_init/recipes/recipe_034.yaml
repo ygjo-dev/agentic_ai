@@ -4,4 +4,4 @@ steps:
 
   - node: get_railway_section
 
-  - node: find_cctv
+  - node: get_railway_lines

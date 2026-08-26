@@ -4,4 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: search_local_pledge_summaries
+  - node: find_local_pledge_summary_by_point

@@ -2,6 +2,6 @@ steps:
 
   - node: spoken_keyword
 
-  - node: web_search
+  - node: search_ev_stations
 
-  - node: web_fetch
+  - node: get_ev_station

@@ -259,7 +259,9 @@ TOOL_OF = {
 # (노드, 받는 타입) -> 그 자리에서 input 을 어떻게 채우는가. **온톨로지 밖이다.**
 #
 #   input        그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
-#   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀
+#   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀.
+#                **지금 이것을 적은 줄은 하나도 없다** (2026-08-26) —
+#                input_of 는 아직 읽고 tools/check_wiring.py 가 그것을 부른다
 #   adapter      vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
 #
 # **키의 타입은 온톨로지의 hasInput 선언과 1:1 이다.** 선언에 없는 타입으로
@@ -349,10 +351,12 @@ STEP_OF = {
     #
     # tools/probe_out/ev.getStation.statId-stationId.json 과
     # tools/probe_out/ev.getStation.statId-id.json 이 그 둘이다.
-    # 앞 단계가 없으면(말한 식별자 → 충전소 상세) 발화에서 온 값이 곧 그 번호다.
+    #
+    # 자리가 하나다. 발화에서 곧바로 오는 자리는
+    # `말한 식별자 is-a 충전소 번호` 를 떼면서 사라졌다(2026-08-26) —
+    # 사람은 "PL033780" 이라고 말하지 않는다. 앞 단계는 전기차 충전소 검색뿐이다.
     ("get_ev_station", "station_id"): {
         "input": {"statId": f"{PREVIOUS_STEP}.items.0.stationId"},
-        "input_first": {"statId": SPOKEN_VALUE},
     },
 
     # ── 발화에서 온 말로 찾는 것 ────────────────────────────────────
@@ -507,8 +511,7 @@ def wiring_at(node_id: str, source_id: str) -> dict | None:
           둘 이상 맞으면 앞 노드가 먼저 내놓는 것을 씀. 장소 좌표 변환은
           지점 좌표를 먼저 내놓으므로 CCTV 조회가 좌표 줄을 씀
           데이터 노드가 앞이면 그것이 is-a 로 가리키는 타입을 봄.
-          말한 식별자는 선거구 코드와 충전소 번호를 가리키고 그중 줄이 있는
-          것 하나가 걸림
+          말한 식별자는 선거구 코드 하나를 가리킴
     제약  온톨로지를 직접 읽지 않는다. 타입 판정은 ontology_service 가 함
     """
     for type_id in ontology_service.handed_types(source_id):
@@ -524,9 +527,9 @@ def input_of(wiring: dict, first: bool) -> dict:
     입력  STEP_OF 한 줄 · 이것이 첫 step 인지
     출력  input 한 벌. 아직 @arg 와 $prev 가 그대로 들어 있음
     규칙  첫 step 이고 input_first 가 적혀 있으면 그것을 씀. 같은 타입을
-          앞 단계에서 받을 수도 발화에서 받을 수도 있는 자리가 있음
-          충전소 상세 조회가 그것임. 검색 뒤에 오면 앞 결과의 stationId 를
-          쓰고, 말한 식별자 뒤에 오면 발화에서 온 값이 곧 그 번호임
+          앞 단계에서 받을 수도 발화에서 받을 수도 있는 자리를 위한 것임
+          지금 input_first 를 적은 줄은 하나도 없음. 마지막이 충전소 상세
+          조회였고 `말한 식별자 is-a 충전소 번호` 를 떼면서 사라졌음
     """
     if first and "input_first" in wiring:
         return wiring["input_first"]

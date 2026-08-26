@@ -4,6 +4,6 @@ steps:
 
   - node: geocode_place
 
-  - node: find_admin_boundary_by_point
+  - node: search_ev_stations
 
-  - node: get_population_trend
+  - node: get_ev_station

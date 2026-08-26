@@ -94,7 +94,7 @@ def test_three_axes_together_narrow_to_what_the_utterance_asked():
     """셋을 다 주면 발화 하나가 가리키는 자리까지 좁혀짐.
 
     "오송역 근처 충전소 찾아줘" 는 말한 장소에서 시작해 목록을 돌려받는
-    전기차 충전 이야기다. 41개가 그 하나로 준다.
+    전기차 충전 이야기다. 40개가 그 하나로 준다.
 
     **둘로 줄던 자리였다.** 충전소 검색과 충전기 조회가 축 셋이 똑같아
     조회로는 못 갈렸고, "옛 호출 호환용으로 보여줘" 라고 말하는 사람이 없어
@@ -105,7 +105,7 @@ def test_three_axes_together_narrow_to_what_the_utterance_asked():
     "오송역 위치 보여줘" 도 하나로 정해진다. 좌표를 돌려받는 recipe 는
     하나뿐이라 앞토막이 같은 나머지 18개가 전부 빠진다.
     """
-    assert candidates("spoken_place", "item_list", "group_ev") == ["recipe_031"]
+    assert candidates("spoken_place", "item_list", "group_ev") == ["recipe_030"]
     assert candidates("spoken_place", "point", None) == ["recipe_001"]
 
 
