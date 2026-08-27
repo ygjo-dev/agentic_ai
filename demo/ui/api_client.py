@@ -19,6 +19,8 @@ GRAPH_TIMEOUT = 10
 RENDER_TIMEOUT = 30  # Graphviz 를 여러 벌 돌린다. 캐시 적중이면 즉시 온다.
 RESOLVE_TIMEOUT = 180
 NODES_TIMEOUT = 180
+# 주기 갱신이라 오래 매달리면 안 된다. LLM 이 안 끼는 메모리 조회다.
+RECENT_TIMEOUT = 5
 
 # 마지막으로 성공한 /graph 응답을 여기 둔다. 백엔드가 잠깐 끊겨도
 # 그래프가 사라지지 않아야 한다.
@@ -100,6 +102,17 @@ def resolve(utterance: str) -> dict:
     return _call(
         "POST", "/resolve", timeout=RESOLVE_TIMEOUT, params={"utterance": utterance}
     )
+
+
+def recent(since: int | None = None) -> dict:
+    """저쪽 화면에서 넣은 회차. 그 번호보다 큰 것만 옴.
+
+    입력  마지막으로 본 회차 번호. 없으면 마지막 몇 회차
+    출력  GET /recent 응답. seq 와 turns
+    규칙  번호가 그대로면 turns 가 빈 목록임. 화면은 그때 아무것도 다시 안 그림
+    """
+    params = {} if since is None else {"since": since}
+    return _call("GET", "/recent", timeout=RECENT_TIMEOUT, params=params)
 
 
 def register_node(name: str, description: str, inputs: list[str], outputs: list[str]) -> dict:

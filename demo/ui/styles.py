@@ -156,6 +156,13 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
   padding: 0.15rem 0;
 }}
 
+/* ---------------------------------------------- 따라 보기 */
+/* 저쪽 답과 단계 줄은 등폭이라야 읽힌다. 도구 이름 칸을 ljust 로 맞춰 왔고
+   비례폭으로 내면 그 정렬이 통째로 무너진다. */
+.st-key-follow_slot [data-testid="stCode"] {{ margin-bottom: 0.3rem; }}
+.st-key-follow_slot pre {{ padding: 0.45rem 0.55rem; }}
+.st-key-follow_slot code {{ font-size: 0.75rem; line-height: 1.45; white-space: pre; }}
+
 /* ---------------------------------------------- 경로 사슬 */
 /* recipe 하나가 한 줄. 여러 줄일 때 rid 폭을 고정해 세로가 맞는다. */
 .chain {{

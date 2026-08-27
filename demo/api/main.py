@@ -35,6 +35,7 @@ from demo.api.services import (
     execute_service,
     node_service,
     ontology_service,
+    recent_service,
     render_service,
     resolve_service,
 )
@@ -54,6 +55,18 @@ app = FastAPI(
     description="사용자 발화로부터 Recipe 선택",
     version="1.0.0",
 )
+
+# 지나간 회차를 기억하려고 두 자리를 감싼다. **값을 안 바꾸는 껍데기다.**
+#
+# 저쪽 화면이 넣은 발화의 축 셋과 후보는 resolve 안에만 있고, 되묻기 뒤에
+# 고른 회차의 recipe 는 run 안에만 있다. 둘 다 이벤트로는 안 나온다.
+# 씌우는 자리를 여기 한 곳에 둔다 — 감싸는 쪽이 여럿이면 두 번 씌워진다.
+#
+# --reload 로 모듈을 다시 읽어도 두 번 씌우지 않는다.
+if not hasattr(resolve_service.resolve, "__wrapped__"):
+    resolve_service.resolve = recent_service.watch_resolve(resolve_service.resolve)
+if not hasattr(execute_service.run, "__wrapped__"):
+    execute_service.run = recent_service.watch_run(execute_service.run)
 
 # 422 로 내보낼 예외. "요청이 잘못됐거나 LLM 이 계약을 어겼다" 는 뜻이고,
 # 서버가 고장난 것이 아니다.
@@ -179,15 +192,23 @@ def _chat_events(form: ChatRequest, model: str | None = None):
     입력  요청 본문 · 쓸 LLM 모델 이름(없으면 기본 모델)
     출력  비동기 이벤트 흐름. 마지막은 반드시 type=result
     규칙  두 경로가 다른 답을 하면 화면과 curl 중 무엇을 믿을지가 갈림
+          흐름이 끝나면 그 회차를 recent_service 가 기억함. GET /recent 로
+          Streamlit 이 물어가 따라 그림
     제약  동기 for 로 돌지 않는다.
           vendor 실행기가 코루틴이라 흐름 전체가 async generator 임
+          기록 때문에 이벤트를 바꾸지 않는다.
+          watched 는 받은 것을 그대로 다시 내는 껍데기임. 저쪽 화면이 읽는
+          흐름이라 한 건이라도 모양이 달라지면 시연이 깨짐
     """
-    return execute_service.chat(
+    return recent_service.watched(
         form.text,
-        llm_client=make_client(model),
-        reason_max_length=profile(model).reason_max_length,
-        context=form.context,
-        session_id=form.sessionId,
+        execute_service.chat(
+            form.text,
+            llm_client=make_client(model),
+            reason_max_length=profile(model).reason_max_length,
+            context=form.context,
+            session_id=form.sessionId,
+        ),
     )
 
 
@@ -236,6 +257,24 @@ async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
         yield "data: [DONE]\n\n"
 
     return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+@app.get("/recent")
+async def recent_endpoint(since: int | None = None) -> dict:
+    """지나간 회차. Streamlit 이 주기적으로 물어가 따라 그림.
+
+    입력  since  마지막으로 본 회차 번호. 없으면 마지막 몇 회차
+    출력  seq(지금 번호) · turns(그 번호보다 큰 회차들)
+          회차 한 건에 언제 · 발화 · status · 축 셋 · 인자 · 고른 recipe 와
+          후보들 · 단계 줄 · 답 문구가 담김
+    규칙  번호가 그대로면 turns 가 빈 목록임. 화면은 그때 아무것도 다시 안 그림
+          저쪽 화면이 `POST /chat/stream` 으로 넣은 회차가 여기 그대로 나옴.
+          저쪽은 아무것도 안 바꿈
+    제약  아무것도 바꾸지 않는다. 읽기 전용임
+          raw JSON 을 담지 않는다.
+          commands 를 아예 안 읽는다. geojson 과 좌표 배열이 거기 있음
+    """
+    return recent_service.since(since)
 
 
 @app.post("/nodes/reset")

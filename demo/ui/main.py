@@ -28,6 +28,7 @@ load_dotenv(Path(REPO_ROOT) / ".env")
 from demo.ui import api_client, config, styles, theme
 from demo.ui.api_client import ApiError
 from demo.ui.components.focus_panel import render_focus_section
+from demo.ui.components.follow_panel import render_follow_panel, render_follow_switch
 from demo.ui.components.graph_section import render_graph_section
 from demo.ui.components.input_section import render_input_section
 from demo.ui.components.node_form import render_node_form
@@ -139,9 +140,14 @@ with top:
             if st.session_state["side_tab"] == REGISTER:
                 render_node_form(graph)
                 run_clicked = False
+                follow_slot = None
             else:
                 _, run_clicked = render_input_section()
                 render_sample_picker()
+                # 자리만 잡아 둔다. 채우는 것은 화면 맨 끝이다 — 따라 보기
+                # 조각이 새 회차를 보면 전체 rerun 을 걸기 때문에, 여기서
+                # 채우면 Run 클릭이 그 rerun 에 삼켜진다.
+                follow_slot = st.container(key="follow_slot")
 
     with right:
         graph_panel = st.container(key="graph_panel")
@@ -204,3 +210,11 @@ with bottom:
 
     if config.DEBUG and isinstance(view, dict) and view.get("elapsed") is not None:
         st.metric("⏱️ Run Time", format_elapsed(view["elapsed"]))
+
+# ================================================================ 따라 보기
+# 맨 끝이다. 조각이 새 회차를 보면 전체 rerun 을 걸므로, 앞쪽에서 부르면
+# Run 클릭과 노드 등록이 그 rerun 에 삼켜진다.
+if follow_slot is not None:
+    with follow_slot:
+        render_follow_switch()
+        render_follow_panel(st.session_state.get("view"))
