@@ -80,6 +80,44 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
+- **완전 대체의 격차 — 저쪽 열다섯 중 여덟을 우리가 못 한다** (2026-08-27
+  「서른아홉째」). 저쪽 `plugins` 12 + `harnesses` 3 = 15 를 우리 배선과 맞췄다.
+  **되는 일곱**: place-search · cctv-around-point · cctv-near-place ·
+  rail-section-topdown · railway-route · knowledge-search · unsupported-request
+  (우리는 `_no_recipe_answer`). **못 하는 여덟**:
+
+  ```
+  isochrone-around-point          r5-server 가 없다 (「서른아홉째」)
+  isochrone-from-place            같다
+  current-view-isochrone          같다 + 「현재 화면 범위」를 받는 입력이 우리에 없다
+  otp-plan-trip                   otp-router 가 없다
+  transit-route-between-places    같다
+  current-view-cctv               「현재 화면 범위」 입력이 없다
+  show-facility                   디지털 트윈 시설물 선택. 도구가 아니라 화면 명령이다
+  system-chat                     일반 대화. 우리는 recipe 없으면 되묻거나 안내한다
+  ```
+
+  (unsupported-request 를 「되는」쪽에 둔 것은 내 셈이다. 그것을 빼면 아홉이다.)
+
+  **고침 (2026-08-27, 대표님 회신 뒤).** r5 · otp 를 쓰는 다섯(도달권 셋 ·
+  경로 탐색 둘)은 「우리가 안 한 것」이 아니라 **「서버가 꺼져 있어 지금
+  아무도 못 하는 것」**이다. 저쪽 오케스트레이터도 지금 그 다섯이 안 된다.
+
+  지금 남는 격차는 셋이다
+
+  ```
+  current-view-cctv     도구는 살아 있다. 화면 문맥(지금 보는 지도 범위)만 있으면 된다
+                        → 「찍은 지점」 노드 + context 받기. 이미 계획에 있다
+  show-facility         오송 테스트트랙 시설물 선택
+  system-chat / unsupported-request   잡담과 안내
+  ```
+
+  그리고 **「인자 둘」이 셋에서 걸린다.** `@arg` 는 하나뿐인데
+  도달권(장소 + 분) · 경로 탐색(출발 + 도착) · 문서 지정 검색(문서 + 검색어)
+  은 발화에서 둘을 뽑아야 한다. 「서른한째」에 설계만 남긴 것이 이제 셋이 됐다.
+  **무게는 줄었다** — 도달권(장소+분)과 경로(출발+도착)가 서버와 함께 미뤄지고
+  문서 지정 검색만 남는다. 서버가 켜지면 다시 필수가 된다.
+
 - **조회 후보가 정답을 놓친다 — 확장 표에서 13회다.** 축 셋(`given` · `want` ·
   `about`)으로 뽑은 후보에 기대값이 아예 안 들어오는 자리다. 발화
   12(1회) · 17(3) · 28(3) · 29(3) · 30(3) 이고 「서른두째」에서 처음 0 이
@@ -733,6 +771,146 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-27 (서른아홉째) · 도달권(접근성) 도구가 우리 창구로 불리는지 눌러본다 — 재기만 했다
+
+무인 실행. **코드 0줄 변경.** 고친 것은 이 파일뿐이고 브랜치는
+`dopamo-with-ontology`(0f9f1bf 에서 땄다). 응답 전문은 `tools/probe_out/`
+(`r5-server.compute_isochrone.의왕역-*-2026-08-27.json` 일곱 벌 + 의왕역
+geocode). `tools/probe_out/` 은 `.gitignore:58` 이라 `git status` 에 안 뜬다.
+
+**왜 눌렀나.** 원장님 지시로 보도자료를 준비한다. 「독파모 + 우리 오케스트레이터」가
+접근성 질의에 답하는 화면이 필요하고 **8/31(월) 미팅 전에 좌/우 비교 이미지**를
+만들어야 한다. 그런데 접근성 도구가 우리 온톨로지에 없다 — MCP 서버 넷 중
+우리는 `asap-mcp-core`(40) · `web-search`(2) 만 넣었다. 이번엔 `r5-server`
+하나만 봤다. 붙일 수 있는지 · 어떻게 부르는지만이고, 붙이는 것은 다음 작업이다.
+
+#### 물음 넷
+
+```
+물음                          답                                        근거
+★1 우리 창구로 불리는가        ★ 못 불렀다 — 서버에 닿지 않는다              7번 전부 HTTP 500 · 3.0초
+                              Gateway 에 r5-server 는 등록돼 있다            ASAP-Gateway/data/servers.json
+                                (http://175.196.203.153:8002/mcp)              user-mcp-selections.json 에도 있다
+                              Gateway 가 그 주소를 못 연다                   docker logs gateway:
+                                                                             "[Registry] Failed to refresh tools from
+                                                                              r5-server: connect EHOSTUNREACH"
+                              그래서 /api/tools 42개에 r5 도구가 없고         curl localhost:3000/api/tools
+                              execute 는 도구를 못 찾는다                    "Tool 'compute_isochrone' not found or
+                                                                              no adapter available."
+                              권한 판정까지 못 갔다                          Executor.ts:22-27 — 도구 못 찾으면 권한
+                                                                             검사 전에 던진다
+   2 꼭 넣어야 하는 칸          ★ 못 쟀다 — 서버가 안 열려 인자를 빼도 같은     일곱 벌 응답이 바이트까지 같다
+                              오류다. inputSchema 도 못 받았다(/api/tools 에
+                              없다 · KRRI_ASAP/tools.json 에도 없다)
+   3 응답 모양                  저쪽 테스트 픽스처로만 안다(실측 아님)          ASAP-orchestrator/tests/
+                              우리 답 문구는 칸 이름만 나열한다 —             test_orchestration_isochrone_verification.py
+                              건수 · 수치 없음 · 좌표는 안 샌다               vendor summarize() 를 픽스처로 돌렸다(실측)
+   4 지도 판정기가 알아보는가    ★ 알아본다. map.draw r5-isochrone-polygons     vendor/asap/mcp_result_inspector.py:213
+                              까지 나온다                                    build_commands_from_artifacts 를 픽스처로
+                                                                             돌렸다(실측)
+```
+
+#### 물음 1 — 왜 못 부르나 (자세히)
+
+```
+이 장비에서   ping 175.196.203.153            9ms 응답. 호스트는 살아 있다
+              curl :8002/mcp (tools/list)     exit 7 (연결 안 됨) · 3초
+              curl :8001/ (otp-router)        HTTP 000. 같다
+gateway 에서  docker logs                     r5-server · otp-router 둘 다 EHOSTUNREACH 반복
+```
+
+호스트는 응답하는데 8001 · 8002 포트가 닫혀 있다. 원격 r5 · otp 프로세스가
+내려가 있거나 방화벽이 이 장비(192.168.68.231)를 막는 것이다. **어느 쪽인지는
+이 장비에서 못 가른다.** `web.search` 때의 "not applied for this user" 와는
+다른 층이다 — 그건 권한이었고 이번엔 도구가 Gateway 목록에 아예 없다.
+
+**덧붙임 (같은 날) — 답이 왔다.** `r5-server` 와 `otp-router` 는 철도연 자산이다.
+원래 철도연 맥스튜디오에서 돌던 것을 다시 필요하다고 하여 지금 중지해 둔
+상태다 (조종식 대표님 회신, 2026-08-27). **방화벽이나 권한 문제가 아니다.**
+다음 주 월요일 회의 뒤에 다시 켠다. 위의 「원격 프로세스가 내려가 있거나
+방화벽이거나」 중 앞쪽이었고, 이 장비에서 할 일은 없다.
+
+**권한은 코드로만 안다.** `Executor.ts` 가 `user_context.selected_mcp_tool_refs`
+를 보고 `<server>/*` 또는 `<server>/<tool>` 이 있어야 통과시킨다. 우리
+`USER_CONTEXT` 는 `asap-mcp-core/*` 하나라(`execute_service.py:38`) 서버가
+열려도 **그대로는 "not applied" 로 막힌다.** 이건 우리 쪽 상수에 `r5-server/*`
+를 더하는 일이지 대표님께 요청할 일이 아니다 — Gateway 는 우리가 보낸 refs 를
+그대로 믿는다(`user-mcp-selections.json` 은 저쪽 화면 사용자용이다).
+**단, 실측은 아니다.** 서버가 열린 뒤 `r5-server/*` 를 넣고 다시 눌러야 안다.
+
+#### 물음 2 — 못 쟀다. 저쪽이 어떻게 채우는지만 적는다
+
+```
+칸                 저쪽 plugin.md                       우리 배선에 있는가
+origin_lon/lat     $center.0 · $center.1 (geocode)      있다 — $prev.lon · $prev.lat 모양 (POINT_FROM_PREVIOUS)
+max_minutes        $minutes (LLM 이 cutoffs 최대값)      없다 — 「인자 둘」(장소+분). @arg 는 하나뿐이다
+cutoffs_minutes    $cutoffs_minutes (LLM)                없다
+mode               $mode. LLM 프롬프트 기본 WALK          없다
+departure_date     $runtime.date_kst  "%Y-%m-%d"          없다 — market_plugin_engine.py:389 가 now 로 만든다
+departure_time     $runtime.time_kst  "%H:%M"             없다 — 같은 곳 :390
+include_points     true (상수)                            상수면 배선표에 적으면 된다
+```
+
+필수가 무엇인지 · 기본값이 있는지는 **서버가 열려야 안다.** 일곱 벌의 눌러본
+조합(기본 3칸 · +mode · +date/time · +cutoffs+include_points · max 15/60)은
+`tools/probe_out/` 에 요청 본문째 남겨 뒀으니 서버가 열리면 같은 스크립트로
+다시 누르면 된다(`/tmp/...scratchpad/probe_r5.py` 는 세션 것이라 사라진다.
+본문은 json 의 `request` 칸에 있다).
+
+의왕역 좌표(실측 · `geo.geocode` "의왕역"): **(126.9482, 37.3201)** ·
+경기도 의왕시 삼동 473.
+
+#### 물음 3 — 응답 모양 (저쪽 픽스처 기준)
+
+```
+{ status: "success", max_minutes, cutoffs_minutes: [...], mode,
+  feature_collections: { polygons: FeatureCollection(properties.cutoff_min),
+                         lines?, points? } }
+판정기가 더 읽는 칸: origin · scenario_id · reachable_cell_count · elapsed_ms
+```
+
+우리 `summarize()` 에 픽스처를 넣으면
+`'칸: status · max_minutes · cutoffs_minutes · mode · origin · feature_collections'`
+가 나온다. **좌표는 안 샌다**(dict 안은 안 읽는다). **건수 칸도 사람이 볼
+수치도 없다** — 면적 · 도달 인구는 응답에 없고(픽스처 기준) `reachable_cell_count`
+가 유일한 수치인데 셀 수라 그대로 보이기엔 뜻이 없다. 답 문구는 mode ·
+cutoffs 로 "도보 15·30분 도달 영역" 한 줄을 만드는 규칙이 새로 필요하다.
+
+#### 물음 4 — 지도 (실측 · 픽스처)
+
+`_extract_isochrone` 이 도구 이름을 안 보고 `feature_collections.{polygons|lines|points}`
+가 GeoJSON 이면 `isochrone` artifact 로 만든다. 렌더러는
+`map.clear ×4 → map.draw r5-isochrone-polygons · r5-isochrone-origin → view.camera.flyTo`
+를 낸다. **붙이는 순간 지도에 그려진다.** 화면 작업은 늘지 않는다.
+
+#### ★ 붙이는 데 필요한 일 (판단 없이 목록만)
+
+```
+서버    r5-server(175.196.203.153:8002) 가 열려야 한다. 누가 여는지 대표님께 물어야 한다
+배선    step_service 에 셋째 서버 상수 (R5_SERVER_ID = "r5-server")
+        execute_service.USER_CONTEXT.selected_mcp_tool_refs 에 "r5-server/*"
+        (tools/probe_tools.py 는 tools.json 의 serverId 를 쓰므로 r5 도구가 목록에 실리면 따라온다)
+노드    도구 노드 compute_isochrone (server r5-server) · 데이터 노드 「도달권」(isochrone)
+관계    geocode_place → compute_isochrone (장소 → 좌표, $prev.lon/lat)
+        찍은 지점 → compute_isochrone 은 「찍은 지점」 노드가 없어 못 잇는다(열린 과제 기존 항목)
+인자    max_minutes · cutoffs_minutes · mode 를 발화에서 뽑는 자리 — 「인자 둘」 문제.
+        departure_date · departure_time 은 배선이 now(KST) 를 만들어 넣어야 한다.
+        include_points=true 는 상수
+답 문구 workflow_answer 에 isochrone 규칙(mode · cutoffs 로 한 줄). 지금은 칸 이름만 나간다
+화면    없음 — 판정기 · 렌더러가 이미 안다
+축      recipe_selection 축 목록에 도달권 recipe 한 줄 (프롬프트 길이 다시 잰다)
+정답표  도달권 발화 추가
+```
+
+#### 안 한 것
+
+- otp-router(`otp_plan_trip`)는 안 봤다. 같은 호스트 8001 이 같은 이유로 닫혀 있는 것만 봤다.
+- 서버가 안 열려 물음 2 는 통째로 못 쟀다. 응답 모양(3)은 저쪽 픽스처지 실측이 아니다.
+- 권한(`r5-server/*`)은 코드 읽기로만 안다. 실측 없음.
+- 저쪽 `isochrone_geometry.validate_and_repair` 가 진짜 R5 응답에서 무엇을 하는지는 안 봤다.
+
+---
 
 ### 2026-08-27 (서른여덟째) · 저쪽 화면에서 넣은 발화를 Streamlit 이 따라 그린다
 
