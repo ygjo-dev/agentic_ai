@@ -414,6 +414,29 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   가) · 나) 는 열려 있다 — 맞는 칸 하나만 보내면 된다. 인자 없이 부르면 전국
   3683 features 가 온다는 것도 함께 적었다. 표 전문은 「서른다섯째」에 있다.
 
+  **계기판이 잡는다 (2026-08-27 「마흔째」).** `tools/check_inputs.py` 의 ★ 표에
+  `geo.getRailwayLines × place_name` 이 `railwayName(S)` 로 올라온다 — 우리 칸
+  `stationName` 과 낱말 Name 을 공유해서다. 판정은 「맞다」(없는 칸 0 · required
+  없음)이므로 **화면 0건은 스키마 위반이 아니라 칸 선택 문제**다. 가) · 나) 를
+  정한 뒤 이 표에서 `railwayName` 이 사라지는지로 확인한다.
+
+- **배선이 안 쓰는 칸 — 계기판 「마흔째」가 올린 자리들.** 고치는 것은 나중이다.
+  목록만 둔다. 판정 넷 중 「없는 칸」 0 · 「안 보낸 required」 0 이라 지금 반드시
+  틀린 줄은 없다.
+
+  ```
+  election.getLocalPledgeSummary × admin_code   sidoName 안 보냄 (S)
+      철도와 같은 꼴. 지금은 items.0.code 가 오니 sidoCode 가 맞다.
+      「말한 시도 이름」자리가 생기면 철도처럼 된다. 그때 이 줄을 본다
+  adminBoundary.searchBoundaries · election.search* ×3 · population.searchStatistics
+  · vworld.getAdministrativeBoundaries · geo.getRailwayLines · ev.searchStations
+      keyword 줄은 bbox 를, map_extent 줄은 query 를 안 보낸다 (O 19)
+      자리마다 받는 것이 달라 그런 것이다. 틀린 것이 아니라 확인한 자리
+  includeBbox ×2 · minOutputKw                  S 의 소음. 손잡이다
+  ```
+
+  S 를 「마지막 낱말이 같을 때만」으로 좁힐지는 사람이 정한다.
+
 - **`items.1` 로 시군구에 고정된다.** `get_age_profile` ·
   `get_population_trend` 의 배선이 `$prev.items.1.layerId` 와
   `$prev.items.1.code` 를 쓴다 (2026-08-24 「열여덟째」).
@@ -771,6 +794,186 @@ recipe 를 배선표와 맞대어 A · B 를 세면 13개가 나온다. 스무 �
 ---
 
 ## 측정 기록
+
+### 2026-08-27 (마흔째) · 배선이 도구의 어느 칸을 쓰는지 스키마와 맞대는 계기판 — 재기만 했다
+
+무인 실행. **제품 코드 0줄 변경.** 만든 것은 `tools/check_inputs.py` 하나이고 고친
+파일은 이 파일뿐이다. 브랜치 `integration/ASAP-Ontology`(b1e4d8e). 배선 · 온톨로지 ·
+`demo/` · `vendor/` · `KRRI_ASAP/` 은 안 건드렸다. 스키마 전문은
+`tools/probe_out/tools.json`(gitignore) — Gateway `/api/tools` 에서 3.0초에 42개를
+받았다(2026-08-22 의 `/tmp/tools.json` 과 도구 수가 같다).
+
+**왜 만들었나.** `check_wiring` 은 배선 줄이 **있는가**만 센다. 그 줄이 **맞는 칸을
+쓰는가**는 아무도 안 봐서 철도가 조용히 틀렸다 —
+
+```
+geo.getRailwayLines 는 stationName 과 railwayName 을 갖는다
+우리 배선은 stationName 하나만 보낸다
+  → "경부선 노선 보여줘" 가 0건 (2026-08-26 화면 실측)
+  → check_wiring 은 통과였다. 줄은 있으니까
+```
+
+도구가 늘면 이런 자리가 비례해서 는다. 사람이 화면에서 0건을 보고 알아채는
+방식으로는 못 버틴다.
+
+#### 세는 법 넷 — 배선 줄마다 · 칸마다
+
+```
+없는 칸을 보낸다        우리가 보내는 칸이 inputSchema.properties 에 없다   ★ 반드시 0건이나 오류
+꼭 필요한데 안 보낸다   required 인데 우리 배선에 없다                       ★ 반드시 오류
+있는데 안 쓰는 칸       properties 에 있는데 우리가 안 보낸다                판단할 자리. 고르지 않는다
+맞다                    나머지
+```
+
+줄의 판정은 그 줄의 칸 판정을 모은 것이다. 첫 둘이 하나도 없으면 「맞다」이고
+셋째는 개수만 옆에 적는다. **`input_first` 도 갈래마다 한 행으로 센다** — 지금
+그것을 적은 줄이 0 이라 행이 안 늘었다(35 = 35 + 0).
+
+**어댑터 뒤의 칸으로 맞댔다.** vendor 의 `point_radius_to_bbox` 가
+center/location · radiusMeters 를 지우고 bbox 넷을 만든다
+(`generic_mcp_executor._point_radius_to_bbox_input`). 줄에 adapter 가 적혀 있거나
+(ev.searchStations × map_extent), 안 적혀 있어도 required 에 bbox 넷이 다 있고
+중심·반경이 있으면 저절로 걸린다(road.getCctv × point,
+`_should_auto_apply_point_radius_to_bbox`). 이것을 안 따라 하면 그 두 줄이
+「없는 칸을 보낸다」로 잘못 찍힌다 — 첫 실행에서 그렇게 나와서 넣었다.
+
+#### 추리는 기준 셋 — 왜 이 셋인가
+
+셋째 부류가 201개다. 대부분 limit · includeGeometry · simplifyM 같은 손잡이라
+그냥 늘어놓으면 못 읽는다. 아래 셋 중 하나에 걸린 칸만 ★ 로 올린다.
+
+```
+R  required 다                  둘째 부류와 같다. 반드시 오류
+S  우리가 보내는 칸과 닮았다    camelCase 로 쪼갠 낱말을 하나라도 공유한다.
+                                stationName 대 railwayName 이 Name 을 공유한다 — 철도가 이것에 걸린다
+O  같은 도구의 다른 줄이 쓴다   한 줄은 보내는데 다른 줄은 안 보내는 칸
+```
+
+세 기준 모두 **스키마와 배선만으로** 판정된다 — 서버 · LLM · 값 판단 · description
+읽기가 없다. "이 칸이 검색어 같다" 는 짐작이라 안 넣었다. **걸렸다고 틀린 것은
+아니다.** 사람이 볼 자리를 좁힌 것뿐이고 고르지 않았다.
+
+**S 의 한계를 미리 적는다.** 철도는 두 칸이 둘 다 `…Name` 이라 걸린 것이다. 우리
+칸이 `query` 이고 저쪽 맞는 칸이 `railwayName` 이었다면 S 로는 못 잡는다. 그런
+자리는 O 나 사람 눈이 잡아야 한다.
+
+#### 표 (35줄 · 도구 26)
+
+```
+도구                                      배선 줄 (노드 × 받는 타입)                                보내는 칸                                   판정
+  adminBoundary.findBoundaryByPoint         find_admin_boundary_by_point × point                      lat, lon                                    맞다  · 안 쓰는 칸 4
+  adminBoundary.searchBoundaries            search_admin_boundaries × keyword                         query                                       맞다  · 안 쓰는 칸 10
+  adminBoundary.searchBoundaries            search_admin_boundaries × map_extent                      bbox                                        맞다  · 안 쓰는 칸 10
+  election.findAssemblyDistrictByPoint      find_assembly_district_by_point × point                   lat, lon                                    맞다  · 안 쓰는 칸 6
+  election.findAssemblyPledgeDistrictByPointfind_assembly_pledge_district_by_point × point            lat, lon                                    맞다  · 안 쓰는 칸 6
+  election.findDistrictByPoint              find_election_district_by_point × point                   lat, lon                                    맞다  · 안 쓰는 칸 1
+  election.findLocalPledgeSummaryByPoint    find_local_pledge_summary_by_point × point                lat, lon                                    맞다  · 안 쓰는 칸 2
+  election.getAssemblyDistrict              get_assembly_district × district_code                     name                                        맞다  · 안 쓰는 칸 2
+  election.getAssemblyPledgeDistrict        get_assembly_pledge_district × district_code              name                                        맞다  · 안 쓰는 칸 3
+  election.getDistrict                      get_election_district × district_code                     name                                        맞다  · 안 쓰는 칸 2
+  election.getLocalPledgeSummary            get_local_pledge_summary × admin_code                     sidoCode                                    맞다  · 안 쓰는 칸 2
+  election.searchAssemblyDistricts          search_assembly_districts × keyword                       query                                       맞다  · 안 쓰는 칸 9
+  election.searchAssemblyDistricts          search_assembly_districts × map_extent                    bbox                                        맞다  · 안 쓰는 칸 9
+  election.searchAssemblyPledgeDistricts    search_assembly_pledge_districts × keyword                query                                       맞다  · 안 쓰는 칸 12
+  election.searchAssemblyPledgeDistricts    search_assembly_pledge_districts × map_extent             bbox                                        맞다  · 안 쓰는 칸 12
+  election.searchDistricts                  search_election_districts × keyword                       query                                       맞다  · 안 쓰는 칸 5
+  election.searchLocalPledgeSummaries       search_local_pledge_summaries × keyword                   query                                       맞다  · 안 쓰는 칸 9
+  election.searchLocalPledgeSummaries       search_local_pledge_summaries × map_extent                bbox                                        맞다  · 안 쓰는 칸 9
+  ev.getStation                             get_ev_station × station_id                               statId                                      맞다  · 안 쓰는 칸 0
+  ev.searchStations                         search_ev_stations × keyword                              query                                       맞다  · 안 쓰는 칸 17
+  ev.searchStations                         search_ev_stations × map_extent                           maxLat, maxLon, minLat, minLon ·어댑터      맞다  · 안 쓰는 칸 14
+  geo.geocode                               geocode_place × place_name                                query                                       맞다  · 안 쓰는 칸 0
+  geo.getRailwayLines                       get_railway_lines × map_extent                            bbox                                        맞다  · 안 쓰는 칸 4
+  geo.getRailwayLines                       get_railway_lines × place_name                            stationName                                 맞다  · 안 쓰는 칸 4
+  knowledge.query                           search_documents × keyword                                k, query                                    맞다  · 안 쓰는 칸 1
+  population.getAgeProfile                  get_age_profile × admin_code                              code, level                                 맞다  · 안 쓰는 칸 1
+  population.getTrend                       get_population_trend × admin_code                         code, level                                 맞다  · 안 쓰는 칸 3
+  population.searchStatistics               search_population_statistics × keyword                    query                                       맞다  · 안 쓰는 칸 12
+  population.searchStatistics               search_population_statistics × map_extent                 bbox                                        맞다  · 안 쓰는 칸 12
+  rail.getSectionGeometry                   get_railway_section × place_name                          sectionName                                 맞다  · 안 쓰는 칸 0
+  road.getCctv                              find_cctv × map_extent                                    maxLat, maxLon, minLat, minLon              맞다  · 안 쓰는 칸 0
+  road.getCctv                              find_cctv × point                                         maxLat, maxLon, minLat, minLon ·어댑터      맞다  · 안 쓰는 칸 0
+  vworld.getAdministrativeBoundaries        get_vworld_boundaries × keyword                           query                                       맞다  · 안 쓰는 칸 8
+  vworld.getAdministrativeBoundaries        get_vworld_boundaries × map_extent                        bbox                                        맞다  · 안 쓰는 칸 8
+  web.search                                web_search × keyword                                      query                                       맞다  · 안 쓰는 칸 4
+```
+
+#### ★ 눈여겨볼 자리
+
+```
+R required · S 우리 칸과 낱말을 공유 · O 같은 도구의 다른 줄이 쓴다
+
+  도구                                      배선 줄                                                   우리 칸                       안 쓰는 칸 (왜)
+  adminBoundary.searchBoundaries            search_admin_boundaries × keyword                         query                         bbox(O)
+  adminBoundary.searchBoundaries            search_admin_boundaries × map_extent                      bbox                          includeBbox(S) · query(O)
+  election.getLocalPledgeSummary            get_local_pledge_summary × admin_code                     sidoCode                      sidoName(S)
+  election.searchAssemblyDistricts          search_assembly_districts × keyword                       query                         bbox(O)
+  election.searchAssemblyDistricts          search_assembly_districts × map_extent                    bbox                          query(O)
+  election.searchAssemblyPledgeDistricts    search_assembly_pledge_districts × keyword                query                         bbox(O)
+  election.searchAssemblyPledgeDistricts    search_assembly_pledge_districts × map_extent             bbox                          query(O)
+  election.searchLocalPledgeSummaries       search_local_pledge_summaries × keyword                   query                         bbox(O)
+  election.searchLocalPledgeSummaries       search_local_pledge_summaries × map_extent                bbox                          query(O)
+  ev.searchStations                         search_ev_stations × keyword                              query                         maxLat(O) · maxLon(O) · minLat(O) · minLon(O)
+  ev.searchStations                         search_ev_stations × map_extent                           maxLat, maxLon, minLat, minLonminOutputKw(S) · query(O)
+  geo.getRailwayLines                       get_railway_lines × map_extent                            bbox                          stationName(O)
+  geo.getRailwayLines                       get_railway_lines × place_name                            stationName                   bbox(O) · railwayName(S)
+  population.searchStatistics               search_population_statistics × keyword                    query                         bbox(O)
+  population.searchStatistics               search_population_statistics × map_extent                 bbox                          includeBbox(S) · query(O)
+  vworld.getAdministrativeBoundaries        get_vworld_boundaries × keyword                           query                         bbox(O)
+  vworld.getAdministrativeBoundaries        get_vworld_boundaries × map_extent                        bbox                          query(O)
+
+  걸린 칸 24 · R 0 · S 5 · O 19
+  S 만 따로 : adminBoundary.searchBoundaries.includeBbox, election.getLocalPledgeSummary.sidoName, ev.searchStations.minOutputKw, geo.getRailwayLines.railwayName, population.searchStatistics.includeBbox
+```
+
+**읽기.** O 19 는 전부 `query` ↔ `bbox` 짝(그리고 ev 의 bbox 넷)이다 — 같은
+노드가 「말한 키워드」자리와 「지도 범위」자리 둘에 오므로 자리마다 다른 칸을
+보내는 것이 맞다. **철도 같은 것은 S 다섯 중에서 갈린다.**
+
+```
+geo.getRailwayLines.railwayName          ★ 철도. 이미 아는 그 자리 (「열린 과제」)
+election.getLocalPledgeSummary.sidoName  ★ 철도와 같은 꼴 — 코드 칸 하나만 보내고 이름 칸은 안 보낸다.
+                                         지금은 앞 단계 items.0.code 에서 오므로 sidoCode 가 맞다.
+                                         「말한 시도 이름」자리가 생기면 여기가 철도처럼 된다
+adminBoundary.searchBoundaries.includeBbox   낱말 bbox 공유. 손잡이(응답에 bbox 를 실을지)다. 소음
+population.searchStatistics.includeBbox      같다. 소음
+ev.searchStations.minOutputKw                낱말 min 공유. 출력 하한 필터다. 소음
+```
+
+**S 다섯 중 셋이 소음**이다. 낱말 공유는 `include…` · `min…` 접두사에 쉽게 걸린다.
+좁힐 거면 「마지막 낱말이 같을 때만」(Name · Code) 이 한 방법인데, 이번은 넓게
+두고 표를 냈다 — 좁히는 것은 사람이 정한다.
+
+#### 합계
+
+```
+배선 줄 35 (input 35 · input_first 0) · 도구 26
+  줄 판정   맞다 35 · 없는 칸 0 · 안 보낸 required 0 · 스키마 못 받음 0
+  칸 합계   없는 칸 0 · 안 보낸 required 0 · 안 쓰는 칸 201 (그중 ★ 24)
+```
+
+**스키마를 못 받은 도구 0.** 배선이 가리키는 26개가 전부 `/api/tools` 42개 안에
+있다. r5-server · otp-router 는 애초에 배선이 없어 이 표에 안 온다
+(「서른아홉째」). `web.fetch` 는 배선이 비어 있어(`STEP_OF` 아래 주석) 표에 없다 —
+그것은 `check_wiring` 의 C 가 센다.
+
+#### 조용히 죽지 않게 — 테스트를 안 두고 자체 검사를 뒀다
+
+`check_argument` 가 나흘간 ValueError 로 죽어 있던 전례가 있다(「열린 과제」).
+`tools/` 는 "테스트를 두지 않는다" 가 규칙이라 `tests/` 에 안 넣었다. 대신
+`_selfcheck()` 가 손으로 적은 스키마 하나와 배선 한 줄로 **네 부류 · 세 기준 ·
+어댑터 셋(명시 · 자동 · 안 걸림)** 이 각각 나오는지 본 뒤에야 표를 찍는다.
+틀리면 첫 줄에서 죽고 표가 안 나온다 — `!` 가 조용히 찍히는 꼴이 안 된다.
+pytest 개수는 그대로다(297 passed / 1 failed, graphviz 음성 대조군).
+
+#### 안 한 것
+
+- **찾은 것을 안 고쳤다.** 철도 · sidoName 둘 다 목록만 「열린 과제」에 남겼다.
+- S 를 안 좁혔다(위).
+- description 을 안 읽었다. "검색어" 라고 적힌 칸을 찾는 것은 짐작이다.
+- 값의 타입(string 대 array)을 안 맞댔다. 칸 이름만 봤다. `bbox` 를 배열로
+  보내는 것이 맞는지는 이 표가 모른다 — 실측(「셋째」 이후)이 그것을 본다.
+- `TOOL_OF` 에는 있고 `STEP_OF` 에 줄이 없는 노드는 안 셌다. `check_wiring` 의 C 다.
 
 ### 2026-08-27 (서른아홉째) · 도달권(접근성) 도구가 우리 창구로 불리는지 눌러본다 — 재기만 했다
 
