@@ -143,11 +143,17 @@ async def render_endpoint(form: RenderRequest) -> dict:
 
 
 @app.post("/resolve")
-async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
+async def resolve_endpoint(
+    utterance: str, model: str | None = None, narrow: bool | None = None
+) -> dict:
     """사용자 발화로부터 Recipe 선택.
 
     입력  utterance  사용자 자연어 입력
           model      쓸 LLM 모델 이름. 없으면 기본 모델
+          narrow     좁히기 길(두 번 부르기)을 탈지. **없으면 지금 길(끔)이다.**
+                     환경변수 RESOLVE_NARROW=1 이면 그것이 기본이 됨.
+                     측정용임 — tools/check_resolve.py --narrow 가 켬.
+                     켜면 응답에 narrow 한 칸이 더 실림 (resolve_service 참조)
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
           candidate_recipe_ids · reason · paths
           LLM 이 쓴 축 셋(given · want · about)과 발화에서 뽑은 argument,
@@ -163,6 +169,7 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
         utterance,
         llm_client=make_client(model),
         reason_max_length=profile(model).reason_max_length,
+        narrow=narrow,
     )
 
 
