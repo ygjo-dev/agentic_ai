@@ -144,7 +144,10 @@ async def render_endpoint(form: RenderRequest) -> dict:
 
 @app.post("/resolve")
 async def resolve_endpoint(
-    utterance: str, model: str | None = None, narrow: bool | None = None
+    utterance: str,
+    model: str | None = None,
+    narrow: bool | None = None,
+    context: dict | None = None,
 ) -> dict:
     """사용자 발화로부터 Recipe 선택.
 
@@ -154,6 +157,10 @@ async def resolve_endpoint(
                      환경변수 RESOLVE_NARROW=1 이면 그것이 기본이 됨.
                      측정용임 — tools/check_resolve.py --narrow 가 켬.
                      켜면 응답에 narrow 한 칸이 더 실림 (resolve_service 참조)
+          context    화면의 지도 문맥. **요청 본문이다** (나머지 셋은 query).
+                     /chat 의 ChatRequest.context 와 같은 모양이고 같은 자리로
+                     흐름 — view.bbox · selectedLocation. **없으면 없는 것으로.**
+                     안 보내면 이 인자를 만들기 전과 한 글자도 다르지 않음
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
           candidate_recipe_ids · reason · paths
           LLM 이 쓴 축 셋(given · want · about)과 발화에서 뽑은 argument,
@@ -170,6 +177,7 @@ async def resolve_endpoint(
         llm_client=make_client(model),
         reason_max_length=profile(model).reason_max_length,
         narrow=narrow,
+        context=context,
     )
 
 

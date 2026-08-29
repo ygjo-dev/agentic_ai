@@ -38,6 +38,14 @@ KRRI_ASAP/ASAP-orchestrator/app/agents/nodes/parse_intent.py 가 문맥이 있�
 "If the user says here, this place, …" 한 줄을 프롬프트에 덧붙인다. 우리는
 프롬프트 파일을 이번 범위에서 안 건드리므로, 같은 말을 적을 데가 노드
 description 뿐이기도 하다.
+
+## 프롬프트에 넣을 menu 를 요청마다 고른다 — ★ 임시방편 (2026-08-29)
+
+시작 데이터가 둘 늘면서 menu 가 3322 -> 4833자가 됐고 문맥 없는 요청의 판정이
+16 내렸다. 그래서 **발화가 화면을 가리키느냐로 menu 를 가른다** — 가리키고 그
+값이 와 있으면 화면 recipe 만, 아니면 기존 마흔만 프롬프트에 실린다.
+가르는 것은 낱말이고 LLM 을 더 부르지 않는다. `_menu_for` · `SCREEN_WORDS` 를
+본다. **월요일 시연을 위한 임시방편이다** — 까닭과 한계는 그 자리에 적었다.
 """
 
 import os
@@ -94,8 +102,9 @@ def resolve(
     출력  _resolve_full 또는 _resolve_narrow 의 결과. key 는 아래 docstring 에
     제약  narrow 를 안 줬을 때 지금 길이어야 한다.
           /chat 은 이 인자를 안 넘긴다. 기본값이 바뀌면 시연 화면이 바뀐다
-          context 를 안 줬을 때 지금과 똑같아야 한다.
-          Streamlit 도 tools/check_resolve.py 도 안 넘긴다
+          context 를 안 줬을 때 문맥이 없는 것과 똑같아야 한다.
+          2026-08-29 부터 Streamlit 과 tools/check_resolve.py 도 넘기지만,
+          --context none 과 옛 부름이 이 자리를 그대로 지남
     """
     if narrow is None:
         narrow = narrow_default()
@@ -160,6 +169,10 @@ def _without_dropped(recipe_ids: list[str], dropped: set[str]) -> list[str]:
           menu 에서 그 문장을 지우지 않는다.
           menu 는 온톨로지가 만드는 것이고 요청마다 다를 수 없음. 지울 수
           없으니 LLM 이 그것을 골라도 여기서 뺀다
+    이력  2026-08-29 에 그 제약을 깼다. _menu_for 가 요청마다 menu 를 가른다.
+          까닭과 임시방편이라는 것은 SCREEN_WORDS 위 주석에 있다.
+          이 자리는 그대로 둔다. 축 조회는 menu 를 안 보고 뽑으므로 menu 에서
+          뺀 뒤에도 여기서 한 번 더 걸러야 한다
     """
     if not dropped:
         return recipe_ids
@@ -175,6 +188,83 @@ def _starts_at(recipe_id: str) -> str | None:
     return path[0]["node_id"] if path else None
 
 
+# ── 프롬프트에 넣을 menu 를 요청마다 고른다 ────────────────────────
+#
+# 발화가 화면을 가리키느냐로 menu 를 가른다. 가리키고 그 값이 와 있으면 화면
+# recipe 만, 아니면 기존 recipe 마흔만 프롬프트에 실린다. 어느 쪽이든 짧다.
+#
+#   화면 recipe   경로 첫 칸이 picked_point 또는 visible_extent 인 것
+#                 둘 다 오면 열아홉 1535자. 우클릭 전이면 열 809자
+#   기존 마흔     그 밖. 3322자. 화면 노드가 붙기 전 menu 와 본문이 같다
+#
+# 화면·도구마다 다르게 하지 않는다. Streamlit 도 저쪽도 같은 발화에 같은 menu
+# 를 본다. 가르는 것은 발화와 문맥이지 부르는 쪽이 아니다.
+#
+# 이것은 월요일 시연을 위한 임시방편이다. 아래 목록에 없는 말투는 화면 recipe
+# 를 아예 못 본다 ("내가 보고 있는 데 CCTV" · 장소 없는 "CCTV 보여줘").
+# 후보에서 빼는 것이 아니라 보여주지도 않는 것이라 LLM 이 고칠 길이 없다.
+# 왜 이 방향인지와 무엇이 진짜 문제인지는 NOTES.md 「마흔여덟째」에 있다.
+
+# 발화가 화면을 가리키는지 가르는 낱말. 한 곳에 모은다.
+#
+# 앞의 일곱은 사람이 정했다(2026-08-29). 관심 지점 하나는 저쪽 프롬프트에서
+# 맞춰 넣었다 — KRRI_ASAP 의 parse_intent 가 문맥이 있을 때 덧붙이는 한 줄이
+# "here, this place, selected location, 관심 지점, 선택한 위치, 이 위치" 이고,
+# 그 한국어 셋 중 둘은 이미 사람 목록에 있었다. 저쪽 파일은 읽기만 했다.
+#
+# 부분 문자열로 찾는다. "오송역 근처" 는 "이 근처" 가 아니고 "오송역 위치" 도
+# "이 위치" 가 아니라서 안 걸린다. 정답표 서른한 발화에 하나도 안 걸리는 것을
+# tests/demo/api/test_menu_split.py 가 지킨다.
+SCREEN_WORDS = (
+    "여기",
+    "이 위치",
+    "선택한 위치",
+    "지금 보이는",
+    "현재 화면",
+    "이 근처",
+    "이 지역",
+    "관심 지점",
+)
+
+
+def _points_at_screen(utterance: str) -> bool:
+    """발화가 화면을 가리키는가.
+
+    출력  참이면 화면을 가리킴
+    규칙  낱말로만 가름. 부분 문자열이 걸리면 참
+    제약  가르자고 LLM 을 부르지 않는다.
+          요청 한 번에 한 번만 부르는 것이 지금 길의 값임
+    """
+    return any(word in utterance for word in SCREEN_WORDS)
+
+
+def _menu_for(utterance: str, context: dict | None) -> str:
+    """이번 요청의 프롬프트에 실을 menu.
+
+    입력  발화 · 저쪽 화면이 보낸 지도 문맥(없으면 없는 것으로)
+    출력  menu.yaml 에서 recipe 몇 벌만 남긴 문자열
+    규칙  발화가 화면을 가리키고 그 값이 실제로 와 있을 때만 화면 recipe.
+          낱말이 걸렸는데 문맥에 값이 없으면 기존 마흔으로 감. 없는 것을
+          제안하면 LLM 이 고르고 나서 _without_dropped 에 지워짐
+          어느 recipe 가 화면 것인지는 경로 첫 칸으로 봄. _starts_at 이 이미
+          그 판단을 하므로 새 기준을 만들지 않음
+          값이 온 노드만 남김. 우클릭 전이면 보이는 범위 열 벌뿐임.
+          찍은 지점 아홉 벌은 그때 골라도 못 쓰므로 안 보여줌
+          남길 것이 없으면 원문 전부를 냄. 머리말만 실리는 것보다 나음
+    제약  menu.yaml 을 안 고친다.
+          읽은 문자열에서 블록을 뺄 뿐임
+    """
+    starts = {recipe_id: _starts_at(recipe_id) for recipe_id in ontology_service.recipe_ids()}
+
+    available = set(step_service.context_starts(context))
+    if available and _points_at_screen(utterance):
+        keep = [rid for rid, start in starts.items() if start in available]
+    else:
+        keep = [rid for rid, start in starts.items() if start not in step_service.CONTEXT_STARTS]
+
+    return load_menu(keep) if keep else load_menu()
+
+
 def _resolve_full(
     utterance: str, llm_client, reason_max_length: int, context: dict | None = None
 ) -> dict:
@@ -187,8 +277,9 @@ def _resolve_full(
           llm_recipe_id · llm_candidate_recipe_ids · paths
     규칙  축 선택지도 조회 후보도 온톨로지에서 옴. 노드를 등록하면 함께 늘어남
           문맥이 못 채우는 시작 데이터는 선택지에서도 후보에서도 빠짐.
-          LLM 이 그것으로 시작하는 recipe 를 골라도 뺌 — menu 에는 그 문장이
-          남아 있음
+          LLM 이 그것으로 시작하는 recipe 를 골라도 뺌
+          menu 도 요청마다 갈림(_menu_for). 발화가 화면을 가리키고 그 값이
+          와 있으면 화면 recipe 만, 아니면 기존 마흔만 실림
           recipe_id 와 candidate_recipe_ids 는 _verdict 를 지난 값임.
           검산 전에 LLM 이 쓴 날것은 llm_ 이 붙은 두 key 에 따로 실림 —
           검산이 답을 바꾼 자리를 세려면 둘이 다 있어야 함
@@ -206,7 +297,7 @@ def _resolve_full(
     result = resolve_route(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
         variables={
-            "menu": load_menu(),
+            "menu": _menu_for(utterance, context),
             "utterance": utterance,
             "given_choices": described["given"],
             "want_choices": described["want"],

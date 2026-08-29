@@ -113,3 +113,34 @@ def layout_ratios() -> dict:
                 ratios[field] = value
 
     return ratios
+
+
+# ── 지도가 없는 화면이 보내는 고정 문맥 ─────────────────────────────
+#
+# ★ 고정값이다. 이 화면에는 지도가 없어서 실제로 보고 있는 범위라는 것이 없다.
+#
+# 그런데도 보내는 것은, 저쪽 화면과 같은 발화에 같은 경로를 골라야 하기
+# 때문이다. 백엔드는 문맥이 오면 화면 시작 데이터 둘(찍은 지점 · 보이는 범위)을
+# 살리고 안 오면 죽인다. 안 보내면 이 화면만 다른 후보를 보게 된다.
+#
+# 모양은 저쪽 평상시와 같다 — bbox 는 있고 selectedLocation 은 null 이다
+# (KRRI_ASAP 의 useChat 이 우클릭 전에 그렇게 보낸다).
+#
+# 값은 오송역(127.3277, 36.6200)에서 반경 15km 다. 지어낸 값이 아니라
+# step_service.RADIUS_METERS 로 만든 상자이고, road.getCctv 가 실제로 그 넷을
+# 받은 적이 있다(tests/vendor/test_workflow_answer.py 의 minLon 127.15983…).
+# 시연이 오송·청주에서 도므로 그 일대를 보고 있다고 두는 것이다.
+FIXED_VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
+
+# 화면에 적을 한 줄. 고정값이라는 것이 시연장에서 보여야 한다.
+FIXED_VIEW_LABEL = "지도 문맥 고정 · 오송역 반경 15km (이 화면에는 지도가 없다)"
+
+
+def map_context() -> dict:
+    """이 화면이 /resolve 에 실어 보내는 지도 문맥.
+
+    출력  저쪽 ChatRequest.context 와 같은 모양. view.bbox 와 selectedLocation
+    규칙  selectedLocation 은 늘 None. 찍을 지도가 없음
+          저쪽 평상시(우클릭 전)와 같은 모양임
+    """
+    return {"view": {"bbox": FIXED_VIEW_BBOX}, "selectedLocation": None}

@@ -13,6 +13,8 @@
     python tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
     python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
     python tools/check_resolve.py --narrow          좁히기 길(두 번 부르기)로. 기본은 끔
+    python tools/check_resolve.py --context none    지도 문맥 없이. 「마흔여섯째」 이전과 같은 조건
+    python tools/check_resolve.py --context both    우클릭까지 한 셈으로 (찍은 지점 + 보이는 범위)
 
 ## 「좁히기」 스위치 — 켜면 검산 칸이 「해당 없음」이 된다
 
@@ -36,6 +38,19 @@
     합계           이 도구가 잰 /resolve 한 번의 시간 평균(초). 끔 · 켬을 이 칸으로 견준다
 
 끔일 때는 합계 시간만 찍는다. 다른 칸은 그 길에 없다.
+
+## 「지도 문맥」 옵션 — 기본이 「bbox 만」이다
+
+`--context` 는 /resolve 본문에 저쪽 화면이 보내는 지도 문맥을 실어 보낸다.
+값은 `demo/ui/config.py` 의 고정값이고 거기 근거가 적혀 있다 (오송역 반경 15km).
+
+    none   안 보낸다. 화면 시작 데이터 둘이 죽는다 — 「마흔여섯째」 이전과 같은 조건
+    bbox   보이는 범위만. **기본값이다.** 저쪽 평상시(우클릭 전)와 같은 모양
+    both   보이는 범위 + 찍은 지점. 저쪽에서 우클릭을 한 뒤와 같은 모양
+
+**기본을 bbox 로 둔 것은 시연과 같은 조건에서 재려는 것이다.** 저쪽 화면은 늘
+bbox 를 보내고, Streamlit 도 2026-08-29 부터 같은 것을 보낸다. 문맥이 오면
+프롬프트의 menu 도 갈린다 (resolve_service `_menu_for`).
 
 ## 두 묶음 — 아홉과 열아홉을 갈라 찍는다
 
@@ -187,6 +202,15 @@ from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
+
+# 저장소 뿌리를 path 에 넣는다. tools/ 아래에서 돌아가므로 이것 없이는 demo 를
+# 못 찾는다 (check_wiring.py 와 같은 방식이다).
+REPO_ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(REPO_ROOT))
+
+# 고정 지도 문맥은 화면이 갖는다. 이 도구가 같은 값을 다시 적으면 둘이 조용히
+# 어긋나고, 그러면 "시연과 같은 조건" 이라는 말이 거짓이 된다.
+from demo.ui import config as ui_config  # noqa: E402
 
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
@@ -389,7 +413,6 @@ def _groups(entries) -> list:
         if group
     ]
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(REPO_ROOT / ".env")
 
 # 화면이 부르는 주소와 같아야 표를 믿을 수 있다. 그래서 같은 환경변수를 본다.
@@ -406,6 +429,38 @@ UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번
 
 # 좁히기 스위치. --narrow 가 켠다. **기본은 끔.** main() 만 바꾼다.
 NARROW = False
+
+# 지도 문맥 스위치. --context 가 정한다. **기본은 "bbox".** main() 만 바꾼다.
+#
+# 고정값은 여기서 다시 적지 않는다. 화면이 보내는 것과 한 글자도 달라지면
+# 표가 시연을 못 말하므로 출처를 하나로 둔다 — demo/ui/config.py 다.
+CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = "none", "bbox", "both"
+CONTEXT = CONTEXT_BBOX
+
+# --context both 일 때 얹는 찍은 지점. 오송역이고 bbox 의 중심과 같은 좌표다.
+# label 과 source 는 저쪽 useChat 이 우클릭 뒤에 얹는 것과 같은 문자열이다.
+PICKED_POINT = {
+    "lon": 127.3277,
+    "lat": 36.6200,
+    "label": "관심 지점",
+    "source": "map-right-click",
+}
+
+
+def _context_payload() -> dict | None:
+    """이번 측정에서 /resolve 본문에 실을 지도 문맥.
+
+    출력  문맥 dict. --context none 이면 None
+    규칙  bbox 는 화면과 같은 고정값을 씀. 여기서 좌표를 적지 않음
+          both 는 그 위에 찍은 지점을 얹음. 저쪽 우클릭 뒤와 같은 모양
+    """
+    if CONTEXT == CONTEXT_NONE:
+        return None
+
+    context = ui_config.map_context()
+    if CONTEXT == CONTEXT_BOTH:
+        context = {**context, "selectedLocation": dict(PICKED_POINT)}
+    return context
 
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
@@ -521,6 +576,8 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
           을 더한 dict. 끔이면 elapsed 만 있음
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
+          지도 문맥은 본문으로 실어 보냄. --context none 이면 안 보냄 —
+          그때 요청은 이 옵션을 만들기 전과 한 글자도 같음
           status 를 후보와 함께 냄. 적중 표가 근접·빗나감을 가르는 데 씀 —
           후보 집합만으로는 CLARIFY 와 SELECT 가 안 갈림
           LLM 단독 후보는 같은 응답에서 읽음. 부르는 횟수가 안 늘어남
@@ -534,7 +591,10 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     started = time.perf_counter()
     try:
         response = requests.post(
-            f"{BASE_URL}/resolve", params=params, timeout=TIMEOUT
+            f"{BASE_URL}/resolve",
+            params=params,
+            json=_context_payload(),
+            timeout=TIMEOUT,
         )
     except requests.exceptions.ConnectionError as exc:
         raise ServerDown(str(exc)) from exc
@@ -1284,10 +1344,17 @@ def main() -> int:
         "--narrow", action="store_true",
         help="좁히기 길(LLM 두 번 부르기)로 잰다. 기본은 끔 — 지금 길",
     )
+    parser.add_argument(
+        "--context",
+        choices=(CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH),
+        default=CONTEXT_BBOX,
+        help="지도 문맥을 얼마나 실을지. 기본은 bbox — 저쪽 평상시와 같다",
+    )
     args = parser.parse_args()
 
-    global NARROW
+    global NARROW, CONTEXT
     NARROW = args.narrow
+    CONTEXT = args.context
 
     if args.only:
         wanted = [int(part) for part in args.only.replace(" ", "").split(",") if part]
@@ -1304,6 +1371,7 @@ def main() -> int:
         f"발화 {len(entries)}개 × {args.runs}회 · {_recipe_state()}"
         f" · 모델 {args.model or '서버 기본'}"
         f" · 좁히기 {'켬' if NARROW else '끔'}"
+        f" · 지도 문맥 {CONTEXT}"
     )
     print()
 

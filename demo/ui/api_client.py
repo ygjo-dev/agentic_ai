@@ -97,10 +97,23 @@ def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> di
     )
 
 
-def resolve(utterance: str) -> dict:
-    """발화 → Recipe 선택. 경로(paths)까지 함께 옴."""
+def resolve(utterance: str, context: dict | None = None) -> dict:
+    """발화 → Recipe 선택. 경로(paths)까지 함께 옴.
+
+    입력  발화 · 지도 문맥(없으면 안 보냄)
+    규칙  문맥은 본문으로 보냄. 발화는 query 임 — 백엔드가 그렇게 받음
+          문맥이 있어야 화면 시작 데이터 둘이 후보에 남음. 무엇을 보내는지는
+          config.map_context 가 정함
+    제약  여기서 문맥을 만들지 않는다.
+          이 파일은 백엔드와 말하는 창구이고 무엇을 보고 있는 셈인지는
+          화면 설정이 정함
+    """
     return _call(
-        "POST", "/resolve", timeout=RESOLVE_TIMEOUT, params={"utterance": utterance}
+        "POST",
+        "/resolve",
+        timeout=RESOLVE_TIMEOUT,
+        params={"utterance": utterance},
+        json=context,
     )
 
 

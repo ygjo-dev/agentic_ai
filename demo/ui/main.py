@@ -186,7 +186,8 @@ with bottom:
 
         started = time.perf_counter()  # Run 클릭 ~ 응답 수신까지 측정
         try:
-            result = api_client.resolve(utterance_trimmed)
+            # 지도가 없는 화면이라 문맥은 고정값이다. 까닭은 config 에 적혀 있다.
+            result = api_client.resolve(utterance_trimmed, config.map_context())
             st.session_state["view"] = {
                 "kind": "resolve",
                 "utterance": utterance_trimmed,
