@@ -171,6 +171,75 @@ MISSING_STATUS = {
     "empty": "데이터가 없습니다",
 }
 
+# ── 못 찾았을 때의 머리말을 넓히는 것 ─────────────────────────────
+#
+# 지금까지 0건 · not_found 의 머리말이 EMPTY_HEADLINE 한 줄이었다. 화면이
+# "찾지 못했습니다." 만 말하고 **왜 못 찾았는지도 어떻게 말하면 되는지도 없어**
+# 사람이 다음에 무엇을 할지 모른다 (2026-08-30 화면 실측).
+#
+#   찾지 못했습니다.
+#     1. election.searchDistricts  query="국회의원 선거구"  0건
+#
+# **무엇으로 찾았는지는 머리말이 되풀이하지 않는다.** 단계 줄이 이미
+# `query="국회의원 선거구"` 를 적는다 (_input_text). 같은 값을 두 줄에 적으면
+# 늘어난 줄이 새로 알려주는 것이 없다. 머리말은 단계 줄이 못 말하는 둘을
+# 맡는다 — **어디를 뒤졌는가** 와 **어떻게 말하면 되는가** 다.
+#
+# **낱말을 코드에 안 적는다.** 「마흔아홉째」가 NO_MATCH 안내를 그렇게 만들었다 —
+# 이름을 코드에 안 두고 온톨로지에서 뽑아 넘겼다(no_match_answer 의 topics ·
+# starts). 여기서도 낱말을 데이터에서 뽑되 **출처가 온톨로지가 아니라 응답이다.**
+# 0건은 vendor 가 실패로 안 보므로 답을 generic_mcp_executor 가 (intent, trace)
+# 만으로 부르고, vendor 가 ontology 를 import 하면 의존이 거꾸로 선다
+# (NOTICE_KEYS 위 주석과 같은 까닭). 자세한 것은 NOTES.md 「쉰다섯째」.
+#
+# DATASET_KEY       무엇을 뒤졌는지가 실려 오는 최상위 칸.
+#                   tools/probe_out 240건 중 101건이 이 칸을 갖고 있다
+#                   (2026-08-30 실측)
+# DATASET_NAME_KEY  그 안에서 볼 이름. **name 하나만 본다.**
+#                   실측 101건 중 85건이 name 을 갖고 값이 사람이 읽는 이름이다
+#                   ("2024 제22대 국회의원 선거구" · "한국환경공단 전기자동차
+#                   충전소" · "2026 지방선거 시도별 교통 공약 요약" · "시군구").
+#                   나머지 16건(adminBoundary 둘)은 name 이 없고 source 만
+#                   있는데 그것은 데이터의 출처지 이름이 아니라
+#                   ("2026 지방선거 공약 GIS 프로젝트 행정구역 shapefile" ·
+#                   "election.shp" · "https://github.com/…") 화면에 낼 것이
+#                   아니다. **source 는 안 본다.** 그 도구의 0건은 아래
+#                   WHERE_LINE 이 통째로 빠지고 RETRY 만 남는다
+# DATASET_NAME_LIMIT 자르는 길이. 아래 SOURCE_LIMIT 과 같은 48 이다 —
+#                   둘 다 「」 안에 들어가는 데이터 이름이라 자를 자가 같아야
+#                   한다. 상수를 하나로 합치지 않은 것은 SOURCE_LIMIT 이
+#                   이 줄보다 아래에 있어서다 (파일 차례를 안 흔든다)
+#
+# **건수는 안 싣는다.** dataset 안에 featureCount · districtCount 가 있지만
+# 단위를 모르는 수치를 이름 옆에 놓으면 딴 뜻으로 읽힌다 — 이 파일이
+# _measure_text 에서 이미 겪었다 (totalRegionCount 17 이 충전소 수로 읽혔다).
+DATASET_KEY = "dataset"
+DATASET_NAME_KEY = "name"
+DATASET_NAME_LIMIT = 48
+
+# 어디를 뒤졌는가. dataset 이름이 있을 때만 붙는다.
+WHERE_LINE = "찾아본 곳은 {name}입니다."
+
+# 어떻게 말하면 되는가. **0건과 not_found 를 가른다.**
+#
+# 둘은 뜻이 다르고 사람이 할 일도 다르다.
+#
+#   0건        검색어로 훑었는데 걸린 것이 없다. 그 낱말이 아무 이름과도
+#              안 겹친 것이라 **낱말을 바꾸면** 나올 수 있다
+#   not_found  이름을 지정해 집어 오는 호출인데 그 이름이 데이터에 없다.
+#              낱말을 바꾸는 것이 아니라 **그 데이터에 있는 이름을 그대로**
+#              대야 한다 (election.getDistrict 가 "충북 청주서원" 은 주고
+#              "충북 제1선거구" 는 not_found 다 — 2026-08-30 실측)
+#
+# **status "empty" 에는 안 붙인다.** 그것은 적재된 것이 없다는 뜻이라
+# (ev.getDatasetInfo · population.getDatasetInfo, MISSING_STATUS 위 주석)
+# 사람이 다시 말해서 될 일이 아니다. 될 리 없는 일을 시키지 않는다.
+RETRY_EMPTY = "다른 낱말로 다시 말씀해 주세요."
+RETRY_OF_STATUS = {"not_found": "데이터에 있는 이름을 그대로 말씀해 주세요."}
+
+# 머리말 둘째 줄의 조각 사이 표시.
+GUIDE_JOIN = " "
+
 # ── 무엇으로 불렀는가 ──────────────────────────────────────────────
 #
 # trace 항목의 input 은 vendor 가 참조와 어댑터까지 푼 실제 호출 인자다.
@@ -247,6 +316,8 @@ def compose_workflow_answer(
           성공이면 첫 줄은 intent.answer_instruction 을 그대로 씀. 노드가 아는
           문장이라 도구 이름으로는 만들 수 없음
           빈 결과 · 오류면 첫 줄을 우리 문구로 바꿔 씀
+          빈 결과의 첫 줄은 두 줄일 수 있음. 어디를 뒤졌고 어떻게 말하면
+          되는지를 _empty_headline 이 아래에 붙임
           answer_instruction 이 없으면 단계 목록만 남음
           trace 가 비면 단계 목록이 없으므로 첫 줄만 남음
           failed 는 키워드 전용이고 기본이 거짓임. vendor 의
@@ -258,7 +329,7 @@ def compose_workflow_answer(
     if verdict == SUCCESS:
         headline = str(intent.get("answer_instruction") or "").strip()
     elif verdict == EMPTY:
-        headline = EMPTY_HEADLINE
+        headline = _empty_headline(trace[-1] if trace else {})
     else:
         headline = ERROR_HEADLINE
 
@@ -481,6 +552,95 @@ def _missing_line(result: Dict[str, Any]) -> str:
     if not status:
         return ""
     return _notice(result) or MISSING_STATUS[status]
+
+
+def _empty_headline(item: Dict[str, Any]) -> str:
+    """못 찾았을 때의 첫 줄. 붙일 것이 있으면 두 줄.
+
+    입력  빈 결과 판정을 낸 마지막 trace 항목. trace 가 비면 빈 dict
+    출력  EMPTY_HEADLINE 한 줄, 또는 그 아래 안내 한 줄이 더 붙은 두 줄
+    규칙  첫 줄은 늘 EMPTY_HEADLINE 임. 판정이 그 줄이고 안 바뀜
+          둘째 줄은 어디를 뒤졌는가와 어떻게 말하면 되는가를 이은 것임.
+          둘 다 없으면 둘째 줄이 통째로 빠져 지금까지와 같은 한 줄이 됨
+          어디를 뒤졌는가는 응답이 들고 온 데이터 이름임. 없으면 그 칸이 빠짐
+          어떻게 말하면 되는가는 _retry_line 이 고름. 사람이 다시 말해서
+          될 일이 아니면 빈 문자열을 냄
+    제약  무엇으로 찾았는지를 여기 안 적는다.
+          단계 줄이 이미 인자를 적음. 같은 값을 두 줄에 적지 않음
+    """
+    result = item.get("result")
+
+    parts = []
+    name = _dataset_name(result)
+    if name:
+        parts.append(WHERE_LINE.format(name=SOURCE_FORMAT.format(name=name)))
+
+    retry = _retry_line(item)
+    if retry:
+        parts.append(retry)
+
+    if not parts:
+        return EMPTY_HEADLINE
+    return EMPTY_HEADLINE + "\n" + GUIDE_JOIN.join(parts)
+
+
+def _dataset_name(result: Any) -> str:
+    """무엇을 뒤졌는지 응답이 밝힌 이름. 없으면 "".
+
+    규칙  최상위 DATASET_KEY 안의 DATASET_NAME_KEY 하나만 봄
+          문자열이 아니거나 비어 있으면 ""
+          DATASET_NAME_LIMIT 에서 자름. 자른 것은 _clip 이 밝힘
+    제약  같은 칸의 다른 이름을 대신 쓰지 않는다.
+          source 는 데이터의 출처지 사람이 읽을 이름이 아님
+    """
+    if not isinstance(result, dict):
+        return ""
+
+    dataset = result.get(DATASET_KEY)
+    if not isinstance(dataset, dict):
+        return ""
+
+    value = dataset.get(DATASET_NAME_KEY)
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    return _clip(value, DATASET_NAME_LIMIT)
+
+
+def _retry_line(item: Dict[str, Any]) -> str:
+    """어떻게 말하면 되는지 한 마디. 댈 것이 없으면 "".
+
+    입력  빈 결과 판정을 낸 trace 항목
+    출력  다시 말하는 법 한 문장
+    규칙  그 단계를 글자로 부른 것이 아니면 "". 좌표 · 번호로만 부른
+          호출은 사람이 고쳐 말할 낱말이 그 단계에 없음
+          응답이 status 로 "없다" 고 말했으면 RETRY_OF_STATUS 를 봄.
+          거기 없는 status 는 "" — empty 가 그럼
+          status 가 없는 0건은 RETRY_EMPTY
+    제약  예시 값을 지어내지 않는다.
+          무엇이 데이터에 있는지 이 파일은 모름. 있는 이름을 대라고만 함
+    """
+    if not _called_with_words(item.get("input")):
+        return ""
+
+    status = _missing_status(item.get("result"))
+    if status:
+        return RETRY_OF_STATUS.get(status, "")
+    return RETRY_EMPTY
+
+
+def _called_with_words(tool_input: Any) -> bool:
+    """그 단계를 사람의 낱말로 불렀는가.
+
+    출력  참이면 인자에 글자 값이 하나라도 있음
+    규칙  최상위 값만 봄. 문자열이고 비어 있지 않아야 함
+          숫자 · bool · dict · list 는 안 셈. 좌표 두 개로 부른 호출은
+          거짓임
+    """
+    if not isinstance(tool_input, dict):
+        return False
+    return any(
+        isinstance(value, str) and value.strip() for value in tool_input.values()
+    )
 
 
 def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:

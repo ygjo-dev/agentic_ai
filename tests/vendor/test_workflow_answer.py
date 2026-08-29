@@ -994,3 +994,186 @@ def test_어떤_결과도_긴_토막을_화면에_안_흘린다():
         )
         longest = max(answer.split(), key=len)
         assert len(longest) <= 60, f"{longest} 가 통째로 나갔음"
+
+
+# ── 0건일 때 무엇으로 찾았고 어떻게 말하면 되는지 (2026-08-30) ──────
+#
+# Gateway 직접 호출 실물이다 (user_context 는 execute_service.USER_CONTEXT).
+# 셋 다 화면에서 0건 · not_found 가 나던 자리다.
+
+# election.searchDistricts {"query": "국회의원 선거구"} 0건.
+SEARCH_DISTRICTS_EMPTY = {
+    "type": "FeatureCollection",
+    "features": [],
+    "items": [],
+    "count": 0,
+    "totalMatches": 0,
+    "limit": 20,
+    "dataset": {
+        "datasetId": "kr-assembly-districts-2024",
+        "name": "2024 제22대 국회의원 선거구",
+        "electionDate": "2024-04-10",
+        "districtCount": 254,
+        "crs": "EPSG:4326",
+        "format": "GeoJSON FeatureCollection",
+        "source": "https://github.com/OhmyNews/2024_22_elec_map",
+        "properties": ["SGG_Code", "SIDO_SGG", "SIDO", "SGG"],
+        "bbox": [[124.61169218381582, 33.11579804189935],
+                 [130.91785921273643, 38.61114065497731]],
+    },
+    "query": {"text": "국회의원 선거구", "sido": None, "code": None, "all": False},
+}
+
+# adminBoundary.searchBoundaries {"query": "행정경계"} 0건.
+# dataset 에 name 이 없고 source 만 있다.
+SEARCH_BOUNDARIES_EMPTY = {
+    "type": "FeatureCollection",
+    "features": [],
+    "count": 0,
+    "totalMatches": 0,
+    "limit": 20,
+    "bbox": None,
+    "items": [],
+    "dataset": {
+        "source": "2026 지방선거 공약 GIS 프로젝트 행정구역 shapefile",
+        "datasetVersion": "2026",
+        "crs": "EPSG:4326",
+        "format": "PostGIS",
+        "featureCount": 252,
+    },
+    "query": {"layer": "sigungu", "query": "행정경계", "limit": 20},
+}
+
+
+def test_0건이면_어디를_뒤졌고_어떻게_말하면_되는지가_함께_나온다():
+    """"찾지 못했습니다." 한 줄로는 다음에 무엇을 할지 알 수 없음.
+
+    실측 : 화면에 "찾지 못했습니다." 와 단계 줄 하나만 나왔고 사용자가
+    발화를 어떻게 고쳐야 하는지가 없었음 (2026-08-30).
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "election.searchDistricts",
+        "input": {"query": "국회의원 선거구"},
+        "result": SEARCH_DISTRICTS_EMPTY,
+    }]
+    answer = compose_workflow_answer(
+        {"answer_instruction": "국회의원 선거구 국회의원 지역구 목록을 조회했습니다."}, trace
+    )
+
+    assert answer.startswith("찾지 못했습니다.")
+    assert "「2024 제22대 국회의원 선거구」" in answer
+    assert "다른 낱말로 다시 말씀해 주세요." in answer
+
+
+def test_어디를_뒤졌는지는_응답이_들고_온_이름으로만_적는다():
+    """이름을 코드에 안 적음. 응답의 dataset.name 하나만 봄.
+
+    source 는 데이터의 출처지 사람이 읽을 이름이 아님 — 그 칸만 있는
+    응답은 어디를 뒤졌는지 줄이 통째로 빠짐.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "adminBoundary.searchBoundaries",
+        "input": {"query": "행정경계"},
+        "result": SEARCH_BOUNDARIES_EMPTY,
+    }]
+    answer = compose_workflow_answer(
+        {"answer_instruction": "행정경계 행정구역 경계를 조회했습니다."}, trace
+    )
+
+    assert answer.startswith("찾지 못했습니다.")
+    assert "찾아본 곳은" not in answer
+    assert "shapefile" not in answer
+    assert "다른 낱말로 다시 말씀해 주세요." in answer
+
+
+def test_not_found_는_0건과_다르게_말한다():
+    """뜻이 다름. 0건은 낱말이 안 겹친 것이고 not_found 는 그 이름이 없는 것임.
+
+    낱말을 바꿔 보라고 하면 안 됨 — 이름을 지정해 집어 오는 호출이라
+    데이터에 있는 이름을 그대로 대야 함.
+    """
+    trace = [{
+        "id": "s1",
+        "tool": "election.getDistrict",
+        "input": {"name": "충북 제1선거구"},
+        "result": NOT_FOUND,
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "지역구를 조회했습니다."}, trace)
+
+    assert "데이터에 있는 이름을 그대로 말씀해 주세요." in answer
+    assert "다른 낱말로 다시 말씀해 주세요." not in answer
+
+
+def test_적재된_것이_없으면_다시_말하라고_안_한다():
+    """status "empty" 는 데이터가 안 들어온 것임. 사람이 다시 말해서 될 일이 아님."""
+    trace = [{
+        "id": "s1",
+        "tool": "ev.getDatasetInfo",
+        "input": {"query": "충전소"},
+        "result": {
+            "id": "kr-ev-chargers-keco-current",
+            "name": "한국환경공단 전기자동차 충전소",
+            "status": "empty",
+            "stationCount": 0,
+            "dataset": {"name": "한국환경공단 전기자동차 충전소"},
+        },
+    }]
+    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+
+    assert "말씀해 주세요" not in answer
+
+
+def test_좌표로만_부른_0건에는_다시_말하라고_안_한다():
+    """그 단계에 사람이 고쳐 말할 낱말이 없음. 지점을 찍어 부른 호출임."""
+    trace = [
+        geocode_step(OSONG),
+        {
+            "id": "s2",
+            "tool": "election.findDistrictByPoint",
+            "input": {"lon": 127.3276, "lat": 36.6199},
+            "result": {
+                "features": [],
+                "count": 0,
+                "dataset": {"name": "2024 제22대 국회의원 선거구"},
+            },
+        },
+    ]
+    answer = compose_workflow_answer({"answer_instruction": "선거구를 조회했습니다."}, trace)
+
+    assert "「2024 제22대 국회의원 선거구」" in answer
+    assert "말씀해 주세요" not in answer
+
+
+def test_넓어진_머리말도_raw_JSON_을_안_흘린다():
+    """dataset 안에 bbox 두 겹과 datasetId 가 통째로 들어 있음."""
+    for result in (SEARCH_DISTRICTS_EMPTY, SEARCH_BOUNDARIES_EMPTY, NOT_FOUND):
+        answer = compose_workflow_answer(
+            {"answer_instruction": "조회했습니다."},
+            [{"id": "s1", "tool": "t", "input": {"query": "선거구"}, "result": result}],
+        )
+        assert "kr-assembly-districts-2024" not in answer
+        assert "124.61169218381582" not in answer
+        assert "EPSG:4326" not in answer
+        longest = max(answer.split(), key=len)
+        assert len(longest) <= 60, f"{longest} 가 통째로 나갔음"
+
+
+def test_0건이_아닌_답은_머리말이_한_줄_그대로다():
+    """넓힌 것은 0건 자리뿐임. 성공 · 오류 문구가 한 글자도 안 달라져야 함."""
+    success = compose_workflow_answer(
+        {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
+    )
+    assert success.splitlines()[0] == "오송역 좌표를 조회했습니다."
+    assert "말씀해 주세요" not in success
+    assert "찾아본 곳은" not in success
+
+    failure = compose_workflow_answer(
+        {"answer_instruction": "오송역 좌표를 조회했습니다."},
+        [{"id": "s1", "tool": "geo.geocode", "input": {"query": "지금 보이는 곳"},
+          "error": "s1 단계 장소 '지금 보이는 곳'을(를) 찾을 수 없습니다."}],
+    )
+    assert failure.splitlines()[0] == "조회하지 못했습니다."
+    assert "말씀해 주세요" not in failure
+    assert "찾아본 곳은" not in failure
