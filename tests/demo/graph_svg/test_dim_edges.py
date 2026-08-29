@@ -65,6 +65,7 @@ def test_dim_edges_is_keyword_only():
     }
     assert keyword_only == {
         "positions",
+        "pin",
         "spring",
         "graph_attrs",
         "dotted_labels",

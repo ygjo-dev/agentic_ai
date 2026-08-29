@@ -26,7 +26,12 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from demo.graph_svg.dot import build_dot
+from demo.graph_svg.dot import (
+    GROUP_ATTRS,
+    NODE_ATTRS,
+    build_dot,
+    wrap_node_labels,
+)
 from demo.graph_svg.graphviz import layout_positions
 
 # 이 패키지 안에 둔다. 좌표는 그리기의 소유다 — 만드는 것도 쓰는 것도 여기뿐이고,
@@ -142,8 +147,9 @@ def transpose(
 
 
 # 그릴 때만 곱하는 좌표 배율. 저장된 좌표는 안 고친다 (아래 for_drawing).
-# 겹침 0 을 지키는 하한이 정한 값이다. 근거와 표는 NOTES.md 「쉰두째」.
-DRAW_SCALE = 0.64
+# **1.0 이다** — 배치가 처음부터 촘촘하게 놓이므로 줄일 것이 없다. 0.64 였던
+# 때의 근거와 왜 없어졌는지는 NOTES.md 「쉰두째」·「쉰셋째」.
+DRAW_SCALE = 1.0
 
 
 def for_drawing(
@@ -199,16 +205,57 @@ def resolve(
 
 # neato graph 속성. inputscale=72 가 없으면 좌표 왕복이 72배로 어긋난다(실측).
 #
-# model=subset 은 거리를 이웃 부분집합으로 계산한다. 기본값(mode=major)보다
-# 엣지 교차가 훨씬 적고 노드 사이가 넓다 — 21벌을 뽑아 재보니 교차 12 -> 3,
-# 최소 간격 8.1 -> 50.3pt 였다. 화면이 난잡해 보이던 원인이 기본 모델이었다.
+# 거리 모델은 기본값(model=shortpath)을 쓴다. 예전에는 model=subset 이었고
+# 근거는 "교차가 적고 노드 사이가 넓다" 였는데, 노드가 48개가 된 지금 다시
+# 재보니 교차는 둘 다 101 로 같고 캔버스만 5357x5348 대 2054x1726 으로
+# subset 이 2.6배 컸다. 근거가 사라졌다 (NOTES.md 「쉰셋째」).
 # 최초와 증분에 같은 모델을 쓴다. 다르면 새 노드가 다른 규칙으로 놓여 어색해진다.
-_NEATO_MODEL = "model=subset"
-
-NEATO_ATTRS = ("inputscale=72", _NEATO_MODEL)
+NEATO_ATTRS = ("inputscale=72",)
 # 최초 배치에만 겹침을 제거한다. overlap 은 고정(!)을 무시하고 재배치하므로
 # 기존 노드를 핀으로 잡아둔 실행에는 절대 쓸 수 없다(실측: 388~710pt 이동).
-NEATO_FRESH_ATTRS = ("inputscale=72", _NEATO_MODEL, "overlap=voronoi")
+NEATO_FRESH_ATTRS = ("inputscale=72", "overlap=voronoi")
+
+# 늘리는 배수. 힘 기반 배치는 등방이라 늘 동그랗게 나오는데(H/W 0.84) 화면
+# 칸은 가로로 길다(0.35). 가로로 늘린 뒤 겹침만 다시 없애면 칸 모양에 맞는다.
+# 5.0 에서 폭과 높이를 둘 다 100% 쓴다 (NOTES.md 「쉰셋째」의 표).
+SPREAD_X = 5.0
+# 늘린 자리에서 겹침만 다시 없앤다. maxiter=0 이 배치 반복을 건너뛰므로
+# 늘려둔 모양이 그대로 남고, prism 은 겹친 노드만 국소적으로 밀어낸다.
+# sep 은 노드 둘레에 두는 여유(pt). +12 에서 가장 가까운 쌍이 24pt 떨어진다.
+NEATO_SPREAD_ATTRS = ("inputscale=72", "overlap=prism", "maxiter=0", 'sep="+12"')
+
+
+def spread(
+    nodes: dict, solid: dict, dotted: dict,
+    positions: dict[str, tuple[float, float]],
+) -> dict[str, tuple[float, float]]:
+    """가로로 늘리고 겹침만 다시 없앤 좌표.
+
+    입력  노드 · 실선 · 점선 · 최초 배치 좌표
+    출력  {node_id: (x, y)}
+    규칙  가로만 SPREAD_X 배 늘린 뒤 prism 으로 겹친 쌍만 밀어냄.
+          늘린 좌표는 핀이 아니라 시작 위치로 넘김(pin=False) — 못박으면
+          겹침 제거가 할 일이 없음
+          노드 크기를 함께 넘김. 겹침 제거가 상자 크기를 알아야 뜻이 있음
+          점선 라벨은 끔. 화면이 안 그리는 것을 배치가 세면 자리가 어긋남
+          이름은 화면과 같이 두 줄로 접어 넘김
+    제약  증분 배치에 쓰지 않는다.
+          핀이 있는 실행에 겹침 제거를 걸면 기존 노드가 밀려남
+    """
+    stretched = {node_id: (x * SPREAD_X, y) for node_id, (x, y) in positions.items()}
+
+    return layout_positions(
+        build_dot(
+            wrap_node_labels(nodes), solid, dotted,
+            positions=stretched,
+            pin=False,
+            spring=True,
+            graph_attrs=NEATO_SPREAD_ATTRS,
+            dotted_labels=False,
+            node_attrs=NODE_ATTRS,
+            group_attrs=GROUP_ATTRS,
+        )
+    )
 
 
 def ensure_positions(
@@ -247,12 +294,18 @@ def ensure_positions(
 
     fresh = not positions  # 처음이면 핀이 없으니 겹침 제거를 쓸 수 있다
     dot = build_dot(
-        nodes,
+        # 그리는 것과 같은 조건으로 놓는다. 두 줄 접기 · 노드 크기 · 점선
+        # 라벨 셋이 다 노드 상자 크기를 바꾸므로, 하나라도 빠지면 배치가
+        # 계산한 상자와 화면에 뜨는 상자가 달라져 겹침 제거가 헛돈다.
+        wrap_node_labels(nodes),
         solid,
         dotted,
         positions=positions,
         spring=True,
         graph_attrs=NEATO_FRESH_ATTRS if fresh else NEATO_ATTRS,
+        dotted_labels=False,
+        node_attrs=NODE_ATTRS,
+        group_attrs=GROUP_ATTRS,
     )
 
     positions = layout_positions(dot)
@@ -270,6 +323,10 @@ def ensure_positions(
     # 한 번은 통과하고 두 번째 등록에서 터지는 자리라 fresh 분기에만 건다.
     if fresh and is_tall(positions):
         positions = transpose(positions)
+
+    # 최초 배치에만 늘린다. 증분에 걸면 핀이 통째로 밀린다.
+    if fresh:
+        positions = spread(nodes, solid, dotted, positions)
 
     save(positions)
     return positions

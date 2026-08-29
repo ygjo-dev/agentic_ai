@@ -11,7 +11,10 @@
 원인은 두 가지였다.
   (1) 강조를 평행 엣지로 그려 조합마다 엣지 수가 달라졌다.
   (2) 순번을 label 로 붙여 Graphviz 가 라벨 공간을 확보했다.
-지금은 (1) 기존 엣지의 색만 바꾸고 (2) 순번을 xlabel 로 붙여 해결했다.
+(1) 은 기존 엣지의 색만 바꿔 해결했다. (2) 는 순번을 xlabel 로 옮겨 해결했다가,
+2026-08-29 에 순번 자체를 뺐다 — 노드가 커지면서 순번이 노드에 가렸다.
+**엣지 라벨이 하나도 없으므로 (2) 는 지금 저절로 참이다.** 다시 붙이는 날이
+오면 label 이 아니라 xlabel 이어야 한다는 실측이 여기 남아 있다.
 
 여기에 더해 **좌표를 전부 고정하고 neato -n 으로 그린다.** 배치를 아예 계산하지
 않으므로 좌표가 같다는 것이 구조적으로 보장된다. 예전에는 핀 없이 dot 으로 그려
@@ -95,7 +98,7 @@ FOUR_STEP = CANDIDATES[0] if CANDIDATES else ""
 
 COMBOS = {
     "하이라이트 없음": {},
-    "SELECT 4단(순번)": {"highlight": P(FOUR_STEP), "highlight_nodes": recipe_nodes(FOUR_STEP)},
+    "SELECT 4단": {"highlight": P(FOUR_STEP), "highlight_nodes": recipe_nodes(FOUR_STEP)},
     "SELECT 노드만(엣지 0)": {"highlight_nodes": ["find_cctv"]},
     "CLARIFY 후보 2개": {"highlight_paths": [P(r) for r in CANDIDATES[:2]]},
     "CLARIFY 후보 4개": {"highlight_paths": [P(r) for r in CANDIDATES]},
@@ -143,16 +146,6 @@ def test_canvas_size_never_changes(baseline, name):
     _, size = layout(**COMBOS[name])
 
     assert size == base_size, f"{name} 에서 캔버스 크기가 달라졌다."
-
-
-def test_order_uses_xlabel_not_label():
-    """label 을 쓰면 Graphviz 가 공간을 확보해 노드가 밀림."""
-    dot = build_dot(*domain_graph(), highlight=P(FOUR_STEP))
-
-    highlight_lines = [line for line in dot.splitlines() if "penwidth=3" in line]
-    assert highlight_lines
-    for line in highlight_lines:
-        assert "label=" not in line.replace("xlabel=", ""), line
 
 
 def test_highlight_adds_no_extra_edge():

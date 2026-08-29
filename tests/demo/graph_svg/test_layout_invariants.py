@@ -13,7 +13,7 @@
 
 여기 있는 단언 대부분은 **몇 주에 걸쳐 실측으로 알아낸 배치 성질**이다.
 어떤 강조 조합에서도 좌표가 같다 · 노드를 등록해도 기존 노드가 안 움직인다 ·
-`inputscale=72` · 핀이 있으면 `overlap` 금지 · 순번은 `xlabel`.
+`inputscale=72` · 핀이 있으면 `overlap` 금지.
 **지우면 다시 알아낼 방법이 없다.**
 
 원래 있던 곳 (전부 이 파일로 옮겼고 그 파일들은 지웠다) :
@@ -37,7 +37,12 @@ from demo.graph_svg.dot import (
     build_dot,
 )
 from demo.graph_svg.graphviz import layout_positions, render_svg
-from demo.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
+from demo.graph_svg import layout_store
+from demo.graph_svg.layout_store import (
+    NEATO_ATTRS,
+    NEATO_FRESH_ATTRS,
+    NEATO_SPREAD_ATTRS,
+)
 
 pytestmark = pytest.mark.skipif(
     shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
@@ -292,22 +297,6 @@ def test_reviving_dotted_labels_never_moves_a_node():
     assert svg_node_coords(draw(False)) == svg_node_coords(draw(True))
 
 
-def test_order_labels_survive_no_layout():
-    """후보가 하나로 좁혀지면 순번이 보여야 함. -n 에서도 살아있어야 함."""
-    positions = fresh_positions()
-
-    svg = render_svg(
-        build_dot(
-            NODES, SOLID, DOTTED,
-            highlight_paths=[PATH_A], positions=positions, spring=True,
-        ),
-        "neato",
-        no_layout=True,
-    )
-
-    assert ">1<" in svg and ">2<" in svg
-
-
 # ------------------------------------------------------------ 핵심 성질 (2)
 def test_adding_a_node_does_not_move_the_existing_ones():
     """시연의 핵심 장면. 지도가 재배치되면 "화면이 리셋됐다" 로 보임."""
@@ -331,9 +320,17 @@ def test_adding_a_node_does_not_move_the_existing_ones():
 
 
 def test_both_configs_use_the_same_layout_model():
-    """최초와 증분이 다른 모델이면 새 노드가 다른 규칙으로 놓여 어색해짐."""
-    assert "model=subset" in NEATO_ATTRS
-    assert "model=subset" in NEATO_FRESH_ATTRS
+    """최초와 증분이 다른 모델이면 새 노드가 다른 규칙으로 놓여 어색해짐.
+
+    모델 이름을 박지 않음. 예전에는 둘 다 model=subset 이었고 지금은 둘 다
+    기본값임 — 지켜야 하는 것은 어느 모델이냐가 아니라 둘이 같다는 것임.
+    """
+    models = [
+        {attr for attr in attrs if attr.startswith(("model=", "mode="))}
+        for attrs in (NEATO_ATTRS, NEATO_FRESH_ATTRS)
+    ]
+
+    assert models[0] == models[1]
 
 
 def test_fresh_layout_is_deterministic_under_subset():
@@ -345,9 +342,36 @@ def test_overlap_removal_is_not_used_when_pinning():
     """overlap 은 고정(!)을 무시하고 재배치함. 핀이 있으면 쓰면 안 됨.
 
     실측으로 388~710pt 씩 움직였음. 이 테스트는 그 설정이 되살아나는 것을 막음.
+    겹침 제거를 쓰는 설정이 둘로 늘었으므로(최초 voronoi · 늘리기 prism)
+    핀을 쓰는 증분 설정에만 없으면 됨.
     """
     assert "overlap" not in " ".join(NEATO_ATTRS)
     assert "overlap=voronoi" in " ".join(NEATO_FRESH_ATTRS)
+    assert "overlap=prism" in " ".join(NEATO_SPREAD_ATTRS)
+
+
+def test_spreading_never_pins():
+    """늘리기는 겹침 제거를 쓰므로 좌표를 못박으면 안 됨.
+
+    못박으면 겹침 제거가 그것을 무시하고 재배치함 — 핀이 있는데 overlap 을
+    쓰는 바로 그 잘못된 설정이 됨. 시작 위치로만 넘겨야 함.
+    """
+    emitted = []
+    original = layout_store.layout_positions
+
+    def spy(dot):
+        emitted.append(dot)
+        return original(dot)
+
+    layout_store.layout_positions = spy
+    try:
+        layout_store.spread(NODES, SOLID, DOTTED, fresh_positions())
+    finally:
+        layout_store.layout_positions = original
+
+    assert emitted
+    assert "pos=" in emitted[0]
+    assert '!"' not in emitted[0]
 
 
 # ------------------------------------------------------------ 조밀한 그래프
@@ -421,21 +445,22 @@ def test_dense_graph_would_move_if_overlap_removal_were_used():
 
     잘못된 설정(핀이 있는데 overlap 제거)을 쓰면 실제로 노드가 움직임.
     이 테스트가 깨지면 위 테스트는 무엇이든 통과시키는 셈이 됨.
+
+    **겹침 제거를 쓰게 된 뒤에도 이 짝의 뜻은 안 바뀌었음.** 겹침 제거는
+    좌표를 못박지 않는 자리(최초 배치 · 늘리기)에서만 씀. 못박은 자리에
+    되살아나는 것을 막는 것이 이 짝의 일이고, 그 자리는 증분 배치 하나뿐임.
     """
     before, after = dense_after_adding(BARE_FRESH_ATTRS)
 
     assert worst_drift(before, after) > 1.0
 
 
-# ------------------------------------------------------------ 화살표와 순번
-# test_bottom_flow.py 에서 옮겨왔다.
+# ------------------------------------------------------------ 화살표
+# test_bottom_flow.py 에서 옮겨왔다. 예전에는 순번(xlabel)도 함께 봤는데
+# 2026-08-29 에 순번을 안 그리게 되면서 화살표만 남았다.
 @pytest.mark.skipif(shutil.which("neato") is None, reason="graphviz 가 없다")
-def test_arrows_and_bigger_numbers_never_move_a_node():
-    """화살표와 순번은 그리기지 배치가 아님.
-
-    xlabel 은 레이아웃에 관여하지 않음(label 과 달리). 캔버스는 커질 수 있음.
-    글자가 그림 밖으로 나가면 bbox 가 따라 넓어짐. 그것은 재서 보고함.
-    """
+def test_arrows_never_move_a_node():
+    """화살표는 그리기지 배치가 아님. 굵기와 화살촉을 키워도 좌표가 같아야 함."""
     positions = layout_positions(
         build_dot(NODES, SOLID, DOTTED, spring=True, graph_attrs=NEATO_FRESH_ATTRS)
     )

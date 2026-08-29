@@ -137,7 +137,11 @@ GROUP_ATTRS_TOP = (
 # 실행 경로 굵기. 배경 실선(속성 없음 = 1)보다 확실히 굵어야 "이 길이 켜졌다"
 # 가 읽힌다. 강조와 등록이 **같은 굵기**인 이유 : 하단에서는 둘 다 실행 경로다.
 # 무엇이 다른지는 색이 말한다(teal 해석 결과 · 분홍 새로 등록된 경로).
-PATH_PENWIDTH = 3
+PATH_PENWIDTH = 8
+
+# 고른 경로에 든 노드의 테두리 굵기. 선(PATH_PENWIDTH)과 위계를 맞춘다.
+# ★ 화면을 보고 조절할 값이다 — 여기 하나만 고치면 된다.
+HIGHLIGHT_NODE_PENWIDTH = 6
 
 # 실행 경로 화살표. 배경 실선은 방향이 없고(dir=none) 강조된 것만 방향을 보여준다 —
 # 하단은 "무엇 다음에 무엇이 오는가" 를 말하는 자리다. **평행 엣지를 추가하지
@@ -145,14 +149,7 @@ PATH_PENWIDTH = 3
 # 달라지면 레이아웃이 흔들린다).
 # 기본 화살표는 1639pt 캔버스를 화면 폭에 맞춰 줄이면 점처럼 보인다.
 # **화면을 보고 조절할 값이다 — 여기 하나만 고치면 된다.**
-PATH_ARROWSIZE = 1.6
-
-# 순번 글씨 크기. 엣지 기본(fontsize=10)은 축소 후 안 읽힌다.
-# 노드 글씨(24)보다 확실히 커야 실행 순서가 라벨 위로 뜬다 — 옛 비(26/16)를 지킨다.
-# xlabel 은 레이아웃에 관여하지 않으므로(label 과 달리) 키워도 노드가 안 밀린다.
-# 캔버스도 안 커졌다 — 26 · 40 · 48 이 전부 3508x2989 였다(실측).
-# **화면을 보고 조절할 값이다 — 여기 하나만 고치면 된다.**
-ORDER_FONTSIZE = 40
+PATH_ARROWSIZE = 2.5
 
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.
 MARK_NODE_PENWIDTH = 2
@@ -176,6 +173,35 @@ SOLID_LEN = 4.0
 DOTTED_LEN = 0.7
 
 
+def wrap_label(name: str) -> str:
+    """긴 이름을 두 줄로 접음.
+
+    입력  노드 이름
+    출력  가운데에 가장 가까운 공백에서 자르고 DOT 개행(\\n)을 넣은 이름.
+          공백이 없으면 그대로
+    규칙  가로 폭이 줄면 겹칠 확률이 가장 크게 줆. 노드 폭 194 -> 87
+    제약  글자 중간에서 자르지 않는다. 한글이 계속 읽혀야 함
+    """
+    if " " not in name:
+        return name
+
+    middle = len(name) / 2
+    cut = min(
+        (i for i, char in enumerate(name) if char == " "),
+        key=lambda i: abs(i - middle),
+    )
+    # DOT 문자열 안에서 \n 은 줄바꿈이다. 파이썬 개행이 아니라 두 글자로 넣는다.
+    return name[:cut] + "\\n" + name[cut + 1 :]
+
+
+def wrap_node_labels(nodes: dict) -> dict:
+    """노드 이름만 두 줄로 접은 사본. build_dot 은 안 건드림."""
+    return {
+        node_id: {**node, "name": wrap_label(node.get("name", node_id))}
+        for node_id, node in nodes.items()
+    }
+
+
 def build_dot(
     nodes: dict,
     solid: dict,
@@ -185,6 +211,7 @@ def build_dot(
     highlight_paths=None,
     *,
     positions=None,
+    pin=True,
     spring=False,
     graph_attrs=(),
     dotted_labels=True,
@@ -207,17 +234,18 @@ def build_dot(
                  인터페이스 값은 받되 그리지 않음. 열 위치만 봐도 무엇이
                  흐르는지 읽히고, 같은 이름이 16번 반복되면 노이즈임
           dotted  {(a, b): ["key: value", ...]}. 특성 관련. 점선, 화살표 없음
-          highlight  [(from, to), ...] 경로 하나. 굵은 실선 · 화살표 · 순번.
-                 리스트 순서가 곧 실행 순서
+          highlight  [(from, to), ...] 경로 하나. 굵은 실선 · 화살표.
+                 리스트 순서가 곧 실행 순서지만 순번은 안 그림
           highlight_nodes  테두리를 강조할 노드. 생략하면 강조 엣지의 양 끝에서
                  유도함. 1단 recipe 는 엣지가 없어 유도가 불가능하므로 그때는
                  호출하는 쪽이 넘겨야 함
           highlight_paths  [[(from, to), ...], ...] 경로 여러 개(CLARIFY 후보).
-                 엣지 합집합을 강조하고 순번은 안 붙임. 여러 경로가 같은 엣지를
-                 공유하면 순번이 겹쳐 읽을 수 없음.
-                 경로가 정확히 하나면 highlight 와 똑같이 순번을 붙임
+                 엣지 합집합을 강조함. 경로가 하나면 highlight 와 똑같음
           positions  {node_id: (x, y)} neato 용 고정 좌표. pos="x,y!" 로 붙임.
                  label 뒤에 놓음. 테스트가 노드 줄을 '"id" [label=' 로 찾음
+          pin  좌표에 느낌표를 붙일지. True 면 못박고 False 면 시작 위치로만
+                 씀. 배치를 다시 계산하되 지금 자리에서 출발시키고 싶을 때
+                 False (layout_store.spread 가 겹침만 다시 없앨 때 씀)
           spring  neato 용 엣지 길이. 실선보다 점선을 짧게 둬 같은 특성을
                  공유하는 노드끼리 서로 끌어당겨 모이게 함.
                  len 은 dot 엔진에서는 무시됨
@@ -254,7 +282,6 @@ def build_dot(
                  쓰임. 해석 장면은 highlight_paths 를 씀
           dim_edges  [(from, to), ...] 선택에서 빠진 실행 경로. PATH_NEW_DIM 으로
                  칠하고 굵기와 화살표는 짙은 경로와 같음(옅어도 실행 경로임).
-                 순번은 안 붙임.
                  실선이 없는 쌍은 조용히 건너뜀. 여기서 선을 새로 긋지 않음
           mark_color  mark_nodes 에 쓸 색. 생략하면 NEW_COLOR
           edge_color  실선 색. 생략하면 PLAIN_COLOR. 노드 테두리와 같은 값이라
@@ -266,16 +293,17 @@ def build_dot(
           dim 이 가장 낮은 이유 : 경로들이 앞 구간을 공유하므로 같은 엣지가
           짙은 경로에도 걸려 있으면 짙은 쪽이 이겨야 앞 구간이 끊겨 보이지 않음
           레이아웃은 어떤 조합에서도 같음
-    제약  mark_edges 와 dim_edges 에 순번(xlabel)을 붙이지 않는다.
-          등록 장면은 highlight_paths 를 쓰지 않으므로 순번 규칙(경로가 정확히
-          하나일 때)에 아예 걸리지 않음
+    제약  엣지에 라벨을 붙이지 않는다.
+          예전에는 고른 경로에 순번(1 · 2 · 3)을 xlabel 로 붙였음. 2026-08-29
+          에 뺐음 — 노드가 커지면서 순번이 노드에 가렸음. 실행 순서를 보이는
+          단서는 화살촉뿐임
           새 인자를 위치 인자로 만들지 않는다.
           모두 키워드 전용이고 기본값에서는 출력이 한 글자도 달라지지 않음.
           tests/graph_rendering 의 40여 개가 기존 출력 문자열에 의존함
           강조에 엣지를 새로 추가하지 않는다.
           이미 있는 실선의 색 · 굵기만 바꿈
-          순번을 label 로 붙이지 않는다.
-          label 은 Graphviz 가 공간을 확보해 노드가 밀림(실측). xlabel 을 씀
+    이력  엣지 라벨을 되살릴 때는 label 이 아니라 xlabel 로 붙인다.
+          label 은 Graphviz 가 공간을 확보해 노드가 밀림(실측)
     """
     if highlight_paths is None:
         paths = [highlight] if highlight else []
@@ -283,14 +311,6 @@ def build_dot(
         paths = [path for path in highlight_paths if path]
 
     highlighted = {edge for path in paths for edge in path}
-
-    # 경로가 하나로 확정됐을 때만 순번. 같은 엣지를 두 번 지나면 번호를 이어 붙인다.
-    orders: dict[tuple[str, str], str] = {}
-    if len(paths) == 1:
-        seen: dict[tuple[str, str], list[int]] = {}
-        for order, edge in enumerate(paths[0], start=1):
-            seen.setdefault(edge, []).append(order)
-        orders = {edge: ", ".join(str(n) for n in nums) for edge, nums in seen.items()}
 
     if highlight_nodes is None:
         highlight_nodes = {node_id for path in paths for edge in path for node_id in edge}
@@ -338,7 +358,7 @@ def build_dot(
         # pos 는 label 뒤에. 테스트가 노드 줄을 '"id" [label=' 로 찾는다.
         if positions and node_id in positions:
             x, y = positions[node_id]
-            attrs.append(f'pos="{x},{y}!"')
+            attrs.append(f'pos="{x},{y}{"!" if pin else ""}"')
         # mark 가 걸리면 그것이 이긴다 — 새로 생긴 것이 가장 먼저 눈에 띄어야 한다.
         # 대상 노드는 도형부터 다르다. 실행할 수 있는 것과 개념은 다른 것이다.
         if group_attrs and node.get("kind") == "group":
@@ -349,7 +369,7 @@ def build_dot(
             HIGHLIGHT_COLOR if node_id in highlight_nodes else ""
         )
         if color:
-            width = MARK_NODE_PENWIDTH if marked else 2
+            width = MARK_NODE_PENWIDTH if marked else HIGHLIGHT_NODE_PENWIDTH
             attrs.append(f'penwidth={width}, color="{color}"')
         lines.append(f'  "{node_id}" [{", ".join(attrs)}];')
 
@@ -384,13 +404,6 @@ def build_dot(
             f'dir=forward, arrowsize={PATH_ARROWSIZE}, '
             f'penwidth={width}, color="{color}"'
         )
-        # 표시된 엣지에는 순번을 붙이지 않는다 — 실행 순서가 아니라 새로 생긴 것이다.
-        if edge in orders and not is_marked:
-            # xlabel 은 레이아웃에 관여하지 않는다. label 을 쓰면 노드가 밀린다.
-            attrs += (
-                f', xlabel="{orders[edge]}", fontcolor="{HIGHLIGHT_COLOR}"'
-                f", fontsize={ORDER_FONTSIZE}"
-            )
         lines.append(f'  "{frm}" -> "{to}" [{attrs}{solid_len}];')
 
     # 특성 관련 — 방향 없는 점선.

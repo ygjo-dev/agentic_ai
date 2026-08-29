@@ -2,8 +2,12 @@
 
 최초 배치 좌표 회전 검증.
 
-model=subset 은 교차가 적은 대신 세로로 길다(H/W 1.38). 좌표를 파일로 들고
-있으므로 축만 바꿔치면 가로로 눕는다(0.65).
+힘 기반 배치는 그래프 모양에 따라 세로로 길게 나오기도 한다. 좌표를 파일로
+들고 있으므로 축만 바꿔치면 가로로 눕는다.
+
+**회전 다음에 늘리기(spread)가 온다.** 회전만 떼어 보려는 검사는 그 둘을
+갈라야 하므로 spread 를 항등으로 바꿔 끼운다 — 안 그러면 늘어난 좌표가
+회전 결과를 덮어 무엇을 재는지 알 수 없다.
 
 **가장 중요한 것은 언제 눕히느냐다.** 최초 배치에서만 해야 한다. 증분 배치에
 들어가는 핀 좌표는 이미 눕혀둔 값이라, 또 바꾸면 지도가 뒤집히고 기존 노드가
@@ -15,7 +19,12 @@ import shutil
 import pytest
 
 from demo.graph_svg import layout_store
-from demo.graph_svg.dot import build_dot
+from demo.graph_svg.dot import (
+    GROUP_ATTRS,
+    NODE_ATTRS,
+    build_dot,
+    wrap_node_labels,
+)
 from demo.graph_svg.graphviz import layout_positions
 from demo.graph_svg.layout_store import NEATO_FRESH_ATTRS, ensure_positions
 
@@ -43,6 +52,14 @@ GRAPH = {
     ],
     "dotted_edges": [{"a": "load_cctv", "b": "load_car", "labels": ["source: cctv"]}],
 }
+
+
+@pytest.fixture
+def no_spread(monkeypatch):
+    """늘리기를 항등으로. 회전 분기만 보려는 검사에 씀."""
+    monkeypatch.setattr(
+        layout_store, "spread", lambda nodes, solid, dotted, positions: positions
+    )
 
 
 def graph_with_extra_node(node_id: str, feeder: str = "analyze") -> dict:
@@ -147,7 +164,7 @@ def test_only_a_tall_layout_is_tipped_over():
 
 
 # ------------------------------------------------------------ 최초 배치
-def test_a_tall_fresh_layout_is_tipped_over(store, monkeypatch):
+def test_a_tall_fresh_layout_is_tipped_over(store, monkeypatch, no_spread):
     """배치가 세로로 길게 나오면 눕혀서 저장함.
 
     neato 가 어느 방향으로 놓을지는 그래프 모양에 달렸음. 그것에 기대면 검사가
@@ -162,7 +179,7 @@ def test_a_tall_fresh_layout_is_tipped_over(store, monkeypatch):
     assert not layout_store.is_tall(saved)
 
 
-def test_a_wide_fresh_layout_is_left_alone(store, monkeypatch):
+def test_a_wide_fresh_layout_is_left_alone(store, monkeypatch, no_spread):
     """이미 가로로 길면 그대로 둠. 눕히면 오히려 세로로 세워짐.
 
     실제로 그랬음. 온톨로지를 바꾸자 최초 배치가 H/W 0.83 으로 나왔는데 거기
@@ -188,10 +205,20 @@ def test_a_fresh_layout_never_ends_up_tall(store):
     assert saved
     assert not layout_store.is_tall(saved)
 
+
+def test_the_rotation_does_not_invent_coordinates(store, no_spread):
+    """회전은 축을 맞바꿀 뿐임. 두 폭이 그대로이거나 맞바뀐 것이어야 함.
+
+    늘리기를 빼고 봄. 늘리기는 일부러 폭을 바꾸는 단계라 함께 보면 이 성질을
+    잴 수가 없음.
+    """
+    saved = ensure_positions(*domain(GRAPH))
+
     nodes, solid, dotted = domain(GRAPH)
     raw = layout_positions(
-        build_dot(nodes, solid, dotted, positions={}, spring=True,
-                  graph_attrs=NEATO_FRESH_ATTRS)
+        build_dot(wrap_node_labels(nodes), solid, dotted, positions={}, spring=True,
+                  graph_attrs=NEATO_FRESH_ATTRS, dotted_labels=False,
+                  node_attrs=NODE_ATTRS, group_attrs=GROUP_ATTRS)
     )
 
     def spans(p):
@@ -199,8 +226,26 @@ def test_a_fresh_layout_never_ends_up_tall(store):
         ys = [v[1] for v in p.values()]
         return round(max(xs) - min(xs), 3), round(max(ys) - min(ys), 3)
 
-    # 좌표를 새로 지어내지 않는다. 원래 배치의 두 폭 그대로이거나 맞바뀐 것이다.
     assert sorted(spans(saved)) == sorted(spans(raw))
+
+
+def test_spreading_widens_the_layout(store):
+    """늘리기가 실제로 가로를 벌려야 함. 안 걸리면 화면 폭을 못 씀."""
+    nodes, solid, dotted = domain(GRAPH)
+    before = layout_positions(
+        build_dot(wrap_node_labels(nodes), solid, dotted, positions={}, spring=True,
+                  graph_attrs=NEATO_FRESH_ATTRS, dotted_labels=False,
+                  node_attrs=NODE_ATTRS, group_attrs=GROUP_ATTRS)
+    )
+
+    after = layout_store.spread(nodes, solid, dotted, before)
+
+    def ratio(p):
+        xs = [v[0] for v in p.values()]
+        ys = [v[1] for v in p.values()]
+        return (max(ys) - min(ys)) / (max(xs) - min(xs))
+
+    assert ratio(after) < ratio(before)
 
 
 # ------------------------------------------------------------ 증분 배치 (핵심)

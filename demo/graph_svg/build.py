@@ -30,6 +30,8 @@ from demo.graph_svg.dot import (
     NODE_ATTRS,
     NODE_ATTRS_TOP,
     build_dot,
+    wrap_label,          # noqa: F401 — 부르던 곳이 여기서 가져감
+    wrap_node_labels,
 )
 from demo.graph_svg.graphviz import fit_svg, render_svg, stack_nodes_on_top
 
@@ -37,35 +39,6 @@ from demo.graph_svg.graphviz import fit_svg, render_svg, stack_nodes_on_top
 # 그래도 상한을 둔다 — 시연이 길어지면 등록 · 발화 조합이 계속 쌓인다.
 CACHE_LIMIT = 32
 _CACHE: OrderedDict[str, dict] = OrderedDict()
-
-
-def wrap_label(name: str) -> str:
-    """긴 이름을 두 줄로 접음.
-
-    입력  노드 이름
-    출력  가운데에 가장 가까운 공백에서 자르고 DOT 개행(\\n)을 넣은 이름.
-          공백이 없으면 그대로
-    규칙  가로 폭이 줄면 겹칠 확률이 가장 크게 줆. 노드 폭 194 -> 87
-    제약  글자 중간에서 자르지 않는다. 한글이 계속 읽혀야 함
-    """
-    if " " not in name:
-        return name
-
-    middle = len(name) / 2
-    cut = min(
-        (i for i, char in enumerate(name) if char == " "),
-        key=lambda i: abs(i - middle),
-    )
-    # DOT 문자열 안에서 \n 은 줄바꿈이다. 파이썬 개행이 아니라 두 글자로 넣는다.
-    return name[:cut] + "\\n" + name[cut + 1 :]
-
-
-def wrap_node_labels(nodes: dict) -> dict:
-    """노드 이름만 두 줄로 접은 사본. build_dot 은 안 건드림."""
-    return {
-        node_id: {**node, "name": wrap_label(node.get("name", node_id))}
-        for node_id, node in nodes.items()
-    }
 
 
 def chain_edges(chains) -> list[tuple[str, str]]:
