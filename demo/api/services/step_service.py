@@ -57,6 +57,14 @@ RADIUS_METERS = 15000
 # 응답의 given 이 말한다 — 여기는 그것을 구분하지 않는다.
 SPOKEN_VALUE = "@arg"
 
+# 발화에서 온 값이 노선 이름인지 가르는 어미.
+#
+# 규칙  "…선" 으로 끝나면 노선 이름. 아니면 지금 그대로 역 이름
+# 한계  "1호선" 처럼 두 칸 다 답이 있는 값도 노선 쪽으로 간다.
+#       "…선" 도 "…역" 도 아닌 값("청주")은 역 이름 자리에 그대로 남는다.
+#       실측 표와 언제 이 자를 걷어내는지는 NOTES.md 「쉰째」에 있다
+RAILWAY_LINE_SUFFIX = "선"
+
 # 지도 명령 하나가 곧 실행인 자리의 op 이름.
 #
 # 저쪽 화면이 이 op 을 이름으로 알아본다 — KRRI_ASAP/ASAP-web 의
@@ -341,6 +349,9 @@ TOOL_OF = {
 #                그 자리에 오는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이고,
 #                문맥이 없으면 resolve 가 그 후보를 아예 안 내놓는다
 #   adapter      vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
+#   arg_field    (어미, 칸 이름). 발화에서 온 값이 그 어미로 끝나면 @arg 가
+#                든 칸의 이름을 그것으로 바꾼다. **값 판단이 배선표에 들어오는
+#                유일한 칸이다** — 왜 열었는지는 NOTES.md 「쉰째」에 있다
 #
 # **키의 타입은 온톨로지의 hasInput 선언과 1:1 이다.** 선언에 없는 타입으로
 # 줄을 적으면 plan 이 그 줄을 영영 못 고른다 — 줄을 고르는 것이 선언이기
@@ -400,9 +411,18 @@ STEP_OF = {
 
     ("get_railway_section", "place_name"): {"input": {"sectionName": SPOKEN_VALUE}},
 
-    # railwayName 은 안 건드린다. stationName 과 같은 "장소 이름" 이라 줄이
-    # 갈리지 않는다 — 역명으로 볼지 노선명으로 볼지는 사람이 정할 일이다.
-    ("get_railway_lines", "place_name"): {"input": {"stationName": SPOKEN_VALUE}},
+    # 역명으로 볼지 노선명으로 볼지를 값이 정한다. 예전 주석은 "사람이 정할
+    # 일이다" 였고 그 일이 왔다 (2026-08-29 「쉰째」).
+    #
+    # 둘을 함께 보내는 길은 닫혀 있다 — 저쪽이 두 절을 AND 로 이어서 같은
+    # 값이면 0건이다 (2026-08-27 「서른다섯째」). 맞는 칸 하나만 보낸다.
+    #
+    # tools/check_inputs.py 의 ★ 표에서 railwayName(S) 은 안 사라진다.
+    # 그 도구는 STEP_OF 를 정적으로 읽어 여기 적힌 stationName 만 본다.
+    ("get_railway_lines", "place_name"): {
+        "input": {"stationName": SPOKEN_VALUE},
+        "arg_field": (RAILWAY_LINE_SUFFIX, "railwayName"),
+    },
     ("get_railway_lines", "map_extent"): {
         "input": {"bbox": BBOX_FROM_PREVIOUS},
         "input_first": {"bbox": BBOX_FROM_CONTEXT},
@@ -767,6 +787,8 @@ def plan(recipe_id: str, argument: str) -> dict:
           (spoken_place)도 값을 준비할 뿐 부를 것이 없어 빠짐
           adapter 가 적힌 줄만 step 에 inputAdapter 칸이 생김. 없는 것은
           vendor 가 도구 스키마를 보고 스스로 정함
+          arg_field 가 적힌 줄은 발화에서 온 값을 보고 칸 이름이 갈림.
+          _by_argument 가 그것임
           앞 단계가 없어 중심 좌표 칸이 빠졌으면 inputAdapter 도 안 실음.
           걸 것이 없는데 걸면 vendor 어댑터가 ValueError 를 올림
           실행 노드가 빠져 반쪽으로 도는 것은 부르기 전에 unwired 가 막음
@@ -794,7 +816,9 @@ def plan(recipe_id: str, argument: str) -> dict:
 
         tool = TOOL_OF[node_id]
         filled = _filled(
-            input_of(wiring, first=previous_id is None), argument, previous_id
+            _by_argument(wiring, input_of(wiring, first=previous_id is None), argument),
+            argument,
+            previous_id,
         )
         headline = _headline(tool["headline"], argument)
 
@@ -822,6 +846,38 @@ def plan(recipe_id: str, argument: str) -> dict:
         "commands": commands,
         "command_nodes": command_nodes,
         "headline": headline,
+    }
+
+
+def _by_argument(wiring: dict, tool_input: dict, argument: str) -> dict:
+    """발화에서 온 값을 보고 @arg 가 든 칸의 이름을 고름.
+
+    입력  STEP_OF 한 줄 · 그 줄이 이 자리에서 쓸 input · 발화에서 뽑은 인자
+    출력  칸 이름만 갈린 input. arg_field 가 없는 줄은 받은 것 그대로
+    규칙  arg_field 는 (어미, 그 어미일 때 쓸 칸 이름) 한 쌍임
+          값이 그 어미로 끝날 때만 바꿈. 아니면 적힌 칸 이름 그대로임
+          바꾸는 것은 @arg 가 든 칸 하나뿐임. 다른 칸은 안 건드림
+          인자가 비면 어떤 어미로도 안 끝나므로 안 바뀜
+    제약  값을 고치지 않는다. 칸 이름만 고른다.
+          어느 칸이 맞는지는 도구가 아는 것이고 여기는 짐작한다 —
+          짐작이 틀리면 0건이 나오지 도구가 오류를 내지 않는다
+          자를 넓히지 않는다. "…선" 하나이고 그 한계는 상수 옆에 적혀 있다
+    이력  철도 노선 조회가 노선 이름을 stationName 으로 보내 0건이었음
+          (2026-08-26 화면 실측). 온톨로지가 「말한 장소」 하나로 역 이름과
+          노선 이름을 함께 담아 줄이 안 갈렸음. 타입을 새로 만드는 길과
+          견주어 이쪽을 골랐음 — NOTES.md 「쉰째」
+    """
+    rule = wiring.get("arg_field")
+    if rule is None:
+        return tool_input
+
+    suffix, field = rule
+    if not str(argument or "").endswith(suffix):
+        return tool_input
+
+    return {
+        (field if value == SPOKEN_VALUE else key): value
+        for key, value in tool_input.items()
     }
 
 

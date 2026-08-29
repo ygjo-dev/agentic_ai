@@ -156,6 +156,98 @@ def test_arg_와_prev_가_섞여도_각각_제_값이_된다(monkeypatch):
     }
 
 
+# ── 값을 보고 칸을 고르는 줄 ────────────────────────────────────────
+#
+# 배선표에 값 판단이 들어온 유일한 자리다. 자가 좁은 것 자체가 요구사항이라
+# 걸리는 값과 안 걸리는 값을 함께 본다.
+
+
+def test_노선_이름은_railwayName_으로_간다(monkeypatch):
+    """"…선" 으로 끝나면 노선 이름임. stationName 으로 보내면 0건임."""
+    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
+
+    plan = step_service.plan("recipe_003", "경부선")
+
+    assert plan["steps"][0]["input"] == {"railwayName": "경부선"}
+
+
+def test_역_이름은_stationName_그대로다(monkeypatch):
+    """이 줄이 원래 하던 일임. 깨지면 되던 발화가 0건이 됨."""
+    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
+
+    plan = step_service.plan("recipe_003", "오송역")
+
+    assert plan["steps"][0]["input"] == {"stationName": "오송역"}
+
+
+def test_어느_쪽도_아닌_값은_안_옮긴다(monkeypatch):
+    """"청주" 는 railwayName 으로 0건이고 stationName 으로 9건임(실측).
+
+    자를 "…역" 으로 끝나는 것만으로 좁히지 않은 이유가 이것임.
+    """
+    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
+
+    plan = step_service.plan("recipe_003", "청주")
+
+    assert plan["steps"][0]["input"] == {"stationName": "청주"}
+
+
+def test_인자가_비면_칸이_안_바뀐다(monkeypatch):
+    """빈 값은 어떤 어미로도 안 끝남. 두 칸 다 안 보내는 길은 여기 없음."""
+    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
+
+    plan = step_service.plan("recipe_003", "")
+
+    assert list(plan["steps"][0]["input"]) == ["stationName"]
+
+
+def test_한_칸만_보낸다(monkeypatch):
+    """저쪽이 두 절을 AND 로 이어서 둘 다 보내면 같은 값일 때 0건임."""
+    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
+
+    for argument in ("경부선", "오송역"):
+        sent = step_service.plan("recipe_003", argument)["steps"][0]["input"]
+        assert len(sent) == 1
+
+
+def test_철도_구간_형상은_안_갈린다(monkeypatch):
+    """그 도구는 sectionName 한 칸뿐임. arg_field 를 안 적었으니 안 움직여야 함."""
+    wire(monkeypatch, ["spoken_place", "get_railway_section"])
+
+    plan = step_service.plan("recipe_002", "경부선")
+
+    assert plan["steps"][0]["input"] == {"sectionName": "경부선"}
+
+
+def test_arg_field_가_없는_줄은_그대로다(monkeypatch):
+    """지금 그 칸을 적은 줄이 하나뿐임. 나머지 서른다섯 줄이 안 흔들려야 함."""
+    wire(monkeypatch, ["spoken_place", "geocode_place"])
+
+    plan = step_service.plan("recipe_001", "경부선")
+
+    assert plan["steps"][0]["input"] == {"query": "경부선"}
+
+
+def test_arg_가_아닌_칸은_이름이_안_바뀐다(monkeypatch):
+    """옮기는 것은 발화 값이 든 칸 하나뿐임."""
+    wire(
+        monkeypatch,
+        ["start", "narrow"],
+        rows={
+            ("narrow", FAKE_TYPE): {
+                "input": {"stationName": ARG, "limit": 5},
+                "arg_field": (step_service.RAILWAY_LINE_SUFFIX, "railwayName"),
+            }
+        },
+        handed={"start": [FAKE_TYPE], "narrow": []},
+        tools={"narrow": fake_tool("geo.getRailwayLines")},
+    )
+
+    plan = step_service.plan("recipe_003", "경부선")
+
+    assert plan["steps"][0]["input"] == {"railwayName": "경부선", "limit": 5}
+
+
 def test_headline_의_arg_도_바뀐다(monkeypatch):
     """답 첫 줄에 그 값이 그대로 보임. 치환이 빠지면 화면에 {arg} 가 뜸."""
     wire(monkeypatch, ["spoken_place", "geocode_place", "find_cctv"])
