@@ -265,3 +265,26 @@ def test_후보가_비면_남기지_않는다():
     )
 
     assert clarify_service.take("s1") is None
+
+
+# ── 스위치 ──────────────────────────────────────────────────────────
+
+
+def test_환경변수가_없으면_켬이다(monkeypatch):
+    """기본이 켬임. 지금 동작을 지킴."""
+    monkeypatch.delenv(clarify_service.CHOICE_ENV, raising=False)
+
+    assert clarify_service.enabled() is True
+
+
+def test_환경변수가_0_이면_끔이다(monkeypatch):
+    monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
+
+    assert clarify_service.enabled() is False
+
+
+def test_0_이_아닌_값은_켬이다(monkeypatch):
+    """끄는 값은 "0" 하나임. 오타로 꺼지지 않아야 함."""
+    for value in ["1", "true", "off", ""]:
+        monkeypatch.setenv(clarify_service.CHOICE_ENV, value)
+        assert clarify_service.enabled() is True

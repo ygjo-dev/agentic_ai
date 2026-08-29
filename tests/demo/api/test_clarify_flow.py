@@ -4,11 +4,12 @@ LLM 을 안 부른다. resolve 결과와 run 을 가짜로 주고 **무엇이 �
 온톨로지도 안 읽는다 — 경로와 배선은 test_clarify_answer 와 같은 방식으로
 가짜로 준다.
 
-여기서 보는 것은 넷이다.
+여기서 보는 것은 다섯이다.
   고르면 resolve 를 다시 안 부르는가
   고른 recipe 와 기억해 둔 인자로 부르는가
   고르기가 아니면 지금까지와 똑같이 도는가
   그때 직전 되묻기가 지워지는가
+  스위치를 안 주면 켬이고, 끄면 세션을 아예 안 쓰는가
 """
 
 import asyncio
@@ -241,3 +242,75 @@ def test_고른_뒤에는_되묻기가_남지_않는다(monkeypatch, calls):
 
     assert len(calls["run"]) == 1
     assert calls["resolve"][-1] == "2번"
+
+
+# ── 스위치 ──────────────────────────────────────────────────────────
+
+
+def test_환경변수가_없으면_켬이라_번호가_실행된다(monkeypatch, calls):
+    """기본이 켬임. 이것이 깨지면 시연 화면이 바뀜."""
+    monkeypatch.delenv(clarify_service.CHOICE_ENV, raising=False)
+    answering(monkeypatch, calls)
+    chat("청주시 인구 알려줘")
+
+    chat("1번")
+
+    assert calls["run"] == [
+        {"recipe_id": "recipe_011", "argument": "청주시", "text": "청주시 인구 알려줘"}
+    ]
+
+
+def test_끄면_번호가_새_발화로_간다(monkeypatch, calls):
+    """「서른넷째」 이전과 같은 동작임."""
+    monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
+    answering(monkeypatch, calls)
+    chat("청주시 인구 알려줘")
+
+    chat("1번")
+
+    assert calls["resolve"] == ["청주시 인구 알려줘", "1번"]
+    assert calls["run"] == []
+
+
+def test_끄면_기억해_두지도_않는다(monkeypatch, calls):
+    """끄는 까닭이 세션을 안 쓰는 것임. 고르기만 막으면 끈 것이 아님."""
+    monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
+    answering(monkeypatch, calls)
+    chat("청주시 인구 알려줘")
+
+    assert clarify_service.take(SESSION) is None
+
+
+def test_끄고_다시_켜도_앞의_되묻기가_안_살아난다(monkeypatch, calls):
+    """끈 동안에는 남긴 것이 없음. 켠 뒤 첫 번호는 새 발화임."""
+    monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
+    answering(monkeypatch, calls)
+    chat("청주시 인구 알려줘")
+
+    monkeypatch.delenv(clarify_service.CHOICE_ENV, raising=False)
+    chat("1번")
+
+    assert calls["resolve"] == ["청주시 인구 알려줘", "1번"]
+    assert calls["run"] == []
+
+
+def test_끔이_되묻기_문구를_바꾸지_않는다(monkeypatch, calls):
+    """끄는 것은 고르기뿐임. 화면에 보이는 되묻기는 그대로여야 함."""
+    answering(monkeypatch, calls)
+    켬 = chat("청주시 인구 알려줘")[-1]["answer"]
+
+    monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
+    끔 = chat("청주시 인구 알려줘")[-1]["answer"]
+
+    assert 켬 == 끔
+
+
+def test_환경변수가_0_이_아니면_켬이다(monkeypatch, calls):
+    """끄는 값은 "0" 하나임. 다른 값은 지금 길로 감."""
+    monkeypatch.setenv(clarify_service.CHOICE_ENV, "1")
+    answering(monkeypatch, calls)
+    chat("청주시 인구 알려줘")
+
+    chat("1번")
+
+    assert calls["run"][0]["recipe_id"] == "recipe_011"

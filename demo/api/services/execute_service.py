@@ -215,18 +215,24 @@ async def chat(
           화면에서 온 값으로 시작하는 recipe 는 인자가 없어도 부름.
           "지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없고, 조회할 곳은
           이미 문맥이 말했음
+          고르기는 스위치 뒤에 있음(clarify_service.enabled). 기본은 켬이고
+          CLARIFY_CHOICE=0 이면 기억도 고르기도 안 함 — 되묻기 문구는 그대로
+          나오고 번호는 새 발화로 감
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           demo.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
           세션이 없으면 되묻기를 기억하지도 고르지도 않는다.
           지금까지와 똑같이 동작한다
+          스위치를 끄면 세션을 아예 안 쓴다.
+          끄는 까닭이 그것이다. 고르기만 막고 기억해 두면 끈 것이 아니다
     """
-    pending = clarify_service.take(session_id)
-    if pending is not None:
-        chosen = clarify_service.pick(text, pending)
-        if chosen is not None:
-            async for payload in _run_choice(pending, chosen, context):
-                yield payload
-            return
+    if clarify_service.enabled():
+        pending = clarify_service.take(session_id)
+        if pending is not None:
+            chosen = clarify_service.pick(text, pending)
+            if chosen is not None:
+                async for payload in _run_choice(pending, chosen, context):
+                    yield payload
+                return
 
     yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
     resolved = resolve_service.resolve(
@@ -304,10 +310,15 @@ def _remember_clarify(session_id: str, resolved: dict, argument: str, text: str)
           번호 순서는 화면에 보인 그대로임. 같은 목록으로 이름도 함께 남김
           배선 표시(UNWIRED_MARK)는 떼고 남김. 사람이 고를 때 되뇌는 것은
           이름이지 그 표시가 아님
+          스위치가 꺼져 있으면 남기지 않음. 고를 수 없는 것을 기억해 둘
+          까닭이 없음
     제약  라벨을 화면과 따로 만들지 않는다.
           _candidate_labels 를 다시 부른다. 두 번 도는 값이 아깝지만 화면에
           보인 줄과 기억해 둔 줄이 갈라지면 이름으로 고를 수가 없다
     """
+    if not clarify_service.enabled():
+        return
+
     candidates = resolved.get("candidate_recipe_ids") or []
     if not candidates:
         return
