@@ -11,7 +11,7 @@ SVG 는 백엔드가 완성해서 보낸다. 여기서는 iframe 문서로 감�
 import streamlit as st
 
 from demo.ui import config, styles, theme
-from demo.ui.components import zoom
+from demo.ui.components import flow, zoom
 
 # 새로 생긴 것이 잠깐 두근거린다. 짧게 두 번만 — 계속 깜빡이면 시선을 뺏는다.
 _PULSE_CSS = """
@@ -50,6 +50,9 @@ def graph_fill_html(svg: str, pulse: bool = False) -> str:
         "</style>"
         f'<div id="graph">{svg}</div>'
         f"{zoom.zoom_script(zoom.TOP_KEY)}"
+        # 상단은 실선을 안 그리므로 걸리는 엣지가 없다. 그래도 같은 한 벌을
+        # 붙인다 — 한쪽만 붙이면 언젠가 위아래가 다르게 움직인다.
+        f"{flow.flow_script()}"
     )
 
 

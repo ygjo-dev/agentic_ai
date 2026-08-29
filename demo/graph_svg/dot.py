@@ -151,6 +151,16 @@ HIGHLIGHT_NODE_PENWIDTH = 6
 # **화면을 보고 조절할 값이다 — 여기 하나만 고치면 된다.**
 PATH_ARROWSIZE = 2.5
 
+# 고른 실행 경로에만 붙는 SVG class. Graphviz 는 이 값을 <g class="edge flow"> 로
+# 그대로 내보낸다(실측, 2.43.0). **선을 고르는 손잡이일 뿐 그리기를 안 바꾼다** —
+# class 는 레이아웃 속성이 아니라 좌표도 색도 굵기도 그대로다.
+# 색으로 고르지 않는 이유 : 색은 여기 상수라 바뀔 수 있고, 같은 굵기·화살표를
+# 쓰는 dim 경로(PATH_NEW_DIM)와 등록 경로(PATH_NEW)까지 함께 걸린다.
+# **teal 해석 경로 하나만 걸려야 한다.**
+# 이 이름을 읽는 쪽은 demo/ui/components/flow.py 다. 두 곳이 어긋나지 않게
+# tests/demo/ui/test_path_flow_document.py 가 같은 값인지 지킨다.
+FLOW_CLASS = "flow"
+
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.
 MARK_NODE_PENWIDTH = 2
 # 새 관계(점선) 굵기. 2.5 에서 올렸다 — 새 점선(#B0A2FF, 대비 8.51)과 하단의
@@ -293,7 +303,11 @@ def build_dot(
           dim 이 가장 낮은 이유 : 경로들이 앞 구간을 공유하므로 같은 엣지가
           짙은 경로에도 걸려 있으면 짙은 쪽이 이겨야 앞 구간이 끊겨 보이지 않음
           레이아웃은 어떤 조합에서도 같음
-    제약  엣지에 라벨을 붙이지 않는다.
+    제약  고른 경로에만 class=FLOW_CLASS 를 붙인다.
+          등록 경로 · 물러난 경로에는 안 붙임. 흐르는 표시가 여러 갈래에서
+          동시에 돌면 방향이 오히려 안 읽힘. 그리기에는 영향이 없음 —
+          class 는 레이아웃 속성이 아니고 PNG 가 한 바이트도 안 달라짐(실측)
+          엣지에 라벨을 붙이지 않는다.
           예전에는 고른 경로에 순번(1 · 2 · 3)을 xlabel 로 붙였음. 2026-08-29
           에 뺐음 — 노드가 커지면서 순번이 노드에 가렸음. 실행 순서를 보이는
           단서는 화살촉뿐임
@@ -385,10 +399,12 @@ def build_dot(
         # mark > highlight > dim. 새로 생긴 것이 고른 경로보다 먼저 보이고,
         # 물러난 경로가 가장 낮다 — 경로들이 앞 구간을 공유하므로 그 구간은
         # 짙은 쪽이 이겨야 길이 끊겨 보이지 않는다.
+        flowing = False
         if is_marked:
             color = PATH_NEW
         elif edge in highlighted:
             color = HIGHLIGHT_COLOR
+            flowing = True
         elif edge in dimmed_edges:
             color = PATH_NEW_DIM
         else:
@@ -404,6 +420,10 @@ def build_dot(
             f'dir=forward, arrowsize={PATH_ARROWSIZE}, '
             f'penwidth={width}, color="{color}"'
         )
+        # 해석 경로에만 표시를 붙인다. 등록(주황) · 물러난 경로(옅은 주황)는
+        # 안 붙는다 — 흐름이 여러 갈래에서 동시에 돌면 방향이 오히려 안 읽힌다.
+        if flowing:
+            attrs += f', class="{FLOW_CLASS}"'
         lines.append(f'  "{frm}" -> "{to}" [{attrs}{solid_len}];')
 
     # 특성 관련 — 방향 없는 점선.

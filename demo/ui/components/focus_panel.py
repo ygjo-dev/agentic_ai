@@ -17,7 +17,7 @@ import json
 import streamlit as st
 
 from demo.ui import config, styles, theme
-from demo.ui.components import path_panel, zoom
+from demo.ui.components import flow, path_panel, zoom
 
 # JSON 을 <script> 안에 넣을 때 "</script>" 가 섞이면 문서가 거기서 끊긴다.
 # 값 안의 "</" 를 이스케이프해 그런 일이 없게 한다.
@@ -153,7 +153,8 @@ function draw() {{
 document.body.addEventListener("click", () => {{ picked = null; draw(); }});
 draw();
 </script>
-{zoom.zoom_script(zoom.BOTTOM_KEY)}"""
+{zoom.zoom_script(zoom.BOTTOM_KEY)}
+{flow.flow_script()}"""
 
 
 def chip_color(view: dict | None) -> str:
