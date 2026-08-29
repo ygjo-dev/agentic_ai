@@ -18,6 +18,12 @@ recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 �
 성공한 실행은 vendor 안에서 _compose_workflow_answer 가 부르고, 실패한 실행은
 vendor 가 자기 문구(_failed_workflow_result)로 돌아오므로 아래 run 이 trace 로
 다시 부른다. 같은 함수라 문구가 갈라지지 않는다.
+
+**vendor 를 아예 안 지나는 실행이 하나 있다** (2026-08-29). 경로의 실행 노드가
+전부 「부를 도구가 없는」 것이면 넘길 steps 가 비고, vendor 는 빈 steps 를
+실패로 본다. 그때는 배선표가 만든 지도 명령을 그대로 내고 끝낸다 —
+step_service.plan 의 commands 가 그것이다. 저쪽 show-facility plugin 이 하는
+일이 그것이고, 그쪽도 `## Run` 절이 없다.
 """
 
 from collections import Counter
@@ -28,8 +34,14 @@ from demo.api.services import (
     resolve_service,
     step_service,
 )
+from ontology import graph, store
 from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
-from vendor.asap.workflow_answer import compose_workflow_answer, step_failed
+from vendor.asap.workflow_answer import (
+    command_answer,
+    compose_workflow_answer,
+    no_match_answer,
+    step_failed,
+)
 
 # 우리가 누구인지. 이 값으로 Gateway 가 권한을 찾는다.
 #
@@ -78,8 +90,13 @@ CLARIFY_MANY_HEADLINE = "여러 가지로 해석됩니다. 어느 것을 보시�
 # 긴 머리말로 바뀌는 후보 수.
 CLARIFY_MANY_FROM = 4
 
-# 부를 것이 하나도 없을 때의 답.
-NO_MATCH_ANSWER = "지금 할 수 있는 일 중에 맞는 것이 없습니다."
+# 부를 것이 하나도 없을 때의 답은 vendor/asap/workflow_answer.no_match_answer 가
+# 만든다. 문구는 한 글자도 안 바뀌었고 뒤에 안내 두 줄이 붙는다.
+
+# 도구를 안 부르는 단계의 진행 표시. 도구 단계와 같은 모양이라 저쪽 화면이
+# 따로 알아볼 것이 없다 — 그 자리에 도구 이름 대신 지도 명령 op 이 온다.
+COMMAND_START = "{op} 명령을 내는 중입니다..."
+COMMAND_END = "{op} 완료"
 
 # 후보 줄에서 앞 단계를 잇는 표시.
 STEP_JOIN = " -> "
@@ -102,7 +119,11 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
           step_start / step_end 는 실제로 불린 단계마다 한 쌍
     규칙  경로에 도구가 안 붙은 노드가 있으면 하나도 안 부르고 그렇다고 답함.
           부르는 것만 부르면 반쪽 결과를 온전한 답인 것처럼 내놓게 됨
-          부를 것이 없으면 곧장 result. vendor 는 빈 steps 를 실패로 봄
+          부를 도구가 없고 지도 명령만 있으면 vendor 를 안 지남. 빈 steps 를
+          넘기면 vendor 가 실패로 보고, 부를 것이 없는데 부를 이유도 없음
+          지도 명령이 도구 단계와 함께 있으면 도구 응답에서 나온 명령 뒤에
+          붙임. 순서가 곧 경로 순서임
+          부를 것도 낼 것도 없으면 곧장 result
           한 단계가 실패하면 vendor 가 거기서 멈춤. trace 에 그 단계까지만
           담기므로 이벤트도 거기까지만 나감
           실패한 실행의 답은 vendor 의 answer_draft 를 버리고 trace 로 다시
@@ -120,8 +141,24 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         return
 
     plan = step_service.plan(recipe_id, argument)
-    if not plan["steps"]:
+    if not plan["steps"] and not plan["commands"]:
         yield _result("부를 도구가 없습니다.", [])
+        return
+
+    if not plan["steps"]:
+        for node_id, command in zip(plan["command_nodes"], plan["commands"]):
+            op = command["op"]
+            yield {
+                "type": "step_start",
+                "node": node_id,
+                "message": COMMAND_START.format(op=op),
+            }
+            yield {
+                "type": "step_end",
+                "node": node_id,
+                "message": COMMAND_END.format(op=op),
+            }
+        yield _result(command_answer(plan["headline"]), plan["commands"])
         return
 
     intent = {
@@ -144,7 +181,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         outcome = "실패" if step_failed(item) else "완료"
         yield {"type": "step_end", "node": node_id, "message": f"{tool} {outcome}"}
 
-    yield _result(_answer(intent, executed), _commands(executed))
+    yield _result(_answer(intent, executed), _commands(executed) + plan["commands"])
 
 
 async def chat(
@@ -375,8 +412,10 @@ def _no_recipe_answer(resolved: dict) -> str:
 
     입력  resolve 결과. candidate_recipe_ids · paths · reason 을 읽음
     출력  후보가 있으면 머리말 한 줄과 번호 붙은 후보 목록. 없으면 영역 밖이라는
-          한 문장. 둘 다 뒤에 LLM 이 적은 이유가 붙음
+          한 문장과 안내 두 줄. 둘 다 뒤에 LLM 이 적은 이유가 붙음
     규칙  후보 수로 머리말을 가름. 4개 이상이면 여러 갈래라고 먼저 말함
+          후보가 없으면 문구를 workflow_answer 가 만듦. 도구가 안 돈 자리의
+          답을 한 파일에 모아 둔 것임
           수를 문장에 넣지 않음. "둘 중" 처럼 쓰면 후보 수가 바뀔 때마다
           어미가 틀어짐
     제약  recipe id 를 문장에 적지 않는다.
@@ -387,12 +426,34 @@ def _no_recipe_answer(resolved: dict) -> str:
     candidates = resolved.get("candidate_recipe_ids") or []
     reason = resolved.get("reason") or ""
 
-    if candidates:
-        head = _clarify_head(candidates, resolved.get("paths") or {})
-    else:
-        head = NO_MATCH_ANSWER
+    if not candidates:
+        topics, starts = _offer_names()
+        return no_match_answer(reason, topics, starts)
 
+    head = _clarify_head(candidates, resolved.get("paths") or {})
     return f"{head}\n\n{reason}".rstrip()
+
+
+def _offer_names() -> tuple[list[str], list[str]]:
+    """안내에 적을 이름 두 벌.
+
+    출력  (대상 이름 목록, 발화로 시작할 수 있는 데이터 이름 목록)
+    규칙  대상은 about 의 대상으로 등장하는 노드. 시작 데이터는 경로가 시작할
+          수 있는 노드에서 화면에서 오는 둘을 뺀 것
+          화면에서 오는 둘을 빼는 것은 사람이 더 말해 줄 것이 없기 때문임.
+          어느 것이 그것인지는 step_service.CONTEXT_STARTS 가 앎
+          (NO_ARGUMENT_ANSWER 가 그 둘을 빼 둔 것과 같은 까닭임)
+    제약  이름을 코드에 적지 않는다.
+          노드를 등록하면 안내도 함께 늘어야 함
+    """
+    nodes = store.nodes()
+    topics = [nodes[node_id]["name"] for node_id in graph.group_ids() if node_id in nodes]
+    starts = [
+        nodes[node_id]["name"]
+        for node_id in graph.start_ids()
+        if node_id in nodes and node_id not in step_service.CONTEXT_STARTS
+    ]
+    return topics, starts
 
 
 def _clarify_head(candidates: list[str], paths: dict) -> str:

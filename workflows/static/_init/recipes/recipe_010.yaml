@@ -2,4 +2,4 @@ steps:
 
   - node: spoken_keyword
 
-  - node: search_local_pledge_summaries
+  - node: search_assembly_pledge_districts

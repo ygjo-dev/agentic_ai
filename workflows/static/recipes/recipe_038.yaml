@@ -4,4 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: search_assembly_districts
+  - node: find_election_district_by_point

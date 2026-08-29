@@ -23,6 +23,11 @@ raw JSON 으로 새던 자리가 _preview 하나였고 지웠다. 모르는 결�
 ($s1.location)와 어댑터(point_radius_to_bbox)까지 푼 뒤의 실제 호출 인자다.
 인자가 잘못 들어갔는지 · 데이터가 없는 것인지 · 도구가 터진 것인지를 사람이
 화면만 보고 갈라야 하고, 그 셋 중 첫째는 input 을 안 적으면 알 수가 없다.
+
+**trace 가 아예 없는 자리도 여기서 답한다** (2026-08-29). 사람이 읽는 문구를
+한 파일에 모아 두려는 것이다 — 실행이 돌았을 때와 안 돌았을 때의 말투가
+갈리면 화면에서 그 둘이 다른 시스템처럼 보인다. 그 자리가 둘이고, 저쪽
+plugin 셋이 하는 일이 그것이다. 아래 「도구가 안 돈 자리」 절을 본다.
 """
 
 import unicodedata
@@ -900,3 +905,79 @@ def _lon_lat(value: Any):
         return float(value[0]), float(value[1])
     except (TypeError, ValueError):
         return None
+
+
+# ── 도구가 안 돈 자리 ────────────────────────────────────────────────
+#
+# 여기까지 오는 자리가 둘이고 둘 다 trace 가 없다. 단계 목록을 못 만든다.
+#
+#   지도 명령만 낸 실행     부를 도구가 없는 노드가 경로의 전부였다
+#   부를 것이 없는 발화     온톨로지에 맞는 경로가 없다 (NO_MATCH)
+#
+# 저쪽 plugin 셋이 그 자리다. 아홉 개 plugin 에는 다 있는 `## Run` 절이
+# show-facility · system-chat · unsupported-request 셋에만 없다
+# (KRRI_ASAP/ASAP-orchestrator/plugins/. 읽기만 했다).
+#
+# **여기도 도구 이름을 모른다.** 아래 둘은 문자열만 받는다.
+
+# 지도 명령만 낸 실행의 답. headline 이 비었을 때만 쓴다.
+#
+# headline 은 배선표(step_service.TOOL_OF)가 갖고 있고 인자가 들어간 문장이라
+# ("오송 테스트트랙 시설물을 화면에 띄웠습니다") 이 자리보다 늘 낫다.
+NOTHING_RAN = "화면에 표시했습니다."
+
+# 맞는 경로가 없을 때의 첫 줄.
+#
+# **문구를 안 바꿨다.** demo/api/services/execute_service.py 의 NO_MATCH_ANSWER
+# 에 있던 것을 글자 그대로 옮겼다.
+NO_MATCH_HEADLINE = "지금 할 수 있는 일 중에 맞는 것이 없습니다."
+
+# 그 뒤에 붙는 안내 두 줄.
+#
+# **낱말은 온톨로지가 댄다.** 여기는 틀만 갖는다 — 노드를 등록하면 안내도 함께
+# 늘고, 두 곳이 어긋날 자리가 없다. 저쪽 unsupported-request 의 답은 고정 문구
+# 한 줄이라("죄송합니다. 현재 지원하지 않는 요청입니다") 무엇을 대신 말해야
+# 할지는 안 알려준다.
+NO_MATCH_TOPICS = "제가 다루는 것은 {topics}입니다."
+NO_MATCH_STARTS = "{starts} 가운데 하나를 함께 말씀해 주세요."
+
+# 이름을 늘어놓을 때의 사이. 답 문구가 쓰는 다른 구분자와 같다.
+NAME_JOIN = " · "
+
+
+def command_answer(headline: str) -> str:
+    """도구를 안 부르고 지도 명령만 낸 실행의 답.
+
+    입력  배선표가 만든 답 첫 줄. 없으면 빈 문자열
+    출력  화면에 그대로 나갈 한 줄
+    규칙  단계 목록이 없으므로 첫 줄이 곧 답 전부임
+          headline 이 비면 대비 문구를 씀
+    제약  무엇을 냈는지 op 이름으로 적지 않는다.
+          사람에게 뜻이 없고, 이 파일은 부르는 쪽이 무엇을 부르는지 모른다
+    """
+    return headline.strip() or NOTHING_RAN
+
+
+def no_match_answer(reason: str, topics: List[str], starts: List[str]) -> str:
+    """맞는 경로가 없을 때의 답.
+
+    입력  발화 해석이 적은 이유 · 온톨로지의 대상 이름 · 시작 데이터 이름
+    출력  첫 줄, 빈 줄, 이유, 빈 줄, 안내 두 줄
+    규칙  이유가 비면 그 칸이 통째로 빠짐. 빈 줄만 남지 않음
+          이름 목록이 비면 그 안내 줄도 빠짐. 온톨로지가 비었을 때 틀만
+          남아 "제가 다루는 것은입니다" 가 되지 않아야 함
+    """
+    blocks = [NO_MATCH_HEADLINE]
+
+    if reason.strip():
+        blocks.append(reason.strip())
+
+    guide = []
+    if topics:
+        guide.append(NO_MATCH_TOPICS.format(topics=NAME_JOIN.join(topics)))
+    if starts:
+        guide.append(NO_MATCH_STARTS.format(starts=NAME_JOIN.join(starts)))
+    if guide:
+        blocks.append("\n".join(guide))
+
+    return "\n\n".join(blocks)

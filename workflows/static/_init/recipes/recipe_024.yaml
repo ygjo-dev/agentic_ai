@@ -2,4 +2,4 @@ steps:
 
   - node: visible_extent
 
-  - node: get_vworld_boundaries
+  - node: search_admin_boundaries

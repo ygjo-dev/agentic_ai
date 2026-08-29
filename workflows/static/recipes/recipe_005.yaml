@@ -2,4 +2,4 @@ steps:
 
   - node: spoken_keyword
 
-  - node: get_vworld_boundaries
+  - node: search_admin_boundaries

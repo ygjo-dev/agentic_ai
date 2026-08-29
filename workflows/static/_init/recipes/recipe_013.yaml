@@ -2,4 +2,4 @@ steps:
 
   - node: spoken_keyword
 
-  - node: search_documents
+  - node: search_ev_stations

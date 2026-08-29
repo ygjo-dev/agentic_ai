@@ -131,12 +131,49 @@ def test_배선이_없는_후보는_목록에_남기되_표시한다(monkeypatch
 
 
 def test_후보가_없으면_영역_밖이라고_답한다():
-    """NO_MATCH 문구는 그대로 둠. 고를 것이 없으므로 목록도 없음."""
+    """NO_MATCH 첫 줄은 그대로 둠. 고를 것이 없으므로 목록도 없음.
+
+    2026-08-29 에 그 뒤로 안내 두 줄이 붙었다. 첫 줄과 이유는 한 글자도 안
+    바뀌었다 — 저쪽 unsupported-request 는 고정 문구 한 줄뿐이라 무엇을 대신
+    말해야 할지 안 알려준다.
+    """
     answer = execute_service._no_recipe_answer(
         {"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}, "reason": "이유"}
     )
 
-    assert answer == "지금 할 수 있는 일 중에 맞는 것이 없습니다.\n\n이유"
+    head, reason, guide = answer.split("\n\n")
+
+    assert head == "지금 할 수 있는 일 중에 맞는 것이 없습니다."
+    assert reason == "이유"
+    assert guide.count("\n") == 1
+
+
+def test_안내_낱말은_온톨로지에서_옴():
+    """안내를 코드에 박지 않음. 노드를 등록하면 안내도 함께 늘어야 함.
+
+    대상 이름과 시작 데이터 이름을 그대로 적는다. 화면에서 오는 둘(찍은 지점 ·
+    보이는 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다.
+    """
+    topics, starts = execute_service._offer_names()
+    answer = execute_service._no_recipe_answer(
+        {"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}, "reason": ""}
+    )
+
+    assert topics and starts
+    for name in topics + starts:
+        assert name in answer
+    for node_id in execute_service.step_service.CONTEXT_STARTS:
+        assert node_id not in starts
+
+
+def test_이유가_비면_빈_줄만_남지_않는다():
+    """LLM 이 이유를 안 쓴 회차가 있음. 그때 답에 빈 칸이 뜨면 안 됨."""
+    answer = execute_service._no_recipe_answer(
+        {"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}, "reason": ""}
+    )
+
+    assert "\n\n\n" not in answer
+    assert answer.startswith("지금 할 수 있는 일 중에 맞는 것이 없습니다.\n\n제가 다루는 것은")
 
 
 def test_경로가_비면_id_로_떨어지되_죽지_않는다():

@@ -107,8 +107,10 @@ def test_three_axes_together_narrow_to_what_the_utterance_asked():
 
     번호를 2026-08-28 에 옮겼다 — recipe_030 -> recipe_045. 같은 사슬이고,
     화면 문맥 시작 노드 둘이 붙으면서 그 뒤 번호가 밀렸다.
+    2026-08-29 에 또 옮겼다 — recipe_045 -> recipe_046. 「시설물 표시」 노드가
+    붙어 새 recipe_004 가 생기면서 004 이상이 하나씩 밀렸다.
     """
-    assert candidates("spoken_place", "item_list", "group_ev") == ["recipe_045"]
+    assert candidates("spoken_place", "item_list", "group_ev") == ["recipe_046"]
     assert candidates("spoken_place", "point", None) == ["recipe_001"]
 
 
@@ -118,11 +120,14 @@ def test_a_general_recipe_survives_only_when_nothing_matches_the_subject():
     범용 recipe(about 이 하나도 안 붙은 것)를 늘 통과시키면 "국회의원 선거구"
     에 웹 검색과 VWorld 경계가 계속 따라온다. 그렇다고 늘 빼면 대상 없는
     발화에서 후보가 0개가 된다.
+
+    번호를 2026-08-29 에 옮겼다 — 007~010 -> 008~011 · 006 -> 007. 같은
+    사슬이고, 「시설물 표시」 노드가 붙어 004 이상이 하나씩 밀렸다.
     """
     # 선거에 걸린 recipe 가 있다. 범용(web_search · VWorld 경계)은 빠진다.
     election = candidates("spoken_keyword", None, "group_election")
-    assert election == ["recipe_007", "recipe_008", "recipe_009", "recipe_010"]
-    assert "recipe_006" not in election, "웹 검색은 선거에 관한 것이 아니다"
+    assert election == ["recipe_008", "recipe_009", "recipe_010", "recipe_011"]
+    assert "recipe_007" not in election, "웹 검색은 선거에 관한 것이 아니다"
 
     # 좌표를 돌려받는 recipe 는 범용 하나뿐이다. 선거에 걸린 것이 하나도
     # 없으므로 그 범용이 남는다. 여기서 빼면 후보가 0개가 된다.
@@ -155,4 +160,4 @@ def test_an_unknown_axis_value_is_empty_not_an_error():
 
     generic = candidates(about="없는대상")
     assert generic == [rid for rid in recipe_ids() if not recipe_facets(rid)["about"]]
-    assert "recipe_001" in generic and "recipe_007" not in generic
+    assert "recipe_001" in generic and "recipe_008" not in generic

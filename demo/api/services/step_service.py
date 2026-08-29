@@ -5,8 +5,14 @@ input 을 어떻게 채우는지는 온톨로지에 없다 — 아래 두 표가
 온톨로지에 도구 이름을 적으면 노드가 특정 MCP 서버에 묶여, 같은 일을 하는
 도구로 갈아끼울 때 도메인을 고쳐야 한다.
 
-    TOOL_OF   노드            -> 서버 · 도구 · 답 첫 줄
+    TOOL_OF   노드            -> 실행 수단 · 답 첫 줄
     STEP_OF   (노드, 받는 타입) -> input
+
+**실행 수단이 둘이다.** 마흔은 Gateway 의 MCP 도구를 부르고(server_id · tool),
+하나는 부를 도구가 없어 지도 명령만 낸다(command). 「모든 경로가 도구로 끝난다」
+는 전제가 깨지는 자리가 여기 한 곳이고, 온톨로지는 그것을 모른다 — 거기 적힌
+것은 「장소 이름을 받아 시설물 화면을 내놓는다」 뿐이다. 도구 이름을 온톨로지에
+안 적기로 한 규칙이 그래서 값을 한다.
 
 **같은 노드가 두 자리에 온다.** 전기차 충전소 검색은 말한 키워드 뒤에도 오고
 장소 좌표 변환 뒤에도 온다. 그때 받는 것이 query 와 center 로 달라서 노드당
@@ -50,6 +56,15 @@ RADIUS_METERS = 15000
 # "장소" 를 뜻하면 안 된다. 그 값이 장소인지 키워드인지 식별자인지는 발화 해석
 # 응답의 given 이 말한다 — 여기는 그것을 구분하지 않는다.
 SPOKEN_VALUE = "@arg"
+
+# 지도 명령 하나가 곧 실행인 자리의 op 이름.
+#
+# 저쪽 화면이 이 op 을 이름으로 알아본다 — KRRI_ASAP/ASAP-web 의
+# useChat.isDigitalTwinFacilityCommand 가 `cmd.op === 'digitalTwin.showFacility'`
+# 로 가르고 args.facilityName 을 문자열일 때만 읽는다. 저쪽 orchestrator 의
+# market_plugin_engine._show_facility 도 같은 op 과 같은 칸으로 만든다.
+# 두 파일 다 읽기만 했다.
+SHOW_FACILITY_COMMAND = "digitalTwin.showFacility"
 
 # 앞 단계를 가리키는 표시. 실제 step id 로 바꿔서 vendor 에 넘긴다.
 PREVIOUS_STEP = "$prev"
@@ -304,6 +319,16 @@ TOOL_OF = {
         "server_id": WEB_SERVER_ID,
         "tool": "web.search",
         "headline": "{arg} 웹 검색 결과를 조회했습니다.",
+    },
+
+    # **도구가 아닌 유일한 줄이다.** server_id · tool 대신 command 를 적는다.
+    # plan 이 그 칸이 있는지로 갈라 vendor 에 넘길 step 대신 지도 명령을 만든다.
+    #
+    # 한 줄에 둘 다 적지 않는다. 도구도 부르고 명령도 내는 노드가 생기면 그때
+    # 다시 정한다 — 지금 그런 노드가 없는데 미리 두면 안 쓰이는 분기가 남는다.
+    "show_facility": {
+        "command": SHOW_FACILITY_COMMAND,
+        "headline": "{arg} 시설물을 화면에 띄웠습니다.",
     },
 }
 
@@ -570,6 +595,16 @@ STEP_OF = {
     #   this user." 데이터가 없는 것이 아니라 우리 user_context 에 web-search
     #   서버가 안 열려 있는 것이다. KRRI_ASAP 쪽 권한이라 우리가 못 연다.
     ("web_search", "keyword"): {"input": {"query": SPOKEN_VALUE}},
+
+    # 이 input 은 도구 인자가 아니라 지도 명령의 args 다. 칸 이름은 저쪽
+    # 화면이 읽는 이름 그대로여야 한다 (useChat.getFacilityName 이
+    # args.facilityName 만 본다).
+    #
+    # **발화에서 온 값을 그대로 넘긴다.** 저쪽은 skill.md 의 「Facility Aliases」
+    # 표로 낱말을 시설물명으로 바꾼다("제3터널" -> "시험 제3터널"). 그 표는
+    # 저쪽 설정이고 우리 온톨로지에는 그것을 둘 자리가 없어 베끼지 않았다.
+    # NOTES.md 「마흔아홉째」에 남은 격차로 적었다.
+    ("show_facility", "place_name"): {"input": {"facilityName": SPOKEN_VALUE}},
 }
 
 # 아직 배선을 안 적은 (노드 × 받는 타입)과 그 이유. 다음 사람이 왜 비어 있는지
@@ -719,8 +754,14 @@ def plan(recipe_id: str, argument: str) -> dict:
           수도 있음. 어느 것인지는 여기서 안 가름
     출력  steps  vendor 의 intent["steps"] 에 그대로 들어갈 배열
           nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
-          headline  답의 첫 줄. 마지막 step 의 노드가 정함
+          commands  도구를 안 부르고 곧장 내는 지도 명령
+          command_nodes  commands 와 같은 길이. commands[i] 를 만든 노드 id
+          headline  답의 첫 줄. 경로의 마지막 실행 노드가 정함
     규칙  step id 는 s1 · s2 … 로 붙음. $prev 를 앞 step 의 id 로 바꿈
+          배선 줄에 command 가 적힌 노드는 step 이 아니라 지도 명령이 됨.
+          그 노드는 부를 도구가 없음
+          지도 명령을 낸 노드는 previous_id 를 안 바꿈. vendor 에 넘어간
+          step 이 없어 $prev 로 가리킬 것이 없음
           어느 배선 줄을 쓸지는 앞 노드가 건네는 타입이 정함. wiring_at 이 그것임
           맞는 줄이 없는 노드는 step 을 만들지 않음. 데이터 노드
           (spoken_place)도 값을 준비할 뿐 부를 것이 없어 빠짐
@@ -738,6 +779,8 @@ def plan(recipe_id: str, argument: str) -> dict:
     """
     steps: list[dict] = []
     nodes: list[str] = []
+    commands: list[dict] = []
+    command_nodes: list[str] = []
     headline = ""
     previous_id = None
     source_id = None
@@ -750,23 +793,36 @@ def plan(recipe_id: str, argument: str) -> dict:
             continue
 
         tool = TOOL_OF[node_id]
+        filled = _filled(
+            input_of(wiring, first=previous_id is None), argument, previous_id
+        )
+        headline = _headline(tool["headline"], argument)
+
+        if "command" in tool:
+            commands.append({"op": tool["command"], "args": filled})
+            command_nodes.append(node_id)
+            continue
+
         step_id = f"s{len(steps) + 1}"
         step = {
             "id": step_id,
             "server_id": tool["server_id"],
             "tool": tool["tool"],
-            "input": _filled(
-                input_of(wiring, first=previous_id is None), argument, previous_id
-            ),
+            "input": filled,
         }
         if wiring.get("adapter") and _has_center(step["input"]):
             step["inputAdapter"] = wiring["adapter"]
         steps.append(step)
         nodes.append(node_id)
-        headline = _headline(tool["headline"], argument)
         previous_id = step_id
 
-    return {"steps": steps, "nodes": nodes, "headline": headline}
+    return {
+        "steps": steps,
+        "nodes": nodes,
+        "commands": commands,
+        "command_nodes": command_nodes,
+        "headline": headline,
+    }
 
 
 def _headline(template: str, argument: str) -> str:

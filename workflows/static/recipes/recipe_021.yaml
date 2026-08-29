@@ -2,4 +2,4 @@ steps:
 
   - node: picked_point
 
-  - node: find_assembly_pledge_district_by_point
+  - node: find_assembly_district_by_point

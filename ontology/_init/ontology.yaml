@@ -214,6 +214,27 @@ nodes:
     name: 통계
     description: 집계한 수치와 변화 추이.
 
+  # 받는 노드가 하나도 없는 타입이다. 그래서 이것을 내놓는 노드 뒤에는 아무도
+  # 못 선다(can_connect). 경계 도형 · 통계와 같은 자리이고, 다른 점은 조회해서
+  # 받는 자료가 아니라 화면이 바뀌는 것이라는 것뿐이다.
+  #
+  # 이 설명 문장은 축 선택지(want)로 발화 해석 프롬프트에 그대로 실린다
+  # (ontology/shortlist.py 의 _describe). 「목록」과 갈리는 말이 여기 있어야 한다.
+  #
+  # **이 한 문장이 「전」과의 차이 열둘 중 셋을 갈랐다** (2026-08-29 실측,
+  # NOTES.md 「마흔아홉째」). "화면에 표시하는 것" 이라 적었더니 "오송역 위치
+  # 보여줘" 가 좌표(point)를 버리고 이쪽을 골라 적중 3회를 잃었다 — 저쪽도 같은
+  # 자리를 낱말로 막아 두었다(show-facility 의 `Do Not Use When` 이 "오송역
+  # 보여줘 · 오송역 이동 · 의왕역 가줘" 다).
+  #
+  # **그래서 문안을 고쳐 봤고 되돌렸다.** 「시설물·모니터링·점검·손상·센서를
+  # 짚을 때만 쓴다」로 바꾸니 그 셋은 살아났는데(1번 3/3) 시설물과 무관한
+  # 다섯 자리가 새로 빗나가 빗나감이 9 -> 14 가 됐다. **1순위가 빗나감이라
+  # 되돌렸다.** 표는 NOTES.md 에 있다. 문안을 또 흔들기 전에 그것을 읽는다.
+  facility_view:
+    name: 시설물 화면
+    description: 디지털 트윈 화면에 띄운 시설물. 자료를 조회해 받는 것이 아니라 화면에 표시하는 것이다.
+
   # ---------------------------------------------------------- 시작 데이터 : 발화에서 온 값
 
   spoken_place:
@@ -425,6 +446,31 @@ nodes:
     name: 3D 모델 목록 조회
     description: 업로드된 3D 모델과 타일셋 목록을 조회한다.
 
+  # ---------------------------------------------------------- 기능 : 화면 표시
+  #
+  # **도구를 안 부르는 유일한 실행 노드다.** 나머지 마흔은 Gateway 의 MCP 도구를
+  # 부르고 그 응답에서 지도 명령이 나오는데, 이것은 부를 도구가 없고 지도 명령
+  # 하나가 곧 실행이다.
+  #
+  # **온톨로지는 그것을 모른다.** 여기 적힌 것은 "장소 이름을 받아 시설물 화면을
+  # 내놓는다" 뿐이고, 그것을 무엇으로 수행하는지는 예나 지금이나 배선표
+  # (demo/api/services/step_service.py 의 TOOL_OF)가 안다. 도구 이름을 온톨로지에
+  # 안 적기로 한 규칙이 여기서 값을 한다 — 노드가 도구가 아닌 것에 묶여도
+  # 온톨로지는 한 글자도 안 달라진다.
+  #
+  # 저쪽 plugin 에도 실행 단계가 없다. 아홉 개 plugin 에는 다 있는 `## Run` 절이
+  # show-facility · system-chat · unsupported-request 셋에만 없고, show-facility 는
+  # `## Map` 의 `show_facility $facilityName` 한 줄이 전부다
+  # (KRRI_ASAP/ASAP-orchestrator/plugins/show-facility/plugin.md. 읽기만 했다).
+  #
+  # **맨 뒤에 둔 것은 recipe 번호를 덜 밀려는 것이다.** 경로 생성이 nodes 에 적힌
+  # 차례를 따르므로(ontology/registry.py 의 all_recipes) 여기 두면 새 recipe 가
+  # 「말한 장소」 2단 사슬의 맨 끝에 들어간다.
+
+  show_facility:
+    name: 시설물 표시
+    description: 오송 테스트트랙의 터널·교량·선로 같은 시설물을 디지털 트윈 화면에서 골라 보여준다.
+
 
 edges:
 
@@ -566,10 +612,26 @@ edges:
   - { from: list_documents,  to: item_list, predicate: hasOutput }
   - { from: list_bim_models, to: item_list, predicate: hasOutput }
 
+  # ---------------------------------------------------------- hasInput / hasOutput : 화면 표시
+  #
+  # 받는 것을 「장소 이름」으로 적었다. 시설물 이름은 사람이 부르는 이름이고
+  # (제3터널 · 오송역 · 선로 시점) 그것이 place_name 의 뜻 그대로다. 시설물
+  # 전용 타입을 따로 만들면 시작 데이터 노드가 하나 더 필요해지고, 그러면
+  # 발화가 「말한 장소」로 읽힐 때 이 경로가 통째로 후보에서 빠진다.
+  #
+  # 내놓는 것은 아무도 안 받는 타입이라 이 노드 뒤에는 누구도 못 선다. 사슬은
+  # 「말한 장소 -> 시설물 표시」 한 벌뿐이다.
+  - { from: show_facility, to: place_name,    predicate: hasInput }
+  - { from: show_facility, to: facility_view, predicate: hasOutput }
+
   # ---------------------------------------------------------- about : 무엇에 관한 것인가
   - { from: find_cctv,           to: group_transport, predicate: about }
   - { from: get_railway_section, to: group_transport, predicate: about }
   - { from: get_railway_lines,   to: group_transport, predicate: about }
+  # 오송 테스트트랙은 철도 시험선이다. 대상을 안 붙이면 발화가 대상을 「교통」
+  # 이라고 짚었을 때 shortlist.candidates 의 첫 단에서 걸러진다 — 범용 recipe 는
+  # 짚은 대상에 맞는 것이 하나도 없을 때만 남기 때문이다.
+  - { from: show_facility,       to: group_transport, predicate: about }
 
   - { from: election_district_dataset_info,         to: group_election, predicate: about }
   - { from: search_election_districts,              to: group_election, predicate: about }

@@ -4,4 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: get_vworld_boundaries
+  - node: find_admin_boundary_by_point

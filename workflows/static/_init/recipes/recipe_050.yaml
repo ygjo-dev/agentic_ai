@@ -1,7 +1,7 @@
 steps:
 
-  - node: spoken_keyword
+  - node: spoken_place
 
-  - node: web_search
+  - node: get_railway_section
 
-  - node: web_fetch
+  - node: get_railway_lines
