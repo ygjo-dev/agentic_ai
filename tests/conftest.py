@@ -113,6 +113,11 @@ def isolated_workspace(monkeypatch, tmp_path):
 
     register_node 는 paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 됨.
     프롬프트 경로는 읽기만 하므로 그대로 둠.
+
+    **노드 좌표도 여기서 막는다.** reset_to_init() 이 좌표까지 되돌리게 되면서
+    (등록한 노드가 사라진 뒤에도 좌표가 남는 것을 막으려는 것) 격리를 안 하면
+    pytest 가 시연용 작업본을 _init 으로 덮어쓴다. 좌표는 paths 가 아니라
+    layout_store 가 들고 있으므로 그쪽 모듈 속성을 바꾼다.
     """
     work = tmp_path / "work"
     init = tmp_path / "init"
@@ -143,5 +148,12 @@ def isolated_workspace(monkeypatch, tmp_path):
         ("INIT_RECIPES_DIR", init / "recipes"),
     ):
         monkeypatch.setattr(paths, name, value)
+
+    from demo.graph_svg import layout_store
+
+    shutil.copy2(layout_store.INIT_LAYOUT_PATH, init / "layout.json")
+    shutil.copy2(layout_store.INIT_LAYOUT_PATH, work / "layout.json")
+    monkeypatch.setattr(layout_store, "LAYOUT_PATH", work / "layout.json")
+    monkeypatch.setattr(layout_store, "INIT_LAYOUT_PATH", init / "layout.json")
 
     return work

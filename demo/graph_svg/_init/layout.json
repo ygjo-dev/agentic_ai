@@ -1,0 +1,194 @@
+{
+  "admin_boundary_dataset_info": [
+    2837.5,
+    2148.0
+  ],
+  "assembly_district_dataset_info": [
+    535.17,
+    2979.1
+  ],
+  "assembly_pledge_dataset_info": [
+    837.86,
+    3326.7
+  ],
+  "dem_info": [
+    2186.0,
+    3000.0
+  ],
+  "election_district_dataset_info": [
+    230.39,
+    2073.3
+  ],
+  "ev_dataset_info": [
+    3594.9,
+    4579.5
+  ],
+  "find_admin_boundary_by_point": [
+    3259.1,
+    156.4
+  ],
+  "find_assembly_district_by_point": [
+    2310.3,
+    883.93
+  ],
+  "find_assembly_pledge_district_by_point": [
+    2367.0,
+    620.43
+  ],
+  "find_cctv": [
+    4087.4,
+    1464.2
+  ],
+  "find_election_district_by_point": [
+    2356.0,
+    1159.7
+  ],
+  "find_local_pledge_summary_by_point": [
+    2477.5,
+    1390.4
+  ],
+  "geocode_place": [
+    3556.4,
+    1832.3
+  ],
+  "get_age_profile": [
+    3835.4,
+    75.464
+  ],
+  "get_assembly_district": [
+    382.74,
+    903.14
+  ],
+  "get_assembly_pledge_district": [
+    383.88,
+    506.12
+  ],
+  "get_election_district": [
+    68.5,
+    1127.0
+  ],
+  "get_ev_station": [
+    3765.8,
+    4142.1
+  ],
+  "get_local_pledge_summary": [
+    2696.4,
+    18.0
+  ],
+  "get_population_trend": [
+    3749.8,
+    353.03
+  ],
+  "get_railway_lines": [
+    5066.0,
+    1518.9
+  ],
+  "get_railway_section": [
+    4952.7,
+    1825.5
+  ],
+  "get_vworld_boundaries": [
+    4988.6,
+    2550.7
+  ],
+  "group_election": [
+    1500.1,
+    1864.5
+  ],
+  "group_ev": [
+    3602.8,
+    4275.7
+  ],
+  "group_population": [
+    4222.7,
+    460.66
+  ],
+  "group_transport": [
+    4618.8,
+    1566.1
+  ],
+  "list_bim_models": [
+    1763.5,
+    3426.0
+  ],
+  "list_documents": [
+    2179.5,
+    3426.0
+  ],
+  "local_pledge_dataset_info": [
+    284.55,
+    2568.1
+  ],
+  "picked_point": [
+    2993.0,
+    865.73
+  ],
+  "population_dataset_info": [
+    4573.0,
+    240.82
+  ],
+  "search_admin_boundaries": [
+    4760.7,
+    2583.4
+  ],
+  "search_assembly_districts": [
+    3072.6,
+    2913.2
+  ],
+  "search_assembly_pledge_districts": [
+    2967.9,
+    2465.8
+  ],
+  "search_documents": [
+    4397.1,
+    3704.0
+  ],
+  "search_election_districts": [
+    2595.7,
+    3206.9
+  ],
+  "search_ev_stations": [
+    3676.0,
+    3792.5
+  ],
+  "search_local_pledge_summaries": [
+    2846.8,
+    2744.9
+  ],
+  "search_population_statistics": [
+    4278.4,
+    1250.4
+  ],
+  "show_facility": [
+    3494.0,
+    1959.7
+  ],
+  "spoken_identifier": [
+    54.77,
+    729.07
+  ],
+  "spoken_keyword": [
+    3958.3,
+    2956.5
+  ],
+  "spoken_place": [
+    5358.6,
+    1473.6
+  ],
+  "visible_extent": [
+    3982.3,
+    2420.3
+  ],
+  "vworld_dataset_info": [
+    2409.5,
+    1935.0
+  ],
+  "web_fetch": [
+    5178.3,
+    3789.8
+  ],
+  "web_search": [
+    5012.4,
+    3638.4
+  ]
+}

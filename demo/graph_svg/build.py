@@ -18,7 +18,7 @@ import hashlib
 import json
 from collections import OrderedDict
 
-from demo.graph_svg import focus
+from demo.graph_svg import focus, layout_store
 from demo.graph_svg.dot import (
     DOTTED_COLOR_BOTTOM,
     DOTTED_COLOR_TOP,
@@ -183,7 +183,7 @@ def top_svg(nodes: dict, solid: dict, dotted: dict, positions: dict, mark: dict)
                 wrap_node_labels(nodes),
                 solid,
                 dotted,
-                positions=positions,
+                positions=layout_store.for_drawing(positions),
                 spring=True,
                 # 라벨은 어느 경우에도 안 그린다. 발표자가 말로 설명한다.
                 dotted_labels=False,
@@ -235,6 +235,8 @@ def variant_svgs(
           남는 편이 맞음. 주황은 "실행할 수 있는 길" 하나만 뜻함
     """
     wrapped = wrap_node_labels(nodes)
+    # 변형이 여럿이라 배율은 한 번만 곱한다. 변형마다 곱하면 같은 값을 반복한다.
+    drawn = layout_store.for_drawing(positions)
     registering = "accepted" in mark
     all_ids = list(recipe_ids)
 
@@ -256,7 +258,7 @@ def variant_svgs(
                     # 경로가 정확히 하나면 build_dot 이 순번을 붙인다. 규칙은 한곳뿐이다.
                     highlight_paths=() if registering else focus.edges_of(paths, ids),
                     highlight_nodes=() if registering else focus.nodes_of(paths, ids),
-                    positions=positions,
+                    positions=drawn,
                     spring=True,
                     dotted_labels=False,
                     node_attrs=NODE_ATTRS,

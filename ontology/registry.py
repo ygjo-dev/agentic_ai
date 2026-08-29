@@ -538,7 +538,12 @@ def reset_to_init() -> None:
     """_init 사본을 작업 파일로 되돌림.
 
     규칙  등록으로 늘어난 recipe 도 사라져야 하므로 디렉터리를 통째로 갈아끼움
+          노드 좌표도 함께 되돌림. 안 되돌리면 등록한 노드가 사라진 뒤에도
+          그 좌표가 남아, 시연을 두 번 하면 두 번째가 첫 배치가 아님
     제약  _init 사본 자체를 건드리지 않는다. 망가지면 되돌릴 곳이 없음
+          좌표를 위에서 import 하지 않는다.
+          좌표는 그리기(demo/)의 자산이고 핵심이 시연 계층을 의존하면 안 됨.
+          여기서 함수 안에 두면 demo/ 가 사라질 때 이 줄만 조용히 건너뜀
     """
     store.restore_from_init()
     shutil.copy2(paths.INIT_MENU_YAML_PATH, paths.MENU_YAML_PATH)
@@ -547,3 +552,9 @@ def reset_to_init() -> None:
     if paths.RECIPES_DIR.exists():
         shutil.rmtree(paths.RECIPES_DIR)
     shutil.copytree(paths.INIT_RECIPES_DIR, paths.RECIPES_DIR)
+
+    try:
+        from demo.graph_svg import layout_store
+    except ImportError:  # 시연 계층이 없는 설치
+        return
+    layout_store.restore_from_init()

@@ -4,14 +4,25 @@
 시연에서 보여줘야 하는 건 "새 노드가 어디에 들어가는지" 인데, 그러면
 "화면이 리셋됐다" 로 보인다. 그래서 한 번 정한 좌표를 파일에 남겨 고정한다.
 
-좌표는 캐시일 뿐이다 — 없으면 다시 계산하면 된다. 그래서 이 모듈은
-어떤 경우에도 예외를 올리지 않는다. 시연 중에 좌표 파일 때문에 화면이
-죽는 것이 가장 나쁘다.
+**좌표 파일은 둘이다.** 온톨로지 · recipe · menu 와 같은 꼴이다.
+
+    _init/layout.json   사람이 눈으로 골라 확정한 배치. git 이 추적한다
+    layout.json         작업본. 등록할 때마다 바뀐다. .gitignore 다
+
+예전에는 "좌표는 캐시일 뿐이다 — 없으면 다시 계산하면 된다" 였고 그때는
+맞았다. 지금은 아니다. 배치 파라미터를 여러 벌 만들어 사람이 화면을 보고
+하나를 고르므로, **어느 후보를 골랐는지가 좌표 파일에만 남는다.** 지우면
+그 선택이 사라진다.
+
+없으면 계산하는 것은 그대로다. 작업본이 없으면 _init 에서 복사하고, 둘 다
+없을 때만 neato 를 돌린다. 그래서 이 모듈은 어떤 경우에도 예외를 올리지
+않는다 — 시연 중에 좌표 파일 때문에 화면이 죽는 것이 가장 나쁘다.
 """
 
 import hashlib
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -23,6 +34,26 @@ from demo.graph_svg.graphviz import layout_positions
 # 파일을 옮기면 이미 잡아둔 좌표를 잃지만, 최초 배치는 결정적이라 같은
 # 온톨로지에서는 같은 지도가 다시 나온다(좌표 해시로 확인).
 LAYOUT_PATH = Path(__file__).resolve().parent / "layout.json"
+# 사람이 고른 배치. 온톨로지 · recipe · menu 의 _init 사본과 같은 자리다.
+INIT_LAYOUT_PATH = Path(__file__).resolve().parent / "_init" / "layout.json"
+
+
+def restore_from_init(path: Path | None = None, init_path: Path | None = None) -> None:
+    """_init 사본을 작업본으로 되돌림.
+
+    입력  작업본 경로 · _init 사본 경로(없으면 기본값)
+    규칙  ontology.registry.reset_to_init 이 부름. 온톨로지 · recipe · menu 와
+          함께 좌표도 첫 배치로 돌아감
+          못 되돌려도 예외를 안 올림. 작업본이 그대로 남거나 다시 계산됨
+    제약  _init 사본 자체를 건드리지 않는다. 망가지면 되돌릴 곳이 없음
+    """
+    path = path or LAYOUT_PATH
+    init_path = init_path or INIT_LAYOUT_PATH
+
+    try:
+        shutil.copy2(init_path, path)
+    except OSError:  # 없음 · 권한 등
+        pass
 
 
 def load(path: Path | None = None) -> dict[str, tuple[float, float]]:
@@ -36,7 +67,14 @@ def load(path: Path | None = None) -> dict[str, tuple[float, float]]:
     try:
         raw = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):  # 없음 · 깨진 JSON · 권한 등
-        return {}
+        if path != LAYOUT_PATH:
+            return {}
+        # 작업본이 없거나 깨졌으면 사람이 고른 배치를 읽는다. 복사는
+        # ensure_positions 가 한다 — 읽기만 하는 함수가 파일을 만들지 않는다.
+        try:
+            raw = json.loads(INIT_LAYOUT_PATH.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {}
 
     if not isinstance(raw, dict):
         return {}
@@ -101,6 +139,26 @@ def transpose(
           읽는 데 차이가 없음
     """
     return {node_id: (y, x) for node_id, (x, y) in positions.items()}
+
+
+# 그릴 때만 곱하는 좌표 배율. 저장된 좌표는 안 고친다 (아래 for_drawing).
+# 겹침 0 을 지키는 하한이 정한 값이다. 근거와 표는 NOTES.md 「쉰두째」.
+DRAW_SCALE = 0.64
+
+
+def for_drawing(
+    positions: dict[str, tuple[float, float]], scale: float | None = None
+) -> dict[str, tuple[float, float]]:
+    """그릴 좌표. 저장된 좌표에 DRAW_SCALE 을 곱한 사본.
+
+    입력  {node_id: (x, y)} · 배율(생략하면 DRAW_SCALE)
+    출력  {node_id: (x*배율, y*배율)}
+    규칙  원본을 안 건드림. 저장된 좌표는 배치의 단일 출처로 남음
+    제약  배치 계산(ensure_positions)에 이 값을 넣지 않는다.
+          거기 들어가는 핀은 저장된 좌표계의 값이어야 함
+    """
+    factor = DRAW_SCALE if scale is None else scale
+    return {node_id: (x * factor, y * factor) for node_id, (x, y) in positions.items()}
 
 
 def is_tall(positions: dict[str, tuple[float, float]]) -> bool:
@@ -174,6 +232,15 @@ def ensure_positions(
           예전에는 프론트엔드가 JSON 응답을 튜플 키 dict 로 되돌려 넘겼음.
           그리기가 서버로 들어온 지금은 왕복할 이유가 없음
     """
+    # 작업본이 없으면 사람이 고른 배치에서 복사한다. 둘 다 없으면 아래에서
+    # neato 가 처음부터 놓는다.
+    try:
+        fresh_install = not LAYOUT_PATH.exists() and INIT_LAYOUT_PATH.exists()
+    except OSError:
+        fresh_install = False
+    if fresh_install:
+        restore_from_init()
+
     positions, missing = resolve(nodes)
     if not missing:
         return positions
