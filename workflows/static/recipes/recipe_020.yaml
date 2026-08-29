@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: picked_point
 
-  - node: geocode_place
-
-  - node: find_cctv
+  - node: find_assembly_district_by_point

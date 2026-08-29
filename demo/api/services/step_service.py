@@ -75,6 +75,57 @@ BBOX_FROM_PREVIOUS = [
 # 앞 단계의 지점 좌표를 받는 모양. find…ByPoint 다섯이 똑같이 쓴다.
 POINT_FROM_PREVIOUS = {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"}
 
+# 저쪽 화면이 발화와 함께 보내는 지도 문맥을 가리키는 표시.
+#
+# **@arg 도 $prev 도 아닌 셋째 자리다.** @arg 는 사람이 입으로 말한 값이고
+# $prev 는 앞 단계가 내놓은 값인데, 이것은 사람이 아무 값도 말하지 않았는데
+# 화면이 함께 보내온 값이다.
+#
+# **_filled 이 이 표시를 안 바꾼다. 바꿀 것이 없다.** vendor 의
+# _build_resolution_scope 가 state["context"] 를 그대로 scope["context"] 에
+# 얹고 _resolve_reference 가 "$context.…" 를 그 자리에서 푼다. 우리가 여기서
+# 값을 채우면 같은 일을 두 곳이 하게 되고, 문맥이 빈 요청에서 어느 쪽이
+# 비운 것인지 알 수 없어진다.
+CONTEXT_VALUE = "$context"
+
+# 문맥의 찍은 지점. 저쪽 ChatRequest.context.selectedLocation 이다
+# ({lon, lat, label, source}. source 는 "map-right-click").
+#
+# 통째로 넘긴다. vendor 의 _parse_lon_lat 이 dict 에서 lon · lat 을 꺼내므로
+# 칸 이름을 우리가 다시 적을 필요가 없다.
+SELECTED_LOCATION = f"{CONTEXT_VALUE}.selectedLocation"
+
+# 문맥의 찍은 지점을 lon · lat 두 칸으로. find…ByPoint 다섯이 그 모양으로 받는다.
+POINT_FROM_CONTEXT = {
+    "lon": f"{SELECTED_LOCATION}.lon",
+    "lat": f"{SELECTED_LOCATION}.lat",
+}
+
+# 문맥의 보이는 범위. 저쪽 ChatRequest.context.view.bbox 이고
+# [[minLon, minLat], [maxLon, maxLat]] 두 겹이다 (2026-08-28 확인 —
+# KRRI_ASAP/ASAP-web 의 CameraManager.getMapContext 와 MapLibre2DMap.getMapContext
+# 가 둘 다 [[west, south], [east, north]] 로 만든다).
+#
+# **$prev 의 bbox 와 모양이 같다.** 그래서 BBOX_FROM_PREVIOUS 와 같은 네 이름을
+# 쓴다 — vendor 의 _resolve_reference 가 minLon 을 bbox[0][0] 로 푸는 규칙이
+# 앞 단계 결과든 문맥이든 한 벌이다.
+VIEW_FROM_CONTEXT = f"{CONTEXT_VALUE}.view"
+BBOX_FROM_CONTEXT = [
+    f"{VIEW_FROM_CONTEXT}.minLon",
+    f"{VIEW_FROM_CONTEXT}.minLat",
+    f"{VIEW_FROM_CONTEXT}.maxLon",
+    f"{VIEW_FROM_CONTEXT}.maxLat",
+]
+
+# 문맥의 어느 칸이 어느 시작 데이터 노드인가. **온톨로지 밖이다** —
+# 저쪽 화면의 계약이라 온톨로지가 알 일이 아니고, TOOL_OF · STEP_OF 와 같은
+# 자리에 둔다. key 는 온톨로지의 데이터 노드 id 이고 축 선택지와 같은 값이다
+# (execute_service.NO_ARGUMENT_ANSWER 가 같은 방식이다).
+CONTEXT_STARTS = {
+    "picked_point": ("selectedLocation",),
+    "visible_extent": ("view", "bbox"),
+}
+
 # 앞 단계의 행정구역을 층위와 코드로 받는 모양. population 두 도구가 똑같이 쓴다.
 #
 # adminBoundary.findBoundaryByPoint 가 여덟 지점에서 늘 items 3건을
@@ -260,8 +311,10 @@ TOOL_OF = {
 #
 #   input        그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
 #   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀.
-#                **지금 이것을 적은 줄은 하나도 없다** (2026-08-26) —
-#                input_of 는 아직 읽고 tools/check_wiring.py 가 그것을 부른다
+#                **저쪽 화면의 지도 문맥이 들어오는 자리다** (2026-08-28) —
+#                지도 범위와 지점 좌표를 받는 열다섯 줄이 이것을 적었다.
+#                그 자리에 오는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이고,
+#                문맥이 없으면 resolve 가 그 후보를 아예 안 내놓는다
 #   adapter      vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
 #
 # **키의 타입은 온톨로지의 hasInput 선언과 1:1 이다.** 선언에 없는 타입으로
@@ -291,6 +344,12 @@ STEP_OF = {
     #                            넘기면 0건이다
     #
     # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 어댑터를 저절로 건다.
+    #
+    # 첫 자리(input_first)는 보이는 범위에서 곧장 온다. 저쪽 화면의
+    # current-view-cctv 가 하는 것과 같은 일이다 — 그쪽도
+    # $context.view.bbox 네 칸을 road.getCctv 에 그대로 넣는다
+    # (KRRI_ASAP/ASAP-orchestrator/plugins/current-view-cctv/plugin.md 의
+    #  Tool Input. 읽기만 했다).
     ("find_cctv", "map_extent"): {
         "input": {
             "minLon": f"{PREVIOUS_STEP}.minLon",
@@ -298,9 +357,20 @@ STEP_OF = {
             "maxLon": f"{PREVIOUS_STEP}.maxLon",
             "maxLat": f"{PREVIOUS_STEP}.maxLat",
         },
+        "input_first": {
+            "minLon": BBOX_FROM_CONTEXT[0],
+            "minLat": BBOX_FROM_CONTEXT[1],
+            "maxLon": BBOX_FROM_CONTEXT[2],
+            "maxLat": BBOX_FROM_CONTEXT[3],
+        },
     },
+    # 첫 자리는 찍은 지점에서 곧장 온다. 저쪽 cctv-around-point 와 같은 꼴이고
+    # (center + radiusMeters -> point_radius_to_bbox), 반경만 다르다 — 저쪽
+    # 기본값은 1000m 이지만 우리는 이미 재본 값 RADIUS_METERS 를 쓴다.
+    # 재보지 않은 숫자를 새로 들이지 않는다.
     ("find_cctv", "point"): {
         "input": {"location": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+        "input_first": {"location": SELECTED_LOCATION, "radiusMeters": RADIUS_METERS},
     },
 
     ("get_railway_section", "place_name"): {"input": {"sectionName": SPOKEN_VALUE}},
@@ -308,22 +378,51 @@ STEP_OF = {
     # railwayName 은 안 건드린다. stationName 과 같은 "장소 이름" 이라 줄이
     # 갈리지 않는다 — 역명으로 볼지 노선명으로 볼지는 사람이 정할 일이다.
     ("get_railway_lines", "place_name"): {"input": {"stationName": SPOKEN_VALUE}},
-    ("get_railway_lines", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+    ("get_railway_lines", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
+    },
 
-    ("find_admin_boundary_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
-    ("find_election_district_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
-    ("find_assembly_district_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
-    ("find_assembly_pledge_district_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
-    ("find_local_pledge_summary_by_point", "point"): {"input": POINT_FROM_PREVIOUS},
+    # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
+    # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.
+    ("find_admin_boundary_by_point", "point"): {
+        "input": POINT_FROM_PREVIOUS,
+        "input_first": POINT_FROM_CONTEXT,
+    },
+    ("find_election_district_by_point", "point"): {
+        "input": POINT_FROM_PREVIOUS,
+        "input_first": POINT_FROM_CONTEXT,
+    },
+    ("find_assembly_district_by_point", "point"): {
+        "input": POINT_FROM_PREVIOUS,
+        "input_first": POINT_FROM_CONTEXT,
+    },
+    ("find_assembly_pledge_district_by_point", "point"): {
+        "input": POINT_FROM_PREVIOUS,
+        "input_first": POINT_FROM_CONTEXT,
+    },
+    ("find_local_pledge_summary_by_point", "point"): {
+        "input": POINT_FROM_PREVIOUS,
+        "input_first": POINT_FROM_CONTEXT,
+    },
 
     ("search_admin_boundaries", "keyword"): {"input": {"query": SPOKEN_VALUE}},
-    ("search_admin_boundaries", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+    ("search_admin_boundaries", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
+    },
 
     ("get_vworld_boundaries", "keyword"): {"input": {"query": SPOKEN_VALUE}},
-    ("get_vworld_boundaries", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+    ("get_vworld_boundaries", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
+    },
 
     ("search_population_statistics", "keyword"): {"input": {"query": SPOKEN_VALUE}},
-    ("search_population_statistics", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+    ("search_population_statistics", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
+    },
 
     # 인구 두 도구는 자리가 하나다. 앞 단계는 지점 행정구역 판별
     # (adminBoundary.findBoundaryByPoint)뿐이고, 발화에서 곧바로 오는 자리는
@@ -338,9 +437,15 @@ STEP_OF = {
     ("search_ev_stations", "keyword"): {"input": {"query": SPOKEN_VALUE}},
     # bbox 넷이 전부 optional 이라 vendor 가 어댑터를 저절로 안 건다. 그래서
     # 이 줄에만 이름을 적는다. 오송역에서 83건이 나왔다(실측).
+    #
+    # 첫 자리(input_first)에는 어댑터를 안 건다. 보이는 범위는 이미 사각형이라
+    # 중심 좌표로 되돌렸다가 다시 넓힐 까닭이 없고, ev.searchStations 는
+    # bbox 를 평평한 네 수로 받는다. plan 이 어댑터를 거는 조건도 중심 좌표
+    # 칸이 남아 있을 때뿐이라(_has_center) 이 벌에는 저절로 안 걸린다.
     ("search_ev_stations", "map_extent"): {
         "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "adapter": POINT_RADIUS_TO_BBOX,
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
     },
 
     # ev.getStation 의 statId 는 **stationId 이지 id 가 아니다**(2026-08-23 실측).
@@ -368,11 +473,15 @@ STEP_OF = {
     ("search_election_districts", "keyword"): {"input": {"query": SPOKEN_VALUE}},
 
     ("search_assembly_districts", "keyword"): {"input": {"query": SPOKEN_VALUE}},
-    ("search_assembly_districts", "map_extent"): {"input": {"bbox": BBOX_FROM_PREVIOUS}},
+    ("search_assembly_districts", "map_extent"): {
+        "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
+    },
 
     ("search_assembly_pledge_districts", "keyword"): {"input": {"query": SPOKEN_VALUE}},
     ("search_assembly_pledge_districts", "map_extent"): {
         "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
     },
 
     # ── 선거 상세 셋 : 말한 이름을 그대로 보낸다 ──────────────────
@@ -404,10 +513,12 @@ STEP_OF = {
     ("get_assembly_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
     ("get_assembly_pledge_district", "district_code"): {"input": {"name": SPOKEN_VALUE}},
 
-    # ── 지방선거 교통 공약 요약 : 자리가 하나다 ────────────────────
+    # ── 지방선거 교통 공약 요약 : 배선 줄이 하나다 ────────────────
     #
-    #   recipe_041  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약
+    #   recipe_056  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약
+    #   recipe_052  찍은 지점 -> 행정구역 판별 -> 공약 요약
     #
+    # 경로는 둘인데 앞 노드는 둘 다 지점 행정구역 판별이라 줄은 하나다.
     # 발화에서 곧바로 오는 자리는 없다. `말한 식별자 is-a 행정구역 코드` 를
     # 떼면서 그 경로가 사라졌다.
     #
@@ -436,6 +547,7 @@ STEP_OF = {
     ("search_local_pledge_summaries", "keyword"): {"input": {"query": SPOKEN_VALUE}},
     ("search_local_pledge_summaries", "map_extent"): {
         "input": {"bbox": BBOX_FROM_PREVIOUS},
+        "input_first": {"bbox": BBOX_FROM_CONTEXT},
     },
 
     # knowledge.query : 문서 둘이 들어 있다(2026-08-26 실측 — 철도안전법 47쪽 ·
@@ -473,7 +585,7 @@ STEP_OF = {
 #   응답 모양을 한 번도 못 봤다. **모르면 배선을 적지 않는다.**
 #   예전에는 {url: @arg} 라고 적혀 있었다. 발화에서 온 말을 URL 로 쓰는
 #   것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
-#   recipe 038 이 여기 걸린다.
+#   recipe 050(말한 키워드 -> 웹 검색 -> 웹 문서 가져오기)이 여기 걸린다.
 #
 # 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
 # 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가
@@ -512,6 +624,28 @@ def place_in(text: str) -> str | None:
     return None
 
 
+def context_starts(context: dict | None) -> list[str]:
+    """지금 문맥이 값을 줄 수 있는 시작 데이터 노드.
+
+    입력  저쪽 화면이 보낸 context. 없거나 dict 가 아니면 빈 것으로 봄
+    출력  노드 id 목록. CONTEXT_STARTS 에 적힌 차례
+    규칙  칸이 있고 비어 있지 않아야 셈. selectedLocation 이 null 로 오는
+          것이 저쪽의 평상시 모양임 (우클릭을 안 했을 때)
+          bbox 는 두 겹 목록이라 빈 목록도 없는 것으로 셈
+    제약  값이 좌표로 쓸 만한지 여기서 보지 않는다.
+          범위를 재는 것은 vendor 의 _parse_lon_lat 이고, 여기가 또 재면
+          두 곳이 다른 기준을 갖게 됨
+    """
+    found = []
+    for node_id, path in CONTEXT_STARTS.items():
+        value = context if isinstance(context, dict) else None
+        for key in path:
+            value = value.get(key) if isinstance(value, dict) else None
+        if value not in (None, "", [], {}):
+            found.append(node_id)
+    return found
+
+
 def wiring_at(node_id: str, source_id: str) -> dict | None:
     """그 자리에서 쓸 배선 한 줄.
 
@@ -539,9 +673,13 @@ def input_of(wiring: dict, first: bool) -> dict:
     입력  STEP_OF 한 줄 · 이것이 첫 step 인지
     출력  input 한 벌. 아직 @arg 와 $prev 가 그대로 들어 있음
     규칙  첫 step 이고 input_first 가 적혀 있으면 그것을 씀. 같은 타입을
-          앞 단계에서 받을 수도 발화에서 받을 수도 있는 자리를 위한 것임
-          지금 input_first 를 적은 줄은 하나도 없음. 마지막이 충전소 상세
-          조회였고 `말한 식별자 is-a 충전소 번호` 를 떼면서 사라졌음
+          앞 단계에서 받을 수도 화면 문맥에서 받을 수도 있는 자리를 위한 것임
+          지도 범위 · 지점 좌표를 받는 열다섯 줄이 그것을 적었음. 첫 자리에
+          서는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이라 그 벌이 곧
+          "문맥에서 온 값" 임
+    이력  한동안 이것을 적은 줄이 하나도 없었음. 마지막이 충전소 상세 조회였고
+          `말한 식별자 is-a 충전소 번호` 를 떼면서 사라졌음(2026-08-26).
+          2026-08-28 에 화면 문맥이 들어오면서 다시 쓰임
     """
     if first and "input_first" in wiring:
         return wiring["input_first"]

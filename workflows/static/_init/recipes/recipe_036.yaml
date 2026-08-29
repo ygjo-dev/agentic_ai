@@ -1,7 +1,7 @@
 steps:
 
-  - node: spoken_keyword
+  - node: spoken_place
 
-  - node: search_ev_stations
+  - node: geocode_place
 
-  - node: get_ev_station
+  - node: get_railway_lines

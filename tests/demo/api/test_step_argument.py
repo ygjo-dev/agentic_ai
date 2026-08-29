@@ -213,7 +213,7 @@ def resolved(monkeypatch, **result):
     monkeypatch.setattr(
         execute_service.resolve_service,
         "resolve",
-        lambda text, llm_client, reason_max_length: answer,
+        lambda text, llm_client, reason_max_length, context=None: answer,
     )
 
 

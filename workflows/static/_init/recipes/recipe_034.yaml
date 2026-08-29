@@ -2,6 +2,6 @@ steps:
 
   - node: spoken_place
 
-  - node: get_railway_section
+  - node: geocode_place
 
-  - node: get_railway_lines
+  - node: get_vworld_boundaries

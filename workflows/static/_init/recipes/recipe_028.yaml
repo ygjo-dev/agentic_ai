@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: visible_extent
 
-  - node: geocode_place
-
-  - node: find_local_pledge_summary_by_point
+  - node: search_assembly_pledge_districts

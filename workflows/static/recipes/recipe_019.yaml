@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: picked_point
 
-  - node: geocode_place
-
-  - node: get_vworld_boundaries
+  - node: find_election_district_by_point

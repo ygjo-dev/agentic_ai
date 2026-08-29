@@ -58,6 +58,10 @@ NO_IDENTIFIER_ANSWER = (
 
 # given -> 안내 문구. key 는 온톨로지의 데이터 노드 id 이고 축 선택지와 같은 값이다.
 # given 이 null 이거나 여기 없는 값이면 장소 문구로 떨어진다.
+#
+# **화면에서 온 둘(찍은 지점 · 보이는 범위)은 여기 없다.** 그 둘은 사람이 더
+# 말해 줄 것이 없다 — 값은 이미 화면이 보냈고, 안 보냈으면 resolve 가 그
+# 후보를 아예 안 내놓아 이 문구까지 오지 않는다.
 NO_ARGUMENT_ANSWER = {
     "spoken_place": NO_PLACE_ANSWER,
     "spoken_keyword": NO_KEYWORD_ANSWER,
@@ -161,6 +165,8 @@ async def chat(
           직전 되묻기는 지워짐(take 가 꺼내면서 지움) — 두 발화 전의
           후보를 나중에 고르는 일이 없어야 함
           해석도 한 단계로 냄. 저쪽 화면이 진행 상황을 그림
+          문맥을 해석에도 넘김. 화면에서 온 값으로 시작하는 recipe 는 그 값이
+          실제로 와 있을 때만 후보가 됨 — 없는 좌표로 도구를 부르지 않음
           SELECT 가 아니면 도구를 하나도 안 부름. CLARIFY 는 후보가 여럿이라
           무엇을 부를지 정해지지 않았고, NO_MATCH 는 부를 것이 없음
           번호 붙은 후보를 내놓았으면 그것을 세션에 기억해 둠. 다음 발화가
@@ -169,6 +175,9 @@ async def chat(
           place_in 이 장소를 뽑음. 정규식은 장소 어절 하나밖에 못 봄
           인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
+          화면에서 온 값으로 시작하는 recipe 는 인자가 없어도 부름.
+          "지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없고, 조회할 곳은
+          이미 문맥이 말했음
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           demo.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
           세션이 없으면 되묻기를 기억하지도 고르지도 않는다.
@@ -184,7 +193,10 @@ async def chat(
 
     yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
     resolved = resolve_service.resolve(
-        text, llm_client=llm_client, reason_max_length=reason_max_length
+        text,
+        llm_client=llm_client,
+        reason_max_length=reason_max_length,
+        context=context,
     )
     recipe_id = resolved.get("recipe_id")
     yield {
@@ -202,7 +214,7 @@ async def chat(
         yield _result(_no_recipe_answer(resolved), [])
         return
 
-    if not argument:
+    if not argument and not _from_screen(resolved.get("given")):
         yield _result(_no_argument_answer(resolved.get("given")), [])
         return
 
@@ -220,7 +232,8 @@ async def _run_choice(pending: dict, chosen: int, context: dict | None):
           무엇을 골랐는지 답 맨 앞에 한 줄 보임. 사람이 잘못 고른 것을
           그 자리에서 알아야 함
           인자가 없으면 실행하지 않고 안내만 함. 되묻기 때 인자를 못 뽑았으면
-          고른 뒤에도 없음 — 새 발화가 인자를 못 뽑았을 때와 같이 처신함
+          고른 뒤에도 없음 — 새 발화가 인자를 못 뽑았을 때와 같이 처신함.
+          화면에서 온 값으로 시작하는 것은 여기서도 인자 없이 부름
           text 는 원래 발화를 넘김. "1번" 이 아니라 그것이 무엇을 물은 것인지임
     """
     head = CHOICE_HEAD.format(number=chosen + 1, label=pending["labels"][chosen])
@@ -228,7 +241,7 @@ async def _run_choice(pending: dict, chosen: int, context: dict | None):
     yield {"type": "step_start", "node": "choice", "message": "고르신 것을 실행합니다..."}
     yield {"type": "step_end", "node": "choice", "message": head}
 
-    if not pending["argument"]:
+    if not pending["argument"] and not _from_screen(pending["given"]):
         yield _result(f"{head}\n\n{_no_argument_answer(pending['given'])}", [])
         return
 
@@ -281,6 +294,16 @@ def _remember_clarify(session_id: str, resolved: dict, argument: str, text: str)
         given=resolved.get("given"),
         text=text,
     )
+
+
+def _from_screen(given: str | None) -> bool:
+    """그 시작 데이터가 화면에서 값을 받는 것인가.
+
+    입력  발화 해석이 쓴 given. 없으면 None
+    출력  참이면 발화에서 뽑을 인자가 없어도 부를 수 있음
+    규칙  어느 것이 화면에서 오는지는 step_service.CONTEXT_STARTS 가 앎
+    """
+    return given in step_service.CONTEXT_STARTS
 
 
 def _no_argument_answer(given: str | None) -> str:

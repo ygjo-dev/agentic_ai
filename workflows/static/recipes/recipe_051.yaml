@@ -1,0 +1,7 @@
+steps:
+
+  - node: spoken_keyword
+
+  - node: search_ev_stations
+
+  - node: get_ev_station

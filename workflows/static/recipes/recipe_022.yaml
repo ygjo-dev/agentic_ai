@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: picked_point
 
-  - node: geocode_place
-
-  - node: find_election_district_by_point
+  - node: find_local_pledge_summary_by_point

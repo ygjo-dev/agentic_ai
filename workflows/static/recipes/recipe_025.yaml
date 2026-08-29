@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: visible_extent
 
-  - node: geocode_place
-
-  - node: search_assembly_pledge_districts
+  - node: find_cctv

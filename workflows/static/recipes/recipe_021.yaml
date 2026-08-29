@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: picked_point
 
-  - node: geocode_place
-
-  - node: get_railway_lines
+  - node: find_assembly_pledge_district_by_point

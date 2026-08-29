@@ -4,6 +4,4 @@ steps:
 
   - node: geocode_place
 
-  - node: search_ev_stations
-
-  - node: get_ev_station
+  - node: search_assembly_pledge_districts

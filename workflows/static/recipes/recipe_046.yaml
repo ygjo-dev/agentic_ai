@@ -1,0 +1,7 @@
+steps:
+
+  - node: spoken_place
+
+  - node: get_railway_section
+
+  - node: search_admin_boundaries

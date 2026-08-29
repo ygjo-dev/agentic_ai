@@ -86,7 +86,7 @@ def answering(monkeypatch, calls, **result):
         **result,
     }
 
-    def fake_resolve(text, llm_client, reason_max_length):
+    def fake_resolve(text, llm_client, reason_max_length, context=None):
         calls["resolve"].append(text)
         return answer
 

@@ -5,6 +5,12 @@ LLM 은 부르지 않는다. 회차마다 다른 답을 내는 대역을 두고,
 
 온톨로지 조회(shortlist.candidates)는 대역으로 바꾼다. 후보가 몇 개인지가
 이 길의 갈림이고, 진짜 온톨로지의 값은 tools/check_resolve.py 가 잰다.
+
+**recipe id 는 진짜 것을 쓴다.** 조회는 대역이지만 "그 recipe 가 무엇에서
+출발하는가" 는 resolve_service 가 온톨로지에 직접 묻는다(_starts_at) —
+화면에서 온 값으로 시작하는 것은 문맥이 없으면 후보에서 빠지기 때문이다.
+2026-08-28 에 recipe_030 -> recipe_045 · recipe_029 -> recipe_044 로 옮겼다.
+같은 사슬의 새 번호다(말한 장소 -> 좌표 -> 충전소 검색 · -> 인구 통계).
 """
 
 import json
@@ -30,9 +36,9 @@ FIRST = {
 
 FULL = {
     **FIRST,
-    "candidate_recipe_ids": ["recipe_030"],
+    "candidate_recipe_ids": ["recipe_045"],
     "status": SELECT,
-    "recipe_id": "recipe_030",
+    "recipe_id": "recipe_045",
 }
 
 
@@ -82,7 +88,7 @@ def no_env(monkeypatch):
 
 def test_기본은_끔이라_LLM_을_한_번만_부르고_menu_를_넣는다(lookup):
     """스위치를 안 주면 지금 길. 응답에 narrow 칸도 없다."""
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FULL)
 
     result = resolve("오송역 근처 충전소 찾아줘", llm, 200)
@@ -90,11 +96,11 @@ def test_기본은_끔이라_LLM_을_한_번만_부르고_menu_를_넣는다(loo
     assert len(llm.prompts) == 1
     assert "[Menu]" in llm.prompts[0]
     assert "narrow" not in result
-    assert result["recipe_id"] == "recipe_030"
+    assert result["recipe_id"] == "recipe_045"
 
 
 def test_끄면_켜기_전과_같은_key_를_낸다(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FULL), 200, narrow=False)
 
     assert set(result) == {
@@ -106,7 +112,7 @@ def test_끄면_켜기_전과_같은_key_를_낸다(lookup):
 
 def test_환경변수가_1_이면_기본이_켬이다(lookup, monkeypatch):
     monkeypatch.setenv(NARROW_ENV, "1")
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200)
 
@@ -115,7 +121,7 @@ def test_환경변수가_1_이면_기본이_켬이다(lookup, monkeypatch):
 
 def test_환경변수가_1_이_아니면_끔이다(lookup, monkeypatch):
     monkeypatch.setenv(NARROW_ENV, "true")
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FULL), 200)
 
@@ -124,7 +130,7 @@ def test_환경변수가_1_이_아니면_끔이다(lookup, monkeypatch):
 
 def test_인자가_환경변수보다_앞선다(lookup, monkeypatch):
     monkeypatch.setenv(NARROW_ENV, "1")
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FULL), 200, narrow=False)
 
@@ -135,7 +141,7 @@ def test_인자가_환경변수보다_앞선다(lookup, monkeypatch):
 
 
 def test_1차_프롬프트에_menu_가_없고_축_선택지는_있다(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FIRST)
 
     resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
@@ -148,7 +154,7 @@ def test_1차_프롬프트에_menu_가_없고_축_선택지는_있다(lookup):
 
 
 def test_1차_스키마는_축과_인자만_받는다(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FIRST)
 
     resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
@@ -157,7 +163,7 @@ def test_1차_스키마는_축과_인자만_받는다(lookup):
 
 
 def test_1차가_쓴_축_셋으로_온톨로지를_조회한다(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
 
     resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200, narrow=True)
 
@@ -168,16 +174,16 @@ def test_1차가_쓴_축_셋으로_온톨로지를_조회한다(lookup):
 
 
 def test_후보가_하나면_2차를_안_부르고_그것으로_SELECT(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FIRST)
 
     result = resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
 
     assert len(llm.prompts) == 1
     assert result["status"] == SELECT
-    assert result["recipe_id"] == "recipe_030"
-    assert result["candidate_recipe_ids"] == ["recipe_030"]
-    assert result["shortlist_recipe_ids"] == ["recipe_030"]
+    assert result["recipe_id"] == "recipe_045"
+    assert result["candidate_recipe_ids"] == ["recipe_045"]
+    assert result["shortlist_recipe_ids"] == ["recipe_045"]
     assert result["narrow"]["second_called"] is False
     assert result["narrow"]["shortlist_count"] == 1
     assert result["narrow"]["fallback"] is None
@@ -185,7 +191,7 @@ def test_후보가_하나면_2차를_안_부르고_그것으로_SELECT(lookup):
 
 
 def test_2차를_안_불렀으면_LLM_날것_칸이_비어_있다(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200, narrow=True)
 
@@ -194,46 +200,46 @@ def test_2차를_안_불렀으면_LLM_날것_칸이_비어_있다(lookup):
 
 
 def test_축과_인자는_1차가_쓴_그대로_실린다(lookup):
-    lookup["result"] = ["recipe_030"]
+    lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200, narrow=True)
 
     assert (result["given"], result["want"], result["about"], result["argument"]) == (
         "spoken_place", "item_list", "group_ev", "오송역"
     )
-    assert result["paths"].keys() == {"recipe_030"}
+    assert result["paths"].keys() == {"recipe_045"}
 
 
 # ── 2차 ──────────────────────────────────────────────────────────────
 
 
 def test_후보가_여럿이면_2차에_그_문장만_보여준다(lookup):
-    lookup["result"] = ["recipe_030", "recipe_040"]
-    llm = SequenceLLM(FIRST, pick(recipe_id="recipe_030", candidates=["recipe_030"]))
+    lookup["result"] = ["recipe_045", "recipe_040"]
+    llm = SequenceLLM(FIRST, pick(recipe_id="recipe_045", candidates=["recipe_045"]))
 
     resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
 
     assert len(llm.prompts) == 2
     second = llm.prompts[1]
-    assert "recipe_030" in second and "recipe_040" in second
+    assert "recipe_045" in second and "recipe_040" in second
     assert "recipe_001" not in second  # menu 전체가 아니다
     assert "[Menu]" not in second
     assert "오송역 근처 충전소 찾아줘" in second
 
 
 def test_2차_스키마가_후보_밖의_id_를_막는다(lookup):
-    lookup["result"] = ["recipe_030", "recipe_040"]
-    llm = SequenceLLM(FIRST, pick(recipe_id="recipe_030", candidates=["recipe_030"]))
+    lookup["result"] = ["recipe_045", "recipe_040"]
+    llm = SequenceLLM(FIRST, pick(recipe_id="recipe_045", candidates=["recipe_045"]))
 
     resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
 
     schema = llm.schemas[1]
-    assert schema["properties"]["recipe_id"]["enum"] == ["recipe_030", "recipe_040", None]
-    assert schema["properties"]["candidate_recipe_ids"]["items"]["enum"] == ["recipe_030", "recipe_040"]
+    assert schema["properties"]["recipe_id"]["enum"] == ["recipe_045", "recipe_040", None]
+    assert schema["properties"]["candidate_recipe_ids"]["items"]["enum"] == ["recipe_045", "recipe_040"]
 
 
 def test_2차가_하나_고르면_SELECT(lookup):
-    lookup["result"] = ["recipe_030", "recipe_040"]
+    lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_040", candidates=["recipe_040"]))
 
     result = resolve("오송역 근처 충전소 자세히 알려줘", llm, 200, narrow=True)
@@ -241,7 +247,7 @@ def test_2차가_하나_고르면_SELECT(lookup):
     assert result["status"] == SELECT
     assert result["recipe_id"] == "recipe_040"
     assert result["candidate_recipe_ids"] == ["recipe_040"]
-    assert result["shortlist_recipe_ids"] == ["recipe_030", "recipe_040"]
+    assert result["shortlist_recipe_ids"] == ["recipe_045", "recipe_040"]
     assert result["llm_recipe_id"] == "recipe_040"
     assert result["narrow"]["second_called"] is True
     assert result["narrow"]["shortlist_count"] == 2
@@ -251,7 +257,7 @@ def test_2차가_하나_고르면_SELECT(lookup):
 
 def test_2차가_여럿_남기면_조회_차례로_CLARIFY(lookup):
     """되묻기 후보 목록이 여기서 만들어진다. 차례는 조회 후보(파일 이름 순)."""
-    lookup["result"] = ["recipe_011", "recipe_029", "recipe_038"]
+    lookup["result"] = ["recipe_011", "recipe_044", "recipe_038"]
     llm = SequenceLLM(FIRST, pick(status=CLARIFY, candidates=["recipe_038", "recipe_011"]))
 
     result = resolve("청주시 인구 알려줘", llm, 200, narrow=True)
@@ -263,8 +269,8 @@ def test_2차가_여럿_남기면_조회_차례로_CLARIFY(lookup):
 
 
 def test_2차의_reason_이_실린다(lookup):
-    lookup["result"] = ["recipe_030", "recipe_040"]
-    llm = SequenceLLM(FIRST, pick(recipe_id="recipe_030", candidates=["recipe_030"]))
+    lookup["result"] = ["recipe_045", "recipe_040"]
+    llm = SequenceLLM(FIRST, pick(recipe_id="recipe_045", candidates=["recipe_045"]))
 
     result = resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
 
@@ -272,13 +278,13 @@ def test_2차의_reason_이_실린다(lookup):
 
 
 def test_2차가_후보_밖을_쓰면_버린다(lookup):
-    lookup["result"] = ["recipe_030", "recipe_040"]
-    llm = SequenceLLM(FIRST, pick(status=CLARIFY, candidates=["recipe_030", "recipe_099"]))
+    lookup["result"] = ["recipe_045", "recipe_040"]
+    llm = SequenceLLM(FIRST, pick(status=CLARIFY, candidates=["recipe_045", "recipe_099"]))
 
     result = resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
 
     assert result["status"] == SELECT
-    assert result["candidate_recipe_ids"] == ["recipe_030"]
+    assert result["candidate_recipe_ids"] == ["recipe_045"]
 
 
 # ── 폴백 가 · 나 ─────────────────────────────────────────────────────
@@ -296,7 +302,7 @@ def test_조회_후보가_비면_지금_길로_간다(lookup):
     assert result["narrow"]["fallback"] == FALLBACK_EMPTY
     assert result["narrow"]["second_called"] is False
     assert result["narrow"]["fallback_seconds"] is not None
-    assert result["status"] == SELECT and result["recipe_id"] == "recipe_030"
+    assert result["status"] == SELECT and result["recipe_id"] == "recipe_045"
 
 
 def test_축이_셋_다_null_이면_조회하지_않고_지금_길로_간다(lookup):
@@ -315,7 +321,7 @@ def test_축이_셋_다_null_이면_조회하지_않고_지금_길로_간다(loo
 
 def test_2차가_여기_없다_고_하면_지금_길로_간다(lookup):
     """폴백 나. LLM 을 세 번 부르게 된다."""
-    lookup["result"] = ["recipe_030", "recipe_040"]
+    lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(status=NO_MATCH), FULL)
 
     result = resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
@@ -324,11 +330,11 @@ def test_2차가_여기_없다_고_하면_지금_길로_간다(lookup):
     assert "[Menu]" in llm.prompts[2]
     assert result["narrow"]["fallback"] == FALLBACK_NONE
     assert result["narrow"]["second_called"] is True
-    assert result["status"] == SELECT and result["recipe_id"] == "recipe_030"
+    assert result["status"] == SELECT and result["recipe_id"] == "recipe_045"
 
 
 def test_2차가_후보_밖만_쓰면_여기_없다_로_본다(lookup):
-    lookup["result"] = ["recipe_030", "recipe_040"]
+    lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_099", candidates=["recipe_099"]), FULL)
 
     result = resolve("오송역 근처 충전소 찾아줘", llm, 200, narrow=True)
@@ -361,10 +367,10 @@ def test_폴백_결과는_지금_길의_key_를_다_가진다(lookup):
 
 
 def test_후보_문장은_menu_의_function_을_id_와_함께_적는다():
-    lines = resolve_service._candidate_lines(["recipe_001", "recipe_030"]).splitlines()
+    lines = resolve_service._candidate_lines(["recipe_001", "recipe_045"]).splitlines()
 
     assert lines[0].startswith("- recipe_001: 말한 장소로 좌표를 찾는다")
-    assert lines[1].startswith("- recipe_030: ")
+    assert lines[1].startswith("- recipe_045: ")
     assert len(lines) == 2
 
 

@@ -1,0 +1,7 @@
+steps:
+
+  - node: visible_extent
+
+  - node: search_ev_stations
+
+  - node: get_ev_station

@@ -14,6 +14,30 @@
 **끄면 지금과 한 글자도 다르지 않아야 한다.** 그래서 지금 길의 몸통은
 _resolve_full 로 이름만 옮기고 안을 안 건드렸다. 응답에 key 도 안 더한다.
 좁히기 길의 응답에만 `narrow` 한 칸이 더 실린다.
+
+## 화면에서 온 값 — 문맥이 없으면 그 축 선택지도 후보도 없다 (2026-08-28)
+
+시작 데이터 노드가 다섯이 됐다. 뒤의 둘(찍은 지점 · 보이는 범위)은 발화가
+아니라 저쪽 화면이 보내는 지도 문맥에서 값을 받는다. **그 값이 안 왔으면 그
+둘은 아예 없는 것처럼 굴어야 한다** — Streamlit 은 문맥을 안 보내고, 없는
+좌표로 도구를 부르면 전국이 나오거나 null 로 거부당한다.
+
+판단이 서는 자리가 둘이다. 둘을 한 자리에 몰지 않았다.
+
+  값이 있는가   여기(_choices_for · _without_dropped). 기계가 센다. 문맥의 칸을 보고
+                축 선택지와 조회 후보에서 빼 버린다. LLM 은 그 선택지를
+                본 적이 없으므로 고를 수가 없다
+  그것을 쓸까   온톨로지의 노드 description. LLM 이 발화를 보고 고른다.
+                "발화가 장소 이름 대신 여기나 이 위치라고 가리킬 때 쓴다" 가
+                그 문장이다
+
+**왜 판단을 프롬프트 파일이 아니라 노드 설명에 적었나.** 축 선택지 문장은
+shortlist._describe 가 노드의 name 과 description 으로 만들어 프롬프트에
+그대로 싣는다. 저쪽도 같은 자리에 적어 두었다 —
+KRRI_ASAP/ASAP-orchestrator/app/agents/nodes/parse_intent.py 가 문맥이 있을 때만
+"If the user says here, this place, …" 한 줄을 프롬프트에 덧붙인다. 우리는
+프롬프트 파일을 이번 범위에서 안 건드리므로, 같은 말을 적을 데가 노드
+description 뿐이기도 하다.
 """
 
 import os
@@ -22,7 +46,7 @@ import time
 import yaml
 
 import paths
-from demo.api.services import ontology_service
+from demo.api.services import ontology_service, step_service
 from ontology import shortlist
 from orchestrator.route_resolver import resolve_route
 from orchestrator.schemas.response_schema import (
@@ -57,30 +81,114 @@ def narrow_default() -> bool:
 
 
 def resolve(
-    utterance: str, llm_client, reason_max_length: int, narrow: bool | None = None
+    utterance: str,
+    llm_client,
+    reason_max_length: int,
+    narrow: bool | None = None,
+    context: dict | None = None,
 ) -> dict:
     """발화를 recipe 로. narrow 가 None 이면 환경변수, 그것도 없으면 끔.
 
-    입력  발화 · LLM 클라이언트 · reason 길이 상한 · 좁히기 길을 탈지
+    입력  발화 · LLM 클라이언트 · reason 길이 상한 · 좁히기 길을 탈지 ·
+          저쪽 화면이 보낸 지도 문맥(없으면 없는 것으로)
     출력  _resolve_full 또는 _resolve_narrow 의 결과. key 는 아래 docstring 에
     제약  narrow 를 안 줬을 때 지금 길이어야 한다.
           /chat 은 이 인자를 안 넘긴다. 기본값이 바뀌면 시연 화면이 바뀐다
+          context 를 안 줬을 때 지금과 똑같아야 한다.
+          Streamlit 도 tools/check_resolve.py 도 안 넘긴다
     """
     if narrow is None:
         narrow = narrow_default()
     if narrow:
-        return _resolve_narrow(utterance, llm_client, reason_max_length)
-    return _resolve_full(utterance, llm_client, reason_max_length)
+        return _resolve_narrow(utterance, llm_client, reason_max_length, context)
+    return _resolve_full(utterance, llm_client, reason_max_length, context)
 
 
-def _resolve_full(utterance: str, llm_client, reason_max_length: int) -> dict:
+def _choices_for(context: dict | None) -> dict:
+    """축 선택지에서 문맥이 못 채우는 시작 데이터를 뺀 것.
+
+    입력  저쪽 화면이 보낸 지도 문맥. 없으면 None
+    출력  shortlist.axis_choices() 와 같은 모양
+    규칙  뺄 것이 없으면 받은 것을 그대로 돌려줌. 문맥을 안 보내는 쪽에서
+          한 글자도 달라지지 않아야 함
+          given 목록과 described.given 에서 함께 뺌. 둘 중 하나만 빼면
+          프롬프트에는 보이는데 스키마가 막는 선택지가 생김
+          described 의 줄은 shortlist._describe 가 "- <id>  (" 로 시작하게
+          만듦. 그 앞머리로 고름
+    제약  shortlist 를 안 고친다.
+          거기는 온톨로지가 무엇을 낼 수 있는지 말하는 자리이고, 이번 요청에
+          무엇이 왔는지는 요청을 받는 이 자리가 안다
+    """
+    choices = shortlist.axis_choices()
+    dropped = _dropped_starts(context)
+    if not dropped:
+        return choices
+
+    given = [node_id for node_id in choices["given"] if node_id not in dropped]
+    lines = [
+        line
+        for line in choices["described"]["given"].split("\n")
+        if not any(line.startswith(f"- {node_id}  (") for node_id in dropped)
+    ]
+    return {
+        **choices,
+        "given": given,
+        "described": {**choices["described"], "given": "\n".join(lines)},
+    }
+
+
+def _dropped_starts(context: dict | None) -> set[str]:
+    """이번 요청에서 값을 못 받는 화면 시작 데이터 노드.
+
+    출력  노드 id 집합. 문맥이 다 갖췄으면 빈 집합
+    규칙  무엇이 화면에서 오는지는 step_service.CONTEXT_STARTS 가 앎.
+          여기서 노드 id 를 다시 적지 않음
+    """
+    return set(step_service.CONTEXT_STARTS) - set(step_service.context_starts(context))
+
+
+def _without_dropped(recipe_ids: list[str], dropped: set[str]) -> list[str]:
+    """값을 못 받는 시작 데이터에서 출발하는 recipe 를 뺀 목록.
+
+    입력  recipe id 목록 · 뺄 시작 데이터 노드 id 집합
+    출력  차례를 지킨 목록. 뺄 것이 없으면 받은 것 그대로
+    규칙  경로의 첫 칸이 곧 시작 데이터임. 그것을 보고 가름
+          타입 판정은 ontology_service 가 함. 여기서 recipe 파일을 열지 않음
+    제약  shortlist.candidates 로 막을 목록을 만들지 않는다.
+          그것은 축 셋으로 후보를 뽑는 자리이고, 여기서 또 부르면 요청마다
+          전체 recipe 를 두 번 더 훑게 됨
+          menu 에서 그 문장을 지우지 않는다.
+          menu 는 온톨로지가 만드는 것이고 요청마다 다를 수 없음. 지울 수
+          없으니 LLM 이 그것을 골라도 여기서 뺀다
+    """
+    if not dropped:
+        return recipe_ids
+    return [recipe_id for recipe_id in recipe_ids if _starts_at(recipe_id) not in dropped]
+
+
+def _starts_at(recipe_id: str) -> str | None:
+    """그 recipe 가 무엇에서 출발하는가.
+
+    출력  경로 첫 칸의 노드 id. 경로가 비면 None
+    """
+    path = ontology_service.path_of(recipe_id)
+    return path[0]["node_id"] if path else None
+
+
+def _resolve_full(
+    utterance: str, llm_client, reason_max_length: int, context: dict | None = None
+) -> dict:
     """지금 길. LLM 이 쓴 축으로 후보를 뽑고, 고른 결과와 대조해 최종 status 를 정함.
 
-    입력  발화 · LLM 클라이언트 · reason 길이 상한(모델마다 다름)
+    입력  발화 · LLM 클라이언트 · reason 길이 상한(모델마다 다름) ·
+          저쪽 화면이 보낸 지도 문맥(없으면 없는 것으로)
     출력  LLM 응답(reason · given · want · about 포함) +
           status · recipe_id · candidate_recipe_ids · shortlist_recipe_ids ·
           llm_recipe_id · llm_candidate_recipe_ids · paths
     규칙  축 선택지도 조회 후보도 온톨로지에서 옴. 노드를 등록하면 함께 늘어남
+          문맥이 못 채우는 시작 데이터는 선택지에서도 후보에서도 빠짐.
+          LLM 이 그것으로 시작하는 recipe 를 골라도 뺌 — menu 에는 그 문장이
+          남아 있음
           recipe_id 와 candidate_recipe_ids 는 _verdict 를 지난 값임.
           검산 전에 LLM 이 쓴 날것은 llm_ 이 붙은 두 key 에 따로 실림 —
           검산이 답을 바꾼 자리를 세려면 둘이 다 있어야 함
@@ -91,7 +199,8 @@ def _resolve_full(utterance: str, llm_client, reason_max_length: int) -> dict:
           기존 key 의 이름과 뜻을 바꾸지 않는다.
           Streamlit 과 tools/check_resolve.py 가 그것을 읽음
     """
-    choices = shortlist.axis_choices()
+    dropped = _dropped_starts(context)
+    choices = _choices_for(context)
     described = choices["described"]
 
     result = resolve_route(
@@ -117,17 +226,21 @@ def _resolve_full(utterance: str, llm_client, reason_max_length: int) -> dict:
     # 고를 근거가 하나도 없다는 뜻이므로 LLM 이 쓴 것을 그대로 둔다.
     axes = [result.get("given"), result.get("want"), result.get("about")]
     looked_up = shortlist.candidates(*axes) if any(axes) else []
+    looked_up = _without_dropped(looked_up, dropped)
 
     # recipe_id 가 있으면 그것부터, 그다음 후보 전부.
-    spoken = list(
-        dict.fromkeys(
-            recipe_id
-            for recipe_id in [
-                result.get("recipe_id"),
-                *(result.get("candidate_recipe_ids") or []),
-            ]
-            if recipe_id
-        )
+    spoken = _without_dropped(
+        list(
+            dict.fromkeys(
+                recipe_id
+                for recipe_id in [
+                    result.get("recipe_id"),
+                    *(result.get("candidate_recipe_ids") or []),
+                ]
+                if recipe_id
+            )
+        ),
+        dropped,
     )
 
     verdict = _verdict(result, spoken, looked_up)
@@ -147,6 +260,8 @@ def _resolve_full(utterance: str, llm_client, reason_max_length: int) -> dict:
         # tools/check_resolve.py 가 함께 흔들린다. key 를 둘 더할 뿐이다.
         "llm_recipe_id": result.get("recipe_id"),
         "llm_candidate_recipe_ids": list(result.get("candidate_recipe_ids") or []),
+        # 날것은 뺀 것까지 그대로 둔다. LLM 이 무엇을 골랐는지가 이 두 칸의
+        # 뜻이고, 문맥이 없어 뺀 자리를 세려면 뺀 것이 보여야 한다.
         "paths": ontology_service.paths_for(wanted),
     }
 
@@ -198,7 +313,9 @@ def _verdict(result: dict, spoken: list[str], looked_up: list[str]) -> dict:
 # ── 좁히기 길 ─────────────────────────────────────────────────────
 
 
-def _resolve_narrow(utterance: str, llm_client, reason_max_length: int) -> dict:
+def _resolve_narrow(
+    utterance: str, llm_client, reason_max_length: int, context: dict | None = None
+) -> dict:
     """좁히기 길. 1차(축만) → 온톨로지 조회 → 2차(후보 중 고르기).
 
     입력  _resolve_full 과 같음
@@ -220,7 +337,8 @@ def _resolve_narrow(utterance: str, llm_client, reason_max_length: int) -> dict:
     제약  _verdict 를 안 거친다. 대조할 두 목록이 없음 — 후보가 곧 조회 결과임
           _resolve_full 을 안 고친다. 폴백은 그것을 그대로 부름
     """
-    choices = shortlist.axis_choices()
+    dropped = _dropped_starts(context)
+    choices = _choices_for(context)
     described = choices["described"]
 
     started = time.perf_counter()
@@ -245,6 +363,7 @@ def _resolve_narrow(utterance: str, llm_client, reason_max_length: int) -> dict:
     # 지금 길과 같은 이유로 축이 셋 다 null 이면 조회하지 않는다 — 전체가 후보가 됨.
     axes = [first.get("given"), first.get("want"), first.get("about")]
     looked_up = shortlist.candidates(*axes) if any(axes) else []
+    looked_up = _without_dropped(looked_up, dropped)
 
     narrow = {
         "enabled": True,
@@ -258,7 +377,9 @@ def _resolve_narrow(utterance: str, llm_client, reason_max_length: int) -> dict:
     }
 
     if not looked_up:  # 가) 축 셋으로 아무것도 못 걸러냈다
-        return _fallback(FALLBACK_EMPTY, narrow, utterance, llm_client, reason_max_length)
+        return _fallback(
+            FALLBACK_EMPTY, narrow, utterance, llm_client, reason_max_length, context
+        )
 
     if len(looked_up) == 1:  # 부를 이유가 없다
         return {
@@ -293,7 +414,9 @@ def _resolve_narrow(utterance: str, llm_client, reason_max_length: int) -> dict:
     final = [recipe_id for recipe_id in looked_up if recipe_id in spoken]
 
     if second.get("status") == NO_MATCH or not final:  # 나) "여기 없다"
-        return _fallback(FALLBACK_NONE, narrow, utterance, llm_client, reason_max_length)
+        return _fallback(
+            FALLBACK_NONE, narrow, utterance, llm_client, reason_max_length, context
+        )
 
     if len(final) == 1:
         verdict = {"status": SELECT, "recipe_id": final[0], "candidate_recipe_ids": final}
@@ -313,10 +436,17 @@ def _resolve_narrow(utterance: str, llm_client, reason_max_length: int) -> dict:
     }
 
 
-def _fallback(kind: str, narrow: dict, utterance: str, llm_client, reason_max_length: int) -> dict:
+def _fallback(
+    kind: str,
+    narrow: dict,
+    utterance: str,
+    llm_client,
+    reason_max_length: int,
+    context: dict | None = None,
+) -> dict:
     """지금 길로 빠져나간다. 결과는 지금 길 그대로이고 narrow 에 까닭만 남긴다."""
     started = time.perf_counter()
-    result = _resolve_full(utterance, llm_client, reason_max_length)
+    result = _resolve_full(utterance, llm_client, reason_max_length, context)
     narrow["fallback"] = kind
     narrow["fallback_seconds"] = round(time.perf_counter() - started, 3)
     return {**result, "narrow": narrow}
