@@ -487,10 +487,35 @@ STEP_OF = {
     # 중심 좌표로 되돌렸다가 다시 넓힐 까닭이 없고, ev.searchStations 는
     # bbox 를 평평한 네 수로 받는다. plan 이 어댑터를 거는 조건도 중심 좌표
     # 칸이 남아 있을 때뿐이라(_has_center) 이 벌에는 저절로 안 걸린다.
+    #
+    # ★ 그 말은 맞았는데 정작 보내던 것이 {"bbox": …} 한 칸이었다
+    #   (2026-08-30 「예순째」에 고쳤다). ev.searchStations 의 inputSchema 에
+    #   bbox 라는 칸은 없다 — minLon · minLat · maxLon · maxLat 평평한 넷이고
+    #   넷 다 optional 이다(ASAP-mcp/main.py:532). 모르는 칸이라 버려져
+    #   범위를 아무리 좁혀도 전국 92,821건에서 상한 500건이 왔다.
+    #
+    #   왜 어긋났나. a238b48 이 input_first 열다섯 줄을 한 번에 더하면서
+    #   **옆의 input 이 쓰는 모양을 그대로 베끼고 $prev 만 문맥으로 바꿨다.**
+    #   그 규칙이 나머지 열넷에는 맞았다 — 그 도구들의 input 이 이미
+    #   {"bbox": BBOX_FROM_PREVIOUS} 이거나(선거 계열 · 노선 · 행정경계 · 인구)
+    #   평평한 넷이었다(road.getCctv). 이 줄만 옆의 input 이
+    #   center + radiusMeters + 어댑터라 베낄 bbox 꼴이 없었고, 그래서 옆줄
+    #   대신 일반 관용구인 {"bbox": …} 로 적었다. 바로 위에 스키마를 옳게
+    #   적어 놓고도 줄이 그것을 안 따랐다.
+    #
+    #   같은 자리 넷(get_railway_lines · search_admin_boundaries ·
+    #   get_vworld_boundaries · search_population_statistics)은 **안 고쳤다.**
+    #   그 넷은 스키마가 진짜로 bbox 배열을 받는다(2026-08-30 확인,
+    #   NOTES.md 「예순째」의 스키마 확인 표).
     ("search_ev_stations", "map_extent"): {
         "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
         "adapter": POINT_RADIUS_TO_BBOX,
-        "input_first": {"bbox": BBOX_FROM_CONTEXT},
+        "input_first": {
+            "minLon": BBOX_FROM_CONTEXT[0],
+            "minLat": BBOX_FROM_CONTEXT[1],
+            "maxLon": BBOX_FROM_CONTEXT[2],
+            "maxLat": BBOX_FROM_CONTEXT[3],
+        },
     },
 
     # ev.getStation 의 statId 는 **stationId 이지 id 가 아니다**(2026-08-23 실측).

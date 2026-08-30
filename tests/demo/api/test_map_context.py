@@ -97,6 +97,37 @@ def test_보이는_범위로_시작하면_첫_단계가_문맥의_bbox_를_받�
     }
 
 
+def test_보이는_범위로_시작하는_충전소도_평평한_넷을_받는다():
+    """2026-08-30 「예순째」. ev.searchStations 에는 bbox 라는 칸이 없다 —
+    없는 칸이라 버려져서 지도를 아무리 좁혀도 전국에서 상한 500건이 왔다.
+    CCTV 줄과 같은 꼴이어야 한다."""
+    plan = step_service.plan(recipe_for(["visible_extent", "search_ev_stations"]), "")
+
+    assert plan["steps"][0]["tool"] == "ev.searchStations"
+    assert plan["steps"][0]["input"] == {
+        "minLon": "$context.view.minLon",
+        "minLat": "$context.view.minLat",
+        "maxLon": "$context.view.maxLon",
+        "maxLat": "$context.view.maxLat",
+    }
+
+
+def test_bbox_배열을_받는_도구는_첫_단계도_bbox_한_칸으로_받는다():
+    """같이 고치면 오히려 깨지는 자리다. geo.getRailwayLines 의 bbox 는
+    진짜로 네 수짜리 배열 칸이다(ASAP-mcp/main.py inputSchema)."""
+    plan = step_service.plan(recipe_for(["visible_extent", "get_railway_lines"]), "")
+
+    assert plan["steps"][0]["tool"] == "geo.getRailwayLines"
+    assert plan["steps"][0]["input"] == {
+        "bbox": [
+            "$context.view.minLon",
+            "$context.view.minLat",
+            "$context.view.maxLon",
+            "$context.view.maxLat",
+        ]
+    }
+
+
 def test_찍은_지점으로_시작하면_첫_단계가_문맥의_선택_좌표를_받는다():
     """저쪽 cctv-around-point 와 같은 꼴이다. 중심 좌표와 반경을 준다."""
     plan = step_service.plan(recipe_for(["picked_point", "find_cctv"]), "")

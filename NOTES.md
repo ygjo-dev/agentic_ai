@@ -83,66 +83,26 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
-- **★ 보이는 범위가 안 먹는다 — bbox 를 그런 칸이 없는 도구에 보낸다**
-  (2026-08-30). 「쉰아홉째」의 판정 51행 중 유일한 빨간불이었고, **사람이 저쪽
-  화면에서 눌러 확인했다.**
+- **~~보이는 범위가 안 먹는다~~ — 고쳤다 (2026-08-30 「예순째」).** 한 줄이었다.
+  `("search_ev_stations", "map_extent")` 의 `input_first` 가 `{"bbox": [네 수]}`
+  를 보내는데 `ev.searchStations` 에는 `bbox` 라는 칸이 없어서(평평한 넷만 받고
+  `_parse_bbox_input` 을 안 부른다) 버려지고 전국을 찾았다. CCTV 줄과 같은
+  평평한 넷으로 바꿨다.
 
   ```
-  ★ 2026-08-30 화면 실측
+  ★ 2026-08-30 화면 실측 (고친 뒤)
     "지금 보이는 곳 충전소 찾아줘"
-      ev.searchStations  500건 (전체 92,821건)
-      ★ 지도를 아주 좁게 두어도 같다. 범위가 안 먹고 전국을 찾는다
-        500 은 그 도구의 limit 기본값이다 — 범위가 아니라 상한이 자른 수다
+      좁게(약 3.6km × 2.2km)  36건
+      넓게(남한 거의 전부)    500건 (전체 89,194건)
+      ★ 고치기 전에는 좁게 둬도 500건(전체 92,821건)이었다
   ```
 
-  **까닭.** `ev.searchStations` 는 지도 범위를 평평한 넷(`minLon` · `minLat` ·
-  `maxLon` · `maxLat`)으로만 받는데 우리 배선은 `{"bbox": [네 수]}` 를 보낸다.
-  도구가 모르는 칸이라 버려지고, 공간 조건이 없는 채로 돌아 전국을 준다.
-  배선 줄은 `("search_ev_stations", "map_extent")` 의 `input_first` 하나다.
+  **함께 배운 것 — 「같은 꼴이니 같이 고장」을 원천으로 확인해야 한다.** 지도
+  계열 다섯이 다 고장이라고 적혀 있었지만 나머지 넷(노선 · 행정구역 · VWorld ·
+  인구)은 `bbox` 배열 칸을 정식으로 갖는다. 넷을 눌러 보니 원래부터 범위가
+  먹고 있었다. 안 고쳤다. 스키마 확인 표와 실측 일곱은 측정 기록 「예순째」에 있다.
 
-  ```
-  ASAP-mcp/main.py:961  ev.searchStations 핸들러 (읽기만 했다)
-    min_lon=_parse_float(tool_input.get("minLon")), …
-    ★ _parse_bbox_input 을 안 부른다. bbox 칸을 볼 기회가 없다
-  ```
-
-  **★ 「같은 자리가 다섯이다」는 아니었다 — 확인해 보니 한 줄이다.** 사람이
-  적어 온 항목에는 지도 계열 다섯(노선 · 행정구역 · VWorld · 인구 · 충전소)이
-  전부 평평한 넷을 받으므로 다섯 줄이 같이 고장이라고 되어 있었다. **원천을
-  읽어 보니 아니다.** 안 눌러 본 넷을 「같은 꼴이니 같이 고장일 것」으로 미룬
-  자리였고, 실제로는 그 넷이 `bbox` 배열 칸을 정식으로 갖는다.
-
-  ```
-  ASAP-mcp/main.py 의 bbox 받는 법 — 도구마다 갈린다 (2026-08-30, 줄 번호까지 확인)
-    평평한 넷만          road.getCctv(254) · ev.searchStations(537) · ev.searchChargers(575)
-    bbox 배열 칸         geo.getRailwayLines(279) · adminBoundary.searchBoundaries(320) ·
-                         population.searchStatistics(384) · vworld.getAdministrativeBoundaries(447) ·
-                         election.search* 셋(652 · 715 · 776)
-
-  ★ 그리고 bbox 배열 칸을 가진 일곱은 _parse_bbox_input(1125) 을 부르는데
-    그 함수가 **bbox 배열과 평평한 넷을 둘 다 받는다.** 그래서 그 일곱에는
-    어느 모양으로 보내도 통한다. 고장은 그 함수를 안 부르는 ev 한 줄뿐이다.
-  ```
-
-  **그래서 지금 틀린 것은 한 줄, 「지금 보이는 곳」 발화 다섯 중 하나다.**
-  CCTV 가 되고 충전소가 안 된 것은 우연이 아니라 그 둘만 평평한 넷을 요구하고
-  우리 배선이 CCTV 쪽에만 그렇게 적혀 있어서다. 나머지 셋(노선 · 행정구역 ·
-  인구)은 안 눌러 봤지만 스키마상 지금 배선으로 통한다 — **누르면 확실해진다.**
-
-  계기판도 같은 답을 냈다. 「쉰아홉째」의 「없는 칸을 보낸다」 판정은 51행 중
-  정확히 이 한 행이었다 (tools.json 2026-08-27 · 원천 읽기 2026-08-30, 둘이 같다).
-
-  ```
-  고치는 길 둘. 어느 것도 지금 안 한다
-    가) 그 한 줄만 평평한 넷으로       가장 작다. 고장난 자리만 만진다
-    나) 다섯 줄을 평평한 넷으로 통일   _parse_bbox_input 이 둘 다 받으므로 나머지
-                                       넷도 안 깨진다. 「자리마다 모양이 다르다」를
-                                       없애는 값은 있지만, 넷은 고장이 아니라
-                                       고쳐도 달라지는 것이 없다
-  ```
-
-  배선표는 프롬프트에 안 실리므로 **어느 길로 가도 판정은 안 흔들린다.**
-  「쉰째」가 철도에서 확인한 성질과 같은 자리다.
+  남은 것 : `check_inputs` 의 「없는 칸」이 0 이 됐다. 51행에 빨간불이 없다.
 
 - **끌 수 있는 동적 그래프** (하정목 박사님 피드백 ①, 2026-08-28). 지금은 파이썬이
   DOT 을 만들고 graphviz 가 SVG 를 그린다. 좌표가 고정이라 노드를 끌 수 없다.
@@ -1517,6 +1477,247 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-08-30 (예순째) · 보이는 범위가 안 먹던 한 줄을 고쳤다 — 다섯이 아니라 하나였다
+
+무인 실행. 조건 — 배선 STEP_OF 36줄 · 스키마 원천 `KRRI_ASAP/ASAP-mcp/main.py`
+(읽기만 했다) 와 `tools/probe_out/tools.json` (2026-08-27 수신) · 8000 · 8501
+떠 있는 채로 `/chat` 을 눌렀다. 문맥은 저쪽 `ChatRequest` 모양 그대로 보냈다.
+
+**왜 했나.** 「쉰아홉째」가 죽어 있던 `check_inputs` 를 살렸고, 살리자마자
+판정 51행 중 **유일한 빨간불**로 이 자리가 잡혔다. 그 뒤 사람이 저쪽 화면에서
+눌러 확인했다 — "지금 보이는 곳 충전소 찾아줘" 가 지도를 아무리 좁혀도
+500건이었다. 계기판이 죽어 있던 동안 이 고장은 숨어 있었다. 배선이 프롬프트에
+안 실려 판정 지표로는 영영 안 보이고, 답 문구도 "조회했습니다" 라 멀쩡해
+보였기 때문이다. **정적 계기판이 아니었으면 못 찾았을 자리다.**
+
+#### 스키마 확인 표 — 고치기 전에 원천을 읽었다
+
+`ASAP-mcp/main.py` 의 `inputSchema` 를 도구마다 직접 읽었다. 줄 번호는
+`"name"` 이 있는 줄이다.
+
+| 도구 | 배선 줄 | 스키마가 받는 범위 칸 | 우리가 보내던 것 | 판정 |
+|---|---|---|---|---|
+| `ev.searchStations` (532) | `search_ev_stations × map_extent` 첫 자리 | **`minLon` · `minLat` · `maxLon` · `maxLat` 평평한 넷** (넷 다 optional) | `{"bbox": [네 수]}` | **★ 없는 칸. 고쳤다** |
+| `geo.getRailwayLines` (272) | `get_railway_lines × map_extent` | `bbox` 배열 (minItems/maxItems 4) | `{"bbox": [네 수]}` | 맞다. **안 고쳤다** |
+| `adminBoundary.searchBoundaries` (307) | `search_admin_boundaries × map_extent` | `bbox` 배열 | `{"bbox": [네 수]}` | 맞다. **안 고쳤다** |
+| `vworld.getAdministrativeBoundaries` (436) | `get_vworld_boundaries × map_extent` | `bbox` 배열 | `{"bbox": [네 수]}` | 맞다. **안 고쳤다** |
+| `population.searchStatistics` (364) | `search_population_statistics × map_extent` | `bbox` 배열 | `{"bbox": [네 수]}` | 맞다. **안 고쳤다** |
+| `road.getCctv` (249) | `find_cctv × map_extent` | 평평한 넷 (넷 다 **required**) | 평평한 넷 | 맞다. **본보기였다** |
+
+**「같은 자리가 다섯」이 아니었다. 한 줄이다.** 사람이 적어 온 지시에는 지도
+계열 다섯이 전부 평평한 넷을 받으니 다섯 줄이 같이 고장이라고 되어 있었다.
+원천을 읽으니 아니다 — 넷은 `bbox` 배열 칸을 정식으로 갖는다. 지시에 있던
+「다섯 중 bbox 배열을 받는 것이 섞여 있으면 그 줄은 안 고친다」 를 따랐고,
+「쉰아홉째」가 이미 같은 답을 적어 둔 것과도 맞는다 (「열린 과제」의 길 가)).
+
+선거 계열 셋(`election.searchAssemblyDistricts` 642 ·
+`searchAssemblyPledgeDistricts` 702 · `searchLocalPledgeSummaries` 766)도
+`bbox` 배열이라 그대로 뒀다.
+
+#### 사람이 잘못 짚었고 스키마가 바로잡았다
+
+사람이 준 지시에는 「같은 자리가 다섯」이라고 적혀 있었다. 원천 스키마를
+도구마다 잘라 읽어 보니 하나였다.
+
+```
+ev.searchStations                  bbox 칸 없음 · 평평한 넷      ★ 고친 자리
+road.getCctv                       평평한 넷 (required)          원래 맞았다
+geo.getRailwayLines                bbox 배열을 정식으로 받는다   안 고쳤다
+adminBoundary.searchBoundaries     "
+vworld.getAdministrativeBoundaries "
+population.searchStatistics        "
+```
+
+**어쩌다 그렇게 됐나 (사람이 스스로 적어 온 경위다).** grep 으로 확인할 때
+도구 경계를 안 잘라 **옆 도구의 `bbox` 를 같이 셌다.** `main.py` 에서
+`road.getCctv`(249) 바로 다음이 `geo.getRailwayLines`(272)인 것처럼 도구가
+잇달아 있어서, 한 도구의 `inputSchema` 를 벗어난 줄이 같은 덩어리로 보였다.
+
+**★ 지시에 있던 「bbox 배열을 받는 것이 섞여 있으면 그 줄은 안 고친다」가
+넷을 지켰다.** 사람이 결론을 잘못 짚고도 확인 절차를 함께 적어 둔 덕에
+넷이 안 깨졌다. `check_inputs` 도 「없는 칸 1」로 같은 답을 냈다 —
+사람 · 원천 · 계기판 셋이 한 자리에서 만났다.
+
+**★ 눌러 보니 넷은 원래부터 범위가 먹고 있었다.** 좁게↔넓게 건수가 갈린다
+(인구 2↔100 · 행정경계 2↔20 · 노선 50↔3683). 「스키마상 통할 것」에서
+「눌러 보니 통한다」로 옮겨졌다.
+
+**제주 증거.** 넓게 둔 「전체」가 92,821 이 아니라 **89,194** 다 — 넓은
+사각형([[126.00, 34.00], [129.50, 38.20]])도 제주(위도 33.2~33.6)를 안 덮는다.
+상한 500 에 걸린 수가 아니라 **범위가 세는 데까지 먹은 수**라서, 500건이라는
+같은 숫자가 고치기 전과 뜻이 다르다는 것을 이 한 자리가 갈라 준다.
+
+#### 앞 단계에서 오는 자리 — 왜 첫 자리만 틀렸나
+
+`("search_ev_stations", "map_extent")` 의 `input`(앞 단계에서 오는 쪽)은
+`center` + `radiusMeters` + `point_radius_to_bbox` 어댑터다. 어댑터가 평평한
+넷으로 바꿔 내보내므로 **그쪽은 처음부터 맞았다.** 「오송역 근처 충전소」가
+잘 돌던 것이 그 증거다 (아래 실측에서 다시 확인했다).
+
+**왜 어긋났나 — 배선 주석에 근거가 있다.** `a238b48` 이 `input_first` 열다섯
+줄을 한 번에 더하면서 **옆의 `input` 이 쓰는 모양을 그대로 베끼고 `$prev` 만
+문맥으로 바꿨다.** 그 규칙이 나머지 열넷에는 맞았다 — 그 도구들의 `input` 이
+이미 `{"bbox": BBOX_FROM_PREVIOUS}` 이거나(선거 · 노선 · 행정경계 · 인구)
+평평한 넷이었다(`road.getCctv`). **이 줄만 옆의 `input` 이 center + 반경 +
+어댑터라 베낄 `bbox` 꼴이 없었고**, 그래서 옆줄 대신 일반 관용구인
+`{"bbox": …}` 로 적었다. 바로 위 주석에는
+"`ev.searchStations` 는 bbox 를 평평한 네 수로 받는다" 고 **옳게** 적어
+놓고도 줄이 그것을 안 따랐다. 주석이 맞고 코드가 틀린 자리였다.
+
+#### 고친 다섯 줄 — 실은 한 줄이다
+
+```diff
+   ("search_ev_stations", "map_extent"): {
+       "input": {"center": f"{PREVIOUS_STEP}.location", "radiusMeters": RADIUS_METERS},
+       "adapter": POINT_RADIUS_TO_BBOX,
+-      "input_first": {"bbox": BBOX_FROM_CONTEXT},
++      "input_first": {
++          "minLon": BBOX_FROM_CONTEXT[0],
++          "minLat": BBOX_FROM_CONTEXT[1],
++          "maxLon": BBOX_FROM_CONTEXT[2],
++          "maxLat": BBOX_FROM_CONTEXT[3],
++      },
+   },
+```
+
+`BBOX_FROM_CONTEXT` 의 순서가 `minLon · minLat · maxLon · maxLat` 인 것을
+확인하고 적었다(시험으로도 박았다). CCTV 줄과 같은 꼴이고 새 방식을 안 만들었다.
+주석에는 왜 어긋났는지와 **나머지 넷을 왜 안 고쳤는지**를 적었다.
+
+#### ★ 화면 실측 일곱 (문구 그대로)
+
+좁게 = `[[127.28, 36.61], [127.32, 36.63]]` (오송역 둘레 약 3.6km × 2.2km) ·
+넓게 = `[[126.00, 34.00], [129.50, 38.20]]` (남한 거의 전부).
+
+```
+지금 보이는 곳 충전소 찾아줘   ★ 고친 자리
+  좁게  전기차 충전소를 조회했습니다.
+        1. ev.searchStations  minLon=127.2800 · minLat=36.6100 ·
+           maxLon=127.3200 · maxLat=36.6300  36건 · 청주시 한국전기공사협회중앙회
+  넓게  전기차 충전소를 조회했습니다.
+        1. ev.searchStations  minLon=126.0000 · minLat=34.0000 ·
+           maxLon=129.5000 · maxLat=38.2000  500건 (전체 89,194건) · 영동지사
+  ★ 36 ↔ 500. 범위가 먹는다. 고치기 전에는 좁게 둬도 500건(전체 92,821건)이었다
+    ★ 넓게 둔 「전체」가 92,821 이 아니라 89,194 인 것 자체가 증거다 —
+      넓은 사각형도 제주(위도 33.2~33.6)를 안 덮는다. 범위가 세는 데까지 먹었다
+
+지금 보이는 곳 인구 알려줘
+  좁게  인구 통계를 조회했습니다.
+        1. population.searchStatistics  2건 · 세종특별자치시 390,923명
+           (남 194,731 · 여 196,192) · 2026-06-30 기준
+  넓게  인구 통계를 조회했습니다.
+        1. population.searchStatistics  100건 (전체 249건) · 화성시 998,746명
+           (남 517,392 · 여 481,354) · 2026-06-30 기준
+  ★ 2 ↔ 100(전체 249). 안 고쳤는데 원래 먹고 있었다. 스키마 확인 표대로다
+
+지금 보이는 곳 행정경계 보여줘
+  좁게  행정구역 경계를 조회했습니다.
+        1. adminBoundary.searchBoundaries  2건 · 세종특별자치시
+  넓게  행정구역 경계를 조회했습니다.
+        1. adminBoundary.searchBoundaries  20건 (전체 249건) · 종로구
+  ★ 2 ↔ 20(전체 249). 안 고쳤는데 원래 먹고 있었다
+
+지금 보이는 곳 노선 보여줘
+  좁게  철도 노선을 조회했습니다.
+        1. geo.getRailwayLines  50건
+  넓게  철도 노선을 조회했습니다.
+        1. geo.getRailwayLines  3683건
+  ★ 50 ↔ 3683. 안 고쳤는데 원래 먹고 있었다
+
+지금 보이는 곳 CCTV 보여줘   ★ 원래 잘 되던 것
+  좁게  찾지 못했습니다.
+        1. road.getCctv  minLon=127.2800 · minLat=36.6100 ·
+           maxLon=127.3200 · maxLat=36.6300  0건
+  넓게  CCTV 를 조회했습니다.
+        1. road.getCctv  minLon=126.0000 · minLat=34.0000 ·
+           maxLon=129.5000 · maxLat=38.2000  4696건
+  ★ 0 ↔ 4696. 안 깨졌다. 좁게 0건인 것은 그 사각형에 CCTV 가 없어서다 —
+    같은 좌표로 오송역 반경(아래)을 재면 83건이 나오므로 범위 탓이 맞다
+```
+
+**앞 단계에서 오는 자리 둘 — 안 깨졌다.**
+
+```
+오송역 근처 충전소 자세히 알려줘   ★ 4단 사슬
+  오송역 충전소 상세를 조회했습니다.
+  1. geo.geocode       오송역 → 충청북도 청주시 흥덕구 오송읍 봉산리 369-1
+                       (127.3277, 36.6200)
+  2. ev.searchStations  minLon=127.1598 · minLat=36.4852 · maxLon=127.4956 ·
+                        maxLat=36.7547  500건 (전체 2,173건) · 청주오송역차고지
+  3. ev.getStation     statId="PK000313"  8건
+  ★ 500건(전체 2,173건). 예전과 같다
+
+오송역 CCTV 보여줘
+  오송역 CCTV 를 조회했습니다.
+  1. geo.geocode       오송역 → … (127.3277, 36.6200)
+  2. road.getCctv      minLon=127.1598 · minLat=36.4852 · maxLon=127.4956 ·
+                       maxLat=36.7547  83건
+  ★ 83건. 지시에 적혀 온 수는 82 였다. CCTV 배선은 한 글자도 안 건드렸고
+    (diff 로 확인) 저쪽 CCTV 목록이 실시간이라 ±1 은 저쪽 데이터다.
+    83 은 「마흔여섯째」에 적힌 수와 같다
+```
+
+#### 관문
+
+```
+★ 화면 실측 일곱      다섯이 범위를 쓰고(좁게 ↔ 넓게 건수가 갈린다),
+                      앞 단계에서 오는 둘이 안 깨졌다
+check_inputs          없는 칸 1 → 0. 맞다 50 → 51 · 안 보낸 required 0
+                      안 쓰는 칸 306 → 302 (★ 122 → 119)
+                      ★ 51행 중 빨간불이 하나도 안 남았다
+판정 무손상           check_resolve --runs 3
+                      적중 69/108 (64%) · 근접 19 · 빗나감 20 · 못 붙음 0
+                      LLM 단독 50/108
+                      ★ 고치기 전과 **표가 한 칸도 안 달라졌다** (발화별 행까지 같다)
+                      검산 표만 「바꿨지만 판정은 같다」가 26 → 28 회 —
+                      판정이 같다고 그 표가 스스로 이름 붙인 자리이고
+                      발화 1 의 회차 노이즈다. 배선은 프롬프트에 안 실린다
+check_wiring          recipe 60 · 배선 59 · STEP_OF 36줄 · A 0 · B 0 · C 1
+                      (C 는 web_fetch × web_address. 예전 그대로)
+pytest                445 passed / 1 failed
+                      실패 1건은 graphviz 음성 대조군
+                      (test_dense_graph_would_move_if_overlap_removal_were_used).
+                      고치기 전 435/1 에서 **더한 만큼만 늘었다. 기존 삭제 0**
+저쪽 무결             KRRI_ASAP/ · vendor/ 변경 0
+온톨로지 등 무손상     ontology/*.yaml · workflows/ · demo/graph_svg/ ·
+                      demo/ui/ · tools/ 변경 0
+서버                  8000 (uvicorn --reload) · 8501 (streamlit) 떠 있다
+```
+
+#### 더한 시험 열
+
+`tests/demo/api/test_step_input_schema.py` (여덟, 새 파일) —
+**STEP_OF 전 줄이 보내는 칸이 그 도구 스키마에 있는가**를
+`tools/probe_out/tools.json` 으로 대조한다. LLM 도 서버도 안 부른다.
+어댑터가 걸리는 줄(`point_radius_to_bbox`, 적어 둔 것과 vendor 가 저절로 거는
+것 둘 다)은 `check_inputs.sent_fields` 와 같은 규칙으로 뺀다. 나머지 일곱은
+ev 첫 자리가 평평한 넷인 것 · ev 앞 단계 자리가 안 달라진 것 ·
+**bbox 배열을 받는 넷은 그대로 `bbox` 한 칸인 것**(같이 고치면 깨지는 자리라
+확인을 박아 뒀다) · `BBOX_FROM_CONTEXT` 의 순서다.
+
+`tests/demo/api/test_map_context.py` (둘 더함, 기존 아홉 그대로) —
+plan 이 실제로 내놓는 값으로 본다. 보이는 범위로 시작하는 충전소가 평평한 넷을
+받는 것과, 노선이 그대로 `bbox` 한 칸을 받는 것.
+
+**음성 대조군으로 확인했다.** 고친 줄을 잠깐 되돌려 놓으니
+`test_배선이_보내는_칸이_전부_스키마에_있다` 와
+`test_ev_충전소는_첫_자리도_평평한_넷으로_보낸다` 둘이 곧바로 깨졌고,
+되돌리니 여덟이 다시 통과했다. 시험이 진짜로 이 고장을 잡는다.
+
+#### 안 한 것
+
+- **나머지 넷을 평평한 넷으로 통일하지 않았다** (「열린 과제」의 길 나)).
+  스키마상 `bbox` 배열이 정식이고 `_parse_bbox_input` 이 둘 다 받으므로
+  고쳐도 달라지는 것이 없다. 고장이 아닌 자리를 만지지 않았다.
+- 온톨로지 · menu · 정답표 · 프롬프트 넷 · `demo/api/services/` 의 다른 파일 ·
+  `demo/graph_svg/` · `demo/ui/` · `vendor/` · `KRRI_ASAP/` 를 안 건드렸다.
+  `KRRI_ASAP/ASAP-mcp/main.py` 는 **읽기만** 했다.
+- 커밋하지 않았다. 브랜치는 `integration/ASAP-Ontology` 그대로다.
+- `check_resolve` 를 `--execute` 로는 안 돌렸다. 실행 쪽은 `/chat` 을 직접
+  일곱 번 눌러 봤고 그것이 더 곧은 증거다.
+- 좁게 둔 CCTV 가 0건인 것을 더 파고들지 않았다. 같은 사각형에서 충전소는
+  36건이 나오므로 배선 문제가 아니라 그 범위에 CCTV 가 없는 것이다.
 
 ### 2026-08-30 (쉰아홉째) · 죽은 check_inputs 를 살리고 배선이 안 보내는 칸을 한 번에 셌다
 
