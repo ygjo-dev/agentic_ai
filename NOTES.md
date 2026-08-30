@@ -83,6 +83,67 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
+- **★ 보이는 범위가 안 먹는다 — bbox 를 그런 칸이 없는 도구에 보낸다**
+  (2026-08-30). 「쉰아홉째」의 판정 51행 중 유일한 빨간불이었고, **사람이 저쪽
+  화면에서 눌러 확인했다.**
+
+  ```
+  ★ 2026-08-30 화면 실측
+    "지금 보이는 곳 충전소 찾아줘"
+      ev.searchStations  500건 (전체 92,821건)
+      ★ 지도를 아주 좁게 두어도 같다. 범위가 안 먹고 전국을 찾는다
+        500 은 그 도구의 limit 기본값이다 — 범위가 아니라 상한이 자른 수다
+  ```
+
+  **까닭.** `ev.searchStations` 는 지도 범위를 평평한 넷(`minLon` · `minLat` ·
+  `maxLon` · `maxLat`)으로만 받는데 우리 배선은 `{"bbox": [네 수]}` 를 보낸다.
+  도구가 모르는 칸이라 버려지고, 공간 조건이 없는 채로 돌아 전국을 준다.
+  배선 줄은 `("search_ev_stations", "map_extent")` 의 `input_first` 하나다.
+
+  ```
+  ASAP-mcp/main.py:961  ev.searchStations 핸들러 (읽기만 했다)
+    min_lon=_parse_float(tool_input.get("minLon")), …
+    ★ _parse_bbox_input 을 안 부른다. bbox 칸을 볼 기회가 없다
+  ```
+
+  **★ 「같은 자리가 다섯이다」는 아니었다 — 확인해 보니 한 줄이다.** 사람이
+  적어 온 항목에는 지도 계열 다섯(노선 · 행정구역 · VWorld · 인구 · 충전소)이
+  전부 평평한 넷을 받으므로 다섯 줄이 같이 고장이라고 되어 있었다. **원천을
+  읽어 보니 아니다.** 안 눌러 본 넷을 「같은 꼴이니 같이 고장일 것」으로 미룬
+  자리였고, 실제로는 그 넷이 `bbox` 배열 칸을 정식으로 갖는다.
+
+  ```
+  ASAP-mcp/main.py 의 bbox 받는 법 — 도구마다 갈린다 (2026-08-30, 줄 번호까지 확인)
+    평평한 넷만          road.getCctv(254) · ev.searchStations(537) · ev.searchChargers(575)
+    bbox 배열 칸         geo.getRailwayLines(279) · adminBoundary.searchBoundaries(320) ·
+                         population.searchStatistics(384) · vworld.getAdministrativeBoundaries(447) ·
+                         election.search* 셋(652 · 715 · 776)
+
+  ★ 그리고 bbox 배열 칸을 가진 일곱은 _parse_bbox_input(1125) 을 부르는데
+    그 함수가 **bbox 배열과 평평한 넷을 둘 다 받는다.** 그래서 그 일곱에는
+    어느 모양으로 보내도 통한다. 고장은 그 함수를 안 부르는 ev 한 줄뿐이다.
+  ```
+
+  **그래서 지금 틀린 것은 한 줄, 「지금 보이는 곳」 발화 다섯 중 하나다.**
+  CCTV 가 되고 충전소가 안 된 것은 우연이 아니라 그 둘만 평평한 넷을 요구하고
+  우리 배선이 CCTV 쪽에만 그렇게 적혀 있어서다. 나머지 셋(노선 · 행정구역 ·
+  인구)은 안 눌러 봤지만 스키마상 지금 배선으로 통한다 — **누르면 확실해진다.**
+
+  계기판도 같은 답을 냈다. 「쉰아홉째」의 「없는 칸을 보낸다」 판정은 51행 중
+  정확히 이 한 행이었다 (tools.json 2026-08-27 · 원천 읽기 2026-08-30, 둘이 같다).
+
+  ```
+  고치는 길 둘. 어느 것도 지금 안 한다
+    가) 그 한 줄만 평평한 넷으로       가장 작다. 고장난 자리만 만진다
+    나) 다섯 줄을 평평한 넷으로 통일   _parse_bbox_input 이 둘 다 받으므로 나머지
+                                       넷도 안 깨진다. 「자리마다 모양이 다르다」를
+                                       없애는 값은 있지만, 넷은 고장이 아니라
+                                       고쳐도 달라지는 것이 없다
+  ```
+
+  배선표는 프롬프트에 안 실리므로 **어느 길로 가도 판정은 안 흔들린다.**
+  「쉰째」가 철도에서 확인한 성질과 같은 자리다.
+
 - **끌 수 있는 동적 그래프** (하정목 박사님 피드백 ①, 2026-08-28). 지금은 파이썬이
   DOT 을 만들고 graphviz 가 SVG 를 그린다. 좌표가 고정이라 노드를 끌 수 없다.
   바꾸려면 브라우저에서 JS 라이브러리가 그려야 한다.
@@ -962,31 +1023,13 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   읽으므로 표에 적힌 `stationName` 한 칸만 본다. 칸을 고르는 것이 값이라 표에
   안 실린다. 판정은 고친 뒤에도 「맞다」로 같다.
 
-  그리고 **`tools/check_inputs.py` 는 지금 죽어 있다** — 아래 항목에 따로 적었다.
-  살릴 때 이 줄을 어떻게 셀지도 거기서 함께 정한다.
-
-- **★ `check_inputs` 가 죽어 있다** (2026-08-29 「쉰째」에서 발견).
-
-  ```
-  KeyError: 'tool' (line 272). 「마흔아홉째」가 TOOL_OF 에 도구가 아닌 줄
-  (show_facility · 지도 명령)을 더하면서 죽었다. 이번 변경 전 코드로도 같은
-  자리에서 같은 오류가 난다.
-
-  고치는 법 : TOOL_OF 가 이제 「실행 수단」이라 server_id·tool 이 없는 줄이
-  있다. 그 줄은 건너뛰거나 따로 세면 된다.
-
-  ★ 재는 도구가 조용히 죽은 두 번째다. check_argument 가 나흘간
-    ValueError 로 죽어 있었고(「스물다섯째」), 그 교훈으로 check_inputs 에
-    _selfcheck 를 넣었는데 그 검사가 이 경우를 못 잡았다.
-    자체 검사에 「TOOL_OF 의 모든 줄을 한 번씩 읽어 본다」가 없었다.
-
-  지금 안 고치는 이유 : 계기판이라 사용자 동작에 영향이 0 이고, 남은 주말
-  작업이 이 도구를 안 쓴다. 도구를 새로 붙일 때 필요하므로 오래 두지 않는다.
-  ```
-
-  **살릴 때 할 일이 하나 더 있다.** 값으로 칸이 갈리는 줄(철도 노선 조회)을
-  어떻게 셀지 정하는 것이다 — 지금 그 표는 `STEP_OF` 를 정적으로 읽어
-  `stationName` 한 칸만 본다 (「쉰째」 9절).
+  **고쳐 적는다 (2026-08-30 「쉰아홉째」).** check_inputs 를 살리면서 이 줄을
+  「갈래마다 한 행」으로 세게 했다 — 기본 갈래(stationName) 한 행 · "…선" 갈래
+  (railwayName) 한 행이다. 이제 표에 두 칸이 다 실리므로 위 문단의 「사라질
+  수가 없다」는 더는 맞지 않다. step_service 의 배선 주석("★ 표에서
+  railwayName(S) 은 안 사라진다")이 그래서 낡았는데, 이번 작업은 제품 코드를
+  안 건드리는 규칙이라 그대로 두었다 — **다음에 그 파일을 열 때 고친다.**
+  죽어 있던 계기판 자체도 「쉰아홉째」가 살렸다 (측정 기록 참고).
 
 - **되묻기 후보 안에 「말이 되지만 답이 나쁜」 길이 섞인다** (2026-08-29 「쉰째」
   7절, 사람이 저쪽 화면에서 눌렀다). 후보가 다 온톨로지가 만든 진짜 경로인데
@@ -1079,6 +1122,14 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   있다** (「쉰째」의 항목). **살리면 나머지도 한 번에 센다** — 지금 넷은 손으로
   찾은 것이라 더 있는지 모른다. 살릴 때 판정 이름을 다시 볼 것 : 「안 쓰는 칸」이
   「판단할 자리」인 것은 맞지만, 그 안에 **사람 말을 막는 자리**가 섞여 있다.
+
+  **★ 고쳐 적는다 (2026-08-30 「쉰아홉째」). 계기판을 살려 한 번에 셌다.**
+  발화(@arg) 줄의 안 쓰는 칸을 전부 올리는 기준 A 를 더했고 위 넷이 전부
+  걸린다. 전체 셈은 안 쓰는 칸 306 · 그중 A 94 이고, **없는 칸을 보내는 줄이
+  하나 새로 나왔다** — `ev.searchStations` 의 보이는-범위 첫 자리가 스키마에
+  없는 `bbox` 를 보낸다. 표 전문과 사람이 볼 자리 목록은 측정 기록
+  「쉰아홉째」에 있다. **어느 길로 고칠지(recipe 를 더 판다 · 인자를 둘 받는다 ·
+  무인자 허용)는 여전히 안 정했다** — 그 물음만 이 항목에 남는다.
 
 - **`items.1` 로 시군구에 고정된다.** `get_age_profile` ·
   `get_population_trend` 의 배선이 `$prev.items.1.layerId` 와
@@ -1466,6 +1517,198 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-08-30 (쉰아홉째) · 죽은 check_inputs 를 살리고 배선이 안 보내는 칸을 한 번에 셌다
+
+무인 실행. 조건 — 스키마는 `tools/probe_out/tools.json` (2026-08-27 수신,
+도구 42개. Gateway 가 꺼져 있어 다시 못 받았다) · 배선 STEP_OF 36줄 ·
+`python tools/check_inputs.py` 서버 없이. LLM 판정과 무관한 정적 셈이라
+모델 · 반복 횟수가 없다. **제품 코드 · 배선 · 온톨로지 · 프롬프트 0줄 변경** —
+그래서 check_resolve 는 안 돌렸다 (프롬프트에 닿는 것이 없다).
+
+#### 1. 무엇이 왜 죽어 있었나
+
+「쉰째」에 적힌 그대로다 — `rows_of` 가 `TOOL_OF[node]["tool"]` 을 무조건
+읽는데, 「마흔아홉째」가 TOOL_OF 를 「실행 수단」으로 넓히면서 tool 없이
+command 만 있는 줄(show_facility)이 생겼다. `KeyError: 'tool'` 로 표가 한 줄도
+안 나왔다. 재현했다 — 첫 실행에서 같은 자리, 같은 오류.
+
+#### 2. 어떻게 살렸나 — 세는 법 둘을 정했다
+
+```
+지도 명령 줄   tool 이 없는 줄은 판정에서 갈라 「지도 명령 줄」로 따로 센다.
+               맞댈 inputSchema 가 없다 — 그 args 의 계약은 저쪽 화면(useChat)이다.
+               표 끝에 몇 줄인지 찍는다. 지금 1줄 (show_facility × place_name).
+
+값 갈래       「살릴 때 정한다」던 철도 줄(arg_field)은 input_first 전례대로
+               **갈래마다 한 행**으로 셌다. 기본 갈래(stationName) 한 행 ·
+               "…선" 갈래(railwayName) 한 행. 「쉰째」 9절의 「표에 stationName
+               한 칸만 실린다」가 이것으로 풀렸다.
+```
+
+#### 3. 자체 검사를 어떻게 고쳤나
+
+_selfcheck 가 이번 고장을 못 잡은 구멍은 「손으로 적은 배선만 보고 진짜 표는
+한 줄도 안 읽는다」였다. **「TOOL_OF · STEP_OF 의 모든 줄을 한 번씩 읽어
+본다」를 더했다** — 빈 스키마로 `rows_of({})` 를 끝까지 돌리고, 모든 줄이
+판정 행 아니면 지도 명령 줄에 정확히 한 번 나오는지 본다. 서버 · tools.json
+없이 돈다. **일부러 깨뜨려 확인했다** — 갈라 세는 분기를 지우고 돌리니
+_selfcheck 가 표를 찍기 전에 같은 KeyError 로 죽는다. 되돌렸다.
+
+시험 하나를 더했다 — `tests/tools/test_check_inputs_selfcheck.py` 가
+`_selfcheck()` 를 부른다. 근거 : 계기판이 죽는 순간은 배선표가 바뀌는 커밋인데
+이 도구는 어쩌다 한 번 돌고, 커밋마다 도는 것은 pytest 다. check_argument
+나흘 · check_inputs 하루가 그렇게 새어 나갔다. tests/tools/ 전례는
+「쉰여섯째」의 test_execution_column 이다. pytest 434 → 435 passed.
+
+#### 4. 표 — 도구 · 배선 줄 · 보내는 칸 · 판정 (2026-08-30)
+
+`python tools/check_inputs.py` 출력 그대로다 (스키마의 칸 절만 뺐다. 도구가
+언제든 다시 찍는다).
+
+```
+  도구                                   배선 줄 (노드 × 받는 타입)                       보내는 칸                        판정
+  adminBoundary.findBoundaryByPoint      find_admin_boundary_by_point × point             lat, lon                         맞다 · 안 쓰는 칸 4
+  adminBoundary.findBoundaryByPoint      find_admin_boundary_by_point × point (첫)        lat, lon                         맞다 · 안 쓰는 칸 4
+  adminBoundary.searchBoundaries         search_admin_boundaries × keyword                query                            맞다 · 안 쓰는 칸 10
+  adminBoundary.searchBoundaries         search_admin_boundaries × map_extent             bbox                             맞다 · 안 쓰는 칸 10
+  adminBoundary.searchBoundaries         search_admin_boundaries × map_extent (첫)        bbox                             맞다 · 안 쓰는 칸 10
+  election.findAssemblyDistrictByPoint   find_assembly_district_by_point × point          lat, lon                         맞다 · 안 쓰는 칸 6
+  election.findAssemblyDistrictByPoint   find_assembly_district_by_point × point (첫)     lat, lon                         맞다 · 안 쓰는 칸 6
+  election.findAssemblyPledgeDistrictByPoint  find_assembly_pledge_district_by_point × point       lat, lon                맞다 · 안 쓰는 칸 6
+  election.findAssemblyPledgeDistrictByPoint  find_assembly_pledge_district_by_point × point (첫)  lat, lon                맞다 · 안 쓰는 칸 6
+  election.findDistrictByPoint           find_election_district_by_point × point          lat, lon                         맞다 · 안 쓰는 칸 1
+  election.findDistrictByPoint           find_election_district_by_point × point (첫)     lat, lon                         맞다 · 안 쓰는 칸 1
+  election.findLocalPledgeSummaryByPoint find_local_pledge_summary_by_point × point       lat, lon                         맞다 · 안 쓰는 칸 2
+  election.findLocalPledgeSummaryByPoint find_local_pledge_summary_by_point × point (첫)  lat, lon                         맞다 · 안 쓰는 칸 2
+  election.getAssemblyDistrict           get_assembly_district × district_code            name                             맞다 · 안 쓰는 칸 2
+  election.getAssemblyPledgeDistrict     get_assembly_pledge_district × district_code     name                             맞다 · 안 쓰는 칸 3
+  election.getDistrict                   get_election_district × district_code            name                             맞다 · 안 쓰는 칸 2
+  election.getLocalPledgeSummary         get_local_pledge_summary × admin_code            sidoCode                         맞다 · 안 쓰는 칸 2
+  election.searchAssemblyDistricts       search_assembly_districts × keyword              query                            맞다 · 안 쓰는 칸 9
+  election.searchAssemblyDistricts       search_assembly_districts × map_extent           bbox                             맞다 · 안 쓰는 칸 9
+  election.searchAssemblyDistricts       search_assembly_districts × map_extent (첫)      bbox                             맞다 · 안 쓰는 칸 9
+  election.searchAssemblyPledgeDistricts search_assembly_pledge_districts × keyword       query                            맞다 · 안 쓰는 칸 12
+  election.searchAssemblyPledgeDistricts search_assembly_pledge_districts × map_extent    bbox                             맞다 · 안 쓰는 칸 12
+  election.searchAssemblyPledgeDistricts search_assembly_pledge_districts × map_extent (첫)  bbox                          맞다 · 안 쓰는 칸 12
+  election.searchDistricts               search_election_districts × keyword              query                            맞다 · 안 쓰는 칸 5
+  election.searchLocalPledgeSummaries    search_local_pledge_summaries × keyword          query                            맞다 · 안 쓰는 칸 9
+  election.searchLocalPledgeSummaries    search_local_pledge_summaries × map_extent       bbox                             맞다 · 안 쓰는 칸 9
+  election.searchLocalPledgeSummaries    search_local_pledge_summaries × map_extent (첫)  bbox                             맞다 · 안 쓰는 칸 9
+  ev.getStation                          get_ev_station × station_id                      statId                           맞다 · 안 쓰는 칸 0
+  ev.searchStations                      search_ev_stations × keyword                     query                            맞다 · 안 쓰는 칸 17
+  ev.searchStations                      search_ev_stations × map_extent                  maxLat, maxLon, minLat, minLon ·어댑터  맞다 · 안 쓰는 칸 14
+  ev.searchStations                      search_ev_stations × map_extent (첫)             bbox                             ★ 없는 칸을 보낸다 — bbox
+  geo.geocode                            geocode_place × place_name                       query                            맞다 · 안 쓰는 칸 0
+  geo.getRailwayLines                    get_railway_lines × map_extent                   bbox                             맞다 · 안 쓰는 칸 4
+  geo.getRailwayLines                    get_railway_lines × map_extent (첫)              bbox                             맞다 · 안 쓰는 칸 4
+  geo.getRailwayLines                    get_railway_lines × place_name                   stationName                      맞다 · 안 쓰는 칸 4
+  geo.getRailwayLines                    get_railway_lines × place_name (…선)             railwayName                      맞다 · 안 쓰는 칸 4
+  knowledge.query                        search_documents × keyword                       k, query                         맞다 · 안 쓰는 칸 1
+  population.getAgeProfile               get_age_profile × admin_code                     code, level                      맞다 · 안 쓰는 칸 1
+  population.getTrend                    get_population_trend × admin_code                code, level                      맞다 · 안 쓰는 칸 3
+  population.searchStatistics            search_population_statistics × keyword           query                            맞다 · 안 쓰는 칸 12
+  population.searchStatistics            search_population_statistics × map_extent        bbox                             맞다 · 안 쓰는 칸 12
+  population.searchStatistics            search_population_statistics × map_extent (첫)   bbox                             맞다 · 안 쓰는 칸 12
+  rail.getSectionGeometry                get_railway_section × place_name                 sectionName                      맞다 · 안 쓰는 칸 0
+  road.getCctv                           find_cctv × map_extent                           maxLat, maxLon, minLat, minLon   맞다 · 안 쓰는 칸 0
+  road.getCctv                           find_cctv × map_extent (첫)                      maxLat, maxLon, minLat, minLon   맞다 · 안 쓰는 칸 0
+  road.getCctv                           find_cctv × point                                maxLat, maxLon, minLat, minLon ·어댑터  맞다 · 안 쓰는 칸 0
+  road.getCctv                           find_cctv × point (첫)                           maxLat, maxLon, minLat, minLon ·어댑터  맞다 · 안 쓰는 칸 0
+  vworld.getAdministrativeBoundaries     get_vworld_boundaries × keyword                  query                            맞다 · 안 쓰는 칸 8
+  vworld.getAdministrativeBoundaries     get_vworld_boundaries × map_extent               bbox                             맞다 · 안 쓰는 칸 8
+  vworld.getAdministrativeBoundaries     get_vworld_boundaries × map_extent (첫)          bbox                             맞다 · 안 쓰는 칸 8
+  web.search                             web_search × keyword                             query                            맞다 · 안 쓰는 칸 4
+
+  지도 명령 줄 1 (도구를 안 불러 판정에서 뺌)  show_facility × place_name → digitalTwin.showFacility
+
+  합계  판정한 행 51 (input 35 · input_first 15 · 값 갈래 1) · 지도 명령 줄 1 · 도구 26
+        줄 판정  맞다 50 · 없는 칸 1 · 안 보낸 required 0 · 스키마 못 받음 0
+        칸 합계  없는 칸 1 · 안 보낸 required 0 · 안 쓰는 칸 306 (그중 ★ 122 — R 0 · S 8 · O 36 · A 94)
+```
+
+#### 5. 추리는 기준 — R · S · O 에 A 를 더했다
+
+**지난번 셋(R · S · O)은 이미 아는 넷을 하나도 못 잡는다.** 확인했다 —
+`all` 도 `includeGeometry` 도 `pledgeCategory` 도 `order` 도 required 가 아니고,
+우리가 보내는 `query` · `bbox` 와 낱말을 공유하지 않고, 같은 도구의 다른 줄도
+안 보낸다. 그래서 기준을 고쳤다.
+
+```
+A  발화(@arg) 줄의 안 쓰는 칸 전부. limit · k · offset 만 뺀다
+```
+
+근거 : 넷은 칸의 성질이 제각각이라(boolean 둘 · string 둘 · 기본값 있는 것과
+없는 것 · 거르는 칸과 출력 칸) **칸의 성질로는 못 좁힌다.** 공통점은 자리다 —
+넷 다 발화가 `query` 한 칸으로 접히는 줄이었다. 발화는 자유 문장이라 그 줄의
+다른 모든 칸이 「사람 말이 갈 수 없는 자리」다. $prev · $context 줄은 사람
+말이 아니라 앞 단계 · 화면이 채우므로 옛 판정대로 둔다. limit · k · offset 을
+뺀 것은 개수 손잡이는 말을 막지 않아서다 — "100개만 보여줘" 류가 나오면
+이 제외를 다시 본다. **넷이 다 걸리는지 확인했다** — 아래 6절, 전부 A 다.
+
+#### 6. ★ 사람이 볼 자리
+
+**하나 · 없는 칸을 보내는 줄이 나왔다 — 유일한 빨간 판정.**
+
+```
+("search_ev_stations", "map_extent") 의 input_first 가 {"bbox": $context.view…} 를
+보내는데 ev.searchStations 스키마에는 bbox 칸이 없다 — minLon · minLat ·
+maxLon · maxLat 넷을 따로 받는다 (tools.json 2026-08-27). 배선 주석은
+"ev.searchStations 는 bbox 를 평평한 네 수로 받는다" 인데 스키마와 어긋난다.
+맞으면 "지금 보이는 곳 충전소"(recipe_032 · 화면 발화)가 범위를 잃고 전국
+검색이 된다. ★ Gateway 가 꺼져 있어 눌러서 못 갈랐다 — 주석이 낡았는지
+스키마가 낡았는지는 서버를 켜고 한 번 누르면 갈린다. 배선은 안 고쳤다.
+```
+
+**★ 갈렸다 (2026-08-30, 같은 날 늦게). 계기판이 맞았고 배선 주석이 낡았다.**
+사람이 저쪽 화면에서 "지금 보이는 곳 충전소 찾아줘" 를 눌러 **500건(전체
+92,821건)** 을 봤고 지도를 좁혀도 같았다. 원천(`ASAP-mcp/main.py:961`)도
+같은 답이다 — 그 핸들러는 `minLon` 넷을 직접 읽고 `_parse_bbox_input` 을
+안 부른다. **위 문단의 「배선 주석과 스키마 중 어느 쪽이 낡았나」의 답은
+주석이다.** 열린 과제에 항목으로 옮겨 적었다 (배선은 여전히 안 고쳤다).
+
+**둘 · 이미 아는 넷 — 전부 A 로 걸렸다.**
+
+```
+all              A  election search 넷 (searchDistricts · searchAssembly* 둘 · searchLocalPledgeSummaries)
+includeGeometry  A  adminBoundary.searchBoundaries — 이 도구만 기본 False 라 지도에 안 그려진다.
+                    election 계열의 같은 칸은 기본 True 라 문제가 아니다 (스키마 default 실측)
+pledgeCategory   A  election.searchAssemblyDistricts (정답표 16번 자리)
+order            A  population.searchStatistics (정답표 19번 자리)
+```
+
+**셋 · A 94 중 새로 눈에 띄는 것** (도구가 할 수 있는데 말이 못 가는 자리.
+발화가 떠오르는 순으로 사람이 볼 것) :
+
+```
+hasPledges                election.searchAssemblyDistricts. 16번 실측에서 20건 나온 그 칸
+sido                      election search 셋. "충북 선거구 보여줘" 류가 지금 query 로 접힌다
+metric · level            population.searchStatistics. 19번 "인구 많은 시군구" 와 한 묶음
+party · winner            공약 검색. "국민의힘 공약" · "당선인 공약" 류
+theme · leader            지방선거 요약 검색 (단 데이터 미적재라 후순위)
+availableOnly ·chargerType ev.searchStations. "사용 가능한 급속 충전소" 류
+filter_docs               knowledge.query. 이미 열린 과제 「인자 둘」에 있는 자리
+domains · freshness       web.search (권한이 막혀 있어 후순위)
+```
+
+나머지 A 는 include* · simplifyM · zoom · pageNo 같은 출력 손잡이가 많다 —
+걸렸다고 틀린 것이 아니라는 원칙 그대로다. S 8 중 railwayName · stationName
+은 갈래 행이 생기며 서로를 가리키는 것이라 해소로 본다. includeBbox ×2 ·
+minOutputKw 는 예전 그대로 소음이다.
+
+#### 7. 안 한 것
+
+```
+배선 · 제품 코드 0줄        표를 내고 멈췄다. 넷을 어느 길로 고칠지(recipe 추가 ·
+                            인자 둘 · 무인자)는 열린 과제에 그대로 있다
+step_service 낡은 주석      "railwayName(S) 은 안 사라진다" — 제품 코드라 못 고쳤다.
+                            다음에 그 파일을 열 때 고친다 (열린 과제에 적음)
+스키마 재수신               Gateway 꺼짐. tools.json 은 2026-08-27 것이다
+ev bbox 실측                서버가 있어야 눌러 갈린다 (위 6절 하나)
+판정 이름                   「안 쓰는 칸」 등 부류 이름은 안 바꿨다 — 기준 A 를
+                            더한 것으로 「사람 말을 막는 자리」가 표에 오른다
+check_resolve               프롬프트에 닿는 변경이 없어 안 돌렸다
+```
 
 ### 2026-08-30 (쉰여덟째) · 시연 리허설 — 사람이 저쪽 화면에서 일곱을 눌렀다
 
