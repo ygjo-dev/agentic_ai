@@ -7,14 +7,28 @@
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python tools/check_resolve.py                   1~31번 × 5회
+    python tools/check_resolve.py                   1~36번 × 5회
     python tools/check_resolve.py --runs 3          지금 쓰는 회차. 왜 3 인지는 아래
     python tools/check_resolve.py --only 2          고친 발화만 다시
     python tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
     python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
     python tools/check_resolve.py --narrow          좁히기 길(두 번 부르기)로. 기본은 끔
     python tools/check_resolve.py --context none    지도 문맥 없이. 「마흔여섯째」 이전과 같은 조건
-    python tools/check_resolve.py --context both    우클릭까지 한 셈으로 (찍은 지점 + 보이는 범위)
+    python tools/check_resolve.py --context bbox    우클릭 전 (보이는 범위만). 「쉰다섯째」까지의 기본
+    python tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
+
+## 두 가지를 잰다 — 경로와 실행
+
+    /resolve 만 부른다   "경로를 맞게 골랐는가". 평소 쓰는 길이고 빠르다
+    --execute            ★ "그 recipe 가 답을 내놓는가". 가끔 돌려 실행 칸을 갱신한다
+
+**둘의 뜻이 다르다.** 6번 「국회의원 선거구 찾아줘」가 적중 3/3 인데 화면에서는
+"찾지 못했습니다" 였다 — 고른 recipe 는 맞고 그것을 부른 결과가 0건이었다.
+경로만 재는 표는 그 자리를 「다 잘 된다」로 읽는다.
+
+**실행 칸을 관문으로 삼지 않는다.** 저쪽 데이터가 늘면 건수가 바뀌고 Gateway 가
+꺼지면 전부 실패한다. 적중 판정은 이 칸을 안 본다. 자세한 것은 「실행」 절의
+주석에 있다.
 
 ## 「좁히기」 스위치 — 켜면 검산 칸이 「해당 없음」이 된다
 
@@ -39,35 +53,45 @@
 
 끔일 때는 합계 시간만 찍는다. 다른 칸은 그 길에 없다.
 
-## 「지도 문맥」 옵션 — 기본이 「bbox 만」이다
+## 「지도 문맥」 옵션 — 기본이 「둘 다」다
 
 `--context` 는 /resolve 본문에 저쪽 화면이 보내는 지도 문맥을 실어 보낸다.
 값은 `demo/ui/config.py` 의 고정값이고 거기 근거가 적혀 있다 (오송역 반경 15km).
 
     none   안 보낸다. 화면 시작 데이터 둘이 죽는다 — 「마흔여섯째」 이전과 같은 조건
-    bbox   보이는 범위만. **기본값이다.** 저쪽 평상시(우클릭 전)와 같은 모양
-    both   보이는 범위 + 찍은 지점. 저쪽에서 우클릭을 한 뒤와 같은 모양
+    bbox   보이는 범위만. 저쪽 평상시(우클릭 전)와 같은 모양. 「쉰다섯째」까지의 기본
+    both   보이는 범위 + 찍은 지점. **기본값이다.** 저쪽에서 우클릭을 한 뒤와 같은 모양
 
-**기본을 bbox 로 둔 것은 시연과 같은 조건에서 재려는 것이다.** 저쪽 화면은 늘
-bbox 를 보내고, Streamlit 도 2026-08-29 부터 같은 것을 보낸다. 문맥이 오면
-프롬프트의 menu 도 갈린다 (resolve_service `_menu_for`).
+**2026-08-30 에 기본을 bbox 에서 both 로 바꿨다** (「쉰여섯째」). bbox 뿐이면
+**찍은 지점 recipe 아홉을 아예 못 잰다** — resolve_service 가 그 아홉을
+menu 에서도(`_menu_for`) 축 선택지에서도(`_choices_for`) 빼기 때문에 후보에
+오를 길이 없다. 정답표에 화면 다섯을 넣으면서 그중 셋이 그 아홉을 가리키므로
+기본이 bbox 면 새로 넣은 줄이 처음부터 못 닿는 자리가 된다.
 
-## 두 묶음 — 아홉과 열아홉을 갈라 찍는다
+**옛 기록과 맞대려면 `--context bbox` 를 적는다.** 「쉰다섯째」까지의 숫자는
+전부 bbox 로 잰 것이다. 문맥이 오면 프롬프트의 menu 도 축 선택지도 갈린다.
 
-발화가 스물여덟이다. **한 백분율로 합치지 않는다.**
+## 세 묶음 — 아홉과 스물둘과 다섯을 갈라 찍는다
+
+발화가 서른여섯이다. **한 백분율로 합치지 않는다.**
 
     기준선 아홉   1~9번     서른한 번의 측정 기록이 이어져 있는 자
-    확장 열아홉   10~31번   2026-08-26 「서른두째」에 만든 자
-    합계          둘을 더한 값도 내지만 아홉의 값이 그 위에 따로 보인다
+    확장 스물둘   10~31번   2026-08-26 「서른두째」에 만든 자
+    화면 다섯     32~36번   2026-08-30 「쉰여섯째」에 만든 자. 문맥이 있어야 닿는다
+    합계          셋을 더한 값도 내지만 아홉의 값이 그 위에 따로 보인다
 
-**두 묶음의 점수를 서로 견주지 않는다.** 발화가 다르므로 다른 자다.
+**묶음의 점수를 서로 견주지 않는다.** 발화가 다르므로 다른 자다.
 한쪽만 돌리려면 `--only` 에 번호를 적는다 — 묶음을 고르는 옵션은 따로 안 만들었다.
+
+**「확장 열아홉」이 이름이 틀려 있었다.** 「서른두째」에 열아홉으로 만든 뒤
+「애매 셋」(29~31)이 붙어 스물둘이 됐는데 이름만 그대로였다. 2026-08-30 에
+고쳤다 — 옛 NOTES 의 표에는 「확장 열아홉」으로 찍혀 있고 그 줄들은 안 고친다.
 
 **왜 늘렸나.** 커버리지가 첫째 이유가 아니다. 첫째는 한 발화의 무게다. 아홉이면
 발화 하나가 흔들릴 때 점수가 11점 움직인다 — 「서른째」에서 발화 둘이 되묻기가
 되자 100% 가 78% 가 됐다. 스물여덟이면 한 발화가 3.6% 다.
 
-각 발화에 **표시** 한 칸이 붙는다 (`시연` · `위험` · `애매` · `-`). 낮은 점수가
+    각 발화에 **표시** 한 칸이 붙는다 (`시연` · `위험` · `애매` · `화면` · `-`). 낮은 점수가
 무엇 때문인지 표에서 바로 읽으라고 둔 칸이고 판정에는 영향이 없다.
 뜻은 `MARKS` 옆 주석에 있다.
 
@@ -84,7 +108,8 @@ bbox 를 보내고, Streamlit 도 2026-08-29 부터 같은 것을 보낸다. 문
 **여기와 NOTES.md 에 적힌 알아낸 것은 예전 온톨로지(철도 CCTV 14노드)와 예전
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:32b 다.
 
-표를 네 장 찍는다. 적중 표 · 축 표 · 후보 표 · 검산 표다. 후보가 안 맞을 때 LLM 이
+표를 네 장 찍는다. 적중 표 · 축 표 · 후보 표 · 검산 표다. `--execute` 를 붙이면
+실행 칸 표가 한 장 더 나온다 (`--narrow` 를 켜면 좁히기 표도). 후보가 안 맞을 때 LLM 이
 recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다. 축 표에는
 발화에서 뽑은 인자(argument)도 함께 찍는다 — 축이 맞아도 인자가 흔들리면
 실행이 엉뚱한 것을 조회한다.
@@ -313,7 +338,14 @@ UTTERANCES = [
     (13, "오송역 국회의원 누구야",        {"recipe_040"}, True),  # 옛 recipe_039 · 그 앞은 recipe_024 · 장소 → 좌표 → 지점 전체 선거구 판별
     (14, "오송역 국회의원 공약 보여줘",   {"recipe_041"}, True),  # 옛 recipe_040 · 그 앞은 recipe_025 · 장소 → 좌표 → 선거구 공약 검색
     (15, "청주 선거구 찾아줘",            {"recipe_008"}, True),  # 옛 recipe_007 · 키워드 → 지역구 검색
-    (16, "교통 공약 많은 선거구 검색해줘", {"recipe_009"}, True),  # 옛 recipe_008 · 키워드 → 전체 선거구 검색
+    # **말투를 고쳤다. 기대값은 한 글자도 안 바꿨다** (2026-08-30 「쉰여섯째」).
+    # 옛말은 "교통 공약 **많은** 선거구 검색해줘" 였다. 도구에 정렬 칸이 없어
+    # 「많은 순」을 시킬 수가 없다 — election.searchAssemblyDistricts 의
+    # inputSchema 는 query · sido · code · hasPledges · pledgeCategory · bbox ·
+    # limit · includeGeometry · all · simplifyM 이고 order 도 sort 도 없다
+    # (tools/probe_out/tools.json 실측). 못 하는 일을 시키는 발화였다.
+    # "있는" 은 그 스키마의 hasPledges · pledgeCategory 와 결이 맞는다.
+    (16, "교통 공약 있는 선거구 검색해줘", {"recipe_009"}, True),  # 옛 recipe_008 · 키워드 → 전체 선거구 검색
     (17, "청주 국회의원 공약 검색해줘",   {"recipe_010"}, True),  # 옛 recipe_009 · 키워드 → 선거구 공약 검색
     (18, "오송역 일대 인구 얼마야",       {"recipe_045"}, True),  # 옛 recipe_044 · 그 앞은 recipe_029 · 장소 → 좌표 → 인구 통계
     (19, "인구 많은 시군구 순위 보여줘",  {"recipe_012"}, True),  # 옛 recipe_011 · 키워드 → 인구 통계
@@ -360,6 +392,50 @@ UTTERANCES = [
     (29, "청주시 인구 알려줘",            {"recipe_012"}, True),  # 옛 recipe_011 · 키워드 → 인구 통계
     (30, "오송역 선거구 알려줘",          {"recipe_038"}, True),  # 옛 recipe_037 · 그 앞은 recipe_022 · 장소 → 좌표 → 지점 선거구 판별
     (31, "청주 국회의원 선거구 검색해줘", {"recipe_008"}, True),  # 옛 recipe_007 · 키워드 → 지역구 검색
+
+    # ── 여기부터 화면 다섯 (2026-08-30 「쉰여섯째」) ──────────────────
+    #
+    # **위의 서른하나 중 서른의 발화와 기대값은 한 글자도 안 바꿨다.**
+    # 16 번만 말투를 고쳤고 기대값은 그대로다 (그 줄 위의 주석).
+    #
+    # **왜 늘렸나.** 화면 recipe 열아홉(018~032 · 053~056)이 정답표에 하나도
+    # 없었다. 저쪽 화면에서 우클릭한 뒤에만 닿는 자리라 「말한 장소」로 재던
+    # 서른하나로는 한 번도 안 지나갔다. 그중 **찍은 지점 아홉**은 문맥이
+    # bbox 뿐이면 menu 에도 축 선택지에도 안 실려 아예 못 잰다
+    # (resolve_service._menu_for · _choices_for). 그래서 이 다섯을 넣으면서
+    # 이 도구의 기본 문맥을 both 로 바꿨다 — 까닭은 CONTEXT 옆 주석에 있다.
+    #
+    # **고른 법. 경로만 보고 발화를 만들지 않았다.** 셋을 다 지난 것만 넣었다.
+    #
+    #   1  화면 낱말이 걸리는가   SCREEN_WORDS 에 걸려야 화면 recipe 가 menu 에
+    #      실린다. 안 걸리면 LLM 이 그 열아홉을 아예 못 본다
+    #   2  도구가 그 일을 할 수 있는가   tools/probe_out/tools.json 의
+    #      inputSchema 를 보고 맞댔다. 넷 다 받는 칸이 배선과 맞는다 —
+    #      road.getCctv(minLon·minLat·maxLon·maxLat required) ·
+    #      adminBoundary.findBoundaryByPoint(lon·lat required) ·
+    #      population.searchStatistics(bbox) ·
+    #      population.getAgeProfile(level·code required)
+    #   3  실제로 눌러 데이터가 오는가   /resolve 3회 + /chat 1회를 눌렀다.
+    #      다섯 다 3/3 SELECT 였고 다섯 다 실행에서 데이터가 왔다 (2026-08-30)
+    #
+    # **안 고른 것과 그 까닭.** 데이터가 미적재라 반드시 0건인 자리는 뺐다 —
+    # 023 · 030 · 053 (election.searchLocalPledgeSummaries ·
+    # getLocalPledgeSummary. dataset.available false, STEP_OF 주석의 실측).
+    # 020 · 021 로 가는 "여기 선거구 알려줘" · "여기 국회의원 누구야" 도 뺐다.
+    # 눌러 보니 셋넷으로 되묻는다(3/3 CLARIFY). 되묻는 자리는 이미 29~31 번이
+    # 세 자리 맡고 있어 더 넣을 값이 없었다.
+    #
+    # **찍은 지점 셋 · 보이는 범위 둘이다.** 두 쪽을 다 넣으라는 요구를
+    # 채우면서 찍은 지점 쪽을 하나 더 둔 것은, 그 아홉이 지금까지 한 번도
+    # 안 재어진 자리이기 때문이다. 도구는 넷으로 갈랐고 사슬 길이는 2단 넷 ·
+    # 3단 하나다.
+    (32, "여기 CCTV 보여줘",             {"recipe_019"}, True),  # 찍은 지점 → CCTV 조회
+    (33, "지금 보이는 곳 CCTV 보여줘",   {"recipe_026"}, True),  # 보이는 범위 → CCTV 조회
+    (34, "여기 행정구역 알려줘",         {"recipe_018"}, True),  # 찍은 지점 → 지점 행정구역 판별
+    (35, "현재 화면 인구 알려줘",        {"recipe_031"}, True),  # 보이는 범위 → 인구 통계
+    # 화면 다섯 중 유일한 3단이다. 4단이 서는지를 24 번이 지키듯 이 줄이
+    # 찍은 지점에서 출발하는 3단을 지킨다.
+    (36, "여기 연령대별 인구 알려줘",    {"recipe_054"}, True),  # 찍은 지점 → 행정구역 판별 → 연령별 인구
 ]
 
 # ── 표시 ────────────────────────────────────────────────────────────
@@ -373,8 +449,10 @@ UTTERANCES = [
 #   위험  **지금 확신하고 틀리는 것을 알고 넣었다.** 빗나감이 나오는 것이 정상이다.
 #         고쳐야 할 자리를 표에 남기려고 둔 것이다
 #   애매  사람이 기대값을 정한 자리. 지금은 되묻는다. 나중에 고치면 적중이 된다
+#   화면  화면 문맥이 있어야 닿는 자리. --context none 으로는 못 잰다.
+#         「시연」과 가르는 것은 잴 수 있는 조건이 다르기 때문이다
 #   -     기준선 아홉. 표시 없이 재던 것이라 그대로 둔다
-DEMO, RISKY, VAGUE, PLAIN = "시연", "위험", "애매", "-"
+DEMO, RISKY, VAGUE, SCREEN, PLAIN = "시연", "위험", "애매", "화면", "-"
 
 # 번호 → 표시. 여기 없는 번호는 PLAIN 이다.
 #
@@ -386,6 +464,7 @@ MARKS = {
     25: DEMO, 26: DEMO,                   # 문서 둘 — 화면 실측으로 확인했다
     27: RISKY, 28: RISKY,                 # 위험 둘
     29: VAGUE, 30: VAGUE, 31: VAGUE,      # 애매 셋
+    **{n: SCREEN for n in range(32, 37)},  # 32~36  화면 다섯 (36 은 3단)
 }
 
 
@@ -393,33 +472,50 @@ def _mark(number: int) -> str:
     return MARKS.get(number, PLAIN)
 
 
-# ── 두 묶음 ─────────────────────────────────────────────────────────
+# ── 세 묶음 ─────────────────────────────────────────────────────────
 #
-# **둘을 합쳐 하나의 백분율로 만들지 않는다.** 1~9 번은 서른한 번의 측정 기록이
-# 이어져 있는 기준선이고, 10 번부터는 이번에 새로 만든 것이다. 합치면 기준선의
-# 값이 옛 기록과 안 맞아 이어 읽을 수가 없다. 합계 한 줄은 내되 아홉의 값이
-# 그 위에 따로 보인다.
+# **셋을 합쳐 하나의 백분율로 만들지 않는다.** 1~9 번은 서른한 번의 측정 기록이
+# 이어져 있는 기준선이고, 10~31 번은 2026-08-26 에, 32~36 번은 2026-08-30 에
+# 만든 것이다. 합치면 기준선의 값이 옛 기록과 안 맞아 이어 읽을 수가 없다.
+# 합계 한 줄은 내되 아홉의 값이 그 위에 따로 보인다.
 #
-# **두 묶음의 점수를 서로 견주지도 않는다.** 발화가 다르므로 다른 자다.
+# **묶음의 점수를 서로 견주지도 않는다.** 발화가 다르므로 다른 자다.
+#
+# **화면 다섯을 셋째 묶음으로 갈랐다** (2026-08-30). 확장 스물둘에 이어 붙이면
+# 그 묶음의 점수가 두 종류의 발화를 섞은 값이 되어, 「화면 발화가 지금 어떤가」를
+# 물을 자가 없어진다. 잴 수 있는 조건도 다르다 — 화면 다섯은 문맥이 있어야
+# 닿는다.
+#
+# **「확장 열아홉」을 「확장 스물둘」로 고쳤다** (2026-08-30). 이름이 틀려
+# 있었다 — 「서른두째」에 열아홉으로 만든 뒤 「애매 셋」(29~31)이 붙어 스물둘이
+# 됐는데 이름만 그대로였다. 옛 NOTES 의 표에는 「확장 열아홉」으로 찍혀 있고
+# 그 줄들은 안 고친다.
 BASELINE_LAST = 9
+EXTENSION_LAST = 31
 BASELINE_LABEL = "기준선 아홉"
-EXTENSION_LABEL = "확장 열아홉"
+EXTENSION_LABEL = "확장 스물둘"
+SCREEN_LABEL = "화면 다섯"
 
 
 def _groups(entries) -> list:
-    """발화 목록을 기준선과 확장으로 가름.
+    """발화 목록을 기준선 · 확장 · 화면으로 가름.
 
     입력  발화 목록
     출력  [(묶음 이름, 그 묶음의 발화 목록)] — 빈 묶음은 뺌
-    규칙  --only 로 한쪽만 돌리면 한 묶음만 나옴. 그때는 합계 줄을 안 찍음.
+    규칙  --only 로 한 묶음만 돌리면 한 묶음만 나옴. 그때는 합계 줄을 안 찍음.
           소계 한 줄과 합계 한 줄이 같은 값으로 두 번 나오면 읽는 사람이
           둘을 다른 것으로 본다
     """
     baseline = [entry for entry in entries if entry[0] <= BASELINE_LAST]
-    extension = [entry for entry in entries if entry[0] > BASELINE_LAST]
+    extension = [entry for entry in entries if BASELINE_LAST < entry[0] <= EXTENSION_LAST]
+    screen = [entry for entry in entries if entry[0] > EXTENSION_LAST]
     return [
         (label, group)
-        for label, group in ((BASELINE_LABEL, baseline), (EXTENSION_LABEL, extension))
+        for label, group in (
+            (BASELINE_LABEL, baseline),
+            (EXTENSION_LABEL, extension),
+            (SCREEN_LABEL, screen),
+        )
         if group
     ]
 
@@ -440,12 +536,23 @@ UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번
 # 좁히기 스위치. --narrow 가 켠다. **기본은 끔.** main() 만 바꾼다.
 NARROW = False
 
-# 지도 문맥 스위치. --context 가 정한다. **기본은 "bbox".** main() 만 바꾼다.
+# 지도 문맥 스위치. --context 가 정한다. **기본은 "both".** main() 만 바꾼다.
 #
 # 고정값은 여기서 다시 적지 않는다. 화면이 보내는 것과 한 글자도 달라지면
 # 표가 시연을 못 말하므로 출처를 하나로 둔다 — demo/ui/config.py 다.
+#
+# **2026-08-30 에 기본을 bbox 에서 both 로 바꿨다** (「쉰여섯째」). 까닭은
+# 하나다 — bbox 뿐이면 **찍은 지점 recipe 아홉을 아예 못 잰다.**
+# resolve_service 가 그 아홉을 menu 에서도(_menu_for) 축 선택지에서도
+# (_choices_for) 빼기 때문에 후보에 오를 길이 없다. 정답표에 화면 다섯을
+# 넣으면서 그중 셋이 그 아홉을 가리키므로 기본이 bbox 면 새로 넣은 줄이
+# 처음부터 못 닿는 자리가 된다.
+#
+# **저쪽 화면에서 우클릭한 뒤와 같은 조건이다.** 우클릭 전을 재려면
+# `--context bbox` 를 적는다. 옛 기록(「쉰다섯째」까지)은 bbox 로 잰 것이라
+# 그 숫자와 맞대려면 그 옵션을 적어야 한다.
 CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = "none", "bbox", "both"
-CONTEXT = CONTEXT_BBOX
+CONTEXT = CONTEXT_BOTH
 
 # --context both 일 때 얹는 찍은 지점. 오송역이고 bbox 의 중심과 같은 좌표다.
 # label 과 source 는 저쪽 useChat 이 우클릭 뒤에 얹는 것과 같은 문자열이다.
@@ -685,6 +792,279 @@ def _measure(
                 sys.stdout.write("!")
             sys.stdout.flush()
         sys.stdout.write("\n")
+        sys.stdout.flush()
+
+
+# ── 실행 ────────────────────────────────────────────────────────────
+#
+# **정답표는 「경로를 맞게 골랐는가」만 잰다.** 그래서 이런 것이 안 보였다 —
+# 6번 「국회의원 선거구 찾아줘」가 적중 3/3 인데 화면에서는 "찾지 못했습니다"
+# 였다. 고른 recipe 는 맞고, 그 recipe 를 부른 결과가 0건이었다.
+#
+# 실행 칸이 그 자리를 잰다. **두 칸의 뜻이 다르다.**
+#
+#   정답(기대값)  "이 발화는 이 recipe 로 가야 한다"   사람이 정한 것. 안 바뀜
+#   실행 칸       "그 recipe 가 답을 내놓는다"          관찰한 사실. 날짜와 함께
+#
+# **실행 칸을 관문으로 삼지 않는다.** 저쪽 데이터가 늘면 건수가 바뀌고
+# Gateway 가 꺼지면 전부 실패한다. 적중 판정은 이 칸을 안 본다 — 네 칸과
+# 그 합계는 --execute 를 붙이기 전과 같은 숫자가 나와야 한다.
+#
+# ## 무엇을 부르나 — 저쪽 화면과 같은 길
+#
+# POST /chat 이다. 저쪽 화면이 부르는 것과 같은 길이고(정확히는 /chat/stream
+# 이지만 둘은 같은 흐름을 쓴다 — demo/api/main._chat_events), 해석부터 도구
+# 호출까지 한 번에 지난다. 그다음 GET /recent 로 그 회차를 읽는다. 회차에
+# status · recipe_id · candidate_recipe_ids · 단계 줄 · 답 문구가 다 들어 있어
+# 무엇이 불렸고 무엇이 돌아왔는지를 응답 본문을 다시 파싱하지 않고 읽는다.
+#
+# **발화마다 한 번만 누른다.** 이 칸은 분포가 아니라 「지금 답이 나오는가」를
+# 적는 자리다. 여러 번 눌러 평균을 내면 시간이 몇 배가 되는데 얻는 것이 없다 —
+# 흔들리는 것은 해석이고 그것은 위의 적중 표가 이미 세 번씩 재고 있다.
+#
+# ## 되묻기가 나면 — 사람이 고르는 자리를 이 도구가 대신 고른다
+#
+# 되묻기가 나는 발화는 화면에서 사람이 번호를 골라야 실행된다. 그 자리를
+# `?` 로 두면 29~31 번 같은 「애매」 자리가 영영 안 재어진다. 그래서
+# **기대 recipe 가 후보에 있으면 그 번호를 골라 이어 누른다.** 고르기는
+# 해석을 다시 하지 않으므로(execute_service._run_choice) 부르는 것은 정확히
+# 기대 recipe 다. 사람이 화면에서 하는 것과 같은 동작이고, 표에는 「되묻기→고름」
+# 이라고 밝혀 곧장 실행된 자리와 갈라 적는다.
+#
+# 기대 recipe 가 후보에 아예 없거나 다른 것을 확신하고 골랐으면 `?` 다.
+# **그 자리에서 실행이 되는지는 이 표가 말할 수 없다.** 왜 못 쟀는지를 적는다 —
+# 「빗나감」인지 「못 붙음」인지는 위의 적중 표가 이미 말하고 있다.
+#
+# ## 값 셋
+#
+#   ✓  기대 recipe 가 돌았고 결과가 왔다
+#   ✗  기대 recipe 가 돌았는데 답이 안 나왔다. 0건 · not_found · 권한 · 인자 · 배선
+#   ?  기대 recipe 를 아예 안 지났다. 해석이 다른 데로 갔다
+#
+# **왜 그런지를 한 줄로 함께 적는다.** ✗ 만 있으면 저쪽 데이터가 없는 것인지
+# 우리 인자가 틀린 것인지 권한이 없는 것인지를 못 가른다. 그 셋은 할 일이
+# 전혀 다르다.
+
+# 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 저쪽
+# 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
+# 표는 ✓ 로 찍히는 식이다.
+from demo.api.services.execute_service import (  # noqa: E402
+    CHOICE_HEAD,
+    NO_ARGUMENT_ANSWER,
+    UNWIRED_ANSWER,
+)
+from vendor.asap.workflow_answer import (  # noqa: E402
+    EMPTY_HEADLINE,
+    ERROR_HEADLINE,
+    MISSING_STATUS,
+    NO_PERMISSION_REASON,
+)
+
+RAN, EMPTY, UNMEASURED = "✓", "✗", "?"
+
+# 배선이 없을 때의 답에서 이름 뒤에 붙는 부분. 문구를 다시 적지 않으려고
+# 틀에서 잘라 쓴다.
+UNWIRED_TAIL = UNWIRED_ANSWER.split("{names}")[-1]
+
+# 되묻기 뒤에 고른 답 맨 앞에 붙는 줄의 앞머리. 판정은 그 뒤의 진짜 답으로
+# 한다 — 앞줄은 무엇을 골랐는지 되뇌는 것이라 늘 성공한 것처럼 생겼다.
+CHOICE_PREFIX = CHOICE_HEAD.split("{")[0]
+
+# 왜 ✗ 인지를 가르는 말. 표의 「왜」 칸 맨 앞에 온다.
+#
+# **응답이 status 로 "없다" 고 말한 것은 그 status 이름을 그대로 쓴다**
+# (not_found · empty). 셋의 뜻이 다르고 할 일도 다르다 — 0건은 낱말을 바꾸면
+# 되고, not_found 는 데이터에 있는 이름을 그대로 대야 하고, empty 는 저쪽에
+# 데이터가 아예 안 실린 것이라 우리가 할 일이 없다. 이름은 MISSING_STATUS 에서
+# 온다. 여기서 다시 적지 않는다.
+WHY_EMPTY = "0건"
+WHY_PERMISSION = "권한"
+WHY_CALL_FAILED = "호출 실패"
+WHY_ARGUMENT = "인자"
+WHY_UNWIRED = "배선"
+
+
+def _empty_why(detail: str) -> str:
+    """빈 결과를 0건과 status 로 가름.
+
+    입력  마지막 단계 줄
+    출력  status 이름(not_found · empty) 또는 WHY_EMPTY
+    규칙  단계 줄에 MISSING_STATUS 의 문구가 있으면 그 status 임.
+          답의 둘째 줄로 안 가름 — 그 줄은 글자로 부른 단계에만 붙어서
+          (workflow_answer._retry_line) 좌표로 부른 not_found 를 놓침
+    """
+    for status, text in MISSING_STATUS.items():
+        if text in detail:
+            return status
+    return WHY_EMPTY
+
+# 되묻기를 지나 고른 자리에 붙이는 표시.
+PICKED_MARK = "되묻기→고름"
+
+
+def _recent_seq() -> int:
+    """지금 회차 번호. 이 뒤에 생긴 회차만 읽으려고 먼저 물어 둔다."""
+    response = requests.get(f"{BASE_URL}/recent", timeout=TIMEOUT)
+    response.raise_for_status()
+    return response.json().get("seq") or 0
+
+
+def _chat_turn(text: str, session_id: str, since: int) -> tuple:
+    """POST /chat 한 번과 그것이 남긴 회차.
+
+    입력  보낼 말 · 세션 id · 부르기 전의 회차 번호
+    출력  (회차 dict, 새 회차 번호). 회차가 안 남았으면 (None, 그대로)
+    규칙  회차는 GET /recent 로 읽음. /chat 응답에는 status 도 후보도 없고
+          답 문구뿐임
+          세션 id 를 실어 보냄. 되묻기 뒤에 번호로 고르려면 그것이 있어야 함
+    제약  서버에 못 닿으면 ServerDown 을 올린다.
+          측정과 같은 처신임. 재시도하지 않음
+    """
+    try:
+        response = requests.post(
+            f"{BASE_URL}/chat",
+            json={"text": text, "sessionId": session_id, "context": _context_payload()},
+            timeout=TIMEOUT,
+        )
+    except requests.exceptions.ConnectionError as exc:
+        raise ServerDown(str(exc)) from exc
+    response.raise_for_status()
+
+    recent = requests.get(
+        f"{BASE_URL}/recent", params={"since": since}, timeout=TIMEOUT
+    ).json()
+    turns = recent.get("turns") or []
+    return (turns[-1] if turns else None), (recent.get("seq") or since)
+
+
+def _answer_body(turn: dict) -> str:
+    """되묻기 뒤에 고른 줄을 떼어낸 진짜 답.
+
+    입력  /recent 의 회차 하나
+    출력  답 문구. 고르기가 아니면 받은 그대로
+    규칙  고른 것을 되뇌는 첫 줄과 그 뒤 빈 줄을 뗌. 그 줄은 늘 성공한
+          것처럼 생겨서 붙어 있으면 0건도 ✓ 로 읽힘
+    """
+    answer = turn.get("answer") or ""
+    if not answer.startswith(CHOICE_PREFIX):
+        return answer
+    _head, _, rest = answer.partition("\n\n")
+    return rest or answer
+
+
+def _last_step(turn: dict) -> str:
+    """마지막 단계 줄 한 줄. 단계가 없으면 "".
+
+    규칙  앞의 "N. " 을 떼고 이어진 줄을 한 줄로 붙임. 문서 검색처럼 조각을
+          여러 줄로 내놓는 단계가 있어 그대로 두면 표가 무너짐
+    """
+    steps = turn.get("steps") or []
+    if not steps:
+        return ""
+    line = (steps[-1].get("line") or "").strip()
+    if ". " in line[:4]:
+        line = line.split(". ", 1)[1]
+    return " ".join(line.split())
+
+
+def _execution_of(turn: dict) -> tuple:
+    """이 회차가 답을 내놓았는가.
+
+    입력  기대 recipe 가 실제로 돈 회차
+    출력  (RAN 또는 EMPTY, 왜인지 한 줄)
+    규칙  판정 근거는 답의 첫 줄임. vendor 의 _verdict 가 거기에 결과를
+          적었음 — 성공이면 recipe 가 아는 문장, 빈 결과·오류면 우리 문구
+          0건과 not_found 는 마지막 단계 줄로 갈림 (_empty_why)
+          권한과 그냥 터진 것은 단계 줄의 사유로 갈림
+          도구를 하나도 안 부른 자리(인자 없음 · 배선 없음)도 여기서 가름.
+          그때는 단계 줄이 아예 없음
+    제약  건수를 여기서 다시 세지 않는다.
+          결과 모양을 아는 것은 vendor/asap/workflow_answer 이고, 여기가
+          또 세면 두 곳이 다른 기준을 갖게 된다
+    """
+    answer = _answer_body(turn)
+    detail = _last_step(turn)
+
+    if answer.startswith(EMPTY_HEADLINE):
+        why = _empty_why(detail)
+        return EMPTY, f"{why} · {detail}" if detail else why
+
+    if answer.startswith(ERROR_HEADLINE):
+        why = WHY_PERMISSION if NO_PERMISSION_REASON in answer else WHY_CALL_FAILED
+        return EMPTY, f"{why} · {detail}" if detail else why
+
+    if answer in set(NO_ARGUMENT_ANSWER.values()):
+        return EMPTY, f"{WHY_ARGUMENT} · 뽑은 것이 없다"
+
+    if answer.rstrip().endswith(UNWIRED_TAIL.rstrip()):
+        return EMPTY, f"{WHY_UNWIRED} · {answer.removesuffix(UNWIRED_TAIL)}".rstrip()
+
+    return RAN, detail
+
+
+def _execute(entries, executions: dict) -> None:
+    """발화마다 한 번씩 실행까지 눌러 결과를 쌓음.
+
+    입력  발화 목록 · 채워 넣을 dict
+    규칙  executions[번호] 에 (판정, 왜, 되묻기를 지났는가) 를 넣음
+          기대값이 하나일 때만 잼. 여럿이면 무엇을 불러야 하는지가
+          정해지지 않아 `?` 임
+          되묻기가 나고 기대 recipe 가 후보에 있으면 그 번호를 골라 이어
+          누름. 사람이 화면에서 하는 것과 같음
+          해석이 다른 데로 갔으면 `?` 임. 기대 recipe 가 안 돌았으므로
+          이 표가 그 자리를 말할 수 없음
+          발화마다 세션을 따로 씀. 앞 발화의 되묻기가 남아 다음 발화를
+          고르기로 읽는 일이 없어야 함
+          오류도 결과의 하나로 남김. 표가 비는 것보다 무엇이 터졌는지가 나음
+    제약  결과를 돌려주지 않는다.
+          받은 dict 에 채움. 중간에 끊겨도 거기까지가 부르는 쪽에 남아야 함
+    """
+    for number, utterance, expected, _default in entries:
+        sys.stdout.write(f"  {number} ")
+        sys.stdout.flush()
+        try:
+            if len(expected) != 1:
+                executions[number] = (UNMEASURED, "기대값이 여럿이다", False)
+                sys.stdout.write("?\n")
+                continue
+
+            wanted = next(iter(expected))
+            session = f"check_resolve-{number}"
+            since = _recent_seq()
+            turn, since = _chat_turn(utterance, session, since)
+            picked = False
+
+            if turn is None:
+                executions[number] = (UNMEASURED, "회차가 안 남았다", False)
+                sys.stdout.write("?\n")
+                continue
+
+            # 되묻기일 때만 고른다. SELECT 는 서버가 기억해 둔 것이 없어
+            # (execute_service._remember_clarify) 번호를 보내면 그것이 새
+            # 발화로 해석된다 — LLM 을 한 번 더 부르고 얻는 것이 없다.
+            candidates = turn.get("candidate_recipe_ids") or []
+            if turn.get("recipe_id") is None and wanted in candidates:
+                turn, since = _chat_turn(
+                    str(candidates.index(wanted) + 1), session, since
+                )
+                picked = True
+
+            if turn is None or turn.get("recipe_id") != wanted:
+                got = (turn or {}).get("recipe_id")
+                status = (turn or {}).get("status") or "-"
+                went = _short([got]) if got else _short(candidates) if candidates else "없음"
+                executions[number] = (UNMEASURED, f"{status} {went} 로 갔다", False)
+                sys.stdout.write("?\n")
+                continue
+
+            executions[number] = (*_execution_of(turn), picked)
+            sys.stdout.write(executions[number][0] + "\n")
+        except ServerDown:
+            sys.stdout.write("\n")
+            raise
+        except Exception as exc:  # noqa: BLE001 — 오류도 결과의 하나로 표에 남긴다.
+            executions[number] = (UNMEASURED, f"오류: {type(exc).__name__}", False)
+            sys.stdout.write("!\n")
         sys.stdout.flush()
 
 
@@ -1333,6 +1713,64 @@ def _print_narrow(entries, narrows: dict) -> None:
     print("  검산 표 : 해당 없음 (좁히기 켬 — 대조할 두 목록이 없다)")
 
 
+# 실행 표의 칸 폭.
+EXPECTED_WIDTH = 8
+EXECUTION_WIDTH = 6
+WHY_WIDTH = 52
+
+
+def _print_execution(entries, executions: dict, measured_on: str) -> None:
+    """실행 표. 발화마다 ✓ · ✗ · ? 와 왜인지, 그리고 잰 날.
+
+    입력  발화 목록 · executions · 잰 날짜 문자열
+    규칙  묶음을 갈라 찍음. 적중 표와 같은 차례로 읽히게 하려는 것임
+          묶음마다 ✓ 몇 · ✗ 몇 · ? 몇 을 셈. 백분율을 안 냄 — 관문이 아니고
+          저쪽 데이터가 늘면 바뀌는 값임
+          되묻기를 지나 고른 자리는 「왜」 칸에 밝힘. 곧장 실행된 자리와
+          같은 것으로 읽히면 안 됨
+    제약  적중 표의 숫자를 여기서 다시 내지 않는다.
+          두 칸의 뜻이 다르고, 한 표에 나란히 두면 더한 값을 읽게 된다
+    """
+    print()
+    print(f"  ── 실행 칸 (잰 날 {measured_on} · 발화마다 한 번) ──")
+    print(
+        "  "
+        + _pad("#", 3)
+        + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad("정답", EXPECTED_WIDTH)
+        + _pad("실행", EXECUTION_WIDTH)
+        + "왜"
+    )
+
+    for label, group in _groups(entries):
+        rows = [(n, u, e) for n, u, e, _d in group if n in executions]
+        if not rows:
+            continue
+        tally = Counter()
+        for number, utterance, expected in rows:
+            mark, why, picked = executions[number]
+            tally[mark] += 1
+            if picked:
+                why = f"{why}  ({PICKED_MARK})" if why else f"({PICKED_MARK})"
+            print(
+                "  "
+                + _pad(str(number), 3)
+                + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+                + _pad(_short(expected), EXPECTED_WIDTH)
+                + _pad(mark, EXECUTION_WIDTH)
+                + _clip(why, WHY_WIDTH)
+            )
+        print(
+            "  " + " " * (3 + UTTERANCE_WIDTH + 4)
+            + f"{RAN} {tally[RAN]} · {EMPTY} {tally[EMPTY]} · {UNMEASURED} {tally[UNMEASURED]}"
+            f"   ← {label}"
+        )
+        print()
+
+    print("  ✓ 답이 나온다 · ✗ 기대 recipe 가 돌았는데 안 나온다 · ? 기대 recipe 를 안 지났다")
+    print("  ★ 실행 칸은 관문이 아니다. 저쪽 데이터가 늘면 바뀌고 Gateway 가 꺼지면 전부 실패한다")
+
+
 def _recipe_state() -> str:
     """표 머리에 적을 지금 recipe 상태. _init 그대로인지, 노드가 등록됐는지."""
     current = sorted(p.stem for p in RECIPES_DIR.glob("recipe_*.yaml"))
@@ -1355,10 +1793,14 @@ def main() -> int:
         help="좁히기 길(LLM 두 번 부르기)로 잰다. 기본은 끔 — 지금 길",
     )
     parser.add_argument(
+        "--execute", action="store_true",
+        help="실행까지 부른다 (발화마다 한 번 더). 실행 칸 표가 하나 더 나온다",
+    )
+    parser.add_argument(
         "--context",
         choices=(CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH),
-        default=CONTEXT_BBOX,
-        help="지도 문맥을 얼마나 실을지. 기본은 bbox — 저쪽 평상시와 같다",
+        default=CONTEXT_BOTH,
+        help="지도 문맥을 얼마나 실을지. 기본은 both — 저쪽에서 우클릭한 뒤와 같다",
     )
     args = parser.parse_args()
 
@@ -1382,12 +1824,18 @@ def main() -> int:
         f" · 모델 {args.model or '서버 기본'}"
         f" · 좁히기 {'켬' if NARROW else '끔'}"
         f" · 지도 문맥 {CONTEXT}"
+        f"{' · 실행까지' if args.execute else ''}"
     )
     print()
 
     outcomes, axes, tallies, alones, narrows, note, status = {}, {}, {}, {}, {}, "", 0
+    executions = {}
     try:
         _measure(entries, args.runs, outcomes, axes, tallies, alones, args.model, narrows)
+        if args.execute:
+            print()
+            print("  실행까지 부른다 (발화마다 한 번)")
+            _execute(entries, executions)
     except ServerDown:
         # 재시도하지 않는다. 여기까지 잰 것이 있으면 표는 찍는다.
         note, status = "uvicorn 을 먼저 실행하세요", 1
@@ -1405,6 +1853,8 @@ def main() -> int:
         _print_verdict_changes(entries, alones)
     if any(narrows.values()):
         _print_narrow(entries, narrows)
+    if executions:
+        _print_execution(entries, executions, time.strftime("%Y-%m-%d"))
     if note:
         print()
         print(note)

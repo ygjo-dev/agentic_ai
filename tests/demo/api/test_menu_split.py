@@ -128,17 +128,40 @@ def test_남은_줄이_menu_yaml_과_한_글자도_다르지_않다():
         assert line in whole.splitlines()
 
 
-def test_정답표_서른한_발화에_화면_낱말이_하나도_안_걸린다():
+def test_말로_하는_서른하나에_화면_낱말이_하나도_안_걸린다():
     """낱말을 부분 문자열로 찾으므로 헛걸림이 생기면 기존 판정이 흔들린다.
 
     "오송역 근처" 는 "이 근처" 가 아니고 "오송역 위치" 도 "이 위치" 가 아니다.
     check_resolve 를 여기서 import 하는 것은 목록을 베껴 적지 않으려는 것이다.
-    """
-    from tools.check_resolve import UTTERANCES
 
-    걸린_것 = [u for _, u, _, _ in UTTERANCES if resolve_service._points_at_screen(u)]
+    2026-08-30 에 정답표가 서른여섯이 되면서 이름을 고쳤다. 32~36 번은 화면
+    낱말이 걸리라고 넣은 발화라 이 시험이 볼 것이 아니다 — 그 다섯은 아래
+    시험이 본다. 보는 것은 그대로다.
+    """
+    from tools.check_resolve import EXTENSION_LAST, UTTERANCES
+
+    걸린_것 = [
+        u
+        for n, u, _, _ in UTTERANCES
+        if n <= EXTENSION_LAST and resolve_service._points_at_screen(u)
+    ]
 
     assert 걸린_것 == []
+
+
+def test_정답표의_화면_다섯은_다_화면_낱말에_걸린다():
+    """하나라도 안 걸리면 그 줄은 화면 recipe 를 아예 못 보고 재어진다.
+
+    걸려야 menu 에 화면 recipe 가 실린다. 안 걸리면 「기존 마흔」을 보게 되어
+    기대값에 닿을 길이 없는데, 표에는 그냥 빗나감으로 찍혀 발화가 나쁜 것인지
+    낱말이 안 걸린 것인지가 안 갈린다.
+    """
+    from tools.check_resolve import EXTENSION_LAST, UTTERANCES
+
+    화면_다섯 = [u for n, u, _, _ in UTTERANCES if n > EXTENSION_LAST]
+
+    assert len(화면_다섯) == 5
+    assert all(resolve_service._points_at_screen(u) for u in 화면_다섯)
 
 
 def test_화면을_가리키는_발화_넷은_다_걸린다():
@@ -275,10 +298,14 @@ def test_문맥을_안_보내면_None_으로_들어간다(monkeypatch):
 
 
 def test_check_resolve_의_세_가지_문맥():
-    """없음 · bbox 만 · 둘 다. 기본은 bbox 다 — 저쪽 평상시와 같다."""
+    """없음 · bbox 만 · 둘 다. 기본은 both 다 — 저쪽에서 우클릭한 뒤와 같다.
+
+    2026-08-30 에 기본을 bbox 에서 both 로 바꿨다. bbox 뿐이면 찍은 지점
+    recipe 아홉이 menu 에도 축 선택지에도 안 실려 아예 못 재어진다.
+    """
     from tools import check_resolve
 
-    assert check_resolve.CONTEXT == check_resolve.CONTEXT_BBOX
+    assert check_resolve.CONTEXT == check_resolve.CONTEXT_BOTH
 
     check_resolve.CONTEXT = check_resolve.CONTEXT_NONE
     try:
@@ -291,7 +318,7 @@ def test_check_resolve_의_세_가지_문맥():
         check_resolve.CONTEXT = check_resolve.CONTEXT_BOTH
         assert check_resolve._context_payload()["selectedLocation"]["lon"]
     finally:
-        check_resolve.CONTEXT = check_resolve.CONTEXT_BBOX
+        check_resolve.CONTEXT = check_resolve.CONTEXT_BOTH
 
 
 def test_화면과_도구가_같은_bbox_를_쓴다():
