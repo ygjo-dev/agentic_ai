@@ -18,7 +18,7 @@ from demo.api.services.ontology_service import drawn_nodes
 from demo.graph_svg import layout_store
 
 
-def test_그리는_노드마다_좌표가_있다():
+def test_every_drawn_node_has_coordinates():
     """하나라도 없으면 그래프가 통째로 안 그려짐. 그 노드만 빠지는 것이 아님."""
     positions, missing = layout_store.resolve(drawn_nodes())
 
@@ -29,7 +29,7 @@ def test_그리는_노드마다_좌표가_있다():
     assert positions
 
 
-def test_안_그리는_노드의_좌표는_안_남긴다():
+def test_coordinates_for_undrawn_nodes_are_not_kept():
     """사라진 노드의 좌표가 남으면 새 노드의 자리를 잘못 잡음."""
     drawn = drawn_nodes()
     stored = layout_store.load()

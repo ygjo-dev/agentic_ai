@@ -46,7 +46,7 @@ def recipe_for(chain):
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 
 
-def test_문맥이_없으면_given_축_선택지가_발화에서_온_셋_그대로다():
+def test_with_no_context_the_given_axis_choices_stay_the_three_from_the_utterance():
     """Streamlit 은 문맥을 안 보낸다. 그쪽에서 프롬프트가 한 글자도 달라지면 안 된다."""
     choices = resolve_service._choices_for(None)
 
@@ -55,7 +55,7 @@ def test_문맥이_없으면_given_축_선택지가_발화에서_온_셋_그대�
         assert node_id not in choices["described"]["given"]
 
 
-def test_문맥이_오면_그_문맥이_채울_수_있는_것만_선택지에_는다():
+def test_an_arriving_context_adds_to_the_choices_only_what_it_can_fill():
     """우클릭을 안 했으면 찍은 지점은 없다. 값이 안 온 축을 고르게 두지 않는다."""
     assert resolve_service._choices_for(FULL_CONTEXT)["given"] == [
         *SPOKEN,
@@ -68,7 +68,7 @@ def test_문맥이_오면_그_문맥이_채울_수_있는_것만_선택지에_�
     ]
 
 
-def test_문맥이_없으면_화면에서_시작하는_recipe_가_후보에서_빠진다():
+def test_with_no_context_recipes_starting_from_the_screen_drop_out_of_the_candidates():
     """LLM 이 menu 를 보고 그것을 골라도 뺀다. menu 에는 그 문장이 남아 있다."""
     screen = recipe_for(["visible_extent", "find_cctv"])
     spoken = recipe_for(["spoken_place", "geocode_place", "find_cctv"])
@@ -77,14 +77,14 @@ def test_문맥이_없으면_화면에서_시작하는_recipe_가_후보에서_�
     assert resolve_service._without_dropped([screen, spoken], dropped) == [spoken]
 
 
-def test_문맥이_있으면_그_recipe_가_후보로_남는다():
+def test_with_a_context_that_recipe_stays_a_candidate():
     screen = recipe_for(["visible_extent", "find_cctv"])
     dropped = resolve_service._dropped_starts(FULL_CONTEXT)
 
     assert resolve_service._without_dropped([screen], dropped) == [screen]
 
 
-def test_보이는_범위로_시작하면_첫_단계가_문맥의_bbox_를_받는다():
+def test_starting_from_the_visible_extent_the_first_step_takes_the_context_bbox():
     """저쪽 current-view-cctv 가 $context.view.bbox 네 칸을 넣는 것과 같은 자리다."""
     plan = step_service.plan(recipe_for(["visible_extent", "find_cctv"]), "")
 
@@ -97,7 +97,7 @@ def test_보이는_범위로_시작하면_첫_단계가_문맥의_bbox_를_받�
     }
 
 
-def test_보이는_범위로_시작하는_충전소도_평평한_넷을_받는다():
+def test_charging_stations_starting_from_the_visible_extent_also_take_the_flat_four():
     """2026-08-30 「예순째」. ev.searchStations 에는 bbox 라는 칸이 없다 —
     없는 칸이라 버려져서 지도를 아무리 좁혀도 전국에서 상한 500건이 왔다.
     CCTV 줄과 같은 꼴이어야 한다."""
@@ -112,7 +112,7 @@ def test_보이는_범위로_시작하는_충전소도_평평한_넷을_받는�
     }
 
 
-def test_bbox_배열을_받는_도구는_첫_단계도_bbox_한_칸으로_받는다():
+def test_a_tool_taking_a_bbox_array_takes_one_bbox_field_in_the_first_step_too():
     """같이 고치면 오히려 깨지는 자리다. geo.getRailwayLines 의 bbox 는
     진짜로 네 수짜리 배열 칸이다(ASAP-mcp/main.py inputSchema)."""
     plan = step_service.plan(recipe_for(["visible_extent", "get_railway_lines"]), "")
@@ -128,7 +128,7 @@ def test_bbox_배열을_받는_도구는_첫_단계도_bbox_한_칸으로_받는
     }
 
 
-def test_찍은_지점으로_시작하면_첫_단계가_문맥의_선택_좌표를_받는다():
+def test_starting_from_the_picked_point_the_first_step_takes_the_context_selected_location():
     """저쪽 cctv-around-point 와 같은 꼴이다. 중심 좌표와 반경을 준다."""
     plan = step_service.plan(recipe_for(["picked_point", "find_cctv"]), "")
 
@@ -138,7 +138,7 @@ def test_찍은_지점으로_시작하면_첫_단계가_문맥의_선택_좌표�
     }
 
 
-def test_앞_단계가_있는_자리는_예전대로_앞_단계를_가리킨다():
+def test_a_slot_with_a_previous_step_still_points_at_the_previous_step():
     """input_first 를 더해도 두 번째 칸부터는 한 글자도 안 달라져야 한다."""
     plan = step_service.plan(recipe_for(["spoken_place", "geocode_place", "find_cctv"]), "오송역")
 
@@ -149,7 +149,7 @@ def test_앞_단계가_있는_자리는_예전대로_앞_단계를_가리킨다(
     }
 
 
-def test_화면에서_시작하는_recipe_는_발화에_인자가_없어도_실행한다():
+def test_a_recipe_starting_from_the_screen_runs_even_without_an_argument_in_the_utterance():
     """"지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없다. 조회할 곳은 문맥이 말했다."""
     assert execute_service._from_screen("visible_extent")
     assert execute_service._from_screen("picked_point")
@@ -157,7 +157,7 @@ def test_화면에서_시작하는_recipe_는_발화에_인자가_없어도_실�
     assert not execute_service._from_screen(None)
 
 
-def test_문맥의_칸이_비면_그_시작_데이터를_안_센다():
+def test_an_empty_context_field_does_not_count_that_start_data():
     """저쪽은 우클릭 전에 selectedLocation 을 null 로 보낸다. 빈 bbox 도 마찬가지다."""
     assert step_service.context_starts(FULL_CONTEXT) == ["picked_point", "visible_extent"]
     assert step_service.context_starts(NO_PICK_CONTEXT) == ["visible_extent"]

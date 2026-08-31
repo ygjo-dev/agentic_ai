@@ -77,7 +77,7 @@ def _rows():
             yield node, kind, variant, tool, fields, props
 
 
-def test_배선이_보내는_칸이_전부_스키마에_있다():
+def test_every_field_the_wiring_sends_exists_in_the_schema():
     """없는 칸은 버려진다. 조용히 전국을 뒤지는 길이 그것이다."""
     없는_칸 = [
         f"{node} × {kind} ({variant}) -> {tool} : {sorted(fields - props)}"
@@ -87,7 +87,7 @@ def test_배선이_보내는_칸이_전부_스키마에_있다():
     assert 없는_칸 == [], "스키마에 없는 칸을 보내는 줄:\n  " + "\n  ".join(없는_칸)
 
 
-def test_ev_충전소는_첫_자리도_평평한_넷으로_보낸다():
+def test_ev_stations_send_the_flat_four_in_the_first_slot_too():
     """2026-08-30 의 그 줄. ev.searchStations 에 bbox 라는 칸은 없다."""
     wiring = step_service.STEP_OF[("search_ev_stations", "map_extent")]
 
@@ -100,7 +100,7 @@ def test_ev_충전소는_첫_자리도_평평한_넷으로_보낸다():
     assert "bbox" not in _props("ev.searchStations")
 
 
-def test_ev_충전소의_앞_단계_자리는_안_달라졌다():
+def test_the_previous_step_slot_for_ev_stations_is_unchanged():
     """「오송역 근처 충전소」가 도는 길이다. 첫 자리를 고치면서 안 건드렸다."""
     wiring = step_service.STEP_OF[("search_ev_stations", "map_extent")]
 
@@ -122,7 +122,7 @@ def test_ev_충전소의_앞_단계_자리는_안_달라졌다():
         ("search_population_statistics", "population.searchStatistics"),
     ],
 )
-def test_bbox_배열을_받는_넷은_그대로_bbox_한_칸으로_보낸다(node, tool):
+def test_the_four_taking_a_bbox_array_still_send_one_bbox_field(node, tool):
     wiring = step_service.STEP_OF[(node, "map_extent")]
 
     assert "bbox" in _props(tool)
@@ -130,7 +130,7 @@ def test_bbox_배열을_받는_넷은_그대로_bbox_한_칸으로_보낸다(nod
     assert wiring["input"] == {"bbox": step_service.BBOX_FROM_PREVIOUS}
 
 
-def test_보이는_범위_네_이름의_순서가_minLon_minLat_maxLon_maxLat_이다():
+def test_the_visible_extent_four_are_ordered_minLon_minLat_maxLon_maxLat():
     """평평한 넷으로 풀어 적을 때 이 순서를 믿는다."""
     assert step_service.BBOX_FROM_CONTEXT == [
         "$context.view.minLon",

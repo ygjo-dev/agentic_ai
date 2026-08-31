@@ -18,6 +18,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import check_inputs  # noqa: E402
 
 
-def test_배선표가_바뀌어도_계기판이_읽을_수_있다():
+def test_the_dashboard_can_read_the_wiring_table_even_when_it_changes():
     """스텁이 아니라 진짜 표를 읽음. 표의 모양이 바뀌면 여기서 빨간불이 남."""
     check_inputs._selfcheck()

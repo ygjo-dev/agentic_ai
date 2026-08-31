@@ -101,7 +101,7 @@ def sse_result(raw: str) -> dict:
 
 
 # ================================================================ 두 길이 같은가
-def test_두_길이_같은_answer_를_낸다(client):
+def test_the_two_paths_give_the_same_answer(client):
     """화면(/chat/stream)과 curl(/chat) 중 무엇을 믿을지가 갈리지 않게."""
     plain = client.post("/chat", json=BODY).json()
     streamed = sse_result(client.post("/chat/stream", json=BODY).text)
@@ -110,7 +110,7 @@ def test_두_길이_같은_answer_를_낸다(client):
     assert plain["answer"] == ANSWER
 
 
-def test_두_길이_같은_commands_를_낸다(client):
+def test_the_two_paths_give_the_same_commands(client):
     """지도 명령이 어긋나면 화면에만 안 그려진다. answer 로는 안 잡힌다."""
     plain = client.post("/chat", json=BODY).json()
     streamed = sse_result(client.post("/chat/stream", json=BODY).text)
@@ -119,7 +119,7 @@ def test_두_길이_같은_commands_를_낸다(client):
     assert plain["commands"] == COMMANDS
 
 
-def test_chat_은_중간_이벤트를_버리고_result_만_준다(client):
+def test_chat_drops_the_intermediate_events_and_gives_only_the_result(client):
     """두 길의 **의도된** 차이. 이것까지 같아지면 SSE 를 쓸 까닭이 없다."""
     plain = client.post("/chat", json=BODY).json()
 
@@ -127,7 +127,7 @@ def test_chat_은_중간_이벤트를_버리고_result_만_준다(client):
 
 
 # ================================================================ SSE 틀
-def test_단계_이벤트가_순서대로_흐르고_마지막이_DONE_이다(client):
+def test_step_events_flow_in_order_and_the_last_one_is_DONE(client):
     """저쪽 화면이 진행 상황을 그리는 근거. 순서가 바뀌면 화면이 어긋난다."""
     raw = client.post("/chat/stream", json=BODY).text
     sse_result(raw)  # 틀 검사
@@ -143,13 +143,13 @@ def test_단계_이벤트가_순서대로_흐르고_마지막이_DONE_이다(cli
     assert kinds[-1] == "result", "result 뒤에 다른 이벤트가 오면 안 된다"
 
 
-def test_media_type_이_event_stream_이다(client):
+def test_the_media_type_is_event_stream(client):
     response = client.post("/chat/stream", json=BODY)
 
     assert response.headers["content-type"].startswith("text/event-stream")
 
 
-def test_한글이_이스케이프_없이_그대로_나간다(client):
+def test_korean_goes_out_verbatim_without_escaping(client):
     """main.py 의 제약이다 — ensure_ascii 를 켜면 저쪽 화면에서 안 읽힌다."""
     raw = client.post("/chat/stream", json=BODY).text
 

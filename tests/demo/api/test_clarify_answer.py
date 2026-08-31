@@ -55,7 +55,7 @@ def no_ontology(monkeypatch):
     monkeypatch.setattr(execute_service.step_service, "unwired", lambda recipe_id: [])
 
 
-def test_후보가_둘이면_짧은_머리말과_번호_붙은_이름이_나온다(monkeypatch):
+def test_two_candidates_give_a_short_preamble_and_numbered_names(monkeypatch):
     """recipe 번호는 사람에게 뜻이 없음. 마지막 노드 이름이 그 recipe 가 하는 일임."""
     paths = {
         "recipe_035": path("장소 좌표 변환", "전기차 충전소 검색"),
@@ -73,7 +73,7 @@ def test_후보가_둘이면_짧은_머리말과_번호_붙은_이름이_나온�
     assert "recipe_035" not in answer
 
 
-def test_후보가_넷_이상이면_머리말이_길어진다(monkeypatch):
+def test_four_or_more_candidates_make_the_preamble_longer(monkeypatch):
     """둘셋은 그냥 고르면 되지만 다섯이면 먼저 여러 갈래라고 말해야 함."""
     paths = {f"recipe_{index:03d}": path(f"조회 {index}") for index in range(1, 6)}
     wire(monkeypatch, paths)
@@ -85,7 +85,7 @@ def test_후보가_넷_이상이면_머리말이_길어진다(monkeypatch):
     assert len(lines) == 6
 
 
-def test_마지막_이름이_겹치면_앞_단계를_붙여_가른다(monkeypatch):
+def test_overlapping_tail_names_are_split_apart_by_prefixing_the_previous_step(monkeypatch):
     """둘 다 철도 노선 조회로 끝나면 이름만으로는 고를 수가 없음."""
     paths = {
         "recipe_003": path("철도 노선 조회"),
@@ -101,7 +101,7 @@ def test_마지막_이름이_겹치면_앞_단계를_붙여_가른다(monkeypatc
     ]
 
 
-def test_겹치지_않는_후보에는_앞_단계를_안_붙인다(monkeypatch):
+def test_non_overlapping_candidates_get_no_previous_step_prefix(monkeypatch):
     """짧을수록 읽기 쉬움. 가를 필요가 없으면 가르지 않음."""
     paths = {
         "recipe_001": path("장소 좌표 변환", "CCTV 조회"),
@@ -114,7 +114,7 @@ def test_겹치지_않는_후보에는_앞_단계를_안_붙인다(monkeypatch):
     assert "->" not in answer
 
 
-def test_배선이_없는_후보는_목록에_남기되_표시한다(monkeypatch):
+def test_an_unwired_candidate_stays_in_the_list_but_is_marked(monkeypatch):
     """골라도 실행되지 않는다는 것을 미리 알려야 함. 빼면 온톨로지가 아는 경로가 안 보임."""
     paths = {
         "recipe_004": path("행정구역 조회"),
@@ -130,7 +130,7 @@ def test_배선이_없는_후보는_목록에_남기되_표시한다(monkeypatch
     ]
 
 
-def test_후보가_없으면_영역_밖이라고_답한다():
+def test_with_no_candidates_the_answer_says_it_is_out_of_scope():
     """NO_MATCH 첫 줄은 그대로 둠. 고를 것이 없으므로 목록도 없음.
 
     2026-08-29 에 그 뒤로 안내 두 줄이 붙었다. 첫 줄과 이유는 한 글자도 안
@@ -148,7 +148,7 @@ def test_후보가_없으면_영역_밖이라고_답한다():
     assert guide.count("\n") == 1
 
 
-def test_안내_낱말은_온톨로지에서_옴():
+def test_the_guidance_words_come_from_the_ontology():
     """안내를 코드에 박지 않음. 노드를 등록하면 안내도 함께 늘어야 함.
 
     대상 이름과 시작 데이터 이름을 그대로 적는다. 화면에서 오는 둘(찍은 지점 ·
@@ -166,7 +166,7 @@ def test_안내_낱말은_온톨로지에서_옴():
         assert node_id not in starts
 
 
-def test_이유가_비면_빈_줄만_남지_않는다():
+def test_an_empty_reason_does_not_leave_a_bare_blank_line():
     """LLM 이 이유를 안 쓴 회차가 있음. 그때 답에 빈 칸이 뜨면 안 됨."""
     answer = execute_service._no_recipe_answer(
         {"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}, "reason": ""}
@@ -176,7 +176,7 @@ def test_이유가_비면_빈_줄만_남지_않는다():
     assert answer.startswith("지금 할 수 있는 일 중에 맞는 것이 없습니다.\n\n제가 다루는 것은")
 
 
-def test_경로가_비면_id_로_떨어지되_죽지_않는다():
+def test_empty_paths_fall_back_to_ids_without_dying():
     """paths 가 비어도 답은 나가야 함. 줄이 사라지는 것보다 뜻 없는 id 가 나음."""
     answer = execute_service._no_recipe_answer(
         {
@@ -193,7 +193,7 @@ def test_경로가_비면_id_로_떨어지되_죽지_않는다():
     ]
 
 
-def test_reason_은_답_끝에_그대로_붙는다(monkeypatch):
+def test_the_reason_is_appended_verbatim_at_the_end_of_the_answer(monkeypatch):
     """왜 못 좁혔는지 읽을 수 있어야 함. 시연에서 설명할 근거임."""
     paths = {
         "recipe_035": path("전기차 충전소 검색"),

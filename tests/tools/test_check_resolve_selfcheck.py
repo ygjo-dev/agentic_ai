@@ -20,12 +20,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 import check_resolve  # noqa: E402
 
 
-def test_묶음이_어떻게_갈려도_계기판이_끝까지_찍힌다():
+def test_the_dashboard_prints_to_the_end_however_the_groups_are_split():
     """스텁이 아니라 진짜 UTTERANCES 를 씀. 묶음 경계가 바뀌면 여기서 빨간불."""
     check_resolve._selfcheck()
 
 
-def test_묶음_이름을_고르는_자리가_화면_발화를_안_빠뜨린다():
+def test_the_group_label_chooser_does_not_miss_the_screen_utterances():
     """「예순셋째」의 음성 대조군. 두 갈래로 되돌리면 자체 검사가 죽어야 한다.
 
     이것이 없으면 _selfcheck 가 통과해도 그것이 「이 버그를 잡아서」인지

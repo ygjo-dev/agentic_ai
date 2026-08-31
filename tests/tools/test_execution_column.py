@@ -34,7 +34,7 @@ def turn_of(trace, *, failed=False):
     }
 
 
-def test_결과가_오면_답이_나온_것이다():
+def test_a_result_arriving_means_an_answer_came_out():
     """건수가 있는 마지막 단계가 성공 판정이다."""
     turn = turn_of([{"tool": "adminBoundary.searchBoundaries", "result": {"count": 4}}])
 
@@ -43,7 +43,7 @@ def test_결과가_오면_답이_나온_것이다():
     assert mark == check_resolve.RAN
 
 
-def test_0건은_답이_안_나온_것이다():
+def test_zero_hits_means_no_answer_came_out():
     """적중 3/3 인데 화면이 "찾지 못했습니다" 이던 자리가 이것이다."""
     turn = turn_of([{"tool": "election.searchDistricts", "result": {"count": 0}}])
 
@@ -53,7 +53,7 @@ def test_0건은_답이_안_나온_것이다():
     assert why.startswith(check_resolve.WHY_EMPTY)
 
 
-def test_not_found_는_0건과_갈라_적는다():
+def test_not_found_is_recorded_apart_from_zero_hits():
     """사람이 할 일이 다르다 — 낱말을 바꿀 일이 아니라 있는 이름을 대야 한다."""
     turn = turn_of([{"tool": "election.getDistrict", "result": {"status": "not_found"}}])
 
@@ -63,7 +63,7 @@ def test_not_found_는_0건과_갈라_적는다():
     assert why.startswith("not_found")
 
 
-def test_권한이_없는_것은_터진_것과_갈라_적는다():
+def test_a_missing_permission_is_recorded_apart_from_a_crash():
     """저쪽에 도구를 열어 달라고 할 일이지 우리가 고칠 일이 아니다."""
     turn = turn_of(
         [
@@ -81,7 +81,7 @@ def test_권한이_없는_것은_터진_것과_갈라_적는다():
     assert why.startswith(check_resolve.WHY_PERMISSION)
 
 
-def test_인자를_못_뽑으면_도구를_안_부른_것이다():
+def test_failing_to_extract_an_argument_means_no_tool_was_called():
     """단계가 하나도 없다. 저쪽 데이터 탓이 아니라 우리 해석 탓이다."""
     from demo.api.services.execute_service import NO_ARGUMENT_ANSWER
 
@@ -93,7 +93,7 @@ def test_인자를_못_뽑으면_도구를_안_부른_것이다():
     assert why.startswith(check_resolve.WHY_ARGUMENT)
 
 
-def test_되묻기_뒤에_고른_줄은_판정에서_뗀다():
+def test_the_choice_line_after_a_clarify_is_taken_off_the_verdict():
     """그 줄은 늘 성공한 것처럼 생겨서 붙여 두면 0건도 ✓ 로 읽힌다."""
     from demo.api.services.execute_service import CHOICE_HEAD
 
@@ -110,7 +110,7 @@ def test_되묻기_뒤에_고른_줄은_판정에서_뗀다():
 # ── 정답표가 온톨로지와 안 어긋났는가 ───────────────────────────────
 
 
-def test_기대_recipe_가_다_실재한다():
+def test_every_expected_recipe_really_exists():
     """recipe 번호가 다섯 번 밀렸다. 밀릴 때마다 손으로 맞춰 왔다.
 
     없는 번호를 가리키면 그 발화는 영영 빗나감으로 찍히는데, 표만 봐서는
@@ -124,7 +124,7 @@ def test_기대_recipe_가_다_실재한다():
     assert 기대한_것 <= 있는_것
 
 
-def test_화면_다섯의_기대_recipe_는_화면에서_출발한다():
+def test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_screen():
     """화면 발화라고 넣었는데 「말한 장소」 recipe 를 가리키면 뜻이 없다.
 
     번호가 밀리면 조용히 옆 recipe 를 가리키게 된다. 경로 첫 칸으로 지킨다.
@@ -139,7 +139,7 @@ def test_화면_다섯의_기대_recipe_는_화면에서_출발한다():
             assert path[0]["node_id"] in step_service.CONTEXT_STARTS
 
 
-def test_발화가_묶음_하나에만_든다():
+def test_each_utterance_falls_into_exactly_one_group():
     """묶음이 셋이 되면서 겹치거나 빠지면 합계가 시행 횟수와 안 맞는다."""
     갈라진_것 = [n for _label, group in check_resolve._groups(check_resolve.UTTERANCES)
                 for n, _u, _e, _d in group]

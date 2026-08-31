@@ -13,7 +13,7 @@ from orchestrator.schemas.response_schema import (
 )
 
 
-def test_1차_스키마는_지금_스키마의_앞_다섯_칸과_같다():
+def test_the_first_pass_schema_equals_the_first_five_fields_of_the_current_schema():
     full = recipe_selection_schema(120, ["g"], ["w"], ["a"])
     axes = axis_selection_schema(120, ["g"], ["w"], ["a"])
 
@@ -23,13 +23,13 @@ def test_1차_스키마는_지금_스키마의_앞_다섯_칸과_같다():
     assert axes["required"] == REQUIRED_AXES
 
 
-def test_1차_스키마에_recipe_칸이_없다():
+def test_the_first_pass_schema_has_no_recipe_fields():
     axes = axis_selection_schema(120, ["g"], ["w"], ["a"])
 
     assert not {"candidate_recipe_ids", "status", "recipe_id"} & set(axes["properties"])
 
 
-def test_2차_스키마는_후보를_닫힌_목록으로_둔다():
+def test_the_second_pass_schema_keeps_the_candidates_a_closed_list():
     schema = recipe_pick_schema(120, ["recipe_030", "recipe_040"])
 
     assert schema["required"] == REQUIRED_PICK
@@ -39,7 +39,7 @@ def test_2차_스키마는_후보를_닫힌_목록으로_둔다():
     assert schema["properties"]["reason"]["maxLength"] == 120
 
 
-def test_지금_스키마는_그대로다():
+def test_the_current_schema_is_unchanged():
     full = recipe_selection_schema(120, ["g"], ["w"], ["a"])
 
     assert full["required"] == REQUIRED

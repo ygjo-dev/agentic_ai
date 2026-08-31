@@ -21,7 +21,7 @@ def llm(status=SELECT, recipe_id=None, candidates=()):
     }
 
 
-def test_겹치는_것이_하나면_그것을_고른다():
+def test_a_single_overlap_is_selected():
     """축과 LLM 이 한 곳에서 만났으므로 되물을 것이 없음."""
     verdict = _verdict(llm(recipe_id="recipe_003"), ["recipe_003"], ["recipe_003", "recipe_021"])
 
@@ -30,7 +30,7 @@ def test_겹치는_것이_하나면_그것을_고른다():
     assert verdict["candidate_recipe_ids"] == ["recipe_003"]
 
 
-def test_겹치는_것이_여럿이면_겹치는_것만으로_되묻는다():
+def test_several_overlaps_clarify_with_only_the_overlap():
     """겹치지 않는 것은 한쪽만 부른 것이라 후보에서 뺌.
 
     순서는 뽑힌 후보를 따름. 축이 낸 차례가 온톨로지의 차례임.
@@ -46,7 +46,7 @@ def test_겹치는_것이_여럿이면_겹치는_것만으로_되묻는다():
     assert verdict["candidate_recipe_ids"] == ["recipe_007", "recipe_008"]
 
 
-def test_겹치는_것이_없으면_둘을_합쳐_되묻는다():
+def test_no_overlap_clarifies_with_the_two_merged():
     """어느 쪽이 맞는지 이 자리에서 가릴 근거가 없음.
 
     2026-08-26 이전에는 뽑힌 후보만 썼음. 그것이 맞는 답을 덮은 자리임.
@@ -61,7 +61,7 @@ def test_겹치는_것이_없으면_둘을_합쳐_되묻는다():
     assert verdict["candidate_recipe_ids"] == ["recipe_003", "recipe_006", "recipe_013"]
 
 
-def test_겹치는_것이_없을_때_LLM_이_맞게_고른_답을_안_덮는다():
+def test_with_no_overlap_a_correct_LLM_pick_is_not_overwritten():
     """실측 발화 28 의 모양. 옛 규칙이 아홉 번 덮은 자리를 그대로 둠.
 
     LLM 단독 {003} 이 기대값과 같았는데 최종이 {006, 013} 이 되어 빗나감이었음.
@@ -74,7 +74,7 @@ def test_겹치는_것이_없을_때_LLM_이_맞게_고른_답을_안_덮는다(
     assert "recipe_003" in verdict["candidate_recipe_ids"]
 
 
-def test_합친_것이_한_줄로_겹치면_한_번만_적는다():
+def test_an_id_the_merged_two_share_is_recorded_only_once():
     """LLM 과 축이 같은 것을 다른 차례로 부른 자리. 후보에 같은 id 가 두 번 들면 안 됨."""
     verdict = _verdict(
         llm(status=CLARIFY, candidates=["recipe_011", "recipe_029"]),
@@ -86,7 +86,7 @@ def test_합친_것이_한_줄로_겹치면_한_번만_적는다():
     assert verdict["status"] == SELECT
 
 
-def test_LLM_이_아무것도_안_썼으면_뽑힌_후보만_남는다():
+def test_when_the_LLM_wrote_nothing_only_the_shortlist_remains():
     """합칠 것이 없음. 안을 바꾸기 전과 같은 결과여야 함."""
     verdict = _verdict(llm(status=NO_MATCH), [], ["recipe_038", "recipe_039"])
 
@@ -94,7 +94,7 @@ def test_LLM_이_아무것도_안_썼으면_뽑힌_후보만_남는다():
     assert verdict["candidate_recipe_ids"] == ["recipe_038", "recipe_039"]
 
 
-def test_뽑힌_후보가_없으면_LLM_이_쓴_것을_그대로_둔다():
+def test_with_no_shortlist_what_the_LLM_wrote_is_left_as_is():
     """축이 틀린 것이므로 조회 결과를 안 믿음. 2026-08-26 변경에서 안 건드린 규칙임."""
     verdict = _verdict(
         llm(status=CLARIFY, recipe_id="recipe_001", candidates=["recipe_001", "recipe_002"]),
@@ -107,7 +107,7 @@ def test_뽑힌_후보가_없으면_LLM_이_쓴_것을_그대로_둔다():
     assert verdict["candidate_recipe_ids"] == ["recipe_001", "recipe_002"]
 
 
-def test_둘_다_비면_붙일_데가_없다():
+def test_with_both_empty_there_is_nothing_to_attach():
     """LLM 도 축도 아무것도 못 낸 자리. 발화가 영역 밖임."""
     verdict = _verdict(llm(status=NO_MATCH), [], [])
 

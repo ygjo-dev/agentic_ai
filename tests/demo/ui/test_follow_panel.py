@@ -73,7 +73,7 @@ RAG_TURN = {
 }
 
 
-def test_따라_그린_장면은_해석_장면과_같은_길로_강조된다():
+def test_a_followed_view_is_highlighted_by_the_same_path_as_a_resolve_view():
     """강조 규칙을 새로 만들지 않는다. 발화를 여기서 넣었을 때와 같아야 한다."""
     from demo.ui.main import recipe_ids_to_show, render_mode
 
@@ -83,7 +83,7 @@ def test_따라_그린_장면은_해석_장면과_같은_길로_강조된다():
     assert recipe_ids_to_show(view) == ["recipe_002"]
 
 
-def test_되묻기도_후보_경로를_강조한다():
+def test_a_clarify_highlights_its_candidate_paths_too():
     from demo.ui.main import recipe_ids_to_show
 
     view = follow_panel.follow_view(CLARIFY_TURN)
@@ -91,26 +91,26 @@ def test_되묻기도_후보_경로를_강조한다():
     assert recipe_ids_to_show(view) == ["recipe_011", "recipe_045"]
 
 
-def test_발화가_그대로_장면에_실린다():
+def test_the_utterance_is_carried_verbatim_into_the_view():
     assert follow_panel.follow_view(TURN)["utterance"] == "오송역 CCTV 보여줘"
 
 
-def test_머리말은_답에서_단계_줄을_뺀_것이다():
+def test_the_preamble_is_the_answer_minus_the_step_lines():
     assert follow_panel.head_of(TURN) == "오송역 CCTV 를 조회했습니다."
 
 
-def test_단계가_없으면_답이_통째로_머리말이다():
+def test_with_no_steps_the_whole_answer_is_the_preamble():
     """되묻기 회차의 후보 목록이 잘려 나가면 무엇을 고를지가 안 보인다."""
     assert follow_panel.head_of(CLARIFY_TURN) == CLARIFY_TURN["answer"]
 
 
-def test_여러_줄인_단계도_통째로_그린다():
+def test_a_multi_line_step_is_drawn_entirely():
     """문서 조각이 잘려 나가면 「문서에서 찾아온다」가 화면에서 안 보인다."""
     assert follow_panel.head_of(RAG_TURN) == "철도안전법 문서를 조회했습니다."
     assert RAG_TURN["steps"][0]["line"].count("\n") == 2
 
 
-def test_화면에_그릴_문자열에_좌표_배열이_없다():
+def test_the_string_to_be_drawn_on_screen_has_no_coordinate_arrays():
     """화면을 봐도 모르는 것을 막는 자리다. 새는 길은 /recent 응답뿐이 아니다."""
     view = follow_panel.follow_view(TURN)
     drawn = "\n".join(
@@ -125,10 +125,10 @@ def test_화면에_그릴_문자열에_좌표_배열이_없다():
         assert leaked not in drawn
 
 
-def test_시각이_읽을_수_있는_꼴로_나온다():
+def test_the_timestamp_comes_out_in_a_readable_shape():
     assert follow_panel.at_text(TURN).count(":") == 2
 
 
-def test_시각_칸이_비어도_안_터진다():
+def test_an_empty_timestamp_field_does_not_blow_up():
     """저쪽 회차가 어떤 모양이어도 화면이 죽으면 안 된다."""
     assert isinstance(follow_panel.at_text({}), str)

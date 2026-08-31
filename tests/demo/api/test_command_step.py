@@ -37,7 +37,7 @@ def collect(events):
     return asyncio.run(pump())
 
 
-def test_도구가_아닌_실행_수단이_배선표에_적힌다():
+def test_a_means_of_execution_that_is_not_a_tool_is_recorded_in_the_wiring_table():
     """TOOL_OF 가 「노드 -> 서버 · 도구」에서 「노드 -> 실행 수단」이 됨.
 
     온톨로지는 그것을 모른다. 거기 적힌 것은 「장소 이름을 받아 시설물 화면을
@@ -49,7 +49,7 @@ def test_도구가_아닌_실행_수단이_배선표에_적힌다():
     assert "tool" not in row and "server_id" not in row
 
 
-def test_지도_명령만_있는_경로는_step_이_비어_있다():
+def test_a_path_with_only_a_map_command_has_empty_steps():
     """vendor 에 넘길 것이 없음. 빈 steps 를 넘기면 vendor 가 실패로 봄."""
     recipe_id = recipe_of(FACILITY_CHAIN)
     plan = step_service.plan(recipe_id, "오송 테스트트랙")
@@ -59,7 +59,7 @@ def test_지도_명령만_있는_경로는_step_이_비어_있다():
     assert plan["headline"]
 
 
-def test_지도_명령이_저쪽_화면이_읽는_모양이다():
+def test_the_map_command_is_in_the_shape_the_other_screen_reads():
     """저쪽이 op 이름과 args.facilityName 으로 알아봄.
 
     KRRI_ASAP/ASAP-web 의 useChat 이 `cmd.op === 'digitalTwin.showFacility'` 로
@@ -74,7 +74,7 @@ def test_지도_명령이_저쪽_화면이_읽는_모양이다():
     assert isinstance(command["args"]["facilityName"], str)
 
 
-def test_배선이_없는_것으로_세지_않는다():
+def test_it_is_not_counted_as_unwired():
     """unwired 가 비어야 execute_service 가 실행함.
 
     도구가 없는 것과 배선이 없는 것은 다르다. tools/check_wiring.py 의 C 도
@@ -83,7 +83,7 @@ def test_배선이_없는_것으로_세지_않는다():
     assert step_service.unwired(recipe_of(FACILITY_CHAIN)) == []
 
 
-def test_vendor_를_안_지나고_명령과_답이_함께_나간다(monkeypatch):
+def test_the_command_and_the_answer_go_out_together_without_passing_vendor(monkeypatch):
     """도구를 하나도 안 부름. 부를 것이 없는데 부르면 vendor 가 실패로 답함."""
     called = []
     monkeypatch.setattr(
@@ -102,7 +102,7 @@ def test_vendor_를_안_지나고_명령과_답이_함께_나간다(monkeypatch)
     assert "오송 테스트트랙" in events[-1]["answer"]
 
 
-def test_단계_한_쌍이_도구_단계와_같은_모양으로_나간다():
+def test_the_step_pair_goes_out_in_the_same_shape_as_a_tool_step():
     """저쪽 화면이 진행 표시를 따로 알아볼 것이 없어야 함.
 
     도구 이름이 오던 자리에 지도 명령 op 이 온다.
