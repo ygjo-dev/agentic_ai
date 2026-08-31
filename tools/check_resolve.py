@@ -218,6 +218,9 @@ _verdict 의 「겹치는 것 0개면 조회 후보를 쓴다」 규칙이 웹 �
 """
 
 import argparse
+import contextlib
+import io
+import itertools
 import os
 import sys
 import time
@@ -518,6 +521,27 @@ def _groups(entries) -> list:
         )
         if group
     ]
+
+
+def _group_label(number: int) -> str:
+    """발화 번호가 어느 묶음에 드는가. **_groups 와 같은 경계를 쓴다.**
+
+    입력  발화 번호
+    출력  묶음 이름 셋 중 하나
+    규칙  _groups 가 목록을 가르는 경계와 여기가 어긋나면, 표는 _groups 로
+          만든 칸에 여기가 고른 이름으로 넣게 되어 없는 칸을 찾는다.
+          경계를 고칠 일이 생기면 두 곳을 같이 고친다
+    이력  이것이 없어 두 표가 「번호 <= BASELINE_LAST 면 기준선, 아니면 확장」
+          이라는 두 갈래로 이름을 골랐다. 화면 갈래가 없어 32~36 이 확장으로
+          갔고, --only 32 처럼 화면만 돌리면 확장 칸이 아예 안 만들어져
+          KeyError 로 죽었다 (「예순셋째」)
+    """
+    if number <= BASELINE_LAST:
+        return BASELINE_LABEL
+    if number <= EXTENSION_LAST:
+        return EXTENSION_LABEL
+    return SCREEN_LABEL
+
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -1437,7 +1461,7 @@ def _print_candidates(entries, tallies: dict) -> None:
         counter = tallies.get(number)
         if not counter:
             continue
-        total = totals[BASELINE_LABEL if number <= BASELINE_LAST else EXTENSION_LABEL]
+        total = totals[_group_label(number)]
 
         head = (
             "  "
@@ -1623,7 +1647,7 @@ def _print_narrow(entries, narrows: dict) -> None:
         totals = {label: [] for label, _group in _groups(entries)}
         for number, _u, _e, _d in entries:
             rows = narrows.get(number) or []
-            totals[BASELINE_LABEL if number <= BASELINE_LAST else EXTENSION_LABEL] += [
+            totals[_group_label(number)] += [
                 row["elapsed"] for row in rows
             ]
         measured = [(label, values) for label, values in totals.items() if values]
@@ -1655,7 +1679,7 @@ def _print_narrow(entries, narrows: dict) -> None:
         rows = narrows.get(number) or []
         if not rows:
             continue
-        label = BASELINE_LABEL if number <= BASELINE_LAST else EXTENSION_LABEL
+        label = _group_label(number)
         total, clock = totals[label], times[label]
 
         counts = Counter(row.get("shortlist_count", "-") for row in rows)
@@ -1777,6 +1801,78 @@ def _recipe_state() -> str:
     initial = sorted(p.stem for p in INIT_RECIPES_DIR.glob("recipe_*.yaml"))
     label = "_init" if current == initial else "등록됨"
     return f"{label} (recipe {len(current)})"
+
+
+def _selfcheck() -> None:
+    """서버 없이 표 여섯이 어떤 묶음 조합에서도 끝까지 찍히는지. 틀리면 죽는다.
+
+    규칙  **진짜 UTTERANCES 를 쓴다.** 손으로 적은 발화 몇 개로는 번호 경계가
+          안 걸린다 — 실제로 죽은 것이 화면 발화(32~36)의 경계였음
+          묶음 조합 일곱 가지(기준선 · 확장 · 화면 · 그 짝들 · 셋 다)를
+          각각 --only 처럼 잘라 표 여섯을 다 찍어 봄. 좁히기는 끔 · 켬 둘 다
+          찍은 것은 버림. 여기서 보는 것은 「죽지 않는가」임
+    제약  서버 · Gateway · 온톨로지를 안 부른다. 값은 모양만 맞는 가짜이고
+          이 검사는 **판정이 맞는지 안 본다** — 판정은 실측이 보는 것임
+    이력  재는 도구가 조용히 죽은 것이 이번이 세 번째다 — check_argument
+          나흘(「스물다섯째」) · check_inputs 하루(「쉰째」) · check_resolve
+          (「예순셋째」). 앞의 둘은 배선표가 바뀌어 못 따라간 것이고 이번은
+          발화가 늘어(화면 다섯) 묶음이 셋이 됐는데 이름을 고르는 자리가
+          두 갈래에 머문 것이다. 셋 다 「표를 찍는 마지막에 죽는다」가 같다
+    """
+    global NARROW
+    labels = {label for label, _group in _groups(UTTERANCES)}
+    assert labels == {BASELINE_LABEL, EXTENSION_LABEL, SCREEN_LABEL}, labels
+
+    # 번호 → 이름이 _groups 의 경계와 어긋나면 없는 칸을 찾게 된다.
+    for number, _u, _e, _d in UTTERANCES:
+        assert _group_label(number) in labels, number
+    for label, group in _groups(UTTERANCES):
+        for number, _u, _e, _d in group:
+            assert _group_label(number) == label, (number, label, _group_label(number))
+
+    picked = "recipe_019"
+    axis = ("picked_point", "item_list", "group_transport", "-")
+    narrow_row = {
+        "elapsed": 1.0, "shortlist_count": 1, "second_called": False,
+        "fallback": None, "first_seconds": 0.5, "second_seconds": None,
+        "fallback_seconds": None,
+    }
+
+    def _fake(entries):
+        outcomes, axes, tallies, alones, narrows, executions = {}, {}, {}, {}, {}, {}
+        for number, _u, expected, _d in entries:
+            found = frozenset(expected)
+            outcomes[number] = Counter({(found, "OK"): 1})
+            axes[number] = Counter({axis: 1})
+            # LLM · 조회 후보 수는 실제로 문자열이다 ("-" 또는 str(n))
+            tallies[number] = Counter({("1", "1", "OK", tuple(sorted(expected))): 1})
+            # 검산이 답을 바꾼 회차 — _print_verdict_changes 가 볼 줄이 있어야 함
+            alones[number] = Counter({(None, found, "OK"): 1})
+            narrows[number] = [dict(narrow_row)]
+            executions[number] = ("OK", "", picked)
+        return outcomes, axes, tallies, alones, narrows, executions
+
+    groups = _groups(UTTERANCES)
+    subsets = []
+    for size in (1, 2, 3):
+        subsets += list(itertools.combinations(groups, size))
+
+    was = NARROW
+    try:
+        for subset in subsets:
+            entries = [entry for _label, group in subset for entry in group]
+            outcomes, axes, tallies, alones, narrows, executions = _fake(entries)
+            for narrow in (False, True):
+                NARROW = narrow
+                with contextlib.redirect_stdout(io.StringIO()):
+                    _print_table(entries, outcomes, alones, 1)
+                    _print_axes(entries, axes)
+                    _print_candidates(entries, tallies)
+                    _print_verdict_changes(entries, alones)
+                    _print_narrow(entries, narrows)
+                    _print_execution(entries, executions, "1970-01-01")
+    finally:
+        NARROW = was
 
 
 def main() -> int:
