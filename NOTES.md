@@ -83,6 +83,113 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
 ## 열린 과제
 
+- **~~`CONTEXT_STARTS` 와 `input_first` 가 같은 사실을 두 곳에 적는다~~ —
+  세어 보니 안 겹친다 (2026-08-31 「예순여덟째」).** 겹치는 것은 맨 윗 칸 이름
+  `selectedLocation` · `view` 둘뿐이고, 나머지는 서로 다른 것을 적는다.
+  **고칠 것이 없다. 다시 열지 않는다.**
+
+  ```
+  CONTEXT_STARTS   2줄.  노드 id -> 값이 왔는지 볼 딕셔너리 키 경로
+                         picked_point ("selectedLocation",) ·
+                         visible_extent ("view","bbox")
+  input_first     15줄.  (노드 × 받는 타입) -> 받는 칸과 모양
+                         map_extent 9 · point 6 / 모양 넷
+
+  안 겹치는 까닭
+    bbox 는 CONTEXT_STARTS 에만 있다 — 실제로 딕셔너리를 파는 경로다
+    minLon 등은 wiring.yaml 에만 있다 — 딕셔너리 경로가 아니라 vendor 의
+      _resolve_reference 가 bbox[0][0] 으로 푸는 이름이다
+    노드 id 는 wiring.yaml 에 없고, 칸 이름은 CONTEXT_STARTS 에 없다
+  ```
+
+  문맥 키가 하나 늘면 고칠 자리는 **셋**이다 (`ontology/` 1 · `CONTEXT_STARTS`
+  1줄 · `wiring.yaml` N줄. 지금 값 visible_extent 9 · picked_point 6).
+  셋이 서로 다른 것을 적으므로 **어느 하나에서 나머지를 못 만든다.** 합치려면
+  문맥 쪽이 도구 스키마를 알아야 하는데 그것은 배선을 데이터로 뺀 까닭과
+  정반대다. 세부는 「예순여덟째」 8절에 있다.
+
+- **`step_service.py` 에 성격이 다른 셋이 섞여 있다** (2026-08-31 「예순여덟째」).
+  1-b 로 표 둘이 나가고 나니 남은 42 이름이 세 갈래로 갈린다. 나중에 모듈을
+  가를 때의 밑그림이다. **지금은 안 가른다** — 가를 까닭이 아직 크기뿐이다.
+
+  ```
+  ㉠ 도구를 아는 것 (배선)   31
+     상수 12  SERVER_ID · WEB_SERVER_ID · RADIUS_METERS · SPOKEN_VALUE ·
+              SHOW_FACILITY_COMMAND · PREVIOUS_STEP · BBOX_FROM_PREVIOUS ·
+              POINT_FROM_PREVIOUS · ADMIN_LEVEL_FROM_PREVIOUS ·
+              POINT_RADIUS_TO_BBOX · CENTER_KEYS · DROP
+     로더 11  _SYMBOLS · _SYMBOL_PATTERN · _SECTIONS · _WIRING_FIELDS ·
+              TOOL_OF · STEP_OF · _wiring_mtime · _resolved · _wiring_row ·
+              _load_wiring · reload_wiring
+     쓰기  8  wiring_at · input_of · unwired · plan · _by_argument ·
+              _headline · _has_center · _filled
+
+  ㉡ 발화를 아는 것            4
+              RAILWAY_LINE_SUFFIX · PLACE_SUFFIXES · PLACE_PATTERN · place_in
+
+  ㉢ 화면 문맥을 아는 것       7
+              CONTEXT_VALUE · SELECTED_LOCATION · POINT_FROM_CONTEXT ·
+              VIEW_FROM_CONTEXT · BBOX_FROM_CONTEXT · CONTEXT_STARTS ·
+              context_starts
+  ```
+
+  ```
+  ★ 깨끗이 안 갈리는 자리 둘
+    RAILWAY_LINE_SUFFIX 는 ㉡ 인데 _SYMBOLS 에 실려 wiring.yaml 이 <이름> 으로
+      가리킨다. 발화 판단의 자가 배선표로 새어 든 유일한 자리이고, 그것을
+      일부러 열었다 (「쉰째」). 가를 때 ㉡ 을 ㉠ 이 import 하게 된다
+    ㉢ 의 상수 다섯은 $context 참조 문자열을 만드는 것이라 ㉠ 의 표를 쓰던
+      것이다. 지금은 표가 wiring.yaml 에 있어 아무도 안 쓴다 (아래 항목)
+  ```
+
+  **★ `CONTEXT_STARTS` 는 지금 `resolve_service` 가 menu 를 가르는 데도 쓴다.**
+  `_menu_for` 가 `set(CONTEXT_STARTS) - set(context_starts(context))` 로
+  화면 recipe 를 걸러낸다. 그것은 **월요일 시연을 위한 임시방편**이고
+  (`tests/demo/api/test_menu_split.py` 머리말 · 「마흔여덟째」) 이 갈래의 일이
+  아니다. 이 방에서는 안 고쳤다.
+
+  ```
+  임시방편이 걷히면 ㉢ 이 어디로 가나
+    menu 를 가르는 쓰임이 없어지면 CONTEXT_STARTS 를 읽는 곳은
+      resolve_service._missing_context · execute_service 둘(352 · 455행) ·
+      step_service.context_starts 만 남는다
+    그 셋은 다 「화면이 무엇을 보냈나」를 묻는다. 그러면 ㉢ 은 배선이 아니라
+      **요청을 받는 쪽**으로 간다 — step_service 가 아니라 demo/api 쪽이다
+    ★ 지금 옮기면 안 된다. 임시방편이 살아 있는 동안은 resolve 가 이것을
+      배선과 같은 자리에서 읽는 것이 오히려 맞다
+  ```
+
+- **표를 지우면서 임자가 없어진 상수 다섯** (2026-08-31 「예순여덟째」).
+  `_TOOL_OF_IN_CODE` · `_STEP_OF_IN_CODE` 만 쓰던 것들이다. 표가 나가자
+  저장소 어디에서도 안 읽힌다. **1-b 범위 밖이라 안 지웠다.**
+
+  ```
+  SERVER_ID                  읽는 곳 0. wiring.yaml 이 &server_id 앵커로 갖는다
+  WEB_SERVER_ID              읽는 곳 0. wiring.yaml 이 "web-search" 를 직접 적는다
+  POINT_FROM_PREVIOUS        읽는 곳 0. wiring.yaml 의 &point_from_previous
+  POINT_FROM_CONTEXT         읽는 곳 0. wiring.yaml 의 &point_from_context
+  ADMIN_LEVEL_FROM_PREVIOUS  읽는 곳 0. wiring.yaml 의 &admin_level_from_previous
+
+  ★ 딸려 나가는 것
+    POINT_FROM_CONTEXT 를 지우면 SELECTED_LOCATION 도 읽는 곳이 0 이 된다
+
+  ★ 아직 읽는 곳이 있어 여기 없는 것 (시험이 붙들고 있다)
+    SHOW_FACILITY_COMMAND  tests/demo/api/test_command_step.py:48
+    BBOX_FROM_PREVIOUS     tests/demo/api/test_step_input_schema.py:130
+    BBOX_FROM_CONTEXT      tests/demo/api/test_step_input_schema.py:129 · 135
+    VIEW_FROM_CONTEXT      BBOX_FROM_CONTEXT 가 쓴다
+  ```
+
+  ```
+  ★ 지우기 전에 정할 것 — 값이 옮겨 간 것이 아니라 두 곳이 됐다
+    다섯 다 wiring.yaml 에 같은 값이 앵커로 있다. 상수를 지우면 원천이 하나가
+    되지만, 옆에 붙은 실측 근거 주석도 함께 없어진다 —
+    ADMIN_LEVEL_FROM_PREVIOUS 의 「여덟 지점에서 items 3건 · sido -> sigungu ->
+    emd 고정」(2026-08-24 실측)이 그것이다. 지울 때 그 주석을 wiring.yaml 로
+    먼저 옮긴다. ★ 지금 step_of 의 인구 두 도구 주석이 그 상수를 이름으로
+    가리키고 있으므로, 상수를 먼저 지우면 없는 것을 가리키는 주석이 남는다
+  ```
+
 - **~~보이는 범위가 안 먹는다~~ — 고쳤다 (2026-08-30 「예순째」).** 한 줄이었다.
   `("search_ev_stations", "map_extent")` 의 `input_first` 가 `{"bbox": [네 수]}`
   를 보내는데 `ev.searchStations` 에는 `bbox` 라는 칸이 없어서(평평한 넷만 받고
@@ -1543,6 +1650,247 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-08-31 (예순여덟째) · 코드에 남은 파이썬 배선표 둘을 지우고 근거 주석을 갈라 보냈다 (1-b)
+
+무인 실행. 조건 — `refactor/vendor` · 워킹 트리에 두고 커밋 안 했다 ·
+`.venv/bin/python -m pytest -q` · 서버는 안 띄웠다.
+
+고친 것은 넷이다. `demo/api/services/step_service.py` · `wiring.yaml` ·
+`tests/demo/api/test_wiring_yaml.py` · 이 파일.
+**`tools/` 아래는 한 줄도 안 고쳤다.** 계기판 두 벌의 출력이 md5 까지 같다.
+
+## 왜 했나
+
+1-a 에서 `wiring.yaml` 이 배선의 원천이 됐다. 파이썬 표 둘(`_TOOL_OF_IN_CODE` ·
+`_STEP_OF_IN_CODE`)은 「값이 같은가」를 대보려고 남겨 둔 것이다. 대봤고 값도
+차례도 같았다(「예순일곱째」). 두 벌일 이유가 없어졌다.
+
+## 1. 기준선 (바꾸기 전에 실제로 돌린 것)
+
+```
+_TOOL_OF_IN_CODE ~ _STEP_OF_IN_CODE 덩어리   487줄 (주석·빈 줄 245줄)
+  ★ 인수인계의 실측과 한 줄도 안 어긋났다. 219행(`_TOOL_OF_IN_CODE = {`)부터
+    705행(`_SYMBOLS = {` 바로 앞)까지를 세면 정확히 487 · 245 다
+코드 표를 보는 시험                          셋 (43 · 48 · 57행)
+pytest                                       1 failed, 488 passed, 1 warning in 59.81s
+TOOL_OF 27 · STEP_OF 36
+```
+
+## 2. 지운 줄 수
+
+```
+step_service.py          1157줄 -> 658줄   (-499)
+  지운 구간 195~692행 498줄 + 그 앞 빈 줄 하나
+    주석 234줄 · 빈 줄 22줄 · 데이터 242줄
+wiring.yaml               412줄 -> 598줄   (+186)
+test_wiring_yaml.py       230줄 -> 208줄   (-22, 시험 셋)
+```
+
+## 3. 근거 주석 234줄을 어떻게 갈랐나
+
+**세 갈래가 아니라 두 갈래로 갈렸다.** `step_service` 로 갈 주석이 0줄이었다 —
+남는 코드를 설명하는 주석(상수들의 이력 · `_SYMBOLS` 머리말 · `_filled` ·
+`_by_argument` · `plan` 의 이력 절)은 애초에 두 표 **밖**에 있었고, 지운 구간
+안에 없었다. 그래서 그 자리에 그대로 뒀고 한 글자도 안 건드렸다.
+
+```
+wiring.yaml 로   221줄 (19덩어리)   그 배선 줄 곁에 뒀다. 파일 머리에 안 몰았다
+step_service 에    0줄              위 까닭
+버렸다             13줄 (2덩어리)   아래에 전문을 싣는다
+                 ────────────────
+                 234줄
+```
+
+옮긴 19덩어리와 간 자리 :
+
+```
+195-206  12줄  tool_of 절 머리 (server_id·tool·headline 표 · 한 노드 한 도구)
+352-356   5줄  tool_of · show_facility (도구가 아닌 유일한 줄)
+363-387  25줄  step_of 절 머리 (칸 넷 · hasInput 1:1 · 예전엔 노드당 한 줄이었다)
+391-408  18줄  step_of · find_cctv        (2026-08-23 실측 · current-view-cctv)
+423-426   4줄  step_of · find_cctv.point  (cctv-around-point · 반경만 다르다)
+434-441   8줄  step_of · get_railway_lines (「쉰째」·「서른다섯째」· check_inputs ★ 표)
+451-452   2줄  step_of · 찍은 지점 다섯 줄
+492-496   5줄  step_of · 인구 두 도구
+500-501   2줄  step_of · search_ev_stations.keyword (inputSchema 의 query)
+503-529  27줄  step_of · search_ev_stations.map_extent (★ 「예순째」 이력 전문)
+541-552  12줄  step_of · get_ev_station   (statId = stationId 실측)
+557-562   6줄  step_of · 발화에서 온 말로 찾는 것 (2026-08-22 건수)
+577-601  25줄  step_of · 선거 상세 (이름 칸 표 · 2026-08-24 눌러본 결과)
+606-624  19줄  step_of · get_local_pledge_summary (여섯 지점 items 차례)
+629-636   8줄  step_of · search_local_pledge_summaries (비어 있는 까닭)
+643-656  14줄  step_of · search_documents (k=6 근거 · filter_docs 를 안 보내는 까닭)
+659-661   3줄  step_of · web_search (권한에 막혔다)
+664-671   8줄  step_of · show_facility (Facility Aliases 격차)
+675-692  18줄  step_of 절 끝 · 아직 배선을 안 적은 자리 (web_fetch × 웹 주소)
+```
+
+**문장을 다시 쓰지 않았다.** 들여쓰기만 YAML 깊이에 맞췄다(4칸 -> 2칸/4칸).
+낱말은 한 글자도 안 고쳤다.
+
+## 4. ★ 버린 13줄 — 전문과 까닭
+
+**㉠ 195-218 중 207-218 (12줄).** 지운 두 표 자신을 설명하던 것이다.
+
+```
+#
+# ── 이 아래 두 표는 이제 원천이 아니다 ────────────────────────────
+#
+# 진짜 표는 wiring.yaml 이고 아래 _load_wiring 이 그것을 파서 TOOL_OF · STEP_OF
+# 를 채운다. 여기 남은 두 벌은 **같은 값인지 대볼 것**이다 —
+# tests/demo/api/test_wiring_yaml.py 가 dict 를 통째로 맞대고, 그것이 이번
+# 변경의 증거다. 1-b 에서 지운다. 그때 줄마다의 실측 근거 주석이 wiring.yaml 로
+# 간다.
+#
+# **이름 앞에 _ 가 붙은 까닭.** 두 벌이 같은 이름을 쓸 수 없다. 밖에서는 아무도
+# 이 이름을 쓰지 않는다 — tools/ 의 계기판이 옛 표를 보게 되면 YAML 이 관문을
+# 지나는지 재는 뜻이 없어진다.
+```
+
+왜 버렸나 — 가리키는 것이 이제 없다. 「여기 남은 두 벌」도 「이름 앞의 `_`」도
+그 두 벌이 있을 때만 뜻이 있다. 대본 결과 자체는 「예순일곱째」에 남아 있으므로
+사실이 사라지지는 않는다.
+
+**㉡ 320 (1줄).** `tool_of` 의 선거 상세 묶음 머리다.
+
+```
+    # 선거 상세 셋. 목록 검색(search_…)과 짝이고 하나를 집어 오는 쪽이다.
+```
+
+왜 버렸나 — `wiring.yaml` 에 **이미 같은 문장이 있고 그쪽이 맞다.**
+`wiring.yaml` 은 「선거 상세 **넷**」이라고 적혀 있는데, 아래에 달린 줄은
+`get_election_district` · `get_assembly_district` ·
+`get_assembly_pledge_district` · `get_local_pledge_summary` 로 **넷이다.**
+코드 쪽 「셋」이 틀린 수였다. 옮기면 맞는 문장을 틀린 문장으로 덮게 되어
+안 옮겼다. **★ 실측값이 아니라 셈이 틀린 자리라 버려도 되찾을 것이 없다.**
+
+## 5. wiring.yaml 의 옛 자리막이 문장 열둘을 갈아 끼웠다
+
+1-a 가 `wiring.yaml` 에 넣어 둔 짧은 요약들이다. 그때는 「지금 옮기면 같은 글이
+두 곳에 있게 된다」(`wiring.yaml` 머리말)라서 요약만 뒀다. 이번에 코드의 원문이
+그 자리에 왔으므로 요약을 지웠다 — 안 지우면 같은 말이 두 번 실린다.
+
+```
+갈아 끼운 자리   tool_of 절 머리 · show_facility(tool_of) · step_of 절 머리 ·
+                 find_cctv · get_railway_lines · 인구 두 도구 ·
+                 search_ev_stations · get_ev_station · 선거 상세 ·
+                 get_local_pledge_summary · search_local_pledge_summaries ·
+                 search_documents · web_search · show_facility(step_of)
+그대로 둔 것     anchors 절의 주석 전부 · tool_of 의 「선거 상세 넷」 ·
+                 tool_of 의 「web.search 만 다른 서버다」 · 파일 머리말 1~27행
+```
+
+## 6. 거짓이 된 머리말 셋을 고쳤다
+
+```
+step_service.py 머리말   「아래 두 표가 갖는다」 -> 「wiring.yaml 이 갖는다」
+                         「1-b 에서 지운다」 -> 「대보고 나서 지웠다(1-b)」
+step_service.unwired     「STEP_OF 아래 주석에 있음」
+                         -> 「wiring.yaml 의 step_of 아래 주석에 있음」
+wiring.yaml 머리말       「아직 step_service.py 의 주석에 있다. 1-b 에서 함께
+                         옮긴다」 -> 「그 배선 줄 곁에 있다」
+test_wiring_yaml.py      「이것이 1-a 의 증거다」 -> 대본 일과 시험 셋을 지운
+                         까닭으로 고쳐 적었다. 남은 아홉이 무엇을 재는지 밝혔다
+```
+
+## 7. 관문 — 여덟을 실제로 돌린 것
+
+```
+check_wiring   md5 1e35f14bce04d8e64632c71107982883  전후 같음 (diff 0줄)
+check_inputs   md5 6d0ed14d7ab7c0cdd7f063982eadc83d  전후 같음 (diff 0줄)
+pytest         1 failed, 485 passed, 1 warning in 59.98s
+               ★ 488 -> 485. 정확히 셋만 줄었다
+               ★ 일부러 둔 실패 그대로 :
+                 tests/demo/graph_svg/test_layout_invariants.py
+                 ::test_dense_graph_would_move_if_overlap_removal_were_used
+TOOL_OF 27 · STEP_OF 36                     그대로
+_TOOL_OF_IN_CODE · _STEP_OF_IN_CODE         코드·시험·계기판에서 0회
+               ★ NOTES.md 에 4회 남아 있다 — 「예순일곱째」의 기록이라 안 지웠다
+git diff --name-status                      M 셋 + NOTES.md. tools/ 없음
+wiring.yaml                                 여전히 파싱된다 (TOOL_OF·STEP_OF 채워짐)
+깨뜨리면 여전히 터진다                       남은 시험 아홉이 전부 통과
+               ★ 일부러 망가뜨려 확인하지 않았다 (CLAUDE.md). 그 아홉이
+                 임시 파일로 없는 파일 · 깨진 문법 · 모르는 절 · 모르는 이름 ·
+                 모르는 칸 · 반쪽 표 · mtime 을 이미 재고 있다
+```
+
+## 8. 겹침 조사 — `CONTEXT_STARTS` 와 `input_first` (조사만. 코드는 안 고쳤다)
+
+**결론 : 겹치기는 하는데 겹치는 것은 「맨 윗 칸 이름」 둘뿐이다.
+같은 사실을 두 곳에 적고 있는 것이 아니다.**
+
+```
+CONTEXT_STARTS   2줄.  온톨로지 시작 데이터 노드 id -> context 딕셔너리의 키 경로
+                       picked_point   -> ("selectedLocation",)
+                       visible_extent -> ("view", "bbox")
+                 재는 것 : 값이 와 있는가. context_starts 가 이 경로를 따라가
+                           비었는지만 본다
+
+input_first     15줄.  (노드 × 받는 타입) -> 그 도구가 받는 칸과 모양
+                       map_extent 9줄 · point 6줄
+                       모양 넷 : {bbox} 7줄 · {lon,lat} 5줄 ·
+                                 {minLon,minLat,maxLon,maxLat} 2줄 ·
+                                 {location,radiusMeters} 1줄
+                 재는 것 : 어느 칸에 어떤 모양으로 넣는가
+```
+
+겹치는 것은 이 둘뿐이다.
+
+```
+selectedLocation   CONTEXT_STARTS 의 경로 첫 마디 · $context 참조의 둘째 마디
+view               같음
+```
+
+**겹치지 않는 것.**
+
+```
+bbox      CONTEXT_STARTS 에만 있다. ("view","bbox") 로 딕셔너리를 실제로 판다
+minLon 등 wiring.yaml 에만 있다. $context.view.minLon 은 딕셔너리 경로가 아니다 —
+          vendor 의 _resolve_reference 가 minLon 을 그 노드 bbox 의 [0][0] 으로
+          푼다. 그래서 두 곳이 같은 문자열을 적는 것이 아니다
+노드 id   CONTEXT_STARTS 에만 있다. wiring.yaml 은 노드 id 를 안 적는다
+칸 이름   wiring.yaml 에만 있다. CONTEXT_STARTS 는 도구를 모른다
+```
+
+**문맥 키가 하나 늘면 몇 곳을 고쳐야 하나 — 셋이다.** 그런데 셋이 서로 다른 것을
+적으므로 어느 하나에서 나머지를 만들어 낼 수 없다.
+
+```
+ontology/     새 데이터 노드 + hasOutput 선언                     1곳
+CONTEXT_STARTS  그 노드 id -> 값이 있는지 볼 키 경로              1줄
+wiring.yaml     그 노드에서 시작할 수 있는 (노드 × 타입)마다      N줄
+                지금 값 : visible_extent 9줄 · picked_point 6줄
+```
+
+**한쪽에서 다른 쪽을 뽑아낼 수 있나 — 없다.**
+
+```
+wiring -> CONTEXT_STARTS   못 한다. $context 참조에는 온톨로지 노드 id 도
+                           없는지 볼 경로(bbox)도 없다
+CONTEXT_STARTS -> wiring   못 한다. 받는 칸 이름과 모양이 도구마다 다르다
+                           (위의 모양 넷)
+```
+
+**그래서 「고칠 자리가 둘」인 것은 맞지만 「같은 사실을 두 벌 적고 있다」는
+아니다.** 둘을 합치려면 도구 스키마를 문맥 쪽이 알아야 하는데, 그것은
+`wiring.yaml` 을 뺀 까닭과 정반대다. 지금은 안 고친다.
+
+## 9. 안 한 것
+
+```
+tools/ 계기판 넷           한 줄도 안 고쳤다
+vendor/ · KRRI_ASAP        안 열었다
+ontology/ · workflows/     안 고쳤다
+paths.py                   안 고쳤다
+resolve_service            안 고쳤다
+execute_service            안 고쳤다
+menu 를 가르는 임시방편     찾은 것을 「열린 과제」에 적기만 했다
+표를 지워 임자가 없어진 상수 다섯   안 지웠다. 「열린 과제」에 적었다
+남은 시험 아홉             몸통은 한 줄도 안 고쳤다. 지운 시험을 가리키던
+                           docstring 한 줄만 고쳤다 (6항)
+커밋                       안 했다
+```
 
 ### 2026-08-31 (예순일곱째) · 배선표 둘을 `wiring.yaml` 로 옮기고 코드가 그것을 읽게 했다 (1-a)
 

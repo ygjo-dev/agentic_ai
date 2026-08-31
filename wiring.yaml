@@ -25,9 +25,9 @@
 # <POINT_RADIUS_TO_BBOX> 는 vendor 어댑터의 이름이고, <RAILWAY_LINE_SUFFIX> 는
 # 값 판단의 자라 뜻이 코드에 있어야 한다.
 #
-# 줄마다의 실측 근거(응답 전문 · 몇 건이 나왔나 · 왜 이 칸인가)는 아직
-# demo/api/services/step_service.py 의 주석에 있다. 1-b 에서 옛 표를 지울 때
-# 함께 옮긴다. 지금 옮기면 같은 글이 두 곳에 있게 된다.
+# 줄마다의 실측 근거(응답 전문 · 몇 건이 나왔나 · 왜 이 칸인가)는 그 배선 줄
+# 곁에 있다. 1-b 에서 코드의 옛 표를 지우면서 step_service.py 의 주석을 그대로
+# 옮겨 왔다 — 문장을 다시 쓰지 않았다. 다듬다가 실측 값이 바뀌면 되찾을 데가 없다.
 
 
 # 되풀이되는 값. 한 곳에만 적고 아래에서 가리킨다 — 줄마다 베껴 적으면 한 곳만
@@ -78,10 +78,18 @@ anchors:
     lat: "$context.selectedLocation.lat"
 
 
-# 노드 -> 실행 수단 · 답 첫 줄.
+# 노드 -> 도구. **온톨로지 밖이다.**
+#
+#   server_id · tool  vendor 가 Gateway 에 보낼 것
+#   headline          그 노드에서 끝나는 경로의 답 첫 줄
 #
 # **한 노드는 한 도구이고 한 headline 이다.** 받는 것이 둘이어도 부르는 도구는
-# 같다. 그래서 이 절은 노드당 한 줄이고 step_of 만 두 겹이다.
+# 같다. 그래서 이 표는 노드당 한 줄이고, 아래 STEP_OF 만 (노드 × 받는 타입)
+# 이다. 둘을 한 표에 합치면 도구 이름과 답 문장이 줄마다 복사되고, 한 쪽만
+# 고쳤을 때 조용히 어긋난다.
+#
+# headline 은 마지막 노드의 것만 쓰인다. 도구 이름으로는 만들 수 없는 문장이라
+# (road.getCctv -> "CCTV 를 조회했습니다") 노드가 들고 있어야 한다.
 tool_of:
 
   geocode_place:
@@ -217,26 +225,40 @@ tool_of:
     headline: "{arg} 웹 검색 결과를 조회했습니다."
 
   # **도구가 아닌 유일한 줄이다.** server_id · tool 대신 command 를 적는다.
-  # 한 줄에 둘 다 적지 않는다 — 도구도 부르고 명령도 내는 노드가 생기면 그때
-  # 다시 정한다.
+  # plan 이 그 칸이 있는지로 갈라 vendor 에 넘길 step 대신 지도 명령을 만든다.
+  #
+  # 한 줄에 둘 다 적지 않는다. 도구도 부르고 명령도 내는 노드가 생기면 그때
+  # 다시 정한다 — 지금 그런 노드가 없는데 미리 두면 안 쓰이는 분기가 남는다.
   show_facility:
     command: digitalTwin.showFacility
     headline: "{arg} 시설물을 화면에 띄웠습니다."
 
 
-# (노드, 받는 타입) -> 그 자리에서 input 을 어떻게 채우는가.
+# (노드, 받는 타입) -> 그 자리에서 input 을 어떻게 채우는가. **온톨로지 밖이다.**
 #
 #   input        그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
 #   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀.
-#                저쪽 화면의 지도 문맥이 들어오는 자리다
+#                **저쪽 화면의 지도 문맥이 들어오는 자리다** (2026-08-28) —
+#                지도 범위와 지점 좌표를 받는 열다섯 줄이 이것을 적었다.
+#                그 자리에 오는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이고,
+#                문맥이 없으면 resolve 가 그 후보를 아예 안 내놓는다
 #   adapter      vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
-#   arg_field    [어미, 칸 이름]. 발화에서 온 값이 그 어미로 끝나면 @arg 가 든
-#                칸의 이름을 그것으로 바꾼다. 값 판단이 배선표에 들어오는
-#                유일한 칸이다
+#   arg_field    (어미, 칸 이름). 발화에서 온 값이 그 어미로 끝나면 @arg 가
+#                든 칸의 이름을 그것으로 바꾼다. **값 판단이 배선표에 들어오는
+#                유일한 칸이다** — 왜 열었는지는 NOTES.md 「쉰째」에 있다
 #
-# **받는 타입은 온톨로지의 hasInput 선언과 1:1 이다.** 선언에 없는 타입으로 줄을
-# 적으면 plan 이 그 줄을 영영 못 고르고, 선언에는 있는데 줄이 없으면 그 자리는
-# unwired 다. tools/check_wiring.py 가 양쪽을 센다.
+# **키의 타입은 온톨로지의 hasInput 선언과 1:1 이다.** 선언에 없는 타입으로
+# 줄을 적으면 plan 이 그 줄을 영영 못 고른다 — 줄을 고르는 것이 선언이기
+# 때문이다. 반대로 선언에는 있는데 줄이 없으면 그 자리는 unwired 다.
+# tools/check_wiring.py 가 양쪽을 센다.
+#
+# 예전에는 노드당 한 줄이었다. 같은 노드가 두 자리에 오는데 받는 것이 달라서
+# 한 줄로는 못 적었다.
+#
+#   말한 장소 → 좌표 변환 → 전기차 충전소 검색     center 를 받아야 한다
+#   말한 키워드 →           전기차 충전소 검색     query 를 받아야 한다
+#
+# 그 탓에 recipe 012 · 013 은 발화에서 온 값을 통째로 버리고 전국을 검색했다.
 step_of:
 
   geocode_place:
@@ -244,7 +266,24 @@ step_of:
       input: {query: *arg}
 
   find_cctv:
+    # 앞이 무엇이냐에 따라 채우는 칸이 갈린다(2026-08-23 실측).
+    #
+    #   철도 구간 형상 조회 뒤   그 bbox 를 그대로 넘긴다.
+    #                            rail.getSectionGeometry 의 bbox 는
+    #                            [[126.868587, 36.619576], [127.328115, 37.554557]]
+    #                            처럼 두 겹인데 vendor 의 _resolve_reference 가
+    #                            $prev.minLon 을 bbox[0][0] 으로 푼다
+    #   장소 좌표 변환 뒤        좌표를 반경 15km 로 넓힌다.
+    #                            geocode 의 bbox 는 한 변이 1km 라 그것을 그대로
+    #                            넘기면 0건이다
+    #
     # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 어댑터를 저절로 건다.
+    #
+    # 첫 자리(input_first)는 보이는 범위에서 곧장 온다. 저쪽 화면의
+    # current-view-cctv 가 하는 것과 같은 일이다 — 그쪽도
+    # $context.view.bbox 네 칸을 road.getCctv 에 그대로 넣는다
+    # (KRRI_ASAP/ASAP-orchestrator/plugins/current-view-cctv/plugin.md 의
+    #  Tool Input. 읽기만 했다).
     map_extent:
       input:
         minLon: *prev_min_lon
@@ -256,6 +295,10 @@ step_of:
         minLat: *view_min_lat
         maxLon: *view_max_lon
         maxLat: *view_max_lat
+    # 첫 자리는 찍은 지점에서 곧장 온다. 저쪽 cctv-around-point 와 같은 꼴이고
+    # (center + radiusMeters -> point_radius_to_bbox), 반경만 다르다 — 저쪽
+    # 기본값은 1000m 이지만 우리는 이미 재본 값 RADIUS_METERS 를 쓴다.
+    # 재보지 않은 숫자를 새로 들이지 않는다.
     point:
       input: {location: *location_from_previous, radiusMeters: "<RADIUS_METERS>"}
       input_first: {location: *selected_location, radiusMeters: "<RADIUS_METERS>"}
@@ -265,8 +308,14 @@ step_of:
       input: {sectionName: *arg}
 
   get_railway_lines:
-    # 역명으로 볼지 노선명으로 볼지를 값이 정한다. 둘을 함께 보내는 길은 닫혀
-    # 있다 — 저쪽이 두 절을 AND 로 이어서 같은 값이면 0건이다.
+    # 역명으로 볼지 노선명으로 볼지를 값이 정한다. 예전 주석은 "사람이 정할
+    # 일이다" 였고 그 일이 왔다 (2026-08-29 「쉰째」).
+    #
+    # 둘을 함께 보내는 길은 닫혀 있다 — 저쪽이 두 절을 AND 로 이어서 같은
+    # 값이면 0건이다 (2026-08-27 「서른다섯째」). 맞는 칸 하나만 보낸다.
+    #
+    # tools/check_inputs.py 의 ★ 표에서 railwayName(S) 은 안 사라진다.
+    # 그 도구는 STEP_OF 를 정적으로 읽어 여기 적힌 stationName 만 본다.
     place_name:
       input: {stationName: *arg}
       arg_field: ["<RAILWAY_LINE_SUFFIX>", railwayName]
@@ -274,6 +323,8 @@ step_of:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
 
+  # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
+  # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.
   find_admin_boundary_by_point:
     point:
       input: *point_from_previous
@@ -320,7 +371,11 @@ step_of:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
 
-  # 인구 두 도구는 자리가 하나다. 앞 단계는 지점 행정구역 판별뿐이다.
+  # 인구 두 도구는 자리가 하나다. 앞 단계는 지점 행정구역 판별
+  # (adminBoundary.findBoundaryByPoint)뿐이고, 발화에서 곧바로 오는 자리는
+  # 없다 — 사람이 "43113" 이라고 말하지 않아 온톨로지에서
+  # `말한 식별자 is-a 행정구역 코드` 를 뗐다. 그래서 level 이 발화에 없어
+  # 못 적던 것이 풀린다. 받는 모양의 근거는 ADMIN_LEVEL_FROM_PREVIOUS 에 있다.
   get_age_profile:
     admin_code:
       input: *admin_level_from_previous
@@ -330,11 +385,37 @@ step_of:
       input: *admin_level_from_previous
 
   search_ev_stations:
+    # ev.searchStations 의 inputSchema 에 query 가 있다 —
+    # "충전소명, 주소, 운영기관 키워드". 말한 키워드가 갈 자리가 여기다.
     keyword:
       input: {query: *arg}
-    # bbox 넷이 전부 optional 이라 vendor 가 어댑터를 저절로 안 건다. 그래서 이
-    # 줄에만 이름을 적는다. 첫 자리에는 어댑터를 안 건다 — 보이는 범위는 이미
-    # 사각형이고, 이 도구는 bbox 를 평평한 네 수로 받는다.
+    # bbox 넷이 전부 optional 이라 vendor 가 어댑터를 저절로 안 건다. 그래서
+    # 이 줄에만 이름을 적는다. 오송역에서 83건이 나왔다(실측).
+    #
+    # 첫 자리(input_first)에는 어댑터를 안 건다. 보이는 범위는 이미 사각형이라
+    # 중심 좌표로 되돌렸다가 다시 넓힐 까닭이 없고, ev.searchStations 는
+    # bbox 를 평평한 네 수로 받는다. plan 이 어댑터를 거는 조건도 중심 좌표
+    # 칸이 남아 있을 때뿐이라(_has_center) 이 벌에는 저절로 안 걸린다.
+    #
+    # ★ 그 말은 맞았는데 정작 보내던 것이 {"bbox": …} 한 칸이었다
+    #   (2026-08-30 「예순째」에 고쳤다). ev.searchStations 의 inputSchema 에
+    #   bbox 라는 칸은 없다 — minLon · minLat · maxLon · maxLat 평평한 넷이고
+    #   넷 다 optional 이다(ASAP-mcp/main.py:532). 모르는 칸이라 버려져
+    #   범위를 아무리 좁혀도 전국 92,821건에서 상한 500건이 왔다.
+    #
+    #   왜 어긋났나. a238b48 이 input_first 열다섯 줄을 한 번에 더하면서
+    #   **옆의 input 이 쓰는 모양을 그대로 베끼고 $prev 만 문맥으로 바꿨다.**
+    #   그 규칙이 나머지 열넷에는 맞았다 — 그 도구들의 input 이 이미
+    #   {"bbox": BBOX_FROM_PREVIOUS} 이거나(선거 계열 · 노선 · 행정경계 · 인구)
+    #   평평한 넷이었다(road.getCctv). 이 줄만 옆의 input 이
+    #   center + radiusMeters + 어댑터라 베낄 bbox 꼴이 없었고, 그래서 옆줄
+    #   대신 일반 관용구인 {"bbox": …} 로 적었다. 바로 위에 스키마를 옳게
+    #   적어 놓고도 줄이 그것을 안 따랐다.
+    #
+    #   같은 자리 넷(get_railway_lines · search_admin_boundaries ·
+    #   get_vworld_boundaries · search_population_statistics)은 **안 고쳤다.**
+    #   그 넷은 스키마가 진짜로 bbox 배열을 받는다(2026-08-30 확인,
+    #   NOTES.md 「예순째」의 스키마 확인 표).
     map_extent:
       input: {center: *location_from_previous, radiusMeters: "<RADIUS_METERS>"}
       adapter: "<POINT_RADIUS_TO_BBOX>"
@@ -344,11 +425,28 @@ step_of:
         maxLon: *view_max_lon
         maxLat: *view_max_lat
 
-  # statId 는 stationId 이지 id 가 아니다(실측).
+  # ev.getStation 의 statId 는 **stationId 이지 id 가 아니다**(2026-08-23 실측).
+  #
+  #   statId="PL033780"            item 이 온다
+  #   statId="ev_station_PL033780" item null · 0건 ·
+  #                                "충전소 ev_station_PL033780를 찾지 못했거나…"
+  #
+  # tools/probe_out/ev.getStation.statId-stationId.json 과
+  # tools/probe_out/ev.getStation.statId-id.json 이 그 둘이다.
+  #
+  # 자리가 하나다. 발화에서 곧바로 오는 자리는
+  # `말한 식별자 is-a 충전소 번호` 를 떼면서 사라졌다(2026-08-26) —
+  # 사람은 "PL033780" 이라고 말하지 않는다. 앞 단계는 전기차 충전소 검색뿐이다.
   get_ev_station:
     station_id:
       input: {statId: "$prev.items.0.stationId"}
 
+  # ── 발화에서 온 말로 찾는 것 ────────────────────────────────────
+  #
+  # 노드와 도구의 짝은 온톨로지 노드 description 과 tools.json description 을
+  # 맞대어 정했다. 아래 셋은 2026-08-22 실측으로 query 가 실제로 거르는 것도
+  # 확인했다 — 인자 없이 부르면 254 · 254 · 476 건이고 query="청주" 로 부르면
+  # 4 · 5 건, query="철도" 로 부르면 206 건이다.
   search_election_districts:
     keyword:
       input: {query: *arg}
@@ -367,7 +465,31 @@ step_of:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
 
-  # 선거 상세 셋 : 말한 이름을 그대로 보낸다. 넷 다 code 말고 이름 칸을 따로 갖는다.
+  # ── 선거 상세 셋 : 말한 이름을 그대로 보낸다 ──────────────────
+  #
+  # 넷 다 code 말고 **이름 칸을 따로 갖는다**(ASAP-mcp/main.py inputSchema).
+  # required 는 없다.
+  #
+  #   election.getDistrict                name      "선거구명. 예: 서울 강서갑, 의왕과천"
+  #   election.getAssemblyDistrict        name      "선거구명 또는 검색어"
+  #   election.getAssemblyPledgeDistrict  name      "선거구명 또는 검색어"
+  #   election.getLocalPledgeSummary      sidoName  "시도명. 예: 서울특별시"
+  #
+  # 눌러서 확인했다(2026-08-24). 응답 전문은 tools/probe_out/ 에 있다.
+  #
+  #   getDistrict               {name: "충북 청주서원"}  feature 1건
+  #   getAssemblyDistrict       {name: "청주시 상당구"}  feature 1건
+  #   getAssemblyPledgeDistrict {name: "청주시 상당구"}  feature 1건
+  #   getLocalPledgeSummary     {sidoName: "충청북도"}   0건 · featureCount 0
+  #
+  # 0건인 것은 저쪽 데이터가 미적재여서다
+  # (getLocalPledgeSummaryDatasetInfo 의 featureCount 0 · available false).
+  # 배선이 없는 것과 데이터가 없는 것은 다르므로 그것만으로는 안 적을 이유가
+  # 못 된다.
+  #
+  # 위 셋은 district_code 를 건네는 앞 노드가 spoken_identifier 하나뿐이라
+  # 자리가 겹치지 않는다. 그래서 @arg 한 줄로 끝난다.
+  # getLocalPledgeSummary 는 자리가 둘이라 아래에 따로 적는다.
   get_election_district:
     district_code:
       input: {name: *arg}
@@ -380,14 +502,37 @@ step_of:
     district_code:
       input: {name: *arg}
 
+  # ── 지방선거 교통 공약 요약 : 배선 줄이 하나다 ────────────────
+  #
+  #   recipe_056  말한 장소 -> 좌표 -> 행정구역 판별 -> 공약 요약
+  #   recipe_052  찍은 지점 -> 행정구역 판별 -> 공약 요약
+  #
   # 경로는 둘인데 앞 노드는 둘 다 지점 행정구역 판별이라 줄은 하나다.
-  # items.0 이 시도이고 그 code 가 두 자리 시도 코드다.
+  # 발화에서 곧바로 오는 자리는 없다. `말한 식별자 is-a 행정구역 코드` 를
+  # 떼면서 그 경로가 사라졌다.
+  #
+  # 2026-08-24 에 {sidoCode: "43"} 을 눌렀다. query.sidoCode 로 되받았고
+  # status 는 not_found 인데 그것은 **저쪽 데이터가 미적재**여서다
+  # (dataset.available false · featureCount 0). 인자는 파싱됐다.
+  #
+  # 앞 단계는 adminBoundary.findBoundaryByPoint 의 items.0 이다.
+  # 여섯 지점(오송·강남·부산·제주·금산·세종)에서 items 가 늘 3건이고
+  # 순서가 sido -> sigungu -> emd 로 고정이었다. items.0 이 시도이고
+  # 그 code 가 두 자리 시도 코드라 sidoCode 와 맞는다. 세종처럼 시군구가
+  # 없는 곳도 sigungu 자리를 같은 이름으로 채워 순서가 안 밀린다.
+  # 응답 전문은 tools/probe_out/ 에 있다.
   get_local_pledge_summary:
     admin_code:
       input: {sidoCode: "$prev.items.0.code"}
 
-  # 아래 둘은 배선이 맞는데 도구 쪽이 지금 비어 있다. 배선이 없는 것과 데이터가
-  # 없는 것은 다르므로 적어 둔다.
+  # 아래 둘은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
+  # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
+  # 데이터가 들어오면 고칠 것 없이 그대로 돈다. 왜 비었는지는 각 줄 위에
+  # 적었고 NOTES.md 「2026-08-22 (셋째)」 에 응답 전문 근거가 있다.
+  #
+  # election.searchLocalPledgeSummaries : 0건.
+  #   "2026 지방선거 시도별 공약 요약 데이터를 조회하지 못했습니다."
+  #   같은 데이터셋의 getDatasetInfo 도 미적재라고 답한다. 저쪽 데이터다.
   search_local_pledge_summaries:
     keyword:
       input: {query: *arg}
@@ -395,18 +540,59 @@ step_of:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
 
-  # k 는 돌려받을 조각 수다. 6 인 근거는 실측이고 step_service.py 주석에 있다.
+  # knowledge.query : 문서 둘이 들어 있다(2026-08-26 실측 — 철도안전법 47쪽 ·
+  #   철도안전법 시행규칙 52쪽). "지식베이스가 비었다" 는 2026-08-22 기록이고
+  #   그 뒤 문서가 적재됐다.
+  #
+  #   k 는 돌려받을 조각 수다(tools.json, 기본 4). 6 인 근거 : "철도 안전
+  #   교육" 실측에서 k=4 는 시행규칙 조각이 1건인데 k=6 은 법 4 · 시행규칙 2
+  #   로 두 문서가 다 보인다. k=10 은 5 · 5 로 더 고르지만 화면은 조각
+  #   두셋만 실으므로 응답만 무거워진다. 문서가 늘어 보여줄 문서가 조각
+  #   두셋으로 안 덮이면 그때 올린다 (NOTES.md 「서른한째」).
+  #
+  #   문서를 지정하는 filter_docs 는 안 보낸다. 발화 해석이 인자를 하나만
+  #   돌려줘 문서 이름과 검색어를 따로 못 뽑는데, 의미 검색이라 검색어에
+  #   문서 이름이 섞이면 그 문서 조각이 위로 온다(2026-08-26 실측 —
+  #   "철도안전법 시행규칙 교육" k=4 에서 시행규칙 4/4건). NOTES.md 「열린 과제」.
   search_documents:
     keyword:
       input: {query: *arg, k: 6}
 
-  # web.search : 우리 user_context 에 web-search 서버가 안 열려 있다.
+  # web.search : 실패. "MCP tool 'web-search/web.search' is not applied for
+  #   this user." 데이터가 없는 것이 아니라 우리 user_context 에 web-search
+  #   서버가 안 열려 있는 것이다. KRRI_ASAP 쪽 권한이라 우리가 못 연다.
   web_search:
     keyword:
       input: {query: *arg}
 
-  # 이 input 은 도구 인자가 아니라 지도 명령의 args 다. 칸 이름은 저쪽 화면이
-  # 읽는 이름 그대로여야 한다.
+  # 이 input 은 도구 인자가 아니라 지도 명령의 args 다. 칸 이름은 저쪽
+  # 화면이 읽는 이름 그대로여야 한다 (useChat.getFacilityName 이
+  # args.facilityName 만 본다).
+  #
+  # **발화에서 온 값을 그대로 넘긴다.** 저쪽은 skill.md 의 「Facility Aliases」
+  # 표로 낱말을 시설물명으로 바꾼다("제3터널" -> "시험 제3터널"). 그 표는
+  # 저쪽 설정이고 우리 온톨로지에는 그것을 둘 자리가 없어 베끼지 않았다.
+  # NOTES.md 「마흔아홉째」에 남은 격차로 적었다.
   show_facility:
     place_name:
       input: {facilityName: *arg}
+
+
+# 아직 배선을 안 적은 (노드 × 받는 타입)과 그 이유. 다음 사람이 왜 비어 있는지
+# 알아야 한다. tools/check_wiring.py 가 이것을 센다. 하나뿐이다.
+#
+# 응답의 어느 칸에 그 값이 오는지 아직 모른다
+#
+#   web_fetch × 웹 주소
+#
+#   web.fetch 의 required 는 url 하나이고 그 값은 앞 단계인 web.search 의
+#   결과에서 꺼내야 한다. 그런데 web.search 가 권한에 막혀
+#   ("MCP tool 'web-search/web.search' is not applied for this user")
+#   응답 모양을 한 번도 못 봤다. **모르면 배선을 적지 않는다.**
+#   예전에는 {url: @arg} 라고 적혀 있었다. 발화에서 온 말을 URL 로 쓰는
+#   것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
+#   recipe 050(말한 키워드 -> 웹 검색 -> 웹 문서 가져오기)이 여기 걸린다.
+#
+# 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
+# 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가
+# 생기지 않는다.

@@ -1,7 +1,9 @@
-"""wiring.yaml 에서 판 배선표가 코드에 남은 표와 같은가.
+"""wiring.yaml 을 판 것이 배선표가 되는가.
 
-**이것이 1-a 의 증거다.** 배선을 코드에서 데이터로 뺐는데, 뺀 것이 같은 것인지
-는 줄 수로는 알 수 없다. dict 를 통째로 맞댄다 — 키도 값도 차례도.
+**1-a 의 증거는 대보는 것이었다.** 배선을 코드에서 데이터로 뺐는데, 뺀 것이
+같은 것인지는 줄 수로는 알 수 없어 코드에 표를 한 벌 남겨 두고 dict 를 통째로
+맞댔다 — 키도 값도 차례도 같았다. 1-b 에서 코드 표를 지우면서 그 시험 셋도
+함께 지웠다. 대볼 것이 없어졌다. 남은 아홉은 로더가 지켜야 할 것을 잰다.
 
 판정(check_resolve)은 안 잰다. 배선은 프롬프트에 안 실리고 이번 변경은 같은
 dict 를 다른 데서 만들 뿐이다. dict 가 같다는 것이 판정을 재는 것보다 강한
@@ -40,35 +42,11 @@ def restore_tables():
     step_service._wiring_mtime = mtime
 
 
-def test_tool_of_from_yaml_equals_table_in_code():
-    """TOOL_OF 가 코드의 표와 값까지 같다."""
-    assert step_service.TOOL_OF == step_service._TOOL_OF_IN_CODE
-
-
-def test_step_of_from_yaml_equals_table_in_code():
-    """STEP_OF 가 코드의 표와 값까지 같다.
-
-    키가 (노드, 받는 타입) 짝이다. YAML 은 짝을 키로 못 써서 두 겹으로 적고
-    로더가 묶는다 — 그 묶는 일이 맞았는지가 여기서 걸린다.
-    """
-    assert step_service.STEP_OF == step_service._STEP_OF_IN_CODE
-
-
-def test_wiring_keeps_the_order_of_the_table_in_code():
-    """차례도 같다.
-
-    tools/check_inputs.py 가 STEP_OF 를 순서대로 찍는다. 값이 같아도 차례가
-    달라지면 계기판 출력이 달라지고, 그러면 전후를 맞댈 수 없다.
-    """
-    assert list(step_service.TOOL_OF) == list(step_service._TOOL_OF_IN_CODE)
-    assert list(step_service.STEP_OF) == list(step_service._STEP_OF_IN_CODE)
-
-
 def test_arg_field_is_a_pair_not_a_list():
     """arg_field 는 짝이다.
 
     YAML 은 목록으로만 적을 수 있어 로더가 튜플로 바꾼다. 목록으로 남으면
-    _by_argument 는 그대로 돌지만 위 두 시험의 dict 비교가 어긋난다.
+    _by_argument 는 그대로 돌지만 짝으로 푸는 자리가 조용히 어긋난다.
     """
     wiring = step_service.STEP_OF[("get_railway_lines", "place_name")]
     assert wiring["arg_field"] == (step_service.RAILWAY_LINE_SUFFIX, "railwayName")
