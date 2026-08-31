@@ -145,7 +145,7 @@ def empty():
 
 
 # ================================================================ 기록
-def test_기록이_터져도_이벤트는_하나도_안_빠진다(monkeypatch):
+def test_no_event_is_lost_even_when_recording_blows_up(monkeypatch):
     """답이 먼저다. 기록은 이벤트가 다 나간 뒤에 도는 일이고 터져도 삼킨다."""
 
     def broken(answer, nodes):
@@ -158,14 +158,14 @@ def test_기록이_터져도_이벤트는_하나도_안_빠진다(monkeypatch):
     assert recent_service.since()["turns"] == []
 
 
-def test_답을_못_본_회차는_안_남는다():
+def test_a_turn_that_never_saw_an_answer_is_not_kept():
     """중간에 끊긴 흐름은 남길 답이 없다."""
     turn_of("오송역 CCTV 보여줘", executed()[:4], resolve=resolved())
 
     assert recent_service.since()["turns"] == []
 
 
-def test_회차가_스물을_넘으면_오래된_것부터_버린다():
+def test_exceeding_twenty_turns_evicts_the_oldest_first():
     for number in range(recent_service.MAX_TURNS + 5):
         turn_of(f"발화 {number}", executed(), resolve=resolved())
 
@@ -175,7 +175,7 @@ def test_회차가_스물을_넘으면_오래된_것부터_버린다():
     assert everything[-1]["utterance"] == f"발화 {recent_service.MAX_TURNS + 4}"
 
 
-def test_회차_번호는_늘기만_한다():
+def test_turn_numbers_only_ever_increase():
     """버려진 회차의 번호를 다시 쓰지 않는다. 화면이 이것으로 새 것을 안다."""
     for number in range(recent_service.MAX_TURNS + 5):
         turn_of(f"발화 {number}", executed(), resolve=resolved())
@@ -184,7 +184,7 @@ def test_회차_번호는_늘기만_한다():
 
 
 # ================================================================ 창구
-def test_since_를_주면_그보다_큰_것만_온다():
+def test_giving_since_returns_only_what_is_greater():
     turn_of("첫 발화", executed(), resolve=resolved())
     turn_of("둘째 발화", executed(), resolve=resolved())
     turn_of("셋째 발화", executed(), resolve=resolved())
@@ -194,7 +194,7 @@ def test_since_를_주면_그보다_큰_것만_온다():
     assert [turn["utterance"] for turn in fresh] == ["둘째 발화", "셋째 발화"]
 
 
-def test_since_가_지금_번호면_빈_목록이다():
+def test_since_at_the_current_number_gives_an_empty_list():
     turn_of("첫 발화", executed(), resolve=resolved())
 
     now = recent_service.since()
@@ -202,11 +202,11 @@ def test_since_가_지금_번호면_빈_목록이다():
     assert recent_service.since(now["seq"])["turns"] == []
 
 
-def test_아무것도_안_넣었으면_번호가_0_이고_목록이_빈다():
+def test_with_nothing_put_in_the_number_is_0_and_the_list_is_empty():
     assert recent_service.since() == {"seq": 0, "turns": []}
 
 
-def test_since_를_안_주면_마지막_몇_회차만_온다():
+def test_without_since_only_the_last_few_turns_come():
     for number in range(recent_service.TAIL + 3):
         turn_of(f"발화 {number}", executed(), resolve=resolved())
 
@@ -214,7 +214,7 @@ def test_since_를_안_주면_마지막_몇_회차만_온다():
 
 
 # ================================================================ 무엇이 남는가
-def test_축_셋과_후보가_해석에서_그대로_온다():
+def test_the_three_axes_and_the_candidates_come_verbatim_from_the_resolve():
     turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
 
     turn = recent_service.since()["turns"][-1]
@@ -226,7 +226,7 @@ def test_축_셋과_후보가_해석에서_그대로_온다():
     assert turn["argument"] == "오송역"
 
 
-def test_되묻기도_후보를_그대로_남긴다():
+def test_a_clarify_keeps_its_candidates_verbatim_too():
     """화면이 되묻기 회차에서도 후보 경로를 강조할 수 있어야 한다."""
     turn_of(
         "오송역 인구 구성 알려줘",
@@ -242,7 +242,7 @@ def test_되묻기도_후보를_그대로_남긴다():
     assert turn["candidate_recipe_ids"] == ["recipe_011", "recipe_045"]
 
 
-def test_고르기_회차는_run_에서_recipe_를_얻는다():
+def test_a_choice_turn_gets_its_recipe_from_run():
     """되묻기 뒤에 번호로 고르면 해석을 안 거친다. 그때는 run 만 지나간다."""
     turn_of("2번", executed(), ran=("recipe_045", "오송역"))
 
@@ -253,7 +253,7 @@ def test_고르기_회차는_run_에서_recipe_를_얻는다():
     assert turn["argument"] == "오송역"
 
 
-def test_회차_밖에서_부른_해석은_아무것도_안_남긴다():
+def test_a_resolve_called_outside_a_turn_keeps_nothing():
     """Streamlit 이 부르는 POST /resolve 는 회차가 아니다."""
     recent_service._note_resolve(resolved())
 
@@ -261,7 +261,7 @@ def test_회차_밖에서_부른_해석은_아무것도_안_남긴다():
 
 
 # ================================================================ 단계 줄
-def test_단계_줄을_답에_적힌_그대로_담는다():
+def test_step_lines_are_held_verbatim_as_written_in_the_answer():
     """요약하는 코드가 둘이 되면 한쪽이 raw JSON 을 흘린다."""
     turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
 
@@ -270,7 +270,7 @@ def test_단계_줄을_답에_적힌_그대로_담는다():
     assert lines == ANSWER.splitlines()[2:]
 
 
-def test_단계_줄에_붙는_노드는_도구_단계다():
+def test_the_node_attached_to_a_step_line_is_a_tool_step():
     """앞머리의 해석 단계(node="resolve")가 첫 줄에 붙으면 안 된다."""
     turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
 
@@ -279,7 +279,7 @@ def test_단계_줄에_붙는_노드는_도구_단계다():
     assert nodes == ["n_geocode", "n_cctv"]
 
 
-def test_한_단계가_여러_줄이면_통째로_한_덩이다():
+def test_a_step_of_several_lines_stays_one_block_entirely():
     """문서 조각을 떼어 내면 화면에서 「문서에서 찾아온다」가 안 보인다."""
     turn_of(
         "문서에서 철도안전법 관련 내용 찾아줘",
@@ -298,7 +298,7 @@ def test_한_단계가_여러_줄이면_통째로_한_덩이다():
     assert turn["steps"][0]["line"] == "\n".join(RAG_ANSWER.splitlines()[2:])
 
 
-def test_머리말은_첫_단계_줄_앞까지다():
+def test_the_preamble_runs_up_to_the_first_step_line():
     turn_of(
         "문서에서 철도안전법 관련 내용 찾아줘",
         [{"type": "result", "answer": RAG_ANSWER, "commands": []}],
@@ -308,7 +308,7 @@ def test_머리말은_첫_단계_줄_앞까지다():
     assert recent_service.since()["turns"][-1]["head"] == "철도안전법 문서를 조회했습니다."
 
 
-def test_단계가_없으면_답이_통째로_머리말이다():
+def test_with_no_steps_the_whole_answer_is_the_preamble():
     """되묻기 회차의 후보 목록이 잘려 나가면 무엇을 고를지가 안 보인다."""
     turn_of(
         "오송역 인구 구성 알려줘",
@@ -319,7 +319,7 @@ def test_단계가_없으면_답이_통째로_머리말이다():
     assert recent_service.since()["turns"][-1]["head"] == CLARIFY_ANSWER
 
 
-def test_되묻기_답의_후보_줄은_단계가_아니다():
+def test_candidate_lines_in_a_clarify_answer_are_not_steps():
     """번호가 붙어 있어도 도구를 부른 것이 아니다."""
     turn_of(
         "오송역 인구 구성 알려줘",
@@ -331,7 +331,7 @@ def test_되묻기_답의_후보_줄은_단계가_아니다():
 
 
 # ================================================================ raw JSON
-def test_좌표_배열을_든_회차에도_geojson_이_안_샌다():
+def test_geojson_never_leaks_even_in_a_turn_holding_coordinate_arrays():
     """commands 를 아예 안 읽는다. 이 저장소의 계약이다."""
     turn_of("오송역 CCTV 보여줘", executed(commands=GEOJSON_COMMANDS), resolve=resolved())
 
@@ -341,14 +341,14 @@ def test_좌표_배열을_든_회차에도_geojson_이_안_샌다():
         assert leaked not in body
 
 
-def test_회차에_commands_칸_자체가_없다():
+def test_a_turn_has_no_commands_field_at_all():
     turn_of("오송역 CCTV 보여줘", executed(commands=GEOJSON_COMMANDS), resolve=resolved())
 
     assert "commands" not in recent_service.since()["turns"][-1]
 
 
 # ================================================================ 엔드포인트
-def test_recent_창구가_지금_번호와_회차를_함께_준다():
+def test_the_recent_endpoint_gives_the_current_number_together_with_the_turns():
     from demo.api.main import app
 
     turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
@@ -360,7 +360,7 @@ def test_recent_창구가_지금_번호와_회차를_함께_준다():
     assert payload["turns"][0]["utterance"] == "오송역 CCTV 보여줘"
 
 
-def test_recent_창구가_since_를_받는다():
+def test_the_recent_endpoint_accepts_since():
     from demo.api.main import app
 
     turn_of("첫 발화", executed(), resolve=resolved())

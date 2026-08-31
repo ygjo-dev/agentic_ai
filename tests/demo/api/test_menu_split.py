@@ -54,7 +54,7 @@ def spoken_recipes() -> set:
     return set(ontology_service.recipe_ids()) - starting_at(*step_service.CONTEXT_STARTS)
 
 
-def test_평범한_발화는_화면_recipe_를_아예_안_본다():
+def test_an_ordinary_utterance_never_even_sees_the_screen_recipes():
     """menu 가 길어져 판정이 16 내린 것이 이번 변경의 까닭이다.
 
     문맥이 와 있어도 발화가 화면을 안 가리키면 화면 줄은 실리지 않는다.
@@ -64,14 +64,14 @@ def test_평범한_발화는_화면_recipe_를_아예_안_본다():
     assert recipes_in(menu) == spoken_recipes()
 
 
-def test_문맥이_아예_없으면_기존_마흔이다():
+def test_no_context_at_all_gives_the_spoken_start_recipes():
     """문맥을 안 보내는 부름은 이 변경 전과 같은 menu 를 봐야 한다."""
     menu = resolve_service._menu_for("오송역 CCTV 보여줘", None)
 
     assert recipes_in(menu) == spoken_recipes()
 
 
-def test_화면을_가리켜도_값이_없으면_기존_마흔이다():
+def test_pointing_at_the_screen_without_values_gives_the_spoken_start_recipes():
     """없는 것을 제안하면 LLM 이 고르고 나서 후보에서 지워진다.
 
     값이 있는지는 이미 있는 context_starts 가 센다. 새 기준을 만들지 않는다.
@@ -81,7 +81,7 @@ def test_화면을_가리켜도_값이_없으면_기존_마흔이다():
     assert recipes_in(menu) == spoken_recipes()
 
 
-def test_보이는_범위만_왔으면_찍은_지점_recipe_는_안_실린다():
+def test_visible_extent_alone_does_not_carry_the_picked_point_recipes():
     """저쪽 평상시(우클릭 전)가 이 자리다.
 
     찍은 지점에서 출발하는 recipe 는 그때 골라도 좌표가 없어 못 쓴다.
@@ -92,14 +92,14 @@ def test_보이는_범위만_왔으면_찍은_지점_recipe_는_안_실린다():
     assert not recipes_in(menu) & starting_at("picked_point")
 
 
-def test_둘_다_왔으면_화면_recipe_가_다_실린다():
+def test_both_arriving_carries_every_screen_recipe():
     """우클릭 뒤에는 찍은 지점과 보이는 범위가 함께 후보가 된다."""
     menu = resolve_service._menu_for("여기 CCTV 보여줘", BOTH)
 
     assert recipes_in(menu) == starting_at("picked_point", "visible_extent")
 
 
-def test_가른_menu_는_어느_쪽이든_menu_yaml_보다_짧다():
+def test_a_split_menu_is_shorter_than_menu_yaml_either_way():
     """짧게 만드는 것이 이번 변경의 목적이다."""
     whole = load_menu()
 
@@ -111,7 +111,7 @@ def test_가른_menu_는_어느_쪽이든_menu_yaml_보다_짧다():
         assert len(resolve_service._menu_for(utterance, context)) < len(whole)
 
 
-def test_가른_menu_도_그대로_yaml_이다():
+def test_a_split_menu_is_still_valid_yaml():
     """머리말이 남아야 프롬프트에 실린 것을 사람이 읽을 수 있다."""
     parsed = yaml.safe_load(resolve_service._menu_for("여기 CCTV 보여줘", BOTH))
 
@@ -119,7 +119,7 @@ def test_가른_menu_도_그대로_yaml_이다():
     assert parsed["recipes"]
 
 
-def test_남은_줄이_menu_yaml_과_한_글자도_다르지_않다():
+def test_the_remaining_lines_differ_from_menu_yaml_by_not_one_character():
     """menu.yaml 을 안 고친다. 읽은 문자열에서 블록을 뺄 뿐이다."""
     whole = load_menu()
     split = resolve_service._menu_for("여기 CCTV 보여줘", BOTH)
@@ -128,7 +128,7 @@ def test_남은_줄이_menu_yaml_과_한_글자도_다르지_않다():
         assert line in whole.splitlines()
 
 
-def test_말로_하는_서른하나에_화면_낱말이_하나도_안_걸린다():
+def test_not_one_screen_word_matches_the_thirty_one_spoken_utterances():
     """낱말을 부분 문자열로 찾으므로 헛걸림이 생기면 기존 판정이 흔들린다.
 
     "오송역 근처" 는 "이 근처" 가 아니고 "오송역 위치" 도 "이 위치" 가 아니다.
@@ -149,7 +149,7 @@ def test_말로_하는_서른하나에_화면_낱말이_하나도_안_걸린다(
     assert 걸린_것 == []
 
 
-def test_정답표의_화면_다섯은_다_화면_낱말에_걸린다():
+def test_all_five_screen_utterances_in_the_answer_key_match_a_screen_word():
     """하나라도 안 걸리면 그 줄은 화면 recipe 를 아예 못 보고 재어진다.
 
     걸려야 menu 에 화면 recipe 가 실린다. 안 걸리면 「기존 마흔」을 보게 되어
@@ -164,7 +164,7 @@ def test_정답표의_화면_다섯은_다_화면_낱말에_걸린다():
     assert all(resolve_service._points_at_screen(u) for u in 화면_다섯)
 
 
-def test_화면을_가리키는_발화_넷은_다_걸린다():
+def test_all_four_utterances_pointing_at_the_screen_match():
     """시연에서 쓸 말투다. 하나라도 빠지면 화면 recipe 를 아예 못 본다."""
     for utterance in (
         "지금 보이는 곳 CCTV 보여줘",
@@ -208,7 +208,7 @@ def menu_block(prompt: str) -> str:
     return after.split("\n[", 1)[0]
 
 
-def test_화면을_가리키는_발화는_프롬프트에_화면_줄만_싣는다():
+def test_an_utterance_pointing_at_the_screen_carries_only_the_screen_lines_in_the_prompt():
     """단위가 아니라 실제로 채워진 프롬프트를 본다.
 
     _menu_for 가 맞아도 _resolve_full 이 안 쓰면 아무것도 안 달라진다.
@@ -221,7 +221,7 @@ def test_화면을_가리키는_발화는_프롬프트에_화면_줄만_싣는�
     assert 실린_것 == starting_at("picked_point", "visible_extent")
 
 
-def test_평범한_발화는_프롬프트에_기존_마흔만_싣는다():
+def test_an_ordinary_utterance_carries_only_the_spoken_start_recipes_in_the_prompt():
     llm = OneShotLLM(ANSWER)
 
     resolve_service.resolve("오송역 CCTV 보여줘", llm, 200, context=BOTH)
@@ -232,14 +232,14 @@ def test_평범한_발화는_프롬프트에_기존_마흔만_싣는다():
 # ── 거르는 함수 ─────────────────────────────────────────────────────
 
 
-def test_인자를_안_주면_menu_yaml_원문_그대로다():
+def test_without_an_argument_it_is_the_menu_yaml_original_verbatim():
     """옛 부름이 한 글자도 달라지면 안 된다. _candidate_lines 가 그것을 쓴다."""
     from paths import MENU_YAML_PATH
 
     assert load_menu() == MENU_YAML_PATH.read_text(encoding="utf-8")
 
 
-def test_없는_id_를_줘도_오류가_아니라_없는_것으로_본다():
+def test_an_unknown_id_is_treated_as_absent_rather_than_an_error():
     """온톨로지가 바뀌는 중에 프롬프트가 죽는 것보다 낫다."""
     menu = load_menu({"recipe_없음"})
 
@@ -250,7 +250,7 @@ def test_없는_id_를_줘도_오류가_아니라_없는_것으로_본다():
 # ── /resolve 가 문맥을 받는가 ───────────────────────────────────────
 
 
-def test_resolve_엔드포인트가_본문으로_문맥을_받는다(monkeypatch):
+def test_the_resolve_endpoint_takes_the_context_in_the_request_body(monkeypatch):
     """Streamlit 과 check_resolve 가 그 길로 보낸다.
 
     저쪽 화면은 /chat 으로 오고 이 자리를 안 지난다.
@@ -274,7 +274,7 @@ def test_resolve_엔드포인트가_본문으로_문맥을_받는다(monkeypatch
     assert 받은_것["context"] == BBOX_ONLY
 
 
-def test_문맥을_안_보내면_None_으로_들어간다(monkeypatch):
+def test_not_sending_a_context_arrives_as_None(monkeypatch):
     """--context none 과 옛 부름이 이 자리를 지난다."""
     from fastapi.testclient import TestClient
 
@@ -297,7 +297,7 @@ def test_문맥을_안_보내면_None_으로_들어간다(monkeypatch):
 # ── 화면과 도구가 같은 고정값을 쓰는가 ──────────────────────────────
 
 
-def test_check_resolve_의_세_가지_문맥():
+def test_the_three_contexts_of_check_resolve():
     """없음 · bbox 만 · 둘 다. 기본은 both 다 — 저쪽에서 우클릭한 뒤와 같다.
 
     2026-08-30 에 기본을 bbox 에서 both 로 바꿨다. bbox 뿐이면 찍은 지점
@@ -321,7 +321,7 @@ def test_check_resolve_의_세_가지_문맥():
         check_resolve.CONTEXT = check_resolve.CONTEXT_BOTH
 
 
-def test_화면과_도구가_같은_bbox_를_쓴다():
+def test_the_screen_and_the_tool_use_the_same_bbox():
     """둘이 어긋나면 "시연과 같은 조건" 이라는 말이 거짓이 된다."""
     from demo.ui import config as ui_config
     from tools import check_resolve

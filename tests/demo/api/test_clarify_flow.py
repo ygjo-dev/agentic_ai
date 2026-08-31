@@ -100,7 +100,7 @@ def chat(text, session_id=SESSION):
     )
 
 
-def test_되묻기_뒤_번호를_말하면_그_recipe_를_부른다(monkeypatch, calls):
+def test_saying_a_number_after_a_clarify_calls_that_recipe(monkeypatch, calls):
     """이번 작업의 핵심. 지금은 "1번" 이 "요청이 없습니다" 로 끝남."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -112,7 +112,7 @@ def test_되묻기_뒤_번호를_말하면_그_recipe_를_부른다(monkeypatch,
     ]
 
 
-def test_고를_때는_resolve_를_다시_안_부른다(monkeypatch, calls):
+def test_choosing_does_not_call_resolve_again(monkeypatch, calls):
     """무엇을 부를지는 이미 정해졌음. 다시 부르면 느리고 답이 흔들림."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -122,7 +122,7 @@ def test_고를_때는_resolve_를_다시_안_부른다(monkeypatch, calls):
     assert calls["resolve"] == ["청주시 인구 알려줘"]
 
 
-def test_번호와_이름을_함께_말해도_고른_것으로_본다(monkeypatch, calls):
+def test_the_number_together_with_the_name_still_counts_as_a_choice(monkeypatch, calls):
     """화면 줄을 그대로 옮겨 적는 꼴임. 지금은 이것이 새 발화로 처리됨."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -133,7 +133,7 @@ def test_번호와_이름을_함께_말해도_고른_것으로_본다(monkeypatc
     assert calls["resolve"] == ["청주시 인구 알려줘"]
 
 
-def test_무엇을_골랐는지_답에_한_줄_보인다(monkeypatch, calls):
+def test_what_was_chosen_shows_as_one_line_in_the_answer(monkeypatch, calls):
     """사람이 잘못 고른 것을 그 자리에서 알아야 함."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -144,7 +144,7 @@ def test_무엇을_골랐는지_답에_한_줄_보인다(monkeypatch, calls):
     assert events[-1]["answer"].endswith("인구 통계를 조회했습니다.")
 
 
-def test_고르기가_아니면_새_발화로_해석한다(monkeypatch, calls):
+def test_what_is_not_a_choice_is_resolved_as_a_new_utterance(monkeypatch, calls):
     """멀쩡한 발화를 삼키면 안 됨. 지금까지와 똑같이 돌아야 함."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -155,7 +155,7 @@ def test_고르기가_아니면_새_발화로_해석한다(monkeypatch, calls):
     assert calls["run"] == []
 
 
-def test_고르기가_아니면_직전_되묻기를_지운다(monkeypatch, calls):
+def test_what_is_not_a_choice_clears_the_previous_clarify(monkeypatch, calls):
     """두 발화 전의 되묻기를 나중에 고르는 일이 없어야 함.
 
     화면 실측 6 → 7 이 이 순서다. 되묻기 뒤에 딴 것을 물어 그것이 실행되면,
@@ -179,7 +179,7 @@ def test_고르기가_아니면_직전_되묻기를_지운다(monkeypatch, calls
     assert [call["recipe_id"] for call in calls["run"]] == ["recipe_002"]
 
 
-def test_되묻기가_없었으면_번호도_새_발화다(monkeypatch, calls):
+def test_a_number_is_a_new_utterance_too_when_there_was_no_clarify(monkeypatch, calls):
     """직전에 되묻기가 없으면 어떤 문구도 고르기가 아님."""
     answering(monkeypatch, calls)
 
@@ -188,7 +188,7 @@ def test_되묻기가_없었으면_번호도_새_발화다(monkeypatch, calls):
     assert calls["resolve"] == ["1번"]
 
 
-def test_후보_수를_벗어난_번호는_새_발화다(monkeypatch, calls):
+def test_a_number_outside_the_candidate_count_is_a_new_utterance(monkeypatch, calls):
     """후보가 둘인데 "9번" 이면 무엇을 고른 것인지 알 수 없음."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -199,7 +199,7 @@ def test_후보_수를_벗어난_번호는_새_발화다(monkeypatch, calls):
     assert calls["run"] == []
 
 
-def test_세션이_빈_문자열이면_기억하지_않는다(monkeypatch, calls):
+def test_an_empty_session_string_does_not_remember(monkeypatch, calls):
     """저쪽 화면이 세션을 안 보내면 지금까지와 똑같이 동작해야 함."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘", session_id="")
@@ -210,7 +210,7 @@ def test_세션이_빈_문자열이면_기억하지_않는다(monkeypatch, calls
     assert calls["run"] == []
 
 
-def test_인자가_없으면_고른_뒤에도_실행하지_않는다(monkeypatch, calls):
+def test_without_an_argument_nothing_runs_even_after_choosing(monkeypatch, calls):
     """되묻기 때 인자를 못 뽑았으면 고른 뒤에도 없음. 안내만 함."""
     answering(monkeypatch, calls, argument=None)
     chat("인구 알려줘")
@@ -222,7 +222,7 @@ def test_인자가_없으면_고른_뒤에도_실행하지_않는다(monkeypatch
     assert events[-1]["answer"].startswith("고르신 것 — 1 인구 통계 조회")
 
 
-def test_SELECT_는_되묻기를_안_남긴다(monkeypatch, calls):
+def test_SELECT_stores_no_clarify(monkeypatch, calls):
     """번호를 화면에 안 보였음. 그 뒤의 "1번" 은 새 발화임."""
     answering(monkeypatch, calls, status="SELECT", recipe_id="recipe_011")
     chat("청주시 인구 통계 알려줘")
@@ -232,7 +232,7 @@ def test_SELECT_는_되묻기를_안_남긴다(monkeypatch, calls):
     assert calls["resolve"][-1] == "1번"
 
 
-def test_고른_뒤에는_되묻기가_남지_않는다(monkeypatch, calls):
+def test_no_clarify_remains_after_choosing(monkeypatch, calls):
     """한 번 쓰면 지움. 남으면 같은 것이 두 번 실행됨."""
     answering(monkeypatch, calls)
     chat("청주시 인구 알려줘")
@@ -247,7 +247,7 @@ def test_고른_뒤에는_되묻기가_남지_않는다(monkeypatch, calls):
 # ── 스위치 ──────────────────────────────────────────────────────────
 
 
-def test_환경변수가_없으면_켬이라_번호가_실행된다(monkeypatch, calls):
+def test_no_env_var_means_on_so_a_number_runs(monkeypatch, calls):
     """기본이 켬임. 이것이 깨지면 시연 화면이 바뀜."""
     monkeypatch.delenv(clarify_service.CHOICE_ENV, raising=False)
     answering(monkeypatch, calls)
@@ -260,7 +260,7 @@ def test_환경변수가_없으면_켬이라_번호가_실행된다(monkeypatch,
     ]
 
 
-def test_끄면_번호가_새_발화로_간다(monkeypatch, calls):
+def test_turning_it_off_sends_a_number_to_a_new_utterance(monkeypatch, calls):
     """「서른넷째」 이전과 같은 동작임."""
     monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
     answering(monkeypatch, calls)
@@ -272,7 +272,7 @@ def test_끄면_번호가_새_발화로_간다(monkeypatch, calls):
     assert calls["run"] == []
 
 
-def test_끄면_기억해_두지도_않는다(monkeypatch, calls):
+def test_turning_it_off_does_not_even_remember(monkeypatch, calls):
     """끄는 까닭이 세션을 안 쓰는 것임. 고르기만 막으면 끈 것이 아님."""
     monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
     answering(monkeypatch, calls)
@@ -281,7 +281,7 @@ def test_끄면_기억해_두지도_않는다(monkeypatch, calls):
     assert clarify_service.take(SESSION) is None
 
 
-def test_끄고_다시_켜도_앞의_되묻기가_안_살아난다(monkeypatch, calls):
+def test_turning_it_off_and_on_again_does_not_revive_the_earlier_clarify(monkeypatch, calls):
     """끈 동안에는 남긴 것이 없음. 켠 뒤 첫 번호는 새 발화임."""
     monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
     answering(monkeypatch, calls)
@@ -294,7 +294,7 @@ def test_끄고_다시_켜도_앞의_되묻기가_안_살아난다(monkeypatch, 
     assert calls["run"] == []
 
 
-def test_끔이_되묻기_문구를_바꾸지_않는다(monkeypatch, calls):
+def test_being_off_does_not_change_the_clarify_wording(monkeypatch, calls):
     """끄는 것은 고르기뿐임. 화면에 보이는 되묻기는 그대로여야 함."""
     answering(monkeypatch, calls)
     켬 = chat("청주시 인구 알려줘")[-1]["answer"]
@@ -305,7 +305,7 @@ def test_끔이_되묻기_문구를_바꾸지_않는다(monkeypatch, calls):
     assert 켬 == 끔
 
 
-def test_환경변수가_0_이_아니면_켬이다(monkeypatch, calls):
+def test_the_env_var_not_being_0_means_on(monkeypatch, calls):
     """끄는 값은 "0" 하나임. 다른 값은 지금 길로 감."""
     monkeypatch.setenv(clarify_service.CHOICE_ENV, "1")
     answering(monkeypatch, calls)

@@ -68,7 +68,7 @@ def collect(events):
     return asyncio.run(pump())
 
 
-def test_발화에서_온_값이_arg_자리에_들어간다(monkeypatch):
+def test_a_value_from_the_utterance_goes_into_the_arg_slot(monkeypatch):
     """@place 를 @arg 로 바꾼 뒤에도 장소 발화가 그대로 돌아야 함."""
     wire(monkeypatch, ["spoken_place", "geocode_place"])
 
@@ -77,7 +77,7 @@ def test_발화에서_온_값이_arg_자리에_들어간다(monkeypatch):
     assert plan["steps"][0]["input"]["query"] == "오송역"
 
 
-def test_장소가_아닌_값도_같은_자리에_들어간다(monkeypatch):
+def test_a_value_that_is_not_a_place_goes_into_the_same_slot(monkeypatch):
     """표시가 뜻하는 것은 "발화에서 온 값" 이지 "장소" 가 아님.
 
     키워드를 받는 도구도 같은 칸을 쓴다. 그것을 막으려고 이름을 바꿨음.
@@ -93,7 +93,7 @@ def test_장소가_아닌_값도_같은_자리에_들어간다(monkeypatch):
     assert plan["steps"][0]["input"]["query"] == "철도 안전"
 
 
-def test_문서_검색은_발화_값과_조각_수를_함께_보낸다(monkeypatch):
+def test_document_search_sends_the_utterance_value_together_with_the_chunk_count(monkeypatch):
     """k 를 안 보내면 기본 4 조각이라 화면이 고를 두셋의 여지가 좁음.
 
     값 6 의 근거는 step_service 의 배선 주석과 NOTES.md 「서른한째」에 있음.
@@ -108,7 +108,7 @@ def test_문서_검색은_발화_값과_조각_수를_함께_보낸다(monkeypat
     assert plan["steps"][0]["input"]["k"] >= 1
 
 
-def test_중첩된_input_안까지_바뀐다(monkeypatch):
+def test_substitution_reaches_inside_a_nested_input(monkeypatch):
     """도구에 따라 input 이 한 겹이 아님. dict 안에도 list 안에도 있을 수 있음."""
     wire(
         monkeypatch,
@@ -129,7 +129,7 @@ def test_중첩된_input_안까지_바뀐다(monkeypatch):
     }
 
 
-def test_arg_와_prev_가_섞여도_각각_제_값이_된다(monkeypatch):
+def test_arg_and_prev_mixed_each_become_their_own_value(monkeypatch):
     """둘은 다른 것을 가리킴. @arg 는 발화, $prev 는 앞 step 의 결과."""
     wire(
         monkeypatch,
@@ -162,7 +162,7 @@ def test_arg_와_prev_가_섞여도_각각_제_값이_된다(monkeypatch):
 # 걸리는 값과 안 걸리는 값을 함께 본다.
 
 
-def test_노선_이름은_railwayName_으로_간다(monkeypatch):
+def test_a_railway_line_name_goes_to_railwayName(monkeypatch):
     """"…선" 으로 끝나면 노선 이름임. stationName 으로 보내면 0건임."""
     wire(monkeypatch, ["spoken_place", "get_railway_lines"])
 
@@ -171,7 +171,7 @@ def test_노선_이름은_railwayName_으로_간다(monkeypatch):
     assert plan["steps"][0]["input"] == {"railwayName": "경부선"}
 
 
-def test_역_이름은_stationName_그대로다(monkeypatch):
+def test_a_station_name_stays_on_stationName(monkeypatch):
     """이 줄이 원래 하던 일임. 깨지면 되던 발화가 0건이 됨."""
     wire(monkeypatch, ["spoken_place", "get_railway_lines"])
 
@@ -180,7 +180,7 @@ def test_역_이름은_stationName_그대로다(monkeypatch):
     assert plan["steps"][0]["input"] == {"stationName": "오송역"}
 
 
-def test_어느_쪽도_아닌_값은_안_옮긴다(monkeypatch):
+def test_a_value_that_is_neither_is_not_moved(monkeypatch):
     """"청주" 는 railwayName 으로 0건이고 stationName 으로 9건임(실측).
 
     자를 "…역" 으로 끝나는 것만으로 좁히지 않은 이유가 이것임.
@@ -192,7 +192,7 @@ def test_어느_쪽도_아닌_값은_안_옮긴다(monkeypatch):
     assert plan["steps"][0]["input"] == {"stationName": "청주"}
 
 
-def test_인자가_비면_칸이_안_바뀐다(monkeypatch):
+def test_an_empty_argument_leaves_the_field_unchanged(monkeypatch):
     """빈 값은 어떤 어미로도 안 끝남. 두 칸 다 안 보내는 길은 여기 없음."""
     wire(monkeypatch, ["spoken_place", "get_railway_lines"])
 
@@ -201,7 +201,7 @@ def test_인자가_비면_칸이_안_바뀐다(monkeypatch):
     assert list(plan["steps"][0]["input"]) == ["stationName"]
 
 
-def test_한_칸만_보낸다(monkeypatch):
+def test_only_one_field_is_sent(monkeypatch):
     """저쪽이 두 절을 AND 로 이어서 둘 다 보내면 같은 값일 때 0건임."""
     wire(monkeypatch, ["spoken_place", "get_railway_lines"])
 
@@ -210,7 +210,7 @@ def test_한_칸만_보낸다(monkeypatch):
         assert len(sent) == 1
 
 
-def test_철도_구간_형상은_안_갈린다(monkeypatch):
+def test_the_railway_section_geometry_is_not_split(monkeypatch):
     """그 도구는 sectionName 한 칸뿐임. arg_field 를 안 적었으니 안 움직여야 함."""
     wire(monkeypatch, ["spoken_place", "get_railway_section"])
 
@@ -219,7 +219,7 @@ def test_철도_구간_형상은_안_갈린다(monkeypatch):
     assert plan["steps"][0]["input"] == {"sectionName": "경부선"}
 
 
-def test_arg_field_가_없는_줄은_그대로다(monkeypatch):
+def test_a_wiring_line_without_arg_field_is_unchanged(monkeypatch):
     """지금 그 칸을 적은 줄이 하나뿐임. 나머지 서른다섯 줄이 안 흔들려야 함."""
     wire(monkeypatch, ["spoken_place", "geocode_place"])
 
@@ -228,7 +228,7 @@ def test_arg_field_가_없는_줄은_그대로다(monkeypatch):
     assert plan["steps"][0]["input"] == {"query": "경부선"}
 
 
-def test_arg_가_아닌_칸은_이름이_안_바뀐다(monkeypatch):
+def test_a_field_that_is_not_arg_does_not_get_renamed(monkeypatch):
     """옮기는 것은 발화 값이 든 칸 하나뿐임."""
     wire(
         monkeypatch,
@@ -248,7 +248,7 @@ def test_arg_가_아닌_칸은_이름이_안_바뀐다(monkeypatch):
     assert plan["steps"][0]["input"] == {"railwayName": "경부선", "limit": 5}
 
 
-def test_headline_의_arg_도_바뀐다(monkeypatch):
+def test_the_arg_in_the_headline_is_substituted_too(monkeypatch):
     """답 첫 줄에 그 값이 그대로 보임. 치환이 빠지면 화면에 {arg} 가 뜸."""
     wire(monkeypatch, ["spoken_place", "geocode_place", "find_cctv"])
 
@@ -257,7 +257,7 @@ def test_headline_의_arg_도_바뀐다(monkeypatch):
     assert plan["headline"] == "오송역 CCTV 를 조회했습니다."
 
 
-def test_인자가_머리말_안에_이미_있으면_앞에_안_붙인다(monkeypatch):
+def test_the_argument_is_not_prefixed_when_it_is_already_in_the_preamble(monkeypatch):
     """"전기차 충전소 데이터 검색해줘" 가 "전기차 충전소 전기차 충전소를 조회했습니다."
 
     틀이 "{arg} 전기차 충전소를 조회했습니다." 이고 인자도 "전기차 충전소" 라
@@ -270,7 +270,7 @@ def test_인자가_머리말_안에_이미_있으면_앞에_안_붙인다(monkey
     assert plan["headline"] == "전기차 충전소를 조회했습니다."
 
 
-def test_겹치지_않는_인자는_그대로_앞에_붙는다(monkeypatch):
+def test_a_non_overlapping_argument_is_still_prefixed(monkeypatch):
     """겹침을 앞머리로만 봄. 인자가 문장 가운데 낱말과 같아도 안 뺌.
 
     포함(substring)으로 보면 "역" 이 "국회의원 지역구" 안에 걸려 멀쩡한 인자가
@@ -309,7 +309,7 @@ def resolved(monkeypatch, **result):
     )
 
 
-def test_LLM_이_준_argument_를_먼저_쓴다(monkeypatch, no_execution):
+def test_the_argument_the_LLM_gave_is_used_first(monkeypatch, no_execution):
     """정규식이 못 잡는 발화도 이것으로 돎. "충북대" 는 끝 글자가 안 맞음."""
     resolved(monkeypatch, given="spoken_place", argument="충북대")
 
@@ -318,7 +318,7 @@ def test_LLM_이_준_argument_를_먼저_쓴다(monkeypatch, no_execution):
     assert no_execution["argument"] == "충북대"
 
 
-def test_argument_가_없으면_place_in_이_대신_돈다(monkeypatch, no_execution):
+def test_place_in_runs_instead_when_argument_is_absent(monkeypatch, no_execution):
     """대비책. LLM 이 인자를 빠뜨려도 장소 발화만은 여전히 돌아야 함."""
     resolved(monkeypatch, given="spoken_place", argument=None)
 
@@ -337,7 +337,7 @@ def test_argument_가_없으면_place_in_이_대신_돈다(monkeypatch, no_execu
     ],
     ids=["place", "keyword", "identifier", "given_없음"],
 )
-def test_둘_다_없으면_given_에_맞는_안내가_나간다(
+def test_with_neither_the_guidance_matching_given_goes_out(
     monkeypatch, no_execution, given, fragment
 ):
     """장소 문구 하나로 두면 "선거구 찾아줘" 에 장소를 대라고 답하게 됨.
@@ -368,7 +368,7 @@ def test_둘_다_없으면_given_에_맞는_안내가_나간다(
 # 않는 규칙(CLAUDE.md)이라 tools/check_wiring.py 의 A 가 그것을 센다.
 
 
-def test_앞_단계가_없으면_prev_칸을_빼고_부른다(monkeypatch):
+def test_with_no_previous_step_the_prev_field_is_dropped_from_the_call(monkeypatch):
     """멈추지 않고 그 칸만 빠져야 함.
 
     값을 지어내는 것보다 안 보내는 것이 낫다는 규칙이다. 그 칸이 required 면
@@ -391,7 +391,7 @@ def test_앞_단계가_없으면_prev_칸을_빼고_부른다(monkeypatch):
     assert "center" not in plan["steps"][0]["input"]
 
 
-def test_앞_단계가_없으면_inputAdapter_도_안_싣는다(monkeypatch):
+def test_with_no_previous_step_the_inputAdapter_is_not_carried_either(monkeypatch):
     """걸 중심 좌표가 사라졌음. 그대로 걸면 vendor 어댑터가 ValueError 를 올림.
 
     _point_radius_to_bbox_input 이 center/location 을 못 찾으면 예외다.
@@ -413,7 +413,7 @@ def test_앞_단계가_없으면_inputAdapter_도_안_싣는다(monkeypatch):
     assert "inputAdapter" not in plan["steps"][0]
 
 
-def test_앞_단계가_있으면_inputAdapter_를_그대로_싣는다(monkeypatch):
+def test_with_a_previous_step_the_inputAdapter_is_carried_verbatim(monkeypatch):
     """빼는 것은 앞 단계가 없을 때뿐임. geocode 뒤에서는 예전 그대로여야 함."""
     wire(monkeypatch, ["spoken_place", "geocode_place", "search_ev_stations"])
 
@@ -423,7 +423,7 @@ def test_앞_단계가_있으면_inputAdapter_를_그대로_싣는다(monkeypatc
     assert plan["steps"][1]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
 
 
-def test_빠지는_것은_prev_칸_하나뿐이다(monkeypatch):
+def test_only_the_prev_field_is_dropped(monkeypatch):
     """@arg 와 상수는 그대로 남아야 함. 통째로 비우는 것이 아님."""
     wire(
         monkeypatch,
@@ -440,7 +440,7 @@ def test_빠지는_것은_prev_칸_하나뿐이다(monkeypatch):
     assert plan["steps"][0]["input"] == {"query": "오송역", "limit": 50}
 
 
-def test_list_안의_prev_도_빠진다(monkeypatch):
+def test_a_prev_inside_a_list_is_dropped_too(monkeypatch):
     """중첩된 자리도 같은 규칙. dict 만 보고 list 를 빠뜨리면 참조가 새어 나감."""
     wire(
         monkeypatch,
