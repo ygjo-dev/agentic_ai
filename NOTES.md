@@ -96,6 +96,9 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 11  노드 등록을 다른 저장소로. 먼저 registration/ 으로 모은다(6번)
 12  화면 문맥으로 menu 를 가르는 임시방편 걷기 (다른 방 일)
 13  자리 옮기기가 남긴 낡은 글 다섯. 이름이 아니라 주장이라 안 고쳤다
+14  graph 라는 낱말이 셋을 가리킨다. 6′ 에서 이름을 가른다
+15  GET /graph 응답 중 셋은 지금 아무도 안 쓴다. 6 에서 함께 센다
+16  resolve 응답의 paths 를 도메인이 만든다. path_of 를 가르려면 여기가 먼저다
 ```
 
 - **7 · 좁히기 스위치를 걷어낸다.** `resolve_service.resolve` 의 스위치와
@@ -207,6 +210,39 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 
   **글을 고치는 일이라 자리 옮기기와 같이 하면 안 됐다.** 관문이
   「바뀐 줄이 전부 import 줄이거나 경로 문자열」인데 이 다섯은 둘 다 아니다.
+
+- **14 · `graph` 라는 낱말이 셋을 가리킨다** (2026-09-01 「일흔째」).
+
+  ```
+  ontology/graph.py        데이터. 노드와 관계
+  app/ui/graph_svg/        그림. SVG
+  GET /graph               types 와 colors 목록
+  ```
+
+  셋 다 다른 것이다. 6′(services 나누기)에서 이름을 가른다.
+
+  ★ **저쪽 웹은 `/chat/stream` 하나만 부른다** (2026-08-31 확인). `/graph`
+    이름을 바꿔도 저쪽은 안 깨진다. 부르는 곳은 Streamlit 의 `api_client` 뿐이다.
+
+- **15 · `GET /graph` 응답 중 셋은 지금 아무도 안 쓴다** (2026-09-01 「일흔째」).
+
+  `nodes` · `solid_edges` · `dotted_edges` 다. Streamlit 이 쓰는 것은
+  `types`(등록 폼)와 `colors` 뿐이다. 등록이 다른 저장소로 나가면 `types` 도
+  필요 없어질 수 있다. 6(registration)에서 함께 센다.
+
+- **16 · `resolve` 응답의 `paths` 를 도메인이 만든다** (2026-09-01 「일흔째」).
+
+  `orchestrator/resolve_service.py` 가 `graph.paths_for` 로
+  `{node_id, name, out_type}` 을 만들어 응답의 `paths` 칸에 싣는다. `name` 과
+  `out_type` 은 사람이 읽는 이름이라 **화면 것**이다. 도메인이 화면 payload 를
+  만들고 있는 자리다.
+
+  이것 때문에 「일흔째」에서 `path_of` 를 순서와 이름으로 못 갈랐다. 이 자리가
+  풀려야 도메인이 순서만 알면 되고, 그때 이름 붙이는 일이 창구로 간다.
+
+  ★ 지금 가르면 `POST /resolve` · `POST /chat` 응답 모양이 바뀐다. Streamlit 과
+    `dev/tools/check_resolve.py` 가 그 칸을 읽는다. **동작이 바뀌는 일(B)이다.**
+
 
 ### 지운 것을 되찾는 규칙
 
@@ -1784,6 +1820,210 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-01 (일흔째) · 폴더 정리 4·5 — 해석과 실행을 도메인으로 옮겼다
+
+무인 실행. 조건 — `refactor/vendor` · 시작 전 워킹 트리 깨끗함 ·
+되돌리는 태그 `before-domain-move` 를 시작 전에 박았다.
+
+**자리만 옮겼다. 동작을 하나도 안 바꿨다.** 파일은 전부 `git mv` 로 옮겼다.
+6(registration) · 6′(services 나누기) · 동작이 바뀌는 일(B)은 이번이 아니다.
+
+#### 1. 옮긴 것
+
+```
+4단계  app/api/services/resolve_service.py -> orchestrator/resolve_service.py  556줄
+       app/api/services/clarify_service.py -> orchestrator/clarify_service.py  239줄
+5단계  app/api/services/execute_service.py -> execution/execute_service.py     537줄
+       app/api/services/step_service.py    -> execution/step_service.py        660줄
+       app/api/services/gateway_client.py  -> execution/gateway_client.py       73줄
+       wiring.yaml                         -> execution/wiring.yaml            598줄
+```
+
+`app/api/services/` 에 남은 것은 넷이다 — `ontology_service` · `render_service` ·
+`node_service` · `recent_service`. 넷 다 화면이 부르는 창구다.
+
+`.gitignore` 에 `wiring.yaml` 이 걸리는 규칙은 없다. `*.yaml` 규칙도 없다.
+옮긴 뒤 `git status` 에 그대로 추적된 채로 나온다.
+
+`paths.py` 는 두 줄 — `WIRING_PATH` 와 그 위 주석의 경로 이름.
+
+#### 2. 함께 옮긴 시험 아홉
+
+고르는 규칙은 **「그 파일이 부르는 서비스 모듈이 전부 옮겨 가는 것뿐인가」** 다.
+
+```
+dev/tests/orchestrator/  test_verdict 116 · test_narrow 378 ·
+                         test_clarify_choice 290 · test_clarify_flow 317
+dev/tests/execution/     test_clarify_answer 208 · test_command_step 117 ·
+                         test_step_argument 457 · test_step_input_schema 140 ·
+                         test_wiring_yaml 208
+```
+
+**두 개는 안 옮겼다.** `test_menu_split` 과 `test_map_context` 는
+`ontology_service`(창구)도 함께 부르고 계층 둘 이상을 한 번에 재는 흐름
+시험이라 `dev/tests/app/api/` 에 뒀다.
+
+`test_step_input_schema.py` 의 `SCHEMA_PATH` 는 `parents[3]` 에서
+`parents[2]` 가 됐다. 폴더 깊이가 한 칸 얕아져서다. 안 고치면 `tools/probe_out`
+을 저장소 뿌리에서 찾아 여섯이 빨간불이 된다 (실제로 났다).
+
+#### 3. 안′ — 도메인이 창구를 부르지 않게 했다
+
+`ontology_service` 의 다섯을 **몸통 그대로** `ontology/graph.py` 로 옮겼다.
+
+```
+recipe_ids      3줄
+executable_in   9줄
+handed_types   19줄
+path_of        27줄
+paths_for       4줄
+```
+
+옮긴 뒤 원본과 글자까지 같은지 대봤다. `path_of` 의 규칙 두 줄만 더했다
+(이름을 여기서 붙이는 까닭). `ontology/graph.py` 316 -> 390줄.
+
+`ontology_service` 에는 셋을 **한 줄짜리 창구**로 남겼다 — `recipe_ids` ·
+`path_of` · `paths_for`. 셋 다 `app/` 안에서 부르는 곳이 있다
+(`render_service` · `node_service` · `dev/tools/check_wiring.py` · 화면 쪽 시험).
+`handed_types` 와 `executable_in` 은 `app/` 안에 부르는 곳이 하나도 없어
+남기지 않았다. **「app/ 안에서 온톨로지를 읽는 유일한 지점」 규칙은 그대로다** —
+`render_service` · `node_service` 가 여전히 `ontology_service` 만 부르는 것을
+확인했다. `app/` 안에서 `ontology` 를 직접 부르는 파일은 `ontology_service`
+하나뿐이다.
+
+#### 4. ★ `path_of` 를 안 갈랐다 — 판단이 갈린 자리
+
+프롬프트의 방향은 「도메인에는 순서만 주는 얇은 함수를 두고 이름 붙이는 것은
+`ontology_service` 에 남긴다」였다. 그대로 안 했다. 까닭 넷이다.
+
+**가) 순서만 주는 얇은 함수는 이미 있다.** `ontology/graph.recipe_nodes` 다.
+새로 만들 것이 없다.
+
+**나) 이름 붙이는 쪽을 `app/` 에 남길 수가 없다.** `paths_for` 가 만드는
+`{node_id, name, out_type}` 이 `POST /resolve` · `POST /chat` 응답의 `paths`
+칸에 **그대로 실린다.** 그것을 만드는 곳이 `resolve_service` 이고 그것이
+이번에 도메인으로 나갔다. 이름을 `app/` 에만 두면 도메인이 창구를 도로 부르거나
+같은 dict 를 두 곳에서 만들어야 한다. 프롬프트의 두 지시(「이름은 창구에 남긴다」
+와 「얇은 셋은 옮겨 간 쪽이 ontology 를 직접 부른다」)가 이 자리에서 서로
+어긋난다 — `paths_for` 가 곧 이름 붙이는 함수이기 때문이다.
+
+**다) 순서만 쓰는 자리를 `recipe_nodes` 로 갈아타면 재는 것이 달라진다.**
+도메인이 `path_of` 를 부르는 자리는 넷인데 그중 셋(step_service 둘 ·
+resolve_service `_starts_at` 하나)은 `node_id` 만 쓴다. 그런데
+`dev/tests/execution/test_step_argument.py` 의 `wire()` 가 가짜 경로를
+`path_of` 자리에 꽂는다. `recipe_nodes` 로 옮기면 `executable_in` 도
+`recipe_nodes` 를 부르므로 지금까지 **진짜 온톨로지를 보던 자리가 가짜를 보게
+된다.** 자리만 옮기는 일에서 할 것이 아니다.
+
+**라) 한 자리만 갈아타면 같은 것을 두 가지로 부르게 된다.** `_starts_at` 만은
+시험이 안 꽂는 자리라 안전하게 갈 수 있었지만, 그러면 네 자리 중 하나만
+다른 함수를 부른다.
+
+그래서 **이름을 만드는 몸통은 한 곳(`ontology/graph.path_of`)이고 순서를 아는
+곳도 한 곳(`recipe_nodes`)이다.** 두 곳에서 계산하지 않는다는 것만은 지켰다.
+가르는 일은 「나)」가 풀린 뒤에 해야 한다 — 아래 열린 과제 16 이다.
+
+#### 5. ★ `name` 을 꺼내 쓰는 도메인 자리 — 직접 센 값
+
+프롬프트는 「`node_id` 넷 · `name` 하나」라고 적었다. 직접 세니 그대로였다.
+
+```
+node_id  orchestrator/resolve_service.py:188   _starts_at
+         execution/step_service.py:458         unwired
+         execution/step_service.py:514         plan
+         execution/execute_service.py:411      _unwired_answer          넷
+name     execution/execute_service.py:411      _unwired_answer          하나
+out_type 없음                                                            0
+```
+
+**그 한 자리는 도메인이 사람이 읽는 이름을 알아야 하는 자리가 맞다.**
+`_unwired_answer` 는 「무엇이 아직 없는지」를 사람에게 말하는 문장을 만든다.
+docstring 이 이미 그렇게 적고 있다 — 「id 가 아니라 노드 이름으로 적음.
+사람이 읽는 문장임」. id 로 적으면 사람이 못 읽는다. 그러니 이 자리는 그대로 둔다.
+
+**세다가 하나 더 나왔다.** `execution/execute_service.py:534` (`_step_names`)도
+`entry["name"]` 을 꺼낸다. 다만 그것은 `path_of` 를 직접 부르는 것이 아니라
+`resolve` 응답의 `paths` 칸에서 꺼낸다 — 도메인이 자기가 만든 화면용 payload 를
+다시 읽는 것이다. 「나)」와 같은 뿌리다.
+
+#### 6. 관문 — 실제로 돌린 것
+
+기준선은 옮기기 전에 `krri` 로 띄운 서버에서 떴다.
+
+```
+GET  /graph    17723 바이트  md5 61f294e0425d7b4e5ff91fbfe832e9d3   같음
+POST /render  109509 바이트  md5 b7003d130888c4eb32ad9925aeaaeed1   같음
+               (mode=plain · recipe_ids 빈 것 · mark 없음. SVG 가 그 안에 있다)
+check_wiring   md5 1e35f14bce04d8e64632c71107982883                 같음
+check_inputs   md5 29c2ec6a5b612e1b8c19c6169191e113                 같음
+               첫 줄(스키마 절대 경로)까지 같았다
+pytest         1 failed · 485 passed · skipped 0
+               일부러 둔 test_dense_graph_would_move_if_overlap_removal_were_used
+test_the_domain_does_not_import_the_service_layer_at_module_level   통과
+```
+
+두 엔드포인트는 옮기기 전에 두 번 불러 같은 바이트가 나오는 것을 먼저
+확인했다. 안 그러면 「같다」가 아무것도 뜻하지 않는다.
+
+**skipped 를 세는 것이 값을 했다.** 4단계 중간에 잰 pytest 가
+`1 skipped` 였다. 서버를 내려 둔 탓에
+`dev/tests/app/ui/test_path_autofit_document.py:220` 이 스스로 건너뛴 것이다.
+빨간불이 아니라 회색불이라 합계만 보면 안 보인다. 마지막 관문은 서버를 다시
+띄우고 쟀다.
+
+#### 7. `krri` — 고칠 것이 없었다
+
+```
+python -m uvicorn app.api.main:app   app/api/main.py 그대로 있다
+streamlit run app/ui/main.py         그대로 있다
+pgrep -f "app.api.main"              그대로다
+```
+
+3단계에서 `demo` -> `app` 으로 고친 뒤로 바뀐 것이 없다. 이번에 옮긴 셋은
+전부 `app/api/main.py` 가 import 하는 쪽이라 실행 명령이 안 바뀐다.
+
+#### 8. 범위 밖으로 나간 것 셋 — 전부 적는다
+
+**가) `DOMAIN_DIRS` 에 `"execution"` 을 더했다**
+(`dev/tests/app/ui/graph_svg/test_layout_init_copy.py`). 계층 시험이 보는
+도메인 폴더 목록이고, 그 목록은 CLAUDE.md 의 갈래 여섯에서 그대로 온다.
+안 더하면 새로 만든 `execution/` 을 아무도 안 지킨다 — 시험이 **통과하는데
+아무것도 안 지키는** 자리가 또 생긴다(「예순아홉째」가 겪은 것과 같은 꼴).
+시험의 몸통과 이름은 안 건드렸다.
+
+**나) CLAUDE.md 의 갈래 한 줄.** 「(실행 배선은 아직 갈 곳이 없다. 나중에
+execution/ 이 된다)」가 거짓이 됐다. 「`execution/` 실행 배선. wiring.yaml 이
+여기 있다」로 갈았다.
+
+**다) 거짓이 된 docstring 한 줄.** `execution/step_service.py:411` 의
+「제약  온톨로지를 직접 읽지 않는다」. 이제 `ontology.graph` 를 직접 부른다.
+「제약  타입 판정을 여기서 다시 적지 않는다. ontology.graph 가 함」으로 갈았다.
+같은 자리 셋(step_service 머리말 · step_service 411 · resolve_service 165)의
+`ontology_service` 라는 이름을 `ontology.graph` 로 고쳤다.
+
+#### 9. ★ 안 고친 낡은 경로 하나 — 일부러다
+
+`ontology/ontology.yaml:457` 과 `ontology/_init/ontology.yaml:457` 의 주석이
+`app/api/services/step_service.py 의 TOOL_OF` 를 가리킨다. 이제 없는 경로다.
+
+**그런데 고치면 안 된다.** `ontology_service.ontology_version()` 이
+`ontology.yaml` 의 **내용 전체**를 sha1 로 뜬다. 주석 한 글자만 고쳐도 version
+이 갈리고, 그것이 `GET /graph` 와 `POST /render` 응답에 실려 있어 관문
+「바이트까지 같다」가 깨진다. 프론트엔드 SVG 캐시 키이기도 하다.
+
+주석을 고치려면 **version 이 갈리는 것을 알고** 따로 해야 한다. 열린 과제 13
+(자리 옮기기가 남긴 낡은 글)에 이 둘을 함께 놓는다.
+
+#### 10. 안 한 것
+
+- `_service` 접미사를 안 뗐다. 뗄지 말지는 나중 일이고 지금 떼면 import 줄이
+  두 번 바뀐다
+- 판정(`dev/tools/check_resolve.py`)은 안 쟀다. LLM 을 부르는 것이라 회차마다
+  답이 달라 「바이트까지 같다」를 물을 수 없다
+- 열린 과제 13 이 가리키는 `dev/tests/app/api/test_step_argument.py:367` 은
+  이번에 `dev/tests/execution/test_step_argument.py` 로 갔다. 그 항목의 경로
+  이름은 그날 이름이라 안 고쳤다. 찾을 때 여기를 본다
 
 ### 2026-08-31 (예순아홉째) · 폴더 정리 0~3 — 자리만 옮겼다
 

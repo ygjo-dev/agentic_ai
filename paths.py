@@ -13,8 +13,8 @@ MODELS_PATH = REPO_ROOT / "models.yaml"
 # 묶이면 도구를 갈아 끼울 때 도메인을 고쳐야 하고, 「노드에는 name 과
 # description 만」이라는 원칙과 부딪히고, menu 가 온톨로지에서 만들어지므로
 # 도구 이름이 프롬프트로 샐 자리가 가까워진다. 까닭 전문은
-# app/api/services/step_service.py 머리말에 있다.
-WIRING_PATH = REPO_ROOT / "wiring.yaml"
+# execution/step_service.py 머리말에 있다.
+WIRING_PATH = REPO_ROOT / "execution" / "wiring.yaml"
 
 # 실행 경로(Route) 결정 엔진.
 ORCHESTRATOR_DIR = REPO_ROOT / "orchestrator"

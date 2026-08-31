@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from app.api.services import step_service
+from execution import step_service
 
-SCHEMA_PATH = Path(__file__).resolve().parents[3] / "tools" / "probe_out" / "tools.json"
+SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
 
 # 어댑터가 걸리면 중심 좌표 · 반경 대신 bbox 넷이 나간다. 걸리는 조건은
 # check_inputs.sent_fields 와 같다 — STEP_OF 에 이름이 적혀 있고 중심 좌표가

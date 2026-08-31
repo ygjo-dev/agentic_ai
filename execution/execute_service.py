@@ -28,7 +28,7 @@ step_service.plan 의 commands 가 그것이다. 저쪽 show-facility plugin 이
 
 from collections import Counter
 
-from app.api.services import ontology_service, step_service
+from execution import step_service
 from ontology import graph, store
 from orchestrator import clarify_service, resolve_service
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
@@ -408,7 +408,7 @@ def _unwired_answer(recipe_id: str, missing: list[str]) -> str:
     출력  무엇이 아직 없는지 적은 한 문장
     규칙  id 가 아니라 노드 이름으로 적음. 사람이 읽는 문장임
     """
-    named = {entry["node_id"]: entry["name"] for entry in ontology_service.path_of(recipe_id)}
+    named = {entry["node_id"]: entry["name"] for entry in graph.path_of(recipe_id)}
     return UNWIRED_ANSWER.format(
         names=" · ".join(named.get(node_id, node_id) for node_id in missing)
     )
@@ -529,7 +529,7 @@ def _step_names(recipe_id: str, paths: dict) -> list[str]:
     규칙  데이터 노드(말한 장소)는 뺌. 부를 것이 없고 모든 후보에 똑같이 들어
           있어 후보를 가르는 데 쓸모가 없음
     """
-    executable = set(ontology_service.executable_in(recipe_id))
+    executable = set(graph.executable_in(recipe_id))
     return [
         entry["name"]
         for entry in (paths.get(recipe_id) or [])

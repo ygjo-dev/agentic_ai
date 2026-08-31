@@ -24,7 +24,7 @@ input 을 어떻게 채우는지는 온톨로지에 없다 — wiring.yaml 이 �
 장소 좌표 변환 뒤에도 온다. 그때 받는 것이 query 와 center 로 달라서 노드당
 한 줄로는 적을 수 없다. 그래서 STEP_OF 의 키가 (노드, 받는 타입)이고, 그
 타입은 온톨로지의 hasInput 선언과 1:1 이다. 어느 줄을 쓸지는 plan 이 앞
-단계가 내놓는 타입을 보고 고른다 — 타입 판정은 ontology_service 를 거친다.
+단계가 내놓는 타입을 보고 고른다 — 타입 판정은 ontology.graph 를 거친다.
 
 **배선은 여기서 끝난다.** 앞 단계 결과를 다음 input 에 어떻게 넣을지는
 vendor_to_be_deleted/asap/generic_mcp_executor 의 _resolve_reference 가 안다 — 도구별이 아니라
@@ -40,7 +40,7 @@ import re
 import yaml
 
 import paths
-from app.api.services import ontology_service
+from ontology import graph
 
 SERVER_ID = "asap-mcp-core"
 
@@ -408,9 +408,9 @@ def wiring_at(node_id: str, source_id: str) -> dict | None:
           지점 좌표를 먼저 내놓으므로 CCTV 조회가 좌표 줄을 씀
           데이터 노드가 앞이면 그것이 is-a 로 가리키는 타입을 봄.
           말한 식별자는 선거구 코드 하나를 가리킴
-    제약  온톨로지를 직접 읽지 않는다. 타입 판정은 ontology_service 가 함
+    제약  타입 판정을 여기서 다시 적지 않는다. ontology.graph 가 함
     """
-    for type_id in ontology_service.handed_types(source_id):
+    for type_id in graph.handed_types(source_id):
         wiring = STEP_OF.get((node_id, type_id))
         if wiring is not None:
             return wiring
@@ -451,10 +451,10 @@ def unwired(recipe_id: str) -> list[str]:
     """
     reload_wiring()
 
-    executable = set(ontology_service.executable_in(recipe_id))
+    executable = set(graph.executable_in(recipe_id))
 
     missing, source_id = [], None
-    for entry in ontology_service.path_of(recipe_id):
+    for entry in graph.path_of(recipe_id):
         node_id = entry["node_id"]
         if (
             source_id is not None
@@ -510,7 +510,7 @@ def plan(recipe_id: str, argument: str) -> dict:
     previous_id = None
     source_id = None
 
-    for entry in ontology_service.path_of(recipe_id):
+    for entry in graph.path_of(recipe_id):
         node_id = entry["node_id"]
         wiring = wiring_at(node_id, source_id) if source_id is not None else None
         source_id = node_id

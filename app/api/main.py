@@ -32,7 +32,6 @@ from app.api.schemas.requests import (
     RenderRequest,
 )
 from app.api.services import (
-    execute_service,
     node_service,
     ontology_service,
     recent_service,
@@ -47,6 +46,7 @@ from ontology.registry import (
     UnknownGroup,
     UnknownType,
 )
+from execution import execute_service
 from orchestrator import resolve_service
 from orchestrator.route_resolver import RouteResolutionError
 

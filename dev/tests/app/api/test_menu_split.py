@@ -18,7 +18,8 @@ import json
 
 import yaml
 
-from app.api.services import ontology_service, step_service
+from app.api.services import ontology_service
+from execution import step_service
 from orchestrator import resolve_service
 from orchestrator.schemas.response_schema import NO_MATCH
 from workflows.static.menu.load import load_menu

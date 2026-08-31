@@ -121,7 +121,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from app.api.services.step_service import (  # noqa: E402
+from execution.step_service import (  # noqa: E402
     CENTER_KEYS,
     POINT_RADIUS_TO_BBOX,
     SPOKEN_VALUE,

@@ -17,17 +17,14 @@ import hashlib
 
 import paths
 from app.ui.graph_svg.dot import COLORS
-from ontology import store
+from ontology import graph, store
 from ontology.graph import (
-    ancestors,
     dotted_edges,
     group_ids,
-    handed_over,
     inputs_of,
     is_executable,
     load_ontology,
     outputs_of,
-    recipe_nodes,
     solid_edges,
     type_ids,
 )
@@ -54,75 +51,18 @@ def ontology_version() -> str:
 
 
 def recipe_ids() -> list[str]:
-    """지금 있는 recipe id 전부. 번호 순."""
-    return sorted(path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml"))
-
-
-def executable_in(recipe_id: str) -> list[str]:
-    """recipe 안에서 실제로 부를 노드.
-
-    입력  recipe id
-    출력  실행 노드 id 목록. 경로 순서 그대로
-    규칙  hasOutput 이 있으면 실행 노드. 데이터 노드(말한 장소)는 값을 준비할
-          뿐 부를 것이 없어 빠짐
-    """
-    return [node_id for node_id in recipe_nodes(recipe_id) if is_executable(node_id)]
-
-
-def handed_types(node_id: str) -> list[str]:
-    """그 노드가 다음 자리에 건네는 타입. 상위 타입까지 편 것.
-
-    입력  노드 id. 실행 노드일 수도 데이터 노드일 수도 있음
-    출력  타입 id 목록. 앞에 오는 것이 먼저 건네는 것
-    규칙  실행 노드는 hasOutput 이 말함. 적힌 순서 그대로임.
-          장소 좌표 변환은 지점 좌표를 지도 범위보다 먼저 내놓음
-          데이터 노드는 자기 자신을 건네므로 is-a 로 가리키는 상위 타입을 폄.
-          말한 식별자는 행정구역 코드 · 선거구 코드 · 충전소 번호를 가리킴
-          중복은 접고 순서는 유지함
-    제약  받는 쪽이 무엇을 받는지 보지 않는다. 고르는 것은 부르는 쪽 일임
-    """
-    seen, handed = set(), []
-    for out_id in handed_over(node_id):
-        for type_id in (out_id, *ancestors(out_id)):
-            if type_id not in seen:
-                seen.add(type_id)
-                handed.append(type_id)
-    return handed
+    """지금 있는 recipe id 전부. 번호 순. 몸통은 ontology.graph 에 있음."""
+    return graph.recipe_ids()
 
 
 def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
-    """recipe 한 벌의 실행 경로.
-
-    입력  recipe id · 노드 전체(없으면 온톨로지에서 읽음)
-    출력  [{node_id, name, out_type}, ...] 순서 그대로.
-          없는 recipe 는 빈 리스트. recipe_nodes 가 그렇게 동작하므로 따름
-    규칙  out_type 은 다음 노드로 흘러가는 것
-            실행 노드   hasOutput 이 말함
-            데이터 노드 자기 자신. 승강장 CCTV 영상은 무언가를 내놓는 것이
-                        아니라 그 자체가 다음 단계로 건네짐
-          경로의 마지막 노드도 값이 있지만 화면은 마지막 화살표를 안 그려
-          쓰이지 않음
-    """
-    nodes = load_ontology()["nodes"] if nodes is None else nodes
-
-    chain = []
-    for node_id in recipe_nodes(recipe_id):
-        node = nodes.get(node_id) or {}
-        handed = outputs_of(node_id) or [node_id]
-        chain.append(
-            {
-                "node_id": node_id,
-                "name": node.get("name", node_id),
-                "out_type": nodes.get(handed[0], {}).get("name", handed[0]),
-            }
-        )
-    return chain
+    """recipe 한 벌의 실행 경로. 몸통은 ontology.graph 에 있음."""
+    return graph.path_of(recipe_id, nodes)
 
 
 def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
-    """recipe id 여럿의 경로를 한 번에. 중복은 접고 순서는 유지함."""
-    nodes = load_ontology()["nodes"] if nodes is None else nodes
-    return {recipe_id: path_of(recipe_id, nodes) for recipe_id in dict.fromkeys(ids)}
+    """recipe id 여럿의 경로를 한 번에. 몸통은 ontology.graph 에 있음."""
+    return graph.paths_for(ids, nodes)
 
 
 def drawn_nodes() -> dict:

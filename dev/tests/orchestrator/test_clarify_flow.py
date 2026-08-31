@@ -16,7 +16,7 @@ import asyncio
 
 import pytest
 
-from app.api.services import execute_service
+from execution import execute_service
 from orchestrator import clarify_service
 
 SESSION = "s-demo"
@@ -48,7 +48,7 @@ def collect(events):
 def no_ontology(monkeypatch):
     """온톨로지와 배선 표를 안 읽음."""
     monkeypatch.setattr(
-        execute_service.ontology_service,
+        execute_service.graph,
         "executable_in",
         lambda recipe_id: [
             entry["node_id"]

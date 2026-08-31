@@ -14,7 +14,7 @@ import asyncio
 
 import pytest
 
-from app.api.services import execute_service, step_service
+from execution import execute_service, step_service
 
 ARG = step_service.SPOKEN_VALUE
 
@@ -33,14 +33,14 @@ def wire(monkeypatch, node_ids, rows=None, handed=None, tools=None):
     tools     {노드: {server_id, tool, headline}}. TOOL_OF 에 없는 노드용
     """
     monkeypatch.setattr(
-        step_service.ontology_service,
+        step_service.graph,
         "path_of",
         lambda recipe_id: [{"node_id": node_id} for node_id in node_ids],
     )
     if handed:
-        real = step_service.ontology_service.handed_types
+        real = step_service.graph.handed_types
         monkeypatch.setattr(
-            step_service.ontology_service,
+            step_service.graph,
             "handed_types",
             lambda node_id: handed.get(node_id) or real(node_id),
         )

@@ -38,7 +38,7 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from app.api.services.execute_service import USER_CONTEXT  # noqa: E402
+from execution.execute_service import USER_CONTEXT  # noqa: E402
 from tools.probe_tools import (  # noqa: E402
     ARGUMENT_RULES,
     DEFAULT_TOOLS_PATH,

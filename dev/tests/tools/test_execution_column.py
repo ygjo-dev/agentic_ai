@@ -83,7 +83,7 @@ def test_a_missing_permission_is_recorded_apart_from_a_crash():
 
 def test_failing_to_extract_an_argument_means_no_tool_was_called():
     """단계가 하나도 없다. 저쪽 데이터 탓이 아니라 우리 해석 탓이다."""
-    from app.api.services.execute_service import NO_ARGUMENT_ANSWER
+    from execution.execute_service import NO_ARGUMENT_ANSWER
 
     turn = {"answer": NO_ARGUMENT_ANSWER["spoken_place"], "steps": []}
 
@@ -95,7 +95,7 @@ def test_failing_to_extract_an_argument_means_no_tool_was_called():
 
 def test_the_choice_line_after_a_clarify_is_taken_off_the_verdict():
     """그 줄은 늘 성공한 것처럼 생겨서 붙여 두면 0건도 ✓ 로 읽힌다."""
-    from app.api.services.execute_service import CHOICE_HEAD
+    from execution.execute_service import CHOICE_HEAD
 
     head = CHOICE_HEAD.format(number=1, label="국회의원 전체 선거구 검색")
     zero = turn_of([{"tool": "election.searchAssemblyDistricts", "result": {"count": 0}}])
@@ -129,7 +129,8 @@ def test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_scree
 
     번호가 밀리면 조용히 옆 recipe 를 가리키게 된다. 경로 첫 칸으로 지킨다.
     """
-    from app.api.services import ontology_service, step_service
+    from app.api.services import ontology_service
+    from execution import step_service
 
     for number, _u, expected, _d in check_resolve.UTTERANCES:
         if number <= check_resolve.EXTENSION_LAST:

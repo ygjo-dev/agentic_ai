@@ -54,8 +54,8 @@ import time
 import yaml
 
 import paths
-from app.api.services import ontology_service, step_service
-from ontology import shortlist
+from execution import step_service
+from ontology import graph, shortlist
 from orchestrator.route_resolver import resolve_route
 from orchestrator.schemas.response_schema import (
     CLARIFY,
@@ -162,7 +162,7 @@ def _without_dropped(recipe_ids: list[str], dropped: set[str]) -> list[str]:
     입력  recipe id 목록 · 뺄 시작 데이터 노드 id 집합
     출력  차례를 지킨 목록. 뺄 것이 없으면 받은 것 그대로
     규칙  경로의 첫 칸이 곧 시작 데이터임. 그것을 보고 가름
-          타입 판정은 ontology_service 가 함. 여기서 recipe 파일을 열지 않음
+          타입 판정은 ontology.graph 가 함. 여기서 recipe 파일을 열지 않음
     제약  shortlist.candidates 로 막을 목록을 만들지 않는다.
           그것은 축 셋으로 후보를 뽑는 자리이고, 여기서 또 부르면 요청마다
           전체 recipe 를 두 번 더 훑게 됨
@@ -184,7 +184,7 @@ def _starts_at(recipe_id: str) -> str | None:
 
     출력  경로 첫 칸의 노드 id. 경로가 비면 None
     """
-    path = ontology_service.path_of(recipe_id)
+    path = graph.path_of(recipe_id)
     return path[0]["node_id"] if path else None
 
 
@@ -254,7 +254,7 @@ def _menu_for(utterance: str, context: dict | None) -> str:
     제약  menu.yaml 을 안 고친다.
           읽은 문자열에서 블록을 뺄 뿐임
     """
-    starts = {recipe_id: _starts_at(recipe_id) for recipe_id in ontology_service.recipe_ids()}
+    starts = {recipe_id: _starts_at(recipe_id) for recipe_id in graph.recipe_ids()}
 
     available = set(step_service.context_starts(context))
     if available and _points_at_screen(utterance):
@@ -353,7 +353,7 @@ def _resolve_full(
         "llm_candidate_recipe_ids": list(result.get("candidate_recipe_ids") or []),
         # 날것은 뺀 것까지 그대로 둔다. LLM 이 무엇을 골랐는지가 이 두 칸의
         # 뜻이고, 문맥이 없어 뺀 자리를 세려면 뺀 것이 보여야 한다.
-        "paths": ontology_service.paths_for(wanted),
+        "paths": graph.paths_for(wanted),
     }
 
 
@@ -481,7 +481,7 @@ def _resolve_narrow(
             "shortlist_recipe_ids": looked_up,
             "llm_recipe_id": None,
             "llm_candidate_recipe_ids": [],
-            "paths": ontology_service.paths_for(looked_up),
+            "paths": graph.paths_for(looked_up),
             "narrow": narrow,
         }
 
@@ -522,7 +522,7 @@ def _resolve_narrow(
         "shortlist_recipe_ids": looked_up,
         "llm_recipe_id": second.get("recipe_id"),
         "llm_candidate_recipe_ids": list(second.get("candidate_recipe_ids") or []),
-        "paths": ontology_service.paths_for(final),
+        "paths": graph.paths_for(final),
         "narrow": narrow,
     }
 

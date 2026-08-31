@@ -20,7 +20,7 @@ TOOL_OF · STEP_OF 를 import 해서 곧장 읽으므로 빈 표는 「배선 0�
 import pytest
 
 import paths
-from app.api.services import step_service
+from execution import step_service
 
 
 @pytest.fixture(autouse=True)

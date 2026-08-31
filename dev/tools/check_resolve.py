@@ -872,7 +872,7 @@ def _measure(
 # 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 저쪽
 # 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
 # 표는 ✓ 로 찍히는 식이다.
-from app.api.services.execute_service import (  # noqa: E402
+from execution.execute_service import (  # noqa: E402
     CHOICE_HEAD,
     NO_ARGUMENT_ANSWER,
     UNWIRED_ANSWER,

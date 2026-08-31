@@ -122,7 +122,7 @@ def test_resetting_the_ontology_also_resets_the_coordinates(isolated_workspace):
 
 # CLAUDE.md 「폴더가 말하는 여섯 갈래」에서 그대로 온다.
 # 이름이 또 갈리면 아래 exists 확인이 먼저 빨간불이 된다 — 조용히 통과하지 않는다.
-DOMAIN_DIRS = ("ontology", "orchestrator", "llm_engine", "workflows")
+DOMAIN_DIRS = ("ontology", "orchestrator", "execution", "llm_engine", "workflows")
 SERVICE_PACKAGES = ("app",)
 
 

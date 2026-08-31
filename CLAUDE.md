@@ -14,9 +14,9 @@ recipe 매칭 → 실행 → 검증.
 도메인      오래 남는다
   ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
   orchestrator/      발화 해석
+  execution/         실행 배선. wiring.yaml 이 여기 있다
   llm_engine/        Ollama 클라이언트
   workflows/static/  recipe · menu · prompt
-  (실행 배선은 아직 갈 곳이 없다. 나중에 execution/ 이 된다)
 
 서비스      안 사라진다
   app/api/           창구 — 라우팅 + services

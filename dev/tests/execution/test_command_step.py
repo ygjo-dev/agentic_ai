@@ -13,7 +13,7 @@ LLM 도 Gateway 도 부르지 않는다. 온톨로지와 배선표를 그대로 
 
 import asyncio
 
-from app.api.services import execute_service, step_service
+from execution import execute_service, step_service
 
 # 「말한 장소 → 시설물 표시」 한 벌. 사슬로 찾는다 — 번호는 노드가 늘면 밀린다.
 FACILITY_CHAIN = ["spoken_place", "show_facility"]
@@ -21,8 +21,8 @@ FACILITY_CHAIN = ["spoken_place", "show_facility"]
 
 def recipe_of(chain):
     """그 사슬을 가진 recipe id. 없으면 None."""
-    for recipe_id in execute_service.ontology_service.recipe_ids():
-        nodes = [entry["node_id"] for entry in execute_service.ontology_service.path_of(recipe_id)]
+    for recipe_id in execute_service.graph.recipe_ids():
+        nodes = [entry["node_id"] for entry in execute_service.graph.path_of(recipe_id)]
         if nodes == chain:
             return recipe_id
     return None

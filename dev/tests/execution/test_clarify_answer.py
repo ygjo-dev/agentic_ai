@@ -6,7 +6,7 @@ LLM 을 부르지 않는다. resolve 결과 dict 를 만들어 넣고 문자열�
 
 import pytest
 
-from app.api.services import execute_service
+from execution import execute_service
 
 
 def path(*names):
@@ -31,7 +31,7 @@ def resolved(paths, status="CLARIFY", reason=""):
 def wire(monkeypatch, paths, unwired=()):
     """가짜 경로를 실행 노드 판정에 연결. unwired 에 적은 recipe 만 배선이 없음."""
     monkeypatch.setattr(
-        execute_service.ontology_service,
+        execute_service.graph,
         "executable_in",
         lambda recipe_id: [
             entry["node_id"]
@@ -50,7 +50,7 @@ def wire(monkeypatch, paths, unwired=()):
 def no_ontology(monkeypatch):
     """온톨로지와 배선 표를 안 읽음. wire 를 안 부른 테스트도 파일을 안 건드림."""
     monkeypatch.setattr(
-        execute_service.ontology_service, "executable_in", lambda recipe_id: []
+        execute_service.graph, "executable_in", lambda recipe_id: []
     )
     monkeypatch.setattr(execute_service.step_service, "unwired", lambda recipe_id: [])
 
