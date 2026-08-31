@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from vendor.asap.isochrone_geometry import validate_and_repair_isochrone_polygons
+from vendor_to_be_deleted.asap.isochrone_geometry import validate_and_repair_isochrone_polygons
 
 DisplayArtifact = Dict[str, Any]
 

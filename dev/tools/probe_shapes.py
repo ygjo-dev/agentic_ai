@@ -397,7 +397,7 @@ def probe(tool: dict, timeout: int = TIMEOUT) -> dict:
 
     label = label_of(arguments)
 
-    # vendor/asap/mcp_client.execute_tool 이 만드는 본문과 같은 모양이다.
+    # vendor_to_be_deleted/asap/mcp_client.execute_tool 이 만드는 본문과 같은 모양이다.
     # user_context 를 빼면 요청마다 새 guest 가 만들어져 adminBoundary 셋
     # 말고는 전부 거부된다(실측).
     body = {"tool": name, "input": arguments, "user_context": dict(USER_CONTEXT)}

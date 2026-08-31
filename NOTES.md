@@ -1953,6 +1953,86 @@ git diff      95줄. 전부 import 줄 · 경로 표현 · 경로 문자열
 값이 그대로인가)은 지켰고 글자(md5)만 못 지켰다. 멈추지 않고 지나간 판단이며,
 2·3단계는 새 값 `29c2ec6a5b612e1b8c19c6169191e113` 를 기준선으로 쓴다.
 
+---
+
+#### 2단계 · `vendor/` 를 `vendor_to_be_deleted/` 로
+
+리뷰에서 **「이건 저쪽 것이고 없어질 폴더」로 한눈에 읽히게** 한다. 폴더 이름이
+그 말을 하면 리뷰 자리에서 설명할 것이 하나 줄어든다.
+
+```
+vendor/            ->  vendor_to_be_deleted/            11개
+dev/tests/vendor/  ->  dev/tests/vendor_to_be_deleted/   1개
+합계                                                    12개  전부 R (rename)
+```
+
+고친 줄 — **19파일 38줄.** 이 단계에서만 저쪽 파일의 import 줄을 고쳤다.
+**로직은 한 줄도 안 고쳤다.**
+
+```
+import 줄               13   from vendor.asap. -> from vendor_to_be_deleted.asap.
+  그중 저쪽 파일 안        8   저쪽 넷이 서로를 부른다 (아래)
+  우리 쪽                  5   execute_service 2 · check_resolve 1 ·
+                              dev/tests 둘
+경로 문자열              24   주석 · docstring · README · CLAUDE.md
+README 대응표 여섯 줄     (13 에 안 셈. app.* -> vendor_to_be_deleted.asap.*)
+```
+
+**★ 저쪽 파일은 셋이 아니라 넷이 서로를 부른다.**
+
+```
+프롬프트가 센 것   generic_mcp_executor · mcp_client · mcp_result_inspector
+실제               위 셋 + command_renderer
+                   command_renderer.py:8  from …asap.schemas_chat import Command
+줄 수로는 8 이다
+  generic_mcp_executor  5  (config · command_renderer · mcp_result_inspector ·
+                            mcp_client · workflow_answer)
+  mcp_client            1  (config)
+  mcp_result_inspector  1  (isochrone_geometry)
+  command_renderer      1  (schemas_chat)
+```
+
+`vendor_to_be_deleted/asap/README.md` 의 대응표도 새 이름으로 고쳤다. 저쪽을
+다시 가져올 때 그대로 따라 하는 표라, 옛 이름이 남아 있으면 다시 가져오는
+사람이 없는 꾸러미를 적는다.
+
+**★ 「우리 파일 넷」이 프롬프트와 다르다. 세어서 고쳤다.**
+
+```
+프롬프트   workflow_answer · command_renderer · isochrone_geometry · README
+실제       config.py · schemas_chat.py · workflow_answer.py · __init__.py
+           (+ README.md 는 우리가 쓴 문서다)
+
+근거 둘 — 둘 다 저장소에 적혀 있다
+  README 의 「우리가 새로 만든 파일 — 원본에 없다」 표에 넷이 그대로 있다
+  파일 머리말이 스스로 말한다. 우리 것 셋은 한국어로 "**우리 코드다.**",
+  저쪽 것 다섯은 영어 docstring 이다
+    command_renderer      "Render normalized display artifacts into …"   저쪽
+    generic_mcp_executor  "Generic MCP executor for direct …"            저쪽
+    isochrone_geometry    "Validate and conservatively repair …"         저쪽
+    mcp_client            "MCP (Model Context Protocol) 클라이언트 서비스"  저쪽
+    mcp_result_inspector  "Inspect arbitrary MCP results …"              저쪽
+```
+
+프롬프트가 부른 `command_renderer` 와 `isochrone_geometry` 는 저쪽 것이다.
+**빠진 것은 `config.py` 와 `schemas_chat.py` 다.** 값을 지어내지 않으려고
+저장소가 말하는 쪽을 적었다.
+
+**폴더 이름과 README 로는 「저쪽 것」 스탠스를 그대로 지킨다.** README 첫
+문장은 여전히 「남의 코드다」이고, 우리 파일 넷이 그 안에 있다는 것은 이
+기록에만 적는다. 리뷰에서 설명할 것을 줄이기 위해서다 — 폴더가 「없어질 것」
+하나만 말하게 두고, 갈라내는 일은 그 폴더를 실제로 지울 때 한다.
+
+#### 2단계 · 관문
+
+```
+check_wiring  1e35f14bce04d8e64632c71107982883   기준선과 같다
+check_inputs  29c2ec6a5b612e1b8c19c6169191e113   1단계 뒤 기준선과 같다
+pytest        1 failed · 485 passed              기준선과 같다
+git diff      38줄. 전부 import 줄 아니면 경로 문자열
+```
+
+
 
 
 ### 2026-08-31 (예순여덟째) · 코드에 남은 파이썬 배선표 둘을 지우고 근거 주석을 갈라 보냈다 (1-b)

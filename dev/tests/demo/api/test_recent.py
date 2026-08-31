@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 
 from demo.api.services import recent_service
 
-# vendor/asap/workflow_answer 가 만든 답의 모양. 머리말 · 빈 줄 · 번호 줄이다.
+# vendor_to_be_deleted/asap/workflow_answer 가 만든 답의 모양. 머리말 · 빈 줄 · 번호 줄이다.
 ANSWER = "\n".join(
     [
         "오송역 CCTV 를 조회했습니다.",

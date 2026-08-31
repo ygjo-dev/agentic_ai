@@ -29,7 +29,7 @@ recipe 매칭 → 실행 → 검증.
   아직 흩어져 있다. 나중에 registration/ 으로 모으고, 다른 저장소로 나간다
 
 빌려온 것
-  vendor/         저쪽 것. 없어질 것
+  vendor_to_be_deleted/  저쪽 것. 없어질 것
 
 재는 것     배포에 안 들어간다
   dev/tools/      계기판

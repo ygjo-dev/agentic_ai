@@ -2,7 +2,7 @@
 
 서버도 Gateway 도 안 부른다. 답 문구를 **vendor 가 만들게 해서** 그것을
 `check_resolve._execution_of` 에 먹인다 — 문구를 시험에 베껴 적으면
-`vendor/asap/workflow_answer.py` 가 문구를 갱신했을 때 이 시험만 혼자 통과하고
+`vendor_to_be_deleted/asap/workflow_answer.py` 가 문구를 갱신했을 때 이 시험만 혼자 통과하고
 표는 조용히 거짓말을 한다. 실제로 「쉰다섯째」에 그 머리말이 한 줄에서 두 줄이
 됐다.
 
@@ -11,7 +11,7 @@
 """
 
 from dev.tools import check_resolve
-from vendor.asap.workflow_answer import compose_workflow_answer, step_line
+from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer, step_line
 
 # recipe 가 아는 성공 문장. 무엇이 오든 vendor 는 그대로 첫 줄에 쓴다.
 HEADLINE = "행정구역을 조회했습니다."

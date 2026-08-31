@@ -27,7 +27,7 @@ input 을 어떻게 채우는지는 온톨로지에 없다 — wiring.yaml 이 �
 단계가 내놓는 타입을 보고 고른다 — 타입 판정은 ontology_service 를 거친다.
 
 **배선은 여기서 끝난다.** 앞 단계 결과를 다음 input 에 어떻게 넣을지는
-vendor/asap/generic_mcp_executor 의 _resolve_reference 가 안다 — 도구별이 아니라
+vendor_to_be_deleted/asap/generic_mcp_executor 의 _resolve_reference 가 안다 — 도구별이 아니라
 필드 이름별이라 도구가 늘어도 재사용된다. 우리는 $prev.location 처럼 "앞
 단계의 무엇" 이라고만 적는다.
 
@@ -222,7 +222,7 @@ _SECTIONS = ("anchors", "tool_of", "step_of")
 _WIRING_FIELDS = ("input", "input_first", "adapter", "arg_field")
 
 # **밖에서 넷이 이 두 이름을 import 한다** — dev/tools/check_wiring.py ·
-# dev/tools/check_inputs.py · vendor/asap/workflow_answer.py · 시험들.
+# dev/tools/check_inputs.py · vendor_to_be_deleted/asap/workflow_answer.py · 시험들.
 # 그래서 다시 읽을 때 객체를 갈아 끼우지 않고 **같은 dict 를 비우고 다시
 # 채운다.** 먼저 import 해 간 쪽이 옛 객체를 쥐면 조용히 어긋난다.
 TOOL_OF: dict = {}

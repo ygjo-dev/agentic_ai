@@ -1,4 +1,4 @@
-"""vendor/asap 가 읽는 설정. 원본 app/config.py 자리를 대신한다. **우리 코드다.**
+"""vendor_to_be_deleted/asap 가 읽는 설정. 원본 app/config.py 자리를 대신한다. **우리 코드다.**
 
 원본은 pydantic BaseSettings 로 40여 개 값을 들고 있었다. vendor 로 가져온
 다섯 모듈이 실제로 읽는 것은 아래 다섯 개뿐이라 그것만 둔다.

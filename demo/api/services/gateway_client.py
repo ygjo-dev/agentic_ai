@@ -1,6 +1,6 @@
 """KRRI_ASAP Gateway 의 도구 목록을 읽는다.
 
-**도구 실행은 여기가 아니다.** vendor/asap/mcp_client 가 한다 — 실행기가
+**도구 실행은 여기가 아니다.** vendor_to_be_deleted/asap/mcp_client 가 한다 — 실행기가
 그것을 쓰고, 같은 일을 하는 창구가 둘이면 user_context 나 오류 판정이 조용히
 갈린다. 여기 남은 것은 목록 조회 하나다. 도구를 늘릴 때 무엇이 있는지 보는 데
 쓴다.

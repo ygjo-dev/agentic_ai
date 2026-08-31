@@ -9,7 +9,7 @@
 문자열뿐이라 그 계층의 구조가 바뀌어도 따라다니지 않는다.
 """
 
-from vendor.asap.workflow_answer import compose_workflow_answer, step_failed
+from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer, step_failed
 
 # asap_probe_out/geo.geocode.osong.json 실물.
 OSONG = {

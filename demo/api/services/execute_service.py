@@ -1,6 +1,6 @@
 """발화를 recipe 로 해석하고, 그 노드 순서를 vendor 실행기에 넘긴다.
 
-**실행·배선·답 조합은 우리 것이 아니다.** vendor/asap/generic_mcp_executor 의
+**실행·배선·답 조합은 우리 것이 아니다.** vendor_to_be_deleted/asap/generic_mcp_executor 의
 _execute_generic_mcp_workflow 가 steps 배열 하나를 받아 참조 해석($s1.location)
 · 입력 어댑터(point_radius_to_bbox) · 도구 호출 · 지도 commands 까지 전부 한다.
 도구가 늘어도 그쪽은 그대로다 — 우리가 늘리는 것은 step_service 의 표 한 줄이다.
@@ -14,7 +14,7 @@ _execute_generic_mcp_workflow 가 steps 배열 하나를 받아 참조 해석($s
 한 번에 돌리고 trace 를 돌려주므로 중간에 끼어들 자리가 없다. 단계마다 한 쌍이
 recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
 
-**답 문구를 만드는 우리 쪽 vendor/asap/workflow_answer 를 부르는 자리가 둘이다.**
+**답 문구를 만드는 우리 쪽 vendor_to_be_deleted/asap/workflow_answer 를 부르는 자리가 둘이다.**
 성공한 실행은 vendor 안에서 _compose_workflow_answer 가 부르고, 실패한 실행은
 vendor 가 자기 문구(_failed_workflow_result)로 돌아오므로 아래 run 이 trace 로
 다시 부른다. 같은 함수라 문구가 갈라지지 않는다.
@@ -35,8 +35,8 @@ from demo.api.services import (
     step_service,
 )
 from ontology import graph, store
-from vendor.asap.generic_mcp_executor import _execute_generic_mcp_workflow
-from vendor.asap.workflow_answer import (
+from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
+from vendor_to_be_deleted.asap.workflow_answer import (
     command_answer,
     compose_workflow_answer,
     no_match_answer,
@@ -90,7 +90,7 @@ CLARIFY_MANY_HEADLINE = "여러 가지로 해석됩니다. 어느 것을 보시�
 # 긴 머리말로 바뀌는 후보 수.
 CLARIFY_MANY_FROM = 4
 
-# 부를 것이 하나도 없을 때의 답은 vendor/asap/workflow_answer.no_match_answer 가
+# 부를 것이 하나도 없을 때의 답은 vendor_to_be_deleted/asap/workflow_answer.no_match_answer 가
 # 만든다. 문구는 한 글자도 안 바뀌었고 뒤에 안내 두 줄이 붙는다.
 
 # 도구를 안 부르는 단계의 진행 표시. 도구 단계와 같은 모양이라 저쪽 화면이

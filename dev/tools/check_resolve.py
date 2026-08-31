@@ -877,7 +877,7 @@ from demo.api.services.execute_service import (  # noqa: E402
     NO_ARGUMENT_ANSWER,
     UNWIRED_ANSWER,
 )
-from vendor.asap.workflow_answer import (  # noqa: E402
+from vendor_to_be_deleted.asap.workflow_answer import (  # noqa: E402
     EMPTY_HEADLINE,
     ERROR_HEADLINE,
     MISSING_STATUS,
@@ -1003,7 +1003,7 @@ def _execution_of(turn: dict) -> tuple:
           도구를 하나도 안 부른 자리(인자 없음 · 배선 없음)도 여기서 가름.
           그때는 단계 줄이 아예 없음
     제약  건수를 여기서 다시 세지 않는다.
-          결과 모양을 아는 것은 vendor/asap/workflow_answer 이고, 여기가
+          결과 모양을 아는 것은 vendor_to_be_deleted/asap/workflow_answer 이고, 여기가
           또 세면 두 곳이 다른 기준을 갖게 된다
     """
     answer = _answer_body(turn)

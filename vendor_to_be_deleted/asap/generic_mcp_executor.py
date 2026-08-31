@@ -8,12 +8,12 @@ import re
 from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
-from vendor.asap.config import settings
-from vendor.asap.command_renderer import build_commands_from_artifacts
-from vendor.asap.mcp_result_inspector import inspect_mcp_result, inspect_mcp_trace
+from vendor_to_be_deleted.asap.config import settings
+from vendor_to_be_deleted.asap.command_renderer import build_commands_from_artifacts
+from vendor_to_be_deleted.asap.mcp_result_inspector import inspect_mcp_result, inspect_mcp_trace
 from logging import getLogger as get_logger
-from vendor.asap.mcp_client import mcp_client
-from vendor.asap.workflow_answer import compose_workflow_answer
+from vendor_to_be_deleted.asap.mcp_client import mcp_client
+from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer
 
 logger = get_logger("core.generic_mcp_executor")
 
@@ -365,7 +365,7 @@ async def _compose_workflow_answer(state: Dict[str, Any], intent: Dict[str, Any]
 
     agentic_ai replacement: the original called Gemini and fell back to a raw
     JSON dump. We do not use that API key, and the call order is what this
-    system has to show, so the answer is built in vendor/asap/workflow_answer.py.
+    system has to show, so the answer is built in vendor_to_be_deleted/asap/workflow_answer.py.
     """
     return compose_workflow_answer(intent, trace)
 

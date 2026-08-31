@@ -288,7 +288,7 @@ def _execute(step: dict, argument: str) -> tuple:
 
     입력  첫 실행 단계 · @arg 자리에 넣을 인자
     출력  (건수 문자열, 본문). 실패하면 ("오류", 사유 문자열)
-    규칙  본문 모양은 vendor/asap/mcp_client.execute_tool 과 같음.
+    규칙  본문 모양은 vendor_to_be_deleted/asap/mcp_client.execute_tool 과 같음.
           **user_context 를 반드시 넣는다** — 빠뜨리면 요청마다 새 guest 가
           만들어지고 adminBoundary 셋 말고는 전부 거부됨(execute_service 주석)
           그 값을 여기 베껴 적지 않고 execute_service.USER_CONTEXT 를 씀

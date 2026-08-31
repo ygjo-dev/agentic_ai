@@ -128,7 +128,7 @@ def layout_ratios() -> dict:
 #
 # 값은 오송역(127.3277, 36.6200)에서 반경 15km 다. 지어낸 값이 아니라
 # step_service.RADIUS_METERS 로 만든 상자이고, road.getCctv 가 실제로 그 넷을
-# 받은 적이 있다(dev/tests/vendor/test_workflow_answer.py 의 minLon 127.15983…).
+# 받은 적이 있다(dev/tests/vendor_to_be_deleted/test_workflow_answer.py 의 minLon 127.15983…).
 # 시연이 오송·청주에서 도므로 그 일대를 보고 있다고 두는 것이다.
 FIXED_VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
 

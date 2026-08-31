@@ -46,7 +46,7 @@ load_dotenv(REPO_ROOT / ".env")
 # 도구 목록. 이 저장소 밖이라 --tools 로 바꿀 수 있게 둔다.
 DEFAULT_TOOLS_PATH = REPO_ROOT.parent / "KRRI_ASAP" / "tools.json"
 
-# 화면(vendor/asap/mcp_client)이 부르는 주소와 같아야 표를 믿을 수 있다.
+# 화면(vendor_to_be_deleted/asap/mcp_client)이 부르는 주소와 같아야 표를 믿을 수 있다.
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:3000").rstrip("/")
 EXECUTE_PATH = "/api/tools/execute"
 
@@ -285,7 +285,7 @@ def _probe(tool: dict, timeout: int = TIMEOUT) -> dict:
             "payload": None,
         }
 
-    # vendor/asap/mcp_client.execute_tool 이 만드는 본문과 같은 모양임.
+    # vendor_to_be_deleted/asap/mcp_client.execute_tool 이 만드는 본문과 같은 모양임.
     # 도구 이름은 tool, 인자는 input 이고 user_context 와 server_id 는 그 옆에
     # 따로 얹음. toolName/arguments 로 보내면 42개가 전부
     # "Tool name is required" 로 실패함(실측).

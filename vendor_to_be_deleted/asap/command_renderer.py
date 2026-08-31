@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional
 
-from vendor.asap.schemas_chat import Command
+from vendor_to_be_deleted.asap.schemas_chat import Command
 
 DisplayArtifact = Dict[str, Any]
 

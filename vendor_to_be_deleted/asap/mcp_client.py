@@ -8,7 +8,7 @@ from typing import Dict, Any, Optional, List
 import time
 import httpx
 
-from vendor.asap.config import settings
+from vendor_to_be_deleted.asap.config import settings
 from logging import getLogger as get_logger
 
 logger = get_logger("core.mcp_client")

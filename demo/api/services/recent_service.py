@@ -13,7 +13,7 @@
 하나를 기억하는 것과 같은 크기의 일이다.
 
 **raw JSON 을 담지 않는다. 이 파일의 계약이다.**
-회차에 실리는 문자열은 전부 `vendor/asap/workflow_answer` 가 이미 만들어
+회차에 실리는 문자열은 전부 `vendor_to_be_deleted/asap/workflow_answer` 가 이미 만들어
 저쪽 화면으로 나간 것이다. 여기서 결과를 다시 요약하지 않는다 — 요약하는
 코드가 둘이 되는 순간 한쪽이 geojson 을 흘린다. `commands` 는 아예 안 읽는다.
 지도 명령이 좌표 배열을 통째로 들고 있는 자리가 그것이다.
