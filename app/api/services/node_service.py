@@ -9,8 +9,8 @@ menu 로 만든다. 어긋나는 경로는 registry 가 버리고 여기까지 �
 """
 
 from app.api.services import ontology_service
-from ontology import registry
-from ontology.registry import reset_to_init
+from registration import registry
+from registration.registry import reset_to_init
 
 
 def _edges():

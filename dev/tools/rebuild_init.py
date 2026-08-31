@@ -31,7 +31,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import paths  # noqa: E402
 from ontology import store  # noqa: E402
 from ontology.graph import crosses_groups  # noqa: E402
-from ontology.registry import (  # noqa: E402
+from registration.registry import (  # noqa: E402
     MENU_BUDGET,
     all_recipes,
     append_menu,

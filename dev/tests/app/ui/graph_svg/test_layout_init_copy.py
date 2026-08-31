@@ -1,4 +1,4 @@
-"""대상 : app/ui/graph_svg/ · ontology/registry.py — 좌표의 _init 사본
+"""대상 : app/ui/graph_svg/ · registration/registry.py — 좌표의 _init 사본
 
 **눈이 못 보는 것을 본다.** 초기화가 좌표를 안 되돌리면 화면은 멀쩡하다 —
 첫 시연에서는 아무 일도 없고, **두 번째 시연에서 지도가 첫 배치가 아니다.**
@@ -107,7 +107,7 @@ def test_resetting_the_ontology_also_resets_the_coordinates(isolated_workspace):
     layouts 가 아니라 isolated_workspace 를 씀. reset_to_init() 은 온톨로지 ·
     menu · recipe 도 함께 갈아끼우므로 그쪽까지 격리해야 진짜 저장소가 안 바뀜.
     """
-    from ontology.registry import reset_to_init
+    from registration.registry import reset_to_init
 
     before = layout_store.load()
     write(layout_store.LAYOUT_PATH, {**{k: list(v) for k, v in before.items()},
@@ -122,7 +122,8 @@ def test_resetting_the_ontology_also_resets_the_coordinates(isolated_workspace):
 
 # CLAUDE.md 「폴더가 말하는 여섯 갈래」에서 그대로 온다.
 # 이름이 또 갈리면 아래 exists 확인이 먼저 빨간불이 된다 — 조용히 통과하지 않는다.
-DOMAIN_DIRS = ("ontology", "orchestrator", "execution", "llm_engine", "workflows")
+DOMAIN_DIRS = ("ontology", "registration", "orchestrator", "execution",
+               "llm_engine", "workflows")
 SERVICE_PACKAGES = ("app",)
 
 

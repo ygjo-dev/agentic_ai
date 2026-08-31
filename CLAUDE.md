@@ -27,7 +27,9 @@ recipe 매칭 → 실행 → 검증.
                      그래프DB 로 가면 갈릴 자리다
 
 등록
-  아직 흩어져 있다. 나중에 registration/ 으로 모으고, 다른 저장소로 나간다
+  registration/      한 폴더로 모았다. 나중에 다른 저장소로 나간다.
+                     도메인과 같은 규칙을 진다 — app/ 을 모듈 수준에서 부르지
+                     않는다. 창구(/nodes)와 화면(node_form)은 app/ 에 남는다
 
 빌려온 것
   vendor_to_be_deleted/  저쪽 것. 없어질 것

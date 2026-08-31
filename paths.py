@@ -16,6 +16,9 @@ MODELS_PATH = REPO_ROOT / "models.yaml"
 # execution/step_service.py 머리말에 있다.
 WIRING_PATH = REPO_ROOT / "execution" / "wiring.yaml"
 
+# 노드 등록. 온톨로지와 배선을 자동으로 만든다.
+REGISTRATION_DIR = REPO_ROOT / "registration"
+
 # 실행 경로(Route) 결정 엔진.
 ORCHESTRATOR_DIR = REPO_ROOT / "orchestrator"
 SCHEMAS_DIR = ORCHESTRATOR_DIR / "schemas"
@@ -30,7 +33,7 @@ PROMPTS_DIR = STATIC_DIR / "prompts"
 RECIPES_DIR = STATIC_DIR / "recipes"
 
 RECIPE_SELECTION_PROMPT_PATH = PROMPTS_DIR / "recipe_selection.md"
-NODE_REGISTRATION_PROMPT_PATH = PROMPTS_DIR / "node_registration.md"
+NODE_REGISTRATION_PROMPT_PATH = REGISTRATION_DIR / "node_registration.md"
 
 # 초기화 원본. 웹UI 에서 노드를 등록하면 위 자산이 바뀌므로 되돌릴 곳이 필요하다.
 # 코드가 자동으로 다시 만들지 않는다 — 사람이 명시적으로 다시 뜨기 전까지 고정이다.

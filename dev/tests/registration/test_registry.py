@@ -24,7 +24,7 @@ import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
 from ontology import store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
-from ontology.registry import (
+from registration.registry import (
     MAX_STEPS,
     MENU_BUDGET,
     NODE_REGISTRATION_SCHEMA,
@@ -135,7 +135,7 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
 
     # 기존 **기능** 노드가 다 실려야 한다. 데이터 노드는 이 판단의 근거가
     # 아니다 — 사람이 화면에서 고르는 것이라 LLM 이 정할 것이 없다.
-    from ontology.registry import functions
+    from registration.registry import functions
 
     listed = functions(nodes_now())
     assert listed, "기능 노드가 없으면 이 검사가 무력하다"

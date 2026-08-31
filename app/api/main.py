@@ -40,7 +40,7 @@ from app.api.services import (
 from app.api.services.render_service import UnknownRenderMode
 from llm_engine.ollama import make_client
 from llm_engine.profiles import profile
-from ontology.registry import (
+from registration.registry import (
     DuplicateNode,
     InvalidInference,
     UnknownGroup,
