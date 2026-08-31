@@ -3,11 +3,11 @@
 개편에서 배선을 노드별에서 간선별로 다시 적는다. 그때 선언과 배선이 맞는지를
 계속 세야 하는데 그 눈이 없어서 13개를 놓쳤다. NOTES.md 2026-08-23 참고.
 
-    python tools/check_wiring.py
-    python tools/check_wiring.py --quiet
+    python dev/tools/check_wiring.py
+    python dev/tools/check_wiring.py --quiet
 
 **서버도 LLM 도 쓰지 않는다.** 파일만 읽는 순수 계산이라 언제든 돌려도 된다.
-tools/check_resolve.py · tools/probe_tools.py 와 같은 성격이라 그 파일들의
+dev/tools/check_resolve.py · dev/tools/probe_tools.py 와 같은 성격이라 그 파일들의
 짜임새를 따른다 — 파일 하나에 담고 저장소의 다른 곳을 건드리지 않는다.
 
 **표를 복사하지 않는다.** STEP_OF 와 unwired 를 demo/api/services/step_service
@@ -38,7 +38,7 @@ import sys
 import unicodedata
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from demo.api.services import ontology_service  # noqa: E402
@@ -63,7 +63,7 @@ UNDECLARED_WIRING = "C"
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
 # 한글은 폭이 2 라 ljust 로는 표가 어긋난다. 표 라이브러리를 쓰지 않으므로
-# 여기서 직접 센다. tools/check_resolve.py 와 같은 방식이다.
+# 여기서 직접 센다. dev/tools/check_resolve.py 와 같은 방식이다.
 
 
 def _width(text: str) -> int:

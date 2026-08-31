@@ -162,7 +162,7 @@ CONTEXT_STARTS = {
 #
 # adminBoundary.findBoundaryByPoint 가 여덟 지점에서 늘 items 3건을
 # sido -> sigungu -> emd 순서로 내놓고(2026-08-24 실측, 응답 전문은
-# tools/probe_out/), items.N.layerId 의 낱말이 population 두 도구의 level
+# dev/tools/probe_out/), items.N.layerId 의 낱말이 population 두 도구의 level
 # enum 과 글자까지 같다 (ASAP-mcp/main.py:402).
 #
 # **items.1 은 시군구다. 지금은 시군구 한 자리로 박는다.** 발화가 시도를
@@ -221,8 +221,8 @@ _SECTIONS = ("anchors", "tool_of", "step_of")
 # 문맥에서 시작하는 자리가 소리 없이 사라진다.
 _WIRING_FIELDS = ("input", "input_first", "adapter", "arg_field")
 
-# **밖에서 넷이 이 두 이름을 import 한다** — tools/check_wiring.py ·
-# tools/check_inputs.py · vendor/asap/workflow_answer.py · 시험들.
+# **밖에서 넷이 이 두 이름을 import 한다** — dev/tools/check_wiring.py ·
+# dev/tools/check_inputs.py · vendor/asap/workflow_answer.py · 시험들.
 # 그래서 다시 읽을 때 객체를 갈아 끼우지 않고 **같은 dict 를 비우고 다시
 # 채운다.** 먼저 import 해 간 쪽이 옛 객체를 쥐면 조용히 어긋난다.
 TOOL_OF: dict = {}

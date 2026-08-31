@@ -32,8 +32,8 @@ recipe 매칭 → 실행 → 검증.
   vendor/         저쪽 것. 없어질 것
 
 재는 것     배포에 안 들어간다
-  tools/          계기판
-  tests/          시험
+  dev/tools/      계기판
+  dev/tests/      시험
 ```
 
 **서비스를 위해 도메인을 굽히지 않는다.** 화면이 편해지자고 도메인 모양을 바꾸는
@@ -129,10 +129,10 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 ## 테스트
 
 ```
-python -m pytest tests -q
+python -m pytest dev/tests -q
 ```
 
-- **핵심 테스트**(`tests/ontology/` · `tests/orchestrator/` · `tests/llm_engine/`)는
+- **핵심 테스트**(`dev/tests/ontology/` · `dev/tests/orchestrator/` · `dev/tests/llm_engine/`)는
   제품 명세다. 함수 이름이 요구사항 한 문장이고 docstring 에 왜 그런지가 있다.
   30개 안팎으로 유지한다.
 - **배치 불변식**은 눈으로 못 보는 것을 본다. 좌표가 3pt 움직인 것은 화면을

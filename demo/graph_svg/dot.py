@@ -91,7 +91,7 @@ COLORS = {
 # 노드 글씨 · 노드 최소 크기(인치). 화면 글씨는 `fontsize x 맞춤배율` 이고
 # 맞춤배율은 캔버스가 정하므로, 이 값은 layout_store.DRAW_SCALE 과 짝이다.
 # **한쪽만 올리면 겹친다.** 고르는 근거와 21벌의 표는 NOTES.md 「쉰두째」.
-# 겹침 0 은 tests/demo/graph_svg/test_nodes_do_not_overlap.py 가 지킨다.
+# 겹침 0 은 dev/tests/demo/graph_svg/test_nodes_do_not_overlap.py 가 지킨다.
 # 두 줄 접기는 유지한다. 풀면 노드가 넓어지고 그 폭이 회전 후 높이가 되어
 # 종횡비가 나빠진다 — 화면 글씨도 오히려 작아진다(실측).
 # 채우기를 넣어 선이 노드를 통과해 비치지 않게 한다 — 크기에는 영향이 없다(실측).
@@ -158,7 +158,7 @@ PATH_ARROWSIZE = 2.5
 # 쓰는 dim 경로(PATH_NEW_DIM)와 등록 경로(PATH_NEW)까지 함께 걸린다.
 # **teal 해석 경로 하나만 걸려야 한다.**
 # 이 이름을 읽는 쪽은 demo/ui/components/flow.py 다. 두 곳이 어긋나지 않게
-# tests/demo/ui/test_path_flow_document.py 가 같은 값인지 지킨다.
+# dev/tests/demo/ui/test_path_flow_document.py 가 같은 값인지 지킨다.
 FLOW_CLASS = "flow"
 
 # 등록 강조 굵기. 주인공은 "노드가 어디에 붙었나" 이고 recipe 개수는 스탯이 말한다.

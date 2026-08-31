@@ -24,7 +24,7 @@ zoom.py 와 같은 규칙을 따른다 — 상단 · 하단이 한 벌을 쓰고
 # build_dot 이 붙이는 class 이름. **demo/graph_svg/dot.FLOW_CLASS 와 같아야 한다.**
 # 여기서 import 하지 않는 이유 : demo/ui 는 그리는 규칙을 서버에서 받아 쓰는
 # 쪽이고 graph_svg 를 직접 부르지 않는다. 두 값이 어긋나면
-# tests/demo/ui/test_path_flow_document.py 가 운다.
+# dev/tests/demo/ui/test_path_flow_document.py 가 운다.
 FLOW_CLASS = "flow"
 # 얹은 사본에 붙는 이름. 두 번 얹지 않으려고 표시해 둔다.
 OVERLAY_CLASS = "flowline"

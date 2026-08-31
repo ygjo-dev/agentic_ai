@@ -5,10 +5,10 @@
 없애는 것이 이 도구다. 개편에서 배선을 간선별로 다시 적을 때 무엇에서 무엇으로
 값을 옮길지는 이 표를 보고 정한다.
 
-    python tools/probe_shapes.py --tools /경로/tools.json
-    python tools/probe_shapes.py --only geo.geocode,road.getCctv
+    python dev/tools/probe_shapes.py --tools /경로/tools.json
+    python dev/tools/probe_shapes.py --only geo.geocode,road.getCctv
 
-tools/probe_tools.py 와 무엇이 다른가.
+dev/tools/probe_tools.py 와 무엇이 다른가.
 
     probe_tools    무엇이 데이터를 주는가.  건수를 센다
     probe_shapes   무엇을 어떤 칸으로 주는가.  배선을 적을 재료를 만든다
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import requests
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from demo.api.services.execute_service import USER_CONTEXT  # noqa: E402
@@ -464,7 +464,7 @@ def _row(name, label, status, count, top=None, coordinates=None, bboxes=None,
 
 
 def save(name: str, label: str, payload) -> None:
-    """응답 전문을 tools/probe_out/<도구>.<라벨>.json 으로 남김.
+    """응답 전문을 dev/tools/probe_out/<도구>.<라벨>.json 으로 남김.
 
     규칙  표에는 칸 이름만 찍힘. 배선을 적을 때 값을 봐야 하면 이 파일을 봄
           안 부른 도구(payload None)는 남기지 않음

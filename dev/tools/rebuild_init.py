@@ -1,7 +1,7 @@
 """`_init` 의 recipe 와 menu 를 온톨로지에서 다시 만든다.
 
-    python tools/rebuild_init.py            무엇이 바뀌는지 보여주고 멈춘다
-    python tools/rebuild_init.py --write    실제로 쓴다
+    python dev/tools/rebuild_init.py            무엇이 바뀌는지 보여주고 멈춘다
+    python dev/tools/rebuild_init.py --write    실제로 쓴다
 
 **기본이 미리보기다.** 실수로 돌렸을 때 `_init` 이 날아가면 되돌릴 곳이 없다.
 
@@ -26,7 +26,7 @@ import shutil
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import paths  # noqa: E402
 from ontology import store  # noqa: E402

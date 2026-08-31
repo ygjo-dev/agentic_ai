@@ -7,15 +7,15 @@
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python tools/check_resolve.py                   1~36번 × 5회
-    python tools/check_resolve.py --runs 3          지금 쓰는 회차. 왜 3 인지는 아래
-    python tools/check_resolve.py --only 2          고친 발화만 다시
-    python tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
-    python tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
-    python tools/check_resolve.py --narrow          좁히기 길(두 번 부르기)로. 기본은 끔
-    python tools/check_resolve.py --context none    지도 문맥 없이. 「마흔여섯째」 이전과 같은 조건
-    python tools/check_resolve.py --context bbox    우클릭 전 (보이는 범위만). 「쉰다섯째」까지의 기본
-    python tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
+    python dev/tools/check_resolve.py                   1~36번 × 5회
+    python dev/tools/check_resolve.py --runs 3          지금 쓰는 회차. 왜 3 인지는 아래
+    python dev/tools/check_resolve.py --only 2          고친 발화만 다시
+    python dev/tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
+    python dev/tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
+    python dev/tools/check_resolve.py --narrow          좁히기 길(두 번 부르기)로. 기본은 끔
+    python dev/tools/check_resolve.py --context none    지도 문맥 없이. 「마흔여섯째」 이전과 같은 조건
+    python dev/tools/check_resolve.py --context bbox    우클릭 전 (보이는 범위만). 「쉰다섯째」까지의 기본
+    python dev/tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
 
 ## 두 가지를 잰다 — 경로와 실행
 
@@ -233,7 +233,7 @@ from dotenv import load_dotenv
 
 # 저장소 뿌리를 path 에 넣는다. tools/ 아래에서 돌아가므로 이것 없이는 demo 를
 # 못 찾는다 (check_wiring.py 와 같은 방식이다).
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 # 고정 지도 문맥은 화면이 갖는다. 이 도구가 같은 값을 다시 적으면 둘이 조용히
@@ -346,7 +346,7 @@ UTTERANCES = [
     # 「많은 순」을 시킬 수가 없다 — election.searchAssemblyDistricts 의
     # inputSchema 는 query · sido · code · hasPledges · pledgeCategory · bbox ·
     # limit · includeGeometry · all · simplifyM 이고 order 도 sort 도 없다
-    # (tools/probe_out/tools.json 실측). 못 하는 일을 시키는 발화였다.
+    # (dev/tools/probe_out/tools.json 실측). 못 하는 일을 시키는 발화였다.
     # "있는" 은 그 스키마의 hasPledges · pledgeCategory 와 결이 맞는다.
     (16, "교통 공약 있는 선거구 검색해줘", {"recipe_009"}, True),  # 옛 recipe_008 · 키워드 → 전체 선거구 검색
     (17, "청주 국회의원 공약 검색해줘",   {"recipe_010"}, True),  # 옛 recipe_009 · 키워드 → 선거구 공약 검색
@@ -412,7 +412,7 @@ UTTERANCES = [
     #
     #   1  화면 낱말이 걸리는가   SCREEN_WORDS 에 걸려야 화면 recipe 가 menu 에
     #      실린다. 안 걸리면 LLM 이 그 열아홉을 아예 못 본다
-    #   2  도구가 그 일을 할 수 있는가   tools/probe_out/tools.json 의
+    #   2  도구가 그 일을 할 수 있는가   dev/tools/probe_out/tools.json 의
     #      inputSchema 를 보고 맞댔다. 넷 다 받는 칸이 배선과 맞는다 —
     #      road.getCctv(minLon·minLat·maxLon·maxLat required) ·
     #      adminBoundary.findBoundaryByPoint(lon·lat required) ·

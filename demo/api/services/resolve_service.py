@@ -103,7 +103,7 @@ def resolve(
     제약  narrow 를 안 줬을 때 지금 길이어야 한다.
           /chat 은 이 인자를 안 넘긴다. 기본값이 바뀌면 시연 화면이 바뀐다
           context 를 안 줬을 때 문맥이 없는 것과 똑같아야 한다.
-          2026-08-29 부터 Streamlit 과 tools/check_resolve.py 도 넘기지만,
+          2026-08-29 부터 Streamlit 과 dev/tools/check_resolve.py 도 넘기지만,
           --context none 과 옛 부름이 이 자리를 그대로 지남
     """
     if narrow is None:
@@ -214,7 +214,7 @@ def _starts_at(recipe_id: str) -> str | None:
 #
 # 부분 문자열로 찾는다. "오송역 근처" 는 "이 근처" 가 아니고 "오송역 위치" 도
 # "이 위치" 가 아니라서 안 걸린다. 정답표 서른한 발화에 하나도 안 걸리는 것을
-# tests/demo/api/test_menu_split.py 가 지킨다.
+# dev/tests/demo/api/test_menu_split.py 가 지킨다.
 SCREEN_WORDS = (
     "여기",
     "이 위치",
@@ -288,7 +288,7 @@ def _resolve_full(
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           demo.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
           기존 key 의 이름과 뜻을 바꾸지 않는다.
-          Streamlit 과 tools/check_resolve.py 가 그것을 읽음
+          Streamlit 과 dev/tools/check_resolve.py 가 그것을 읽음
     """
     dropped = _dropped_starts(context)
     choices = _choices_for(context)
@@ -348,7 +348,7 @@ def _resolve_full(
         # 값이 아니다. 검산이 얼마나 값을 하는지 재려면 날것이 있어야 한다.
         #
         # **덮어쓰는 쪽은 그대로 둔다.** 기존 key 의 뜻을 바꾸면 화면과
-        # tools/check_resolve.py 가 함께 흔들린다. key 를 둘 더할 뿐이다.
+        # dev/tools/check_resolve.py 가 함께 흔들린다. key 를 둘 더할 뿐이다.
         "llm_recipe_id": result.get("recipe_id"),
         "llm_candidate_recipe_ids": list(result.get("candidate_recipe_ids") or []),
         # 날것은 뺀 것까지 그대로 둔다. LLM 이 무엇을 골랐는지가 이 두 칸의

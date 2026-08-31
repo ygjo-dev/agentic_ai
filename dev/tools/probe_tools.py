@@ -4,12 +4,12 @@
 남았는데, 도구가 실제로 데이터를 주는지는 두 개밖에 모른다(road.getCctv 83건 ·
 geo.geocode 정상). 빈 껍데기에 배선을 적으면 시연에서 보여줄 것이 안 는다.
 
-    python tools/probe_tools.py
-    python tools/probe_tools.py --only road.getCctv,geo.geocode
-    python tools/probe_tools.py --tools /경로/tools.json --timeout 120
+    python dev/tools/probe_tools.py
+    python dev/tools/probe_tools.py --only road.getCctv,geo.geocode
+    python dev/tools/probe_tools.py --tools /경로/tools.json --timeout 120
 
 **손으로 돌리는 점검 도구다.** Gateway 가 떠 있어야 돌고 그 결과는 사람이 본다.
-tools/check_resolve.py 와 같은 성격이라 그 파일의 짜임새를 따른다 — 파일 하나에
+dev/tools/check_resolve.py 와 같은 성격이라 그 파일의 짜임새를 따른다 — 파일 하나에
 담고 저장소의 다른 곳을 건드리지 않는다.
 
 **성공 판정을 HTTP 상태로 하지 않는다.** Gateway 전역 핸들러가 모든 오류를
@@ -21,7 +21,7 @@ adminBoundary 셋 말고는 전부 거부된다(실측). demo/api/services/execu
 의 USER_CONTEXT 를 그대로 쓴다 — 두 곳에 적으면 갈린다.
 
 표에는 건수만 찍힌다. 배선을 적을 때는 필드 이름을 봐야 하므로 응답 전문을
-tools/probe_out/<도구이름>.json 으로 남긴다. probe_out 은 실측 자산이지만
+dev/tools/probe_out/<도구이름>.json 으로 남긴다. probe_out 은 실측 자산이지만
 응답이 커서 저장소에 담을 것이 아니라 .gitignore 에 넣었다.
 """
 
@@ -35,7 +35,7 @@ from pathlib import Path
 
 import requests
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from dotenv import load_dotenv  # noqa: E402
@@ -101,7 +101,7 @@ REFUSED_TOOLS = {
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
 # 한글은 폭이 2 라 ljust 로는 표가 어긋난다. 표 라이브러리를 쓰지 않으므로
-# 여기서 직접 센다. tools/check_resolve.py 와 같은 방식이다.
+# 여기서 직접 센다. dev/tools/check_resolve.py 와 같은 방식이다.
 
 
 def _width(text: str) -> int:
@@ -356,7 +356,7 @@ def _probe(tool: dict, timeout: int = TIMEOUT) -> dict:
 
 
 def _save(name: str, payload) -> None:
-    """응답 전문을 tools/probe_out/<도구이름>.json 으로 남김.
+    """응답 전문을 dev/tools/probe_out/<도구이름>.json 으로 남김.
 
     규칙  표에는 건수만 찍힘. 배선을 적을 때는 필드 이름을 봐야 함
           안 부른 도구(payload None)는 남기지 않음

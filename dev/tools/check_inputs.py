@@ -1,6 +1,6 @@
 """배선 줄이 도구의 어느 칸을 쓰는지 inputSchema 와 맞대는 계기판.
 
-tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 **맞는 칸을 쓰는가**는
+dev/tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 **맞는 칸을 쓰는가**는
 아무도 안 봤다. 그래서 이런 일이 있었다 (NOTES.md 「열린 과제」 2026-08-26).
 
     geo.getRailwayLines 는 stationName 과 railwayName 을 갖는다
@@ -11,9 +11,9 @@ tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 **�
 
 도구가 늘면 이런 자리가 비례해서 는다. 이 도구가 그것을 센다.
 
-    python tools/check_inputs.py                     probe_out/tools.json 이 있으면 서버 없이
-    python tools/check_inputs.py --tools /tmp/tools.json
-    python tools/check_inputs.py --refresh           Gateway 에서 다시 받아 파일을 갱신
+    python dev/tools/check_inputs.py                     probe_out/tools.json 이 있으면 서버 없이
+    python dev/tools/check_inputs.py --tools /tmp/tools.json
+    python dev/tools/check_inputs.py --refresh           Gateway 에서 다시 받아 파일을 갱신
 
 **표를 복사하지 않는다.** STEP_OF · TOOL_OF 를 demo/api/services/step_service 에서
 그대로 import 한다. 읽기만 한다 — 이 파일은 배선도 온톨로지도 안 고친다.
@@ -34,7 +34,7 @@ command 를 적은 줄(show_facility)이 있고, 그 줄은 Gateway 도구가 �
 ## 스키마는 파일로 갖는다
 
 /api/tools 가 21초 걸린 전례가 있어(NOTES.md 「셋째」) 한 번 받으면
-tools/probe_out/tools.json 에 남기고 다음부터는 그것을 읽는다. 그 파일이 있으면
+dev/tools/probe_out/tools.json 에 남기고 다음부터는 그것을 읽는다. 그 파일이 있으면
 Gateway 없이 돈다. 없을 때만 Gateway 를 부르고 상한은 --timeout (기본 120초)다.
 둘 다 안 되면 무엇이 없는지 말하고 멈춘다 — 조용히 빈 표를 내지 않는다.
 
@@ -104,7 +104,7 @@ check_argument 가 나흘간 ValueError 로 죽어 있던 전례가 있다 (NOTE
 보고 **진짜 표는 한 줄도 안 읽었기** 때문이다. 그래서 「TOOL_OF · STEP_OF 의
 모든 줄을 한 번씩 읽어 본다」를 더했다 — 빈 스키마로 rows_of 를 끝까지 돌린다.
 서버가 없어도 돌고, 표의 모양이 바뀌면(이번처럼 command 줄이 생기면) 여기서
-죽는다. pytest 쪽에는 tests/tools/test_check_inputs_selfcheck.py 하나가
+죽는다. pytest 쪽에는 dev/tests/tools/test_check_inputs_selfcheck.py 하나가
 _selfcheck 를 부른다 — 이 도구는 어쩌다 한 번 돌지만 배선표는 커밋마다 바뀌고,
 커밋마다 도는 것은 pytest 다. check_argument 나흘 · check_inputs 하루가 그렇게
 새어 나갔다.
@@ -118,7 +118,7 @@ import unicodedata
 from collections import Counter
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from demo.api.services.step_service import (  # noqa: E402
@@ -132,7 +132,7 @@ from demo.api.services.step_service import (  # noqa: E402
 GATEWAY_URL = "http://localhost:3000"
 TOOLS_PATH_ENV = "/api/tools"
 DEFAULT_TIMEOUT = 120
-# tools/probe_out/ 은 .gitignore 다. 실측 자산은 전부 거기 둔다.
+# dev/tools/probe_out/ 은 .gitignore 다. 실측 자산은 전부 거기 둔다.
 SCHEMA_PATH = Path(__file__).resolve().parent / "probe_out" / "tools.json"
 
 BBOX_FIELDS = ("minLon", "minLat", "maxLon", "maxLat")
@@ -161,7 +161,7 @@ SIZE_KNOBS = {"limit", "k", "offset"}
 
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
-# tools/check_wiring.py 와 같은 방식이다. import 하면 ontology 를 읽으므로
+# dev/tools/check_wiring.py 와 같은 방식이다. import 하면 ontology 를 읽으므로
 # 서버 없이도 가볍게 돌도록 두 줄만 다시 적었다.
 
 
@@ -561,7 +561,7 @@ def main() -> int:
                 print(f"Gateway 실패({error}). 파일 {path} 로 대신 돈다")
             else:
                 print(f"스키마가 없다. Gateway 도 실패({error}) · 파일도 없음({path})")
-                print("  curl -s http://localhost:3000/api/tools -o tools/probe_out/tools.json")
+                print("  curl -s http://localhost:3000/api/tools -o dev/tools/probe_out/tools.json")
                 return 2
     else:
         print(f"스키마: {path} (서버 안 씀. 다시 받으려면 --refresh)")

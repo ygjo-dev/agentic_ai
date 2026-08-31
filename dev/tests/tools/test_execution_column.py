@@ -10,7 +10,7 @@
 있다.
 """
 
-from tools import check_resolve
+from dev.tools import check_resolve
 from vendor.asap.workflow_answer import compose_workflow_answer, step_line
 
 # recipe 가 아는 성공 문장. 무엇이 오든 vendor 는 그대로 첫 줄에 쓴다.

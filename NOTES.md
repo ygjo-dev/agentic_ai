@@ -106,7 +106,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   스위치가 있는 자리 셋
     resolve_service.py:79  NARROW_ENV = "RESOLVE_NARROW"
     demo/api/main.py:157   /resolve?narrow= 의 기본값 설명
-    tools/check_resolve.py --narrow
+    dev/tools/check_resolve.py --narrow
   ```
 
   위의 「좁히기를 스위치 뒤에 둔 채로 접었다」(2026-08-27 「마흔두째」) 항목이
@@ -123,7 +123,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
     demo/api/services/clarify_service.py   _PENDING — 메모리 · 5분 ·
                                            한 번 쓰면 지움 · 저장 안 함
   나머지는 session_id 를 지나보내기만 한다
-    execute_service.py · main.py · schemas/requests.py · tools/check_resolve.py
+    execute_service.py · main.py · schemas/requests.py · dev/tools/check_resolve.py
   demo/ui/ 의 session 은 st.session_state 다. 우리 세션이 아니다
   ```
 
@@ -1857,6 +1857,102 @@ resolve_route 를 부르는 곳은 제품 코드에서 둘이다
 「열린 과제」에 무엇을 · 왜 지웠고 · 어느 태그에 있나를 적는다.
 죽은 코드를 남기지 않는다. 태그와 기록이 그 일을 한다.
 ```
+
+---
+
+#### 1단계 · `dev/` 로 `tools` · `tests` 를 옮겼다
+
+로직이 안 쓰는 폴더라 눈에서 치웠다. **전부 `git mv` 다** — `git status` 에
+50개가 다 `R` 로 뜬다. 이름 바꾸기로 남아야 이력이 안 끊긴다.
+
+```
+tools/  ->  dev/tools/     8개  (전부 .py)
+tests/  ->  dev/tests/    42개
+합계                      50개  전부 R (rename)
+
+probe_out/ · sweep_out/ 은 gitignore 라 추적 밖으로 함께 따라왔다
+```
+
+고친 줄 — **22파일 95줄.** 전부 import 줄 · 경로 표현 · 경로 문자열이다.
+
+```
+깊이가 한 칸 깊어진 자리          8줄   dev/tools/*.py 여덟의
+                                        parent.parent -> parent.parent.parent
+tools 꾸러미를 부르는 import      5줄   from tools -> from dev.tools
+                                        dev/tests/tools/test_execution_column.py 1
+                                        dev/tests/demo/api/test_menu_split.py   4
+pytest.ini  testpaths             1줄   tests -> dev/tests
+.gitignore                        4줄   probe_out/ · sweep_out/ 두 줄과 그 머리말 두 줄
+CLAUDE.md                         4줄   갈래 두 줄 · pytest 명령 · 핵심 시험 경로
+낡아진 경로 주석                 73줄   아래
+```
+
+**★ 내가 센 것이 프롬프트가 센 것과 세 자리에서 갈렸다.**
+
+```
+가. from tools import 는 하나가 아니라 다섯이다
+    프롬프트는 dev/tests/tools/test_execution_column.py 하나를 셌다.
+    dev/tests/demo/api/test_menu_split.py 에 넷이 더 있다 (145 · 164 · 311 · 332).
+    함수 안에서 늦게 import 해서 파일 머리만 봐서는 안 보인다.
+
+나. parents[N] 자리 셋은 한 줄도 안 고쳐도 됐다
+    프롬프트는 dev/tests/tools/ 둘을 고칠 곳으로 셌다. 세 번째(
+    dev/tests/demo/api/test_step_input_schema.py:22, parents[3])도 찾았다.
+    그런데 tests 와 tools 가 같은 한 칸을 함께 내려갔으므로 셋 다 그대로 맞다.
+      parents[2] / "tools"                -> dev/tools           있다
+      parents[3] / "tools" / "probe_out"  -> dev/tools/probe_out  있다
+    파이썬으로 실제로 풀어서 exists=True 를 확인하고 안 고쳤다.
+    ★ 안 고치는 쪽을 골랐다 — 고치면 같은 값을 다른 글자로 쓰는 것뿐이고,
+      바뀐 줄이 하나 늘어난다.
+
+다. 낡아진 경로 주석이 73줄 있다
+    프롬프트의 「고칠 곳」에 없다. 그런데 CLAUDE.md 가
+    「변경으로 사실과 어긋나게 된 주석은 반드시 고친다」고 못박았고,
+    관문도 「경로 문자열」을 바뀌어도 되는 줄로 친다. 그래서 고쳤다.
+      dev/tools/*.py 의 사용법 줄 (python tools/… -> python dev/tools/…)
+      wiring.yaml 8 · demo/ 12 · ontology/registry.py 2 · vendor 5 · 그 밖
+```
+
+**이미 거짓이던 주석 셋은 안 고쳤다.** 이번 변경이 만든 거짓이 아니다 —
+가리키는 폴더가 옮기기 전에도 없었다. 고치려면 무엇을 가리키려 했는지
+짐작해야 하고, 그것은 자리 옮기기의 범위가 아니다.
+
+```
+demo/graph_svg/dot.py:316   tests/graph_rendering            없다
+ontology/registry.py:344    tests/context_loading            없다
+ontology/registry.py:346    tests/node_registration/test_append_menu.py  없다
+```
+
+`vendor/` 는 주석 다섯 줄만 고쳤다. **로직은 한 줄도 안 고쳤다** — 2단계
+전까지 `vendor/` 는 손대지 않는 것이 규칙이고, 경로 주석은 로직이 아니다.
+
+**NOTES 의 옛 항목은 옛 이름 그대로 뒀다.** 「예순여섯째」 7절이 정한 규칙이다 —
+옛 항목이 부르는 이름은 그때 것이다. 덧붙이기만 한다.
+
+#### ★ 1단계 · 관문 하나가 어긋났다. 까닭을 밝히고 지나갔다
+
+```
+check_wiring  1e35f14bce04d8e64632c71107982883   기준선과 같다
+check_inputs  29c2ec6a5b612e1b8c19c6169191e113   ★ 기준선 6d0ed14… 와 다르다
+pytest        1 failed · 485 passed              기준선과 같다
+git diff      95줄. 전부 import 줄 · 경로 표현 · 경로 문자열
+```
+
+**다른 것은 첫 줄 하나뿐이고, 그 한 줄이 옮긴 폴더 이름이다.**
+
+```
+- 스키마: …/agentic_ai/tools/probe_out/tools.json (서버 안 씀. …)
++ 스키마: …/agentic_ai/dev/tools/probe_out/tools.json (서버 안 씀. …)
+
+둘째 줄부터 끝까지 한 글자도 안 다르다 (diff 로 확인)
+첫 줄의 dev/ 만 지우고 md5 를 다시 내면 6d0ed14d7ab7c0cdd7f063982eadc83d 다
+```
+
+계기판이 자기가 읽은 파일의 절대 경로를 찍는다. 그 파일을 옮겼으니 찍히는
+글자가 바뀌는 것이 맞다. **재는 값은 한 글자도 안 움직였다.** 관문의 뜻(잰
+값이 그대로인가)은 지켰고 글자(md5)만 못 지켰다. 멈추지 않고 지나간 판단이며,
+2·3단계는 새 값 `29c2ec6a5b612e1b8c19c6169191e113` 를 기준선으로 쓴다.
+
 
 
 ### 2026-08-31 (예순여덟째) · 코드에 남은 파이썬 배선표 둘을 지우고 근거 주석을 갈라 보냈다 (1-b)

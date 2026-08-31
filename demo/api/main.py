@@ -155,7 +155,7 @@ async def resolve_endpoint(
           model      쓸 LLM 모델 이름. 없으면 기본 모델
           narrow     좁히기 길(두 번 부르기)을 탈지. **없으면 지금 길(끔)이다.**
                      환경변수 RESOLVE_NARROW=1 이면 그것이 기본이 됨.
-                     측정용임 — tools/check_resolve.py --narrow 가 켬.
+                     측정용임 — dev/tools/check_resolve.py --narrow 가 켬.
                      켜면 응답에 narrow 한 칸이 더 실림 (resolve_service 참조)
           context    화면의 지도 문맥. **요청 본문이다** (나머지 셋은 query).
                      /chat 의 ChatRequest.context 와 같은 모양이고 같은 자리로

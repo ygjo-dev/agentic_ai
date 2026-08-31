@@ -87,7 +87,7 @@ TOTAL_KEY = "totalMatches"
 # 안내 문장이 실릴 자리가 없다(실측). 그 셋은 0건까지만 나오는 것이 맞고,
 # 이유가 안 뜬다고 다시 조사할 것이 아니다.
 #
-# tools/probe_tools.py 의 find_warning 이 같은 일을 하는데 가져다 쓰지 않는다.
+# dev/tools/probe_tools.py 의 find_warning 이 같은 일을 하는데 가져다 쓰지 않는다.
 # vendor 가 tools 를 import 하면 의존이 거꾸로 선다. 짧아서 여기 따로 둔다.
 NOTICE_KEYS = ("warning", "message")
 
@@ -147,7 +147,7 @@ ONE_OF_MANY = "전체 {total:,}건 중 하나"
 
 # 응답이 스스로 "없다" 고 말하는 status 값과 그때 쓸 문구. 실측으로 본 값만 둔다.
 #
-# tools/probe_out 131건 중 최상위 status 칸이 있는 응답이 14건이고 값은 넷이다
+# dev/tools/probe_out 131건 중 최상위 status 칸이 있는 응답이 14건이고 값은 넷이다
 # (2026-08-25 실측).
 #
 #   not_found  10건  election.getDistrict · getAssemblyDistrict ·
@@ -193,7 +193,7 @@ MISSING_STATUS = {
 # (NOTICE_KEYS 위 주석과 같은 까닭). 자세한 것은 NOTES.md 「쉰다섯째」.
 #
 # DATASET_KEY       무엇을 뒤졌는지가 실려 오는 최상위 칸.
-#                   tools/probe_out 240건 중 101건이 이 칸을 갖고 있다
+#                   dev/tools/probe_out 240건 중 101건이 이 칸을 갖고 있다
 #                   (2026-08-30 실측)
 # DATASET_NAME_KEY  그 안에서 볼 이름. **name 하나만 본다.**
 #                   실측 101건 중 85건이 name 을 갖고 값이 사람이 읽는 이름이다
@@ -856,7 +856,7 @@ def _page_text(record: Dict[str, Any]) -> str:
           온 실물이 있음 (2026-08-25 · 2026-08-26 실측)
           응답의 page 는 0부터 셈. 사람이 세는 쪽수로 1을 더해 냄.
           실측 : page 0 조각의 본문 머리가 "1", page 50 조각이 "51"
-          (2026-08-26, tools/probe_out 의 knowledge.query 응답 전문)
+          (2026-08-26, dev/tools/probe_out 의 knowledge.query 응답 전문)
     """
     container = record.get(SOURCE_CONTAINER)
     if not isinstance(container, dict):
@@ -990,7 +990,7 @@ def _clip(text: str, limit: int = SUMMARY_LIMIT) -> str:
           한글은 낱자를 NFC 로 붙인 뒤에 잼. 실측 : knowledge.query 의
           source 가 낱자로 풀린(NFD) 한글이라 눈에 41자인 문서 이름이
           len 67 로 세져 48 한도에서 어중간하게 잘렸음 (2026-08-26 화면,
-          tools/probe_out 의 응답 전문)
+          dev/tools/probe_out 의 응답 전문)
     """
     text = unicodedata.normalize("NFC", " ".join(text.split()))
     return text if len(text) <= limit else text[:limit] + "…"

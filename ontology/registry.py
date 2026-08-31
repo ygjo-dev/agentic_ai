@@ -242,9 +242,9 @@ def all_recipes(nodes: dict) -> list[list[str]]:
           순서가 결정적. 짧은 것부터(BFS), 같은 길이 안에서는 start_ids 와
           nodes 의 순서를 따르고 그것은 ontology.yaml 에 적힌 순서임.
           같은 온톨로지로 두 번 돌리면 같은 번호가 나오고
-          tools/rebuild_init.py 가 그것에 기댐
+          dev/tools/rebuild_init.py 가 그것에 기댐
     제약  대상(about)이 어긋나는 것을 여기서 거르지 않는다.
-          거르는 것은 부르는 쪽의 일임(register_node · tools/rebuild_init.py).
+          거르는 것은 부르는 쪽의 일임(register_node · dev/tools/rebuild_init.py).
           그래야 "무엇이 만들어질 수 있는가" 와 "무엇을 남길 것인가" 가 갈림.
           여기서 함께 걸러 버리면 등록이 무엇을 버렸는지 셀 수 없어짐
           길이 1 을 만들지 않는다.

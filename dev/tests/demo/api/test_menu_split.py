@@ -142,7 +142,7 @@ def test_not_one_screen_word_matches_the_thirty_one_spoken_utterances():
     낱말이 걸리라고 넣은 발화라 이 시험이 볼 것이 아니다 — 그 다섯은 아래
     시험이 본다. 보는 것은 그대로다.
     """
-    from tools.check_resolve import EXTENSION_LAST, UTTERANCES
+    from dev.tools.check_resolve import EXTENSION_LAST, UTTERANCES
 
     걸린_것 = [
         u
@@ -161,7 +161,7 @@ def test_all_five_screen_utterances_in_the_answer_key_match_a_screen_word():
     기대값에 닿을 길이 없는데, 표에는 그냥 빗나감으로 찍혀 발화가 나쁜 것인지
     낱말이 안 걸린 것인지가 안 갈린다.
     """
-    from tools.check_resolve import EXTENSION_LAST, UTTERANCES
+    from dev.tools.check_resolve import EXTENSION_LAST, UTTERANCES
 
     화면_다섯 = [u for n, u, _, _ in UTTERANCES if n > EXTENSION_LAST]
 
@@ -308,7 +308,7 @@ def test_the_three_contexts_of_check_resolve():
     2026-08-30 에 기본을 bbox 에서 both 로 바꿨다. bbox 뿐이면 찍은 지점
     recipe 아홉이 menu 에도 축 선택지에도 안 실려 아예 못 재어진다.
     """
-    from tools import check_resolve
+    from dev.tools import check_resolve
 
     assert check_resolve.CONTEXT == check_resolve.CONTEXT_BOTH
 
@@ -329,7 +329,7 @@ def test_the_three_contexts_of_check_resolve():
 def test_the_screen_and_the_tool_use_the_same_bbox():
     """둘이 어긋나면 "시연과 같은 조건" 이라는 말이 거짓이 된다."""
     from demo.ui import config as ui_config
-    from tools import check_resolve
+    from dev.tools import check_resolve
 
     assert check_resolve.ui_config is ui_config
     assert ui_config.map_context()["view"]["bbox"] == ui_config.FIXED_VIEW_BBOX

@@ -1,14 +1,14 @@
 """발화에서 뽑은 인자가 도구에 실제로 통하는지 재는 도구.
 
-    python tools/check_argument.py
-    python tools/check_argument.py --runs 5 --model qwen3:32b
-    python tools/check_argument.py --only 4,6
+    python dev/tools/check_argument.py
+    python dev/tools/check_argument.py --runs 5 --model qwen3:32b
+    python dev/tools/check_argument.py --only 4,6
 
 **재기만 한다. 아무것도 안 고친다.** 인자 추출을 어떻게 바꿀지는 사람이 정한다.
 
 ## 왜 이것을 재는가
 
-`tools/check_resolve.py` 는 `recipe_id` 만 대조한다. recipe 가 맞으면 적중이다.
+`dev/tools/check_resolve.py` 는 `recipe_id` 만 대조한다. recipe 가 맞으면 적중이다.
 그런데 화면에서는 recipe 가 맞는데도 답이 0건으로 나온 적이 있다(2026-08-24 실측).
 
     철도 안전 문서 찾아줘       recipe_014 ✓  knowledge.query          0건
@@ -65,7 +65,7 @@ from pathlib import Path
 
 import requests
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from demo.api.services import gateway_client, step_service  # noqa: E402

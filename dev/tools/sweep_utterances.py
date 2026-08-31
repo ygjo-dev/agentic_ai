@@ -4,10 +4,10 @@
 정답표(UTTERANCES)를 읽지 않는다. 이 파일은 관측 기록기다 — 무엇이 맞는지는
 표를 보고 사람이 정한다.
 
-    python tools/sweep_utterances.py                     서버 기본 모델 · 10회
-    python tools/sweep_utterances.py --model qwen3:8b    모델만 바꿔 (서버 안 내림)
-    python tools/sweep_utterances.py --runs 3            빨리 훑어보기
-    python tools/sweep_utterances.py --only 3,7          발화 번호만 골라
+    python dev/tools/sweep_utterances.py                     서버 기본 모델 · 10회
+    python dev/tools/sweep_utterances.py --model qwen3:8b    모델만 바꿔 (서버 안 내림)
+    python dev/tools/sweep_utterances.py --runs 3            빨리 훑어보기
+    python dev/tools/sweep_utterances.py --only 3,7          발화 번호만 골라
 
 `check_resolve._call_resolve` 를 그대로 쓴다. 화면이 지나는 것과 같은 경로여야
 표를 믿을 수 있고, 두 도구의 표를 나란히 놓을 수 있다.
@@ -16,7 +16,7 @@
 「오류」로 적고 다음으로 간다. 서버에 못 닿으면 잠깐 쉬었다 다시 부르고, 그래도
 안 되면 그 회차만 버린다.
 
-산출물은 `tools/sweep_out/` 에 둔다 (`.gitignore` 에 있다).
+산출물은 `dev/tools/sweep_out/` 에 둔다 (`.gitignore` 에 있다).
 
     sweep-<모델>-<날짜>.txt    사람이 읽을 표
     sweep-<모델>-<날짜>.json   내일 다시 셀 수 있는 같은 내용
@@ -33,7 +33,7 @@ from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 # _call_resolve 만 가져온다. 정답표(UTTERANCES)는 쓰지 않는다.
 from tools.check_resolve import BASE_URL, ServerDown, _call_resolve  # noqa: E402
