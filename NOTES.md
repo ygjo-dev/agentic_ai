@@ -1085,6 +1085,20 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
     셋뿐이고 tests/demo/api/test_step_argument.py 의 여덟 시험이 그 셋을 지킨다
   ```
 
+  **자리가 하나 갈렸다 (2026-08-31 「예순일곱째」).** 배선이 `wiring.yaml` 로
+  옮겨가면서 셋 중 하나가 파일로 갔다.
+
+  ```
+  RAILWAY_LINE_SUFFIX   step_service.py.  값 판단의 자라 코드에 남겼다
+  _by_argument          step_service.py.  그대로다
+  arg_field 한 줄       wiring.yaml 의 get_railway_lines × place_name
+                        ["<RAILWAY_LINE_SUFFIX>", railwayName] 로 적힌다 —
+                        칸 이름은 도구의 것이라 데이터이고, 자는 코드의 것이라 이름만 온다
+  ```
+
+  **「같은 칸을 적은 줄이 셋을 넘으면」이라는 조건은 이제 세기 쉬워졌다** —
+  `wiring.yaml` 에서 `arg_field` 를 세면 된다. 지금 하나다.
+
   **자를 넓히지 않는다.** "…선" 하나이고 "…역" 으로도 안 좁혔다 — "청주" 가
   `stationName` 으로 9건인데 좁히면 그 자리를 잃는다. `"1호선"` 은 두 칸 다 답이
   있는데(521건 · 345건) 규칙이 `railwayName` 으로 떨어뜨렸고 **재서 고른 것이
@@ -1529,6 +1543,234 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-08-31 (예순일곱째) · 배선표 둘을 `wiring.yaml` 로 옮기고 코드가 그것을 읽게 했다 (1-a)
+
+무인 실행. 조건 — `refactor/vendor` · 워킹 트리에 두고 커밋 안 했다 ·
+`.venv/bin/python -m pytest -q` · 서버는 안 띄웠다.
+
+고친 것은 넷이다. 새 파일 `wiring.yaml` · 새 시험
+`tests/demo/api/test_wiring_yaml.py` · `paths.py` · `step_service.py` ·
+이 파일. **`tools/` 아래는 한 줄도 안 고쳤다. 그것이 이번 설계의 요점이다.**
+
+## 왜 데이터로 뺐나
+
+노드를 등록하면 recipe 는 저절로 느는데 배선은 사람이 코드를 열어 적어야 한다.
+`check_wiring` 이 그 격차를 「C 부류」로 센다(지금 1개). 등록 화면이 배선까지
+쓰게 하려면 배선이 파이썬 소스 안에 있어서는 안 된다.
+
+**온톨로지에는 안 넣었다.** 까닭은 `step_service.py` 머리말에 이미 있던 것
+그대로다 — ㉠ 노드가 특정 MCP 서버에 묶이면 같은 일을 하는 도구로 갈아 끼울 때
+도메인을 고쳐야 하고, ㉡ 「노드에는 `name` 과 `description` 만」이라는 온톨로지
+구조 원칙과 부딪히고, ㉢ menu 가 온톨로지에서 만들어지므로 도구 이름이
+프롬프트로 샐 자리가 가까워진다. 그래서 `ontology/` 안이 아니라 저장소 뿌리에
+`models.yaml` 옆으로 뒀다. 경로는 `paths.WIRING_PATH` 다.
+
+## 1. 기준선 (바꾸기 전에 실제로 돌린 것)
+
+```
+TOOL_OF  27줄 = {server_id, tool, headline} 26 + {command, headline} 1
+STEP_OF  36줄 = input 만 20 · input+input_first 14 · arg_field 1 · adapter 1
+pytest   1 failed, 476 passed, 1 warning in 60.50s
+  ★ 실패 하나 = tests/demo/graph_svg/test_layout_invariants.py
+               ::test_dense_graph_would_move_if_overlap_removal_were_used
+```
+
+인수인계에 적힌 실측과 한 개도 안 어긋났다. 세는 법이 갈리는 자리는 아래
+「4. 앵커」에 적었다.
+
+## 2. `wiring.yaml` 의 구조 — 절 셋
+
+```
+anchors    되풀이되는 값. 로더가 안 읽는다. YAML 앵커를 여기 모아 둔 것뿐이다
+tool_of    노드            -> 실행 수단(server_id + tool 또는 command) · 답 첫 줄
+step_of    노드 -> 받는 타입 -> 줄        ★ 두 겹이다
+```
+
+**`step_of` 만 두 겹인 까닭.** 표의 키가 `(노드, 받는 타입)` 짝인데 YAML 은
+짝을 키로 쓸 수 없다. 바깥을 노드, 안을 받는 타입으로 나누고 로더가 둘을
+짝으로 묶는다. 목록 꼴(`- {node: …, type: …}`)도 됐지만 두 겹을 골랐다 —
+같은 노드의 두 자리가 붙어 보여야 「같은 노드가 받는 것이 달라서 줄이 갈린다」
+는 이 표의 존재 이유가 파일에서 읽힌다.
+
+**차례가 값의 일부다.** `check_inputs` 가 `STEP_OF` 를 순서대로 찍으므로 값이
+같아도 차례가 달라지면 계기판 출력이 달라진다. 파이썬 표는 같은 노드의 줄이
+이미 붙어 있어서 두 겹으로 접어도 차례가 그대로였다(확인했다). 시험 하나가
+그것을 지킨다.
+
+## 3. `< >` — 「값은 코드에 있다」는 표시
+
+`RADIUS_METERS`(15000)는 배선표에도 오고 `demo/ui/config.py` 도 쓴다. 값을
+YAML 로 옮기면 원천이 둘이 된다. 그래서 **값은 코드에 남기고 YAML 에는 이름만
+적는다.**
+
+```
+YAML                                  로더가 넣는 값
+  radiusMeters: "<RADIUS_METERS>"       step_service.RADIUS_METERS      15000
+  adapter: "<POINT_RADIUS_TO_BBOX>"     step_service.POINT_RADIUS_TO_BBOX
+  arg_field: ["<RAILWAY_LINE_SUFFIX>", railwayName]
+                                        step_service.RAILWAY_LINE_SUFFIX  "선"
+```
+
+`_SYMBOLS` 에 없는 이름이 오면 **터진다.** 조용히 넘기면 `"<RADIUS_METRES>"`
+라는 문자열이 도구에 그대로 실려 나가고, 그때 오는 것은 오류가 아니라 0건이다.
+어절 전체가 `<이름>` 일 때만 바꾼다 — 문자열 안에 섞으면 값의 타입이 안 지켜진다
+(`RADIUS_METERS` 는 수다).
+
+**`DROP` 은 표기법을 안 만들었다.** 표에 오는 값이 아니다. `_filled` 이
+「이 칸은 못 채운다」를 알리려고 그 자리에서 만드는 표시라 YAML 이 적을 자리가
+없다. 특수 규칙 셋 중 둘(`adapter` · `arg_field`)만 이름이 필요했다.
+
+**`@arg` · `$prev` · `$context` 는 글자 그대로 YAML 에 뒀다.** 이것도 `_filled`
+이 코드에서 알아보는 이름이라 엄밀히는 원천이 둘이다. 그래도 이름으로 안 뺐다 —
+`$prev.minLon` 처럼 **앞머리로만 쓰이는 것**이라 `<PREVIOUS_STEP>.minLon` 같은
+꼴이 되고, 그러면 `<>` 가 「값을 바꿔 넣는다」가 아니라 「앞머리를 이어 붙인다」
+는 둘째 뜻을 갖게 된다. 표시 하나에 규칙 둘을 얹지 않았다. 1-b 에서 옛 표를
+지울 때 이 넷의 주인을 어디로 할지 한 번 정해야 한다.
+
+## 4. 앵커 — 되풀이되는 값을 한 곳에만 적는다
+
+세어 보니 인수인계의 일곱 개가 다 맞는데 **세는 법이 셋으로 갈렸다.** 그대로
+적는다.
+
+```
+                          인수인계  다시 센 것            세는 법
+BBOX_FROM_CONTEXT           15      15                   상수 이름이 나온 횟수
+                                    (목록 꼴 7 + 낱개 8)   (평평한 넷 꼴 2군데 × 4)
+SPOKEN_VALUE                17      17                   같음
+SERVER_ID                   26      25 + WEB_SERVER_ID 1  server_id 칸이 있는 줄 26
+BBOX_FROM_PREVIOUS           8       7 + 풀어 적은 1군데   그 값을 쓰는 자리 8
+PREVIOUS_STEP                8       8                    같음
+POINT_FROM_CONTEXT           5       5                    같음
+POINT_FROM_PREVIOUS          5       5                    같음
+```
+
+★ `SERVER_ID` 만 딱 떨어지지 않는다. 상수 `SERVER_ID` 를 쓰는 줄은 25이고
+`WEB_SERVER_ID` 한 줄을 더해야 26이다. `TOOL_OF` 27줄 중 26이 도구이고 하나가
+지도 명령이라는 실측과 맞다. 앵커는 25줄이 쓰는 `asap-mcp-core` 에만 걸었다 —
+한 번 쓰는 값에 앵커를 걸면 이름만 늘고 읽기가 나빠진다.
+
+**`PREVIOUS_STEP` 은 앵커가 못 된다.** YAML 앵커는 값 전체를 묶지 문자열의
+앞머리를 못 묶는다. `$prev` 로 시작하는 여덟 자리는 뒤가 다 다르다
+(`.minLon` · `.location` · `.items.0.stationId` …). 그래서 그 여덟에서
+**되풀이되는 완성된 값** 쪽을 묶었다.
+
+**낱개까지 묶은 까닭.** 지도 범위 네 칸은 목록 꼴(`bbox` 한 칸)과 평평한 넷 꼴
+둘 다로 쓰이는데 YAML 은 앵커를 인덱스할 수 없다. 낱개를 안 묶으면 같은
+문자열을 파일에 두 번 적게 되고, 그것은 파이썬 표가 `BBOX_FROM_CONTEXT[0]` 으로
+피하던 바로 그것이다 — 한 곳만 고쳤을 때 조용히 어긋난다. 이름이 여덟 개
+늘었지만 **문자열은 파일에 한 번씩만 있다.**
+
+## 5. 로더 — 같은 dict 를 비우고 다시 채운다
+
+**`TOOL_OF` · `STEP_OF` 라는 이름을 그대로 남겼다.** 밖에서 넷이 이 이름을
+import 한다 — `tools/check_wiring.py` · `tools/check_inputs.py` ·
+`vendor/asap/workflow_answer.py` · 시험들. 그래서 다시 읽을 때
+**객체를 갈아 끼우지 않고 같은 dict 를 `clear()` 하고 `update()` 한다.**
+새 dict 를 대입하면 먼저 import 해 간 쪽이 옛 객체를 쥐고, 그때 어긋나는 것은
+조용하다.
+
+```
+읽는 때   import 할 때 한 번.  계기판 넷은 함수를 안 부르고 표를 곧장 읽는다
+          plan() · unwired() 맨 앞.  요청마다 mtime 을 보고 바뀌었을 때만 다시 판다
+안 읽는 때  mtime 이 그대로면 아무것도 안 한다
+          경로를 만드는 도중에는 안 부른다 — 앞 단계와 뒷 단계가 다른 배선을 쓰면 안 된다
+터지는 때  파일이 없다 · 문법이 깨졌다 · 모르는 절 · 모르는 칸 이름 · 모르는 <이름>
+```
+
+**두 표를 다 만든 뒤에 갈아 넣는다.** 중간에 터지면 반만 바뀐 표가 남고, 그것은
+빈 표보다 나쁘다 — 계기판이 「배선 3줄」처럼 멀쩡한 모양으로 틀린 수를 찍는다.
+**판정이 끝난 뒤에 `mtime` 을 적는다.** 터진 파일에 `mtime` 만 먼저 적으면 다음
+요청이 「안 바뀌었다」고 보고 조용히 옛 표로 돈다.
+
+**파이썬 표는 안 지웠다. 이번은 1-a 다.** 두 벌이 같은 이름을 쓸 수 없으므로
+옛 표를 `_TOOL_OF_IN_CODE` · `_STEP_OF_IN_CODE` 로 옮겼다. **밖에서는 아무도 이
+이름을 안 쓴다** — 계기판이 옛 표를 보게 되면 「YAML 이 관문을 지나는가」를
+재는 뜻이 없어진다. 쓰는 곳은 새 시험 하나뿐이다.
+
+## 6. 계기판을 왜 안 고쳐도 됐나
+
+계기판 넷은 `step_service` 에서 `TOOL_OF` · `STEP_OF` 를 import 해서 읽는다.
+**이름도 객체도 그대로 남겼으므로 저쪽이 볼 것이 안 바뀐다.** 표가 어디서
+만들어지는지는 저쪽이 알 일이 아니고, 그것이 「표를 복사하지 않는다」
+(`check_inputs.py` 머리말)가 값을 하는 자리다. `tools/` 가 `git diff` 에
+하나도 없다는 것이 관문 여섯째다.
+
+## 7. 판정(`check_resolve`)은 왜 안 쟀나
+
+배선은 프롬프트에 안 실린다. 그리고 이번 변경은 **같은 dict 를 다른 데서 만들
+뿐**이다. 그러므로 「두 dict 가 값까지 같다」가 판정을 재는 것보다 강한 증거다 —
+판정이 같게 나와도 그것은 표가 같다는 것을 간접으로만 말하고, 판정이 갈리면
+그것은 LLM 잡음이지 이 변경이 아니다. **재면 잡음만 얹는다.**
+
+대신 계기판 출력을 파일에 받아 전후로 맞댔다. 서버가 있어야 도는 것
+(`check_resolve` · 화면 실측)은 **안 쟀다.**
+
+## 8. 관문 — 다섯을 실제로 돌린 것
+
+```
+① 두 표가 값까지 같다
+   TOOL_OF == _TOOL_OF_IN_CODE   True
+   STEP_OF == _STEP_OF_IN_CODE   True
+   차례도 같다 (list(...) 비교)   True · True
+
+② check_wiring 출력 — 한 글자도 안 달라졌다 (md5 1e35f14b… 전후 같음)
+     C  선언에는 있는데 배선이 없다 (1개)
+     노드 × 받는 타입                                    도구
+     web_fetch × 웹 주소
+
+     recipe 60개 · 배선이 다 있는 것 59개 · STEP_OF 36줄 · A 0개 · B 0개 · C 1개
+     C  web_fetch×web_address
+
+③ check_inputs 출력 — 한 글자도 안 달라졌다 (md5 6d0ed14d… 전후 같음)
+     판정한 행 51 (input 35 · input_first 15 · 값 갈래 1) · 지도 명령 줄 1 · 도구 26
+     줄 판정   맞다 51 · 없는 칸 0 · 안 보낸 required 0 · 스키마 못 받음 0
+     칸 합계   없는 칸 0 · 안 보낸 required 0 · 안 쓰는 칸 302 (그중 ★ 119)
+
+④ pytest   1 failed, 488 passed, 1 warning in 60.28s
+     476 → 488. 는 것은 새 시험 12개뿐이다
+     ★ 일부러 둔 실패가 같은 이름으로 그대로 실패한다
+       tests/demo/graph_svg/test_layout_invariants.py
+       ::test_dense_graph_would_move_if_overlap_removal_were_used
+
+⑤ git status --porcelain
+      M demo/api/services/step_service.py
+      M paths.py
+     ?? tests/demo/api/test_wiring_yaml.py
+     ?? wiring.yaml
+     ★ tools/ 아래가 없다. 고칠 범위 밖의 파일도 없다
+```
+
+## 9. 새 시험 열둘
+
+`tests/demo/api/test_wiring_yaml.py`. 서버도 LLM 도 안 부른다.
+
+```
+같은가        TOOL_OF · STEP_OF 가 코드의 표와 dict 비교로 같다 · 차례도 같다
+              arg_field 가 목록이 아니라 짝이다 (로더가 튜플로 바꾼다)
+              <이름> 이 코드의 값으로 바뀐다 (RADIUS_METERS · POINT_RADIUS_TO_BBOX)
+터지는가      모르는 <이름> · 모르는 칸 이름 · 모르는 절 · 파일 없음 · 깨진 문법
+              터져도 표가 반쪽으로 안 남는다
+다시 읽는가   mtime 이 바뀌면 다시 읽고, 안 바뀌면 안 읽는다
+```
+
+「계기판이 조용히 죽는다」가 세 번 났다(「예순셋째」). 이번 자리도 같은 모양이라
+**빈 표로 도는 것을 시험이 막는다** — 계기판 넷이 표를 곧장 읽으므로 빈 표는
+「배선 0줄」이라는 멀쩡해 보이는 출력이 된다.
+
+## 10. 1-b 에 남긴 것
+
+```
+파이썬 표 둘을 지운다               _TOOL_OF_IN_CODE · _STEP_OF_IN_CODE
+줄마다의 실측 근거 주석을 옮긴다     지금은 step_service.py 에 있다. 지금 옮기면
+                                    같은 글이 두 곳에 있게 되어 이번엔 안 옮겼다
+                                    (statId 실측 · k=6 근거 · ev bbox 이력 · items.1 …)
+@arg · $prev · $context 의 주인      _filled 이 코드에서 알아보는 이름이라 원천이 둘이다.
+                                    표기법을 <>로 통일할지 그대로 둘지 정한다 (3절)
+표를 지운 뒤의 시험                  dict 비교가 대상을 잃는다. 그때 이 시험 열둘 중
+                                    「같은가」 넷을 무엇으로 바꿀지 정한다
+등록 화면이 wiring.yaml 을 쓴다      로더는 이미 mtime 으로 다시 읽는다. 쓰는 쪽이 없다
+```
 
 ### 2026-08-31 (예순여섯째) · 시험 함수 이름 246개를 한글에서 영어로 옮겼다 — 이름만 고쳤다
 

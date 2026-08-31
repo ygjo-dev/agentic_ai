@@ -8,6 +8,11 @@ input 을 어떻게 채우는지는 온톨로지에 없다 — 아래 두 표가
     TOOL_OF   노드            -> 실행 수단 · 답 첫 줄
     STEP_OF   (노드, 받는 타입) -> input
 
+**두 표는 이제 wiring.yaml 이 갖는다.** 노드를 등록하면 recipe 는 저절로 느는데
+배선은 사람이 코드에 적어야 했다. 여기 남은 두 벌(_TOOL_OF_IN_CODE ·
+_STEP_OF_IN_CODE)은 같은 값인지 대볼 것이고 1-b 에서 지운다.
+**그래도 온톨로지에는 안 넣는다** — 까닭은 바로 아래 문단 그대로다.
+
 **실행 수단이 둘이다.** 마흔은 Gateway 의 MCP 도구를 부르고(server_id · tool),
 하나는 부를 도구가 없어 지도 명령만 낸다(command). 「모든 경로가 도구로 끝난다」
 는 전제가 깨지는 자리가 여기 한 곳이고, 온톨로지는 그것을 모른다 — 거기 적힌
@@ -31,6 +36,9 @@ argument 로 함께 내놓고, 그것이 없을 때만 place_in 이 장소 하�
 
 import re
 
+import yaml
+
+import paths
 from demo.api.services import ontology_service
 
 SERVER_ID = "asap-mcp-core"
@@ -196,7 +204,19 @@ DROP = object()
 #
 # headline 은 마지막 노드의 것만 쓰인다. 도구 이름으로는 만들 수 없는 문장이라
 # (road.getCctv -> "CCTV 를 조회했습니다") 노드가 들고 있어야 한다.
-TOOL_OF = {
+#
+# ── 이 아래 두 표는 이제 원천이 아니다 ────────────────────────────
+#
+# 진짜 표는 wiring.yaml 이고 아래 _load_wiring 이 그것을 파서 TOOL_OF · STEP_OF
+# 를 채운다. 여기 남은 두 벌은 **같은 값인지 대볼 것**이다 —
+# tests/demo/api/test_wiring_yaml.py 가 dict 를 통째로 맞대고, 그것이 이번
+# 변경의 증거다. 1-b 에서 지운다. 그때 줄마다의 실측 근거 주석이 wiring.yaml 로
+# 간다.
+#
+# **이름 앞에 _ 가 붙은 까닭.** 두 벌이 같은 이름을 쓸 수 없다. 밖에서는 아무도
+# 이 이름을 쓰지 않는다 — tools/ 의 계기판이 옛 표를 보게 되면 YAML 이 관문을
+# 지나는지 재는 뜻이 없어진다.
+_TOOL_OF_IN_CODE = {
     "geocode_place": {
         "server_id": SERVER_ID,
         "tool": "geo.geocode",
@@ -365,7 +385,7 @@ TOOL_OF = {
 #   말한 키워드 →           전기차 충전소 검색     query 를 받아야 한다
 #
 # 그 탓에 recipe 012 · 013 은 발화에서 온 값을 통째로 버리고 전국을 검색했다.
-STEP_OF = {
+_STEP_OF_IN_CODE = {
     ("geocode_place", "place_name"): {"input": {"query": SPOKEN_VALUE}},
 
     # 앞이 무엇이냐에 따라 채우는 칸이 갈린다(2026-08-23 실측).
@@ -672,6 +692,154 @@ STEP_OF = {
 # 생기지 않는다.
 
 
+# ── 배선표를 파일에서 읽는다 ──────────────────────────────────────
+
+# YAML 이 "<이름>" 이라고만 적고 값은 여기 두는 것들.
+#
+# **왜 값을 안 옮겼나.** 옮기면 원천이 둘이 된다 — RADIUS_METERS 는 배선표
+# 말고 demo/ui/config.py 도 쓰고, POINT_RADIUS_TO_BBOX 는 vendor 어댑터의
+# 이름이라 저쪽이 주인이고, RAILWAY_LINE_SUFFIX 는 값 판단의 자라 그 뜻과
+# 한계가 코드(상수 옆 주석)에 있어야 한다.
+#
+# DROP 은 여기 없다. 표에 오는 값이 아니라 _filled 이 "이 칸은 못 채운다" 를
+# 알리려고 만드는 표시라 YAML 이 적을 자리가 없다.
+_SYMBOLS = {
+    "RADIUS_METERS": RADIUS_METERS,
+    "POINT_RADIUS_TO_BBOX": POINT_RADIUS_TO_BBOX,
+    "RAILWAY_LINE_SUFFIX": RAILWAY_LINE_SUFFIX,
+}
+
+_SYMBOL_PATTERN = re.compile(r"^<([A-Z][A-Z0-9_]*)>$")
+
+# YAML 의 한 절 이름. 여기 없는 절이 오면 터진다 — 오타 난 절은 조용히 빈 표가
+# 되고, 그것이 「계기판이 조용히 죽는다」의 모양이다.
+_SECTIONS = ("anchors", "tool_of", "step_of")
+
+# 배선 한 줄이 가질 수 있는 칸. input_frist 같은 오타가 조용히 넘어가면 화면
+# 문맥에서 시작하는 자리가 소리 없이 사라진다.
+_WIRING_FIELDS = ("input", "input_first", "adapter", "arg_field")
+
+# **밖에서 넷이 이 두 이름을 import 한다** — tools/check_wiring.py ·
+# tools/check_inputs.py · vendor/asap/workflow_answer.py · 시험들.
+# 그래서 다시 읽을 때 객체를 갈아 끼우지 않고 **같은 dict 를 비우고 다시
+# 채운다.** 먼저 import 해 간 쪽이 옛 객체를 쥐면 조용히 어긋난다.
+TOOL_OF: dict = {}
+STEP_OF: dict = {}
+
+_wiring_mtime = None
+
+
+def _resolved(value):
+    """YAML 조각의 "<이름>" 을 코드의 값으로. 중첩된 것까지.
+
+    입력  yaml.safe_load 가 낸 조각
+    출력  같은 모양에 표시만 바뀐 것
+    규칙  어절 전체가 "<이름>" 일 때만 바꿈. 문자열 안에 섞어 쓰지 않음 —
+          값의 타입이 바뀜(RADIUS_METERS 는 수다)
+    제약  모르는 이름을 조용히 넘기지 않는다.
+          그대로 두면 "<RADIUS_METERS>" 라는 문자열이 도구에 그대로 실려
+          나가고, 0건이 오지 오류가 오지 않는다
+    """
+    if isinstance(value, dict):
+        return {key: _resolved(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolved(item) for item in value]
+    if isinstance(value, str):
+        match = _SYMBOL_PATTERN.fullmatch(value)
+        if match:
+            name = match.group(1)
+            if name not in _SYMBOLS:
+                raise ValueError(f"{paths.WIRING_PATH.name}: 모르는 이름 <{name}>")
+            return _SYMBOLS[name]
+    return value
+
+
+def _wiring_row(node_id: str, type_id: str, row) -> dict:
+    """YAML 의 배선 한 줄을 표에 넣을 모양으로.
+
+    입력  노드 id · 받는 타입 id · 그 줄
+    출력  STEP_OF 의 값 하나
+    규칙  arg_field 는 (어미, 칸 이름) 짝임. YAML 목록으로 오므로 튜플로 바꿈 —
+          _by_argument 가 짝으로 풀고, 옛 표와 값까지 같아야 함
+    제약  모르는 칸 이름에서 터진다
+    """
+    if not isinstance(row, dict):
+        raise ValueError(f"{paths.WIRING_PATH.name}: {node_id} × {type_id} 이 dict 가 아니다")
+
+    unknown = [key for key in row if key not in _WIRING_FIELDS]
+    if unknown:
+        raise ValueError(f"{paths.WIRING_PATH.name}: {node_id} × {type_id} 에 모르는 칸 {unknown}")
+    if "input" not in row:
+        raise ValueError(f"{paths.WIRING_PATH.name}: {node_id} × {type_id} 에 input 이 없다")
+
+    wiring = _resolved(row)
+    if "arg_field" in wiring:
+        wiring["arg_field"] = tuple(wiring["arg_field"])
+    return wiring
+
+
+def _load_wiring() -> None:
+    """wiring.yaml 을 파서 TOOL_OF · STEP_OF 를 채움.
+
+    규칙  step_of 는 두 겹임(노드 -> 받는 타입 -> 줄). 그 둘을 짝 키로 묶음.
+          YAML 은 짝을 키로 쓸 수 없어 파일에서만 두 겹임
+          파일 차례를 그대로 지킴. 계기판이 STEP_OF 를 순서대로 찍음
+    제약  두 표를 다 만든 뒤에 갈아 넣는다.
+          중간에 터지면 반만 바뀐 표가 남고, 그것은 빈 표보다 나쁘다
+          객체를 새로 만들지 않는다. 먼저 import 해 간 쪽이 옛 dict 를 쥔다
+    """
+    document = yaml.safe_load(paths.WIRING_PATH.read_text(encoding="utf-8"))
+    if not isinstance(document, dict):
+        raise ValueError(f"{paths.WIRING_PATH.name}: 최상위가 dict 가 아니다")
+
+    unknown = [key for key in document if key not in _SECTIONS]
+    if unknown:
+        raise ValueError(f"{paths.WIRING_PATH.name}: 모르는 절 {unknown}")
+    for section in ("tool_of", "step_of"):
+        if not isinstance(document.get(section), dict):
+            raise ValueError(f"{paths.WIRING_PATH.name}: {section} 절이 없다")
+
+    tool_of = _resolved(document["tool_of"])
+
+    step_of = {}
+    for node_id, by_type in document["step_of"].items():
+        if not isinstance(by_type, dict):
+            raise ValueError(f"{paths.WIRING_PATH.name}: {node_id} 아래가 dict 가 아니다")
+        for type_id, row in by_type.items():
+            step_of[(node_id, type_id)] = _wiring_row(node_id, type_id, row)
+
+    TOOL_OF.clear()
+    TOOL_OF.update(tool_of)
+    STEP_OF.clear()
+    STEP_OF.update(step_of)
+
+
+def reload_wiring() -> None:
+    """파일이 바뀌었으면 다시 판다.
+
+    규칙  mtime 이 그대로면 아무것도 안 함. 요청마다 파일을 통째로 파지 않음
+          등록 화면이 wiring.yaml 을 쓰면 서버를 안 내리고 반영되어야 함
+    제약  판정이 끝난 뒤에 mtime 을 적는다.
+          터진 파일에 mtime 만 먼저 적으면 다음 요청이 「안 바뀌었다」고 보고
+          조용히 옛 표로 돈다
+          경로 하나를 만드는 도중에는 안 부른다. plan 이 도는 사이에 표가
+          갈리면 앞 단계와 뒷 단계가 다른 배선을 쓴다
+    """
+    global _wiring_mtime
+
+    mtime = paths.WIRING_PATH.stat().st_mtime_ns
+    if mtime == _wiring_mtime:
+        return
+
+    _load_wiring()
+    _wiring_mtime = mtime
+
+
+# import 하는 때에 한 번 판다. 계기판 넷은 TOOL_OF · STEP_OF 를 import 해서
+# 곧장 읽을 뿐 아무 함수도 안 부른다 — 여기서 안 채우면 빈 표를 본다.
+reload_wiring()
+
+
 # 장소로 볼 어절의 끝 글자.
 PLACE_SUFFIXES = "역시군구읍면동리"
 
@@ -776,7 +944,10 @@ def unwired(recipe_id: str) -> list[str]:
           배선은 이제 (노드, 받는 타입)마다 있고 자리마다 갈림
           부르는 쪽(execute_service.run)이 비어 있지 않으면 도구를 하나도
           안 부름. 배선을 안 적은 자리와 그 이유는 STEP_OF 아래 주석에 있음
+          부르기 전에 wiring.yaml 이 바뀌었으면 다시 읽음
     """
+    reload_wiring()
+
     executable = set(ontology_service.executable_in(recipe_id))
 
     missing, source_id = [], None
@@ -817,6 +988,8 @@ def plan(recipe_id: str, argument: str) -> dict:
           앞 단계가 없어 중심 좌표 칸이 빠졌으면 inputAdapter 도 안 실음.
           걸 것이 없는데 걸면 vendor 어댑터가 ValueError 를 올림
           실행 노드가 빠져 반쪽으로 도는 것은 부르기 전에 unwired 가 막음
+          맨 앞에서 한 번만 wiring.yaml 을 다시 읽음. 경로를 만드는 도중에
+          표가 갈리면 앞 단계와 뒷 단계가 다른 배선을 씀
     제약  첫 step 의 input 에 $prev 를 쓸 수는 있으나 그 칸은 빠진 채로 나간다.
           required 인 칸이면 도구가 거부하고 그것은 배선이 틀린 것이다
     이력  예전에는 배선이 노드당 한 줄이었고 첫 step 이 $prev 를 가리키면
@@ -824,6 +997,8 @@ def plan(recipe_id: str, argument: str) -> dict:
           발화에서 온 값을 버리고 전국을 검색했음. 이제 그 자리는 키워드 줄이
           걸림. _filled 의 이력 절 참고
     """
+    reload_wiring()
+
     steps: list[dict] = []
     nodes: list[str] = []
     commands: list[dict] = []
