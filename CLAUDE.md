@@ -8,22 +8,35 @@ recipe 매칭 → 실행 → 검증.
 
 ---
 
-## 무엇이 핵심이고 무엇이 임시인가
+## 폴더가 말하는 여섯 갈래
 
 ```
-핵심 — 오래 남는다
-  ontology/       온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
-  orchestrator/   발화 해석
-  llm_engine/     Ollama 클라이언트
+도메인      오래 남는다
+  ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
+  orchestrator/      발화 해석
+  llm_engine/        Ollama 클라이언트
   workflows/static/  recipe · menu · prompt
+  (실행 배선은 아직 갈 곳이 없다. 나중에 execution/ 이 된다)
 
-시연 — 통째로 사라진다
-  demo/api/       라우팅 + services
-  demo/graph_svg/ 온톨로지 → SVG
-  demo/ui/        Streamlit
+서비스      안 사라진다
+  demo/api/       창구 — 라우팅 + services
+  demo/ui/        화면 — Streamlit
+
+그리기
+  demo/graph_svg/ 온톨로지 → SVG. 그래프DB 로 가면 갈릴 자리다
+
+등록
+  아직 흩어져 있다. 나중에 registration/ 으로 모으고, 다른 저장소로 나간다
+
+빌려온 것
+  vendor/         저쪽 것. 없어질 것
+
+재는 것     배포에 안 들어간다
+  tools/          계기판
+  tests/          시험
 ```
 
-**`demo/` 를 위해 핵심을 굽히지 않는다.** 화면이 편해지자고 도메인 모양을 바꾸는
+**서비스를 위해 도메인을 굽히지 않는다.** 화면이 편해지자고 도메인 모양을 바꾸는
 제안이 나오면, 그것이 화면 문제인지 도메인 문제인지 먼저 가른다.
 
 ---
@@ -96,9 +109,9 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 
 ### 계층
 
-- `demo/ui/` 에서 `ontology` · `llm_engine` · `paths` import 0건.
-- `demo/graph_svg/` 가 `ontology` 를 직접 읽지 않는다 — 도메인 데이터는
-  `ontology_service` 에서만 온다.
+- 화면(`demo/ui/`)에서 `ontology` · `llm_engine` · `paths` import 0건.
+- 그리기(`demo/graph_svg/`)가 `ontology` 를 직접 읽지 않는다 — 도메인 데이터는
+  창구의 `ontology_service` 에서만 온다.
 - `ontology/store.py` 는 `paths` 외의 프로젝트 모듈을 import 하지 않는다.
 - **`yaml.dump` 로 다시 쓰지 않는다** (상단 주석과 들여쓰기가 날아간다).
   텍스트를 이어 붙이거나 마커 앞에 삽입한다.
@@ -124,8 +137,8 @@ python -m pytest tests -q
   30개 안팎으로 유지한다.
 - **배치 불변식**은 눈으로 못 보는 것을 본다. 좌표가 3pt 움직인 것은 화면을
   봐도 모른다. 실측으로 얻은 것이라 지우면 다시 못 찾는다.
-- **그 밖의 `demo/` 테스트는 늘리지 않는다.** 곧 사라질 계층이고, 구조가 계속
-  바뀌는 중이라 회귀를 잡는 게 아니라 변경을 따라다니게 된다.
+- **그 밖의 서비스 · 그리기 테스트는 늘리지 않는다.** 계층이 사라져서가 아니라
+  구조가 계속 바뀌는 중이라, 회귀를 잡는 게 아니라 변경을 따라다니게 된다.
 - 전체 테스트는 **작업을 마칠 때 한 번만** 돌린다. 중간에는 바꾼 부분만.
 - **테스트를 일부러 망가뜨려 확인하지 않는다.**
 - **서버를 띄워 확인하지 않는다.** 화면 깨짐은 엔드포인트 테스트가 잡는다.
