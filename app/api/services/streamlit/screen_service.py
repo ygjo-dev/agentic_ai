@@ -1,11 +1,18 @@
-"""온톨로지를 읽어 API 응답 형태로 옮긴다.
+"""온톨로지를 화면이 쓰는 모양으로 바꾼다.
+
+    GET  /screen  고를 수 있는 타입과 색 (screen_payload)
+    POST /render  SVG 한 벌 (render)
+
+둘이 하는 일은 하나다. 출력이 목록이냐 그림이냐만 다르다. 예전에는
+ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣것을
+부르기만 하는 60줄이었다.
 
 **app/ 안에서 온톨로지를 읽는 유일한 지점이다.** 다른 서비스는 여기를 거친다 —
 그래프DB 로 바뀔 때 고칠 곳이 하나여야 하기 때문이다.
 
-이름이 graph_service 였는데 graph_svg 와 "graph" 의 뜻이 달라 헷갈렸다.
-여기의 graph 는 노드와 관계라는 **데이터**이고, graph_svg 의 graph 는 **그림**이다.
-실제로 그 혼동 때문에 두 모듈이 비슷한 계층인 줄 알고 역방향 import 가 생겼었다.
+이름에 graph 를 안 쓴다. 이 파일은 원래 graph_service 였는데 graph_svg 와
+"graph" 의 뜻이 달라 헷갈렸고, 그 혼동 때문에 두 모듈이 비슷한 계층인 줄 알고
+역방향 import 가 생겼었다. 여기가 다루는 것은 화면이 받을 모양이다.
 
 색만은 graph_svg 에게 묻는다. 그리는 쪽이 팔레트의 주인이고, 화면은 그래프 SVG 와
 같은 색으로 칩과 배지를 칠해야 한다 — 출처가 둘이면 조용히 어긋난다.
@@ -16,6 +23,7 @@
 import hashlib
 
 import paths
+from app.ui.graph_svg import build, layout_store
 from app.ui.graph_svg.dot import COLORS
 from ontology import graph, store
 from ontology.graph import (
@@ -111,14 +119,14 @@ def domain_graph() -> tuple[dict, dict, dict]:
 
     출력  (nodes, solid, dotted). solid / dotted 는 튜플 키 dict
     규칙  온톨로지를 읽는 곳은 이 모듈 하나. graph_svg 는 여기서 받아 쓰기만 함
-    이력  JSON 은 튜플 키를 못 담아 graph_payload 는 리스트로 펴지만, 서버
+    이력  JSON 은 튜플 키를 못 담아 screen_payload 는 리스트로 펴지만, 서버
           안에서 그릴 때는 펼 이유가 없음. 예전에는 프론트엔드가 받아서 다시
           튜플로 되돌렸음(to_build_dot_args). 그 왕복이 사라졌음
     """
     return drawn_nodes(), solid_edges(), dotted_edges()
 
 
-def graph_payload() -> dict:
+def screen_payload() -> dict:
     """그래프 한 벌 전체. 프론트엔드가 그리는 데 필요한 것만 담음.
 
     출력  version · colors · types · nodes · solid_edges · dotted_edges
@@ -161,3 +169,54 @@ def graph_payload() -> dict:
             for (a, b), labels in dotted_edges().items()
         ],
     }
+
+
+MODES = ("plain", "resolve", "register")
+
+
+class UnknownRenderMode(ValueError):
+    """모르는 render mode 다. 오타가 조용히 plain 으로 떨어지면
+    시연 중에 "왜 강조가 안 되지" 를 한참 찾게 된다."""
+
+
+def render(
+    mode: str = "plain",
+    recipe_ids: list[str] | None = None,
+    mark: dict | None = None,
+) -> dict:
+    """화면 한 장에 필요한 SVG 와 칩 데이터.
+
+    입력  mode        "plain" 실행 전 · "resolve" 발화 해석 결과 ·
+                      "register" 노드 등록 직후
+                      캐시 키에만 쓰임. 그림을 다르게 만드는 것은 recipe_ids 와
+                      mark 이고, 모드는 같은 후보라도 장면이 다르면 다른 칸에
+                      담기게 함
+          recipe_ids  강조할 recipe. plain 이면 비어 있음
+          mark        POST /nodes 응답(또는 이미 줄어든
+                      {nodes, solid, dotted}). register 가 아니면 None
+    출력  build.render_payload 한 벌
+    규칙  모르는 모드면 UnknownRenderMode. 422 로 나감
+    """
+    if mode not in MODES:
+        raise UnknownRenderMode(
+            f"모르는 render mode: {mode!r} (가능: {', '.join(MODES)})"
+        )
+
+    nodes, solid, dotted = domain_graph()
+    ids = list(recipe_ids or [])
+
+    positions = layout_store.ensure_positions(nodes, solid, dotted)
+    reduced = build.mark_from_registration(mark) if mode == "register" else None
+
+    return build.render_payload(
+        nodes=nodes,
+        solid=solid,
+        dotted=dotted,
+        positions=positions,
+        paths=paths_for(ids, nodes),
+        recipe_ids=ids,
+        mark=reduced,
+        version=ontology_version(),
+        layout=layout_store.layout_hash(positions),
+        mode=mode,
+    )

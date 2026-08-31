@@ -18,7 +18,7 @@ import re
 
 import pytest
 
-from app.api.services import ontology_service, render_service
+from app.api.services.streamlit import screen_service
 from app.ui.graph_svg.dot import FLOW_CLASS
 from app.ui.components import zoom
 
@@ -109,9 +109,9 @@ def needed_scale(svg: str, with_nodes: bool = True) -> float:
 
 def bottom_svg(recipe_id: str) -> str:
     """그 recipe 를 강조한 하단 SVG(좁히기 전 전체)."""
-    if recipe_id not in ontology_service.recipe_ids():
+    if recipe_id not in screen_service.recipe_ids():
         pytest.skip(f"{recipe_id} 이 지금 온톨로지에 없다")
-    return render_service.render("resolve", [recipe_id])["variants"][""]
+    return screen_service.render("resolve", [recipe_id])["variants"][""]
 
 
 # ------------------------------------------------------------ 천장이 넉넉한가

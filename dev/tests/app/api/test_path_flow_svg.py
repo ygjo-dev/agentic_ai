@@ -15,7 +15,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import app.api.main as backend_main
-from app.api.services.ontology_service import recipe_ids
+from app.api.services.streamlit.screen_service import recipe_ids
 from app.ui.graph_svg import build
 from app.ui.graph_svg.dot import FLOW_CLASS, HIGHLIGHT_COLOR, PATH_PENWIDTH
 

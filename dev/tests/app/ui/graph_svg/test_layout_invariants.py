@@ -27,7 +27,7 @@ import shutil
 
 import pytest
 
-from app.api.services.ontology_service import domain_graph
+from app.api.services.streamlit.screen_service import domain_graph
 from app.ui.graph_svg.dot import (
     DOTTED_PENWIDTH,
     DOTTED_PENWIDTH_TOP,
@@ -651,7 +651,7 @@ def test_graphviz_accepts_the_real_ontology():
     하나뿐이라 첫 번째를 씀. 번호를 적어 두면 온톨로지가 바뀌어 번호가
     밀렸을 때 없는 recipe 를 가리키게 됨.
     """
-    from app.api.services.ontology_service import recipe_ids
+    from app.api.services.streamlit.screen_service import recipe_ids
     from ontology.graph import highlight_edges, recipe_nodes
 
     if not shutil.which("dot"):

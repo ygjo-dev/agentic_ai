@@ -5,7 +5,7 @@
 자기 팔레트를 따로 들면 두 곳이 조용히 어긋나고, 그때 사람은 화면을 보고
 코드를 의심하게 된다.
 
-`/graph` 응답의 colors 를 main.py 가 한 번 넣어주고, 그 뒤로는 어느 컴포넌트든
+`/screen` 응답의 colors 를 main.py 가 한 번 넣어주고, 그 뒤로는 어느 컴포넌트든
 `theme.get()` 으로 읽는다. Streamlit 은 매 실행마다 스크립트를 처음부터 돌리므로
 넣는 시점이 항상 그리기보다 앞선다.
 """
@@ -18,7 +18,7 @@ _COLORS: dict[str, str] = {}
 
 
 def set_colors(colors: dict | None) -> None:
-    """/graph 응답의 colors 를 받아 둠.
+    """/screen 응답의 colors 를 받아 둠.
 
     입력  colors dict. 없으면 이전 값을 유지
     제약  못 받았다고 색을 비우지 않는다.

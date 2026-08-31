@@ -18,7 +18,7 @@ import json
 
 import yaml
 
-from app.api.services import ontology_service
+from app.api.services.streamlit import screen_service
 from execution import step_service
 from orchestrator import resolve_service
 from orchestrator.schemas.response_schema import NO_MATCH
@@ -45,8 +45,8 @@ def recipes_in(menu: str) -> set:
 def starting_at(*node_ids) -> set:
     """경로 첫 칸이 그 노드인 recipe id 전부."""
     found = set()
-    for recipe_id in ontology_service.recipe_ids():
-        path = ontology_service.path_of(recipe_id)
+    for recipe_id in screen_service.recipe_ids():
+        path = screen_service.path_of(recipe_id)
         if path and path[0]["node_id"] in node_ids:
             found.add(recipe_id)
     return found
@@ -57,7 +57,7 @@ def spoken_recipes() -> set:
 
     수를 안 적는다. recipe 가 늘면 함께 느는 값이라 적어 두면 낡는다.
     """
-    return set(ontology_service.recipe_ids()) - starting_at(*step_service.CONTEXT_STARTS)
+    return set(screen_service.recipe_ids()) - starting_at(*step_service.CONTEXT_STARTS)
 
 
 def test_an_ordinary_utterance_never_even_sees_the_screen_recipes():

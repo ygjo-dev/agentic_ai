@@ -9,7 +9,7 @@
   focus.py         경로 좁히기와 칩 데이터 (순수 함수)
   build.py         변형 조립과 캐시
 
-이 패키지는 ontology 를 import 하지 않는다. 도메인 데이터는 ontology_service 가
+이 패키지는 ontology 를 import 하지 않는다. 도메인 데이터는 screen_service 가
 읽어서 넘겨준다 — 저장소가 그래프 DB 로 바뀌어도 여기는 그대로다.
 
 **`api` 의 하위가 아니라 형제다.** 이 패키지는 시연을 위한 것이고, 그래프DB 와

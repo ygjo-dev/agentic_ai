@@ -1,6 +1,6 @@
 """온톨로지 → DOT 문자열. 색 · 굵기 · 길이의 단일 출처.
 
-여기서 정한 색을 /graph 응답의 colors 로 UI 에 내려보낸다. UI 가 자기 팔레트를
+여기서 정한 색을 /screen 응답의 colors 로 UI 에 내려보낸다. UI 가 자기 팔레트를
 따로 들면 두 곳이 조용히 어긋나고, 그때 사람은 화면을 보고 코드를 의심한다.
 
 브라우저를 모른다. Streamlit 도, HTML 도 모른다 — 문자열만 만든다.
@@ -70,7 +70,7 @@ PATH_NEW = "#E8862A"
 # 보다는 위라 사라지지는 않는다. 옅어도 실행 경로다.
 PATH_NEW_DIM = "#8A6234"
 
-# /graph 응답에 실어 보낸다. UI 는 이것만 보고 칩 테두리 · 배지 · 안내 문구를 칠한다.
+# /screen 응답에 실어 보낸다. UI 는 이것만 보고 칩 테두리 · 배지 · 안내 문구를 칠한다.
 COLORS = {
     "highlight": HIGHLIGHT_COLOR,
     "dotted": DOTTED_COLOR,

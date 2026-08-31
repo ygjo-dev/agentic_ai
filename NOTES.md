@@ -93,13 +93,16 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
  8  세션 없애기 — 되묻기 뒤 「1번」으로 고르는 기능(CLARIFY_CHOICE)
  9  description 다듬기 — menu 문장이 틀이 같아 안 갈린다
 10  검산(축 조회 · 대조) 걷어내기. 9 의 결과가 정한다. 조건부다
-11  노드 등록을 다른 저장소로. 먼저 registration/ 으로 모은다(6번)
+11  노드 등록을 다른 저장소로. registration/ 으로는 모았다(6번 · 일흔한째)
 12  화면 문맥으로 menu 를 가르는 임시방편 걷기 (다른 방 일)
 13  자리 옮기기가 남긴 낡은 글 다섯. 이름이 아니라 주장이라 안 고쳤다
-14  graph 라는 낱말이 셋을 가리킨다. 6′ 에서 이름을 가른다
-15  GET /graph 응답 중 셋은 지금 아무도 안 쓴다. 6 에서 함께 센다
+15  GET /screen 응답 중 셋은 지금 아무도 안 쓴다. 걷어내면 동작이 바뀐다
 16  resolve 응답의 paths 를 도메인이 만든다. path_of 를 가르려면 여기가 먼저다
+17  krri st 의 8501 칸이 HTTP 상태만 본다. 화면이 죽어도 초록불이 켜진다
+18  옮기고 남은 graph 이름 둘. 이번에 엔드포인트만 갈랐다
 ```
+
+★ 14 는 지웠다 — 6′ 에서 엔드포인트 이름을 갈랐다. 남은 것은 18 이다.
 
 - **7 · 좁히기 스위치를 걷어낸다.** `resolve_service.resolve` 의 스위치와
   `_resolve_narrow`(2단 프롬프트) 길을 함께 뺀다. **까닭은 성적이 아니라
@@ -211,24 +214,18 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
   **글을 고치는 일이라 자리 옮기기와 같이 하면 안 됐다.** 관문이
   「바뀐 줄이 전부 import 줄이거나 경로 문자열」인데 이 다섯은 둘 다 아니다.
 
-- **14 · `graph` 라는 낱말이 셋을 가리킨다** (2026-09-01 「일흔째」).
+- **15 · `GET /screen` 응답 중 셋은 지금 아무도 안 쓴다**
+  (2026-09-01 「일흔째」 · 「일흔한째」에서 세어 확인).
 
-  ```
-  ontology/graph.py        데이터. 노드와 관계
-  app/ui/graph_svg/        그림. SVG
-  GET /graph               types 와 colors 목록
-  ```
+  `nodes` · `solid_edges` · `dotted_edges` 다. Streamlit 이 읽는 것은
+  `types`(등록 폼)와 `colors`(theme) 둘뿐이다 — 「일흔한째」에서 `app/ui/`
+  전체를 뒤져 그 둘 말고 응답을 읽는 자리가 없음을 확인했다. 서버가 SVG 를
+  그리게 되면서 노드와 엣지가 화면으로 갈 이유가 없어졌다.
 
-  셋 다 다른 것이다. 6′(services 나누기)에서 이름을 가른다.
+  등록이 다른 저장소로 나가면 `types` 도 필요 없어질 수 있다. 그러면 이
+  엔드포인트에 남는 것은 `colors` 와 `version` 뿐이다.
 
-  ★ **저쪽 웹은 `/chat/stream` 하나만 부른다** (2026-08-31 확인). `/graph`
-    이름을 바꿔도 저쪽은 안 깨진다. 부르는 곳은 Streamlit 의 `api_client` 뿐이다.
-
-- **15 · `GET /graph` 응답 중 셋은 지금 아무도 안 쓴다** (2026-09-01 「일흔째」).
-
-  `nodes` · `solid_edges` · `dotted_edges` 다. Streamlit 이 쓰는 것은
-  `types`(등록 폼)와 `colors` 뿐이다. 등록이 다른 저장소로 나가면 `types` 도
-  필요 없어질 수 있다. 6(registration)에서 함께 센다.
+  ★ 걷어내면 응답이 바뀐다. **동작이 바뀌는 일(B)이다.** 자리 옮기기에서 안 한다.
 
 - **16 · `resolve` 응답의 `paths` 를 도메인이 만든다** (2026-09-01 「일흔째」).
 
@@ -243,6 +240,31 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
   ★ 지금 가르면 `POST /resolve` · `POST /chat` 응답 모양이 바뀐다. Streamlit 과
     `dev/tools/check_resolve.py` 가 그 칸을 읽는다. **동작이 바뀌는 일(B)이다.**
 
+
+- **17 · `krri st` 의 8501 칸이 HTTP 상태만 본다** (2026-09-01 「일흔한째」).
+
+  Streamlit 은 스크립트가 죽어도 껍데기 HTML 을 200 으로 낸다. 실제로 그렇게
+  화면이 죽은 채 초록불이 켜졌다. 화면 HTML 을 보고 판정하게 고친다.
+
+  ★ 화면 HTML 만으로도 모자란다 — 루트 문서는 스크립트가 돌기 전의 껍데기라
+    오류 문구가 거기 안 실린다. 「일흔한째」에서 쓴 손은 **스크립트를 통째로
+    한 번 돌려 보는 것**이다 (`runpy.run_path('app/ui/main.py')`). 그러면
+    import 와 경로가 실제로 풀리고, 백엔드까지 진짜로 부른다.
+
+  ★ `krri` 는 저장소 밖이다 (`~/.local/bin/krri`).
+
+- **18 · 옮기고 남은 `graph` 이름 둘** (2026-09-01 「일흔한째」).
+
+  ```
+  ontology/graph.py        데이터. 노드와 관계        — 안 바꿨다
+  app/ui/graph_svg/        그림. SVG                  — 안 바꿨다
+  GET /screen              types 와 colors 목록       — ★ 이번에 갈랐다
+  ```
+
+  셋 중 헷갈림을 실제로 일으킨 것은 엔드포인트였다. 그것만 갈랐다. 남은 둘은
+  각자 자리에서 뜻이 맞는 이름이고(데이터 · 그림), 둘 다 건드리면 이번 변경이
+  파일 수십 개로 커진다. `app/ui/main.py` 와 `node_form` 의 `graph` 지역
+  변수도 그대로 뒀다 — 그 변수가 담는 것이 `/screen` 응답이다.
 
 ### 지운 것을 되찾는 규칙
 
@@ -1820,6 +1842,227 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-01 (일흔한째) · 폴더 정리 6·6′ — 등록을 모으고 창구를 갈랐다
+
+무인 실행. 조건 — `refactor/vendor` · 시작 전 워킹 트리 깨끗함 ·
+되돌리는 태그 `before-registration` 을 시작 전에 박았다.
+
+**자리만 옮겼다. 동작을 하나도 안 바꿨다.** 파일은 전부 `git mv` 로 옮겼다.
+7(좁히기) · 8(세션) · 9(description) · 10(검산)은 이번이 아니다.
+`dev/tools/check_resolve.py` 는 한 줄도 안 건드렸다.
+
+#### 1. 등록 무리를 어떻게 갈랐나
+
+판정 기준은 하나다 — **등록이 다른 저장소로 나가면 이 코드가 여기 남아서 할
+일이 있는가.** 있으면 남기고 없으면 보낸다. 애매하면 남긴다.
+
+```
+                                              줄    판정   까닭
+ontology/registry.py                          560   보냄   전부 등록이다. 밖에서
+                                                           쓰는 것은 group_ids ·
+                                                           functions 둘인데 둘 다
+                                                           graph 로 넘기는 한 줄
+                                                           짜리 대리인이고, 진짜
+                                                           부르는 곳은 graph 쪽을
+                                                           직접 부른다
+workflows/static/prompts/node_registration.md  49   보냄   infer_node 말고 읽는
+                                                           곳이 0. 남은 프롬프트
+                                                           셋은 전부 해석 것이라
+                                                           prompts/ 가 오히려
+                                                           한 갈래로 정리된다
+dev/tests/ontology/test_registry.py                 보냄   시험은 소스를 따라간다
+registry.reset_to_init                        24    보냄   registry.py 와 함께.
+                                                           560줄에서 함수 하나만
+                                                           빼내는 것은 모으는 게
+                                                           아니라 흩는 일이다
+app/api/services/node_service.py               79   남김   ★ 아래 2 참고
+app/ui/components/node_form.py                180   남김   Streamlit 화면이다.
+                                                           도메인 폴더에 streamlit
+                                                           과 api_client 를 끌고
+                                                           들어가면 방향이 뒤집힌다
+dev/tools/rebuild_init.py                     224   남김   ★ 아래 「갈렸던 자리」
+ontology/store.py restore_from_init             8   남김   store 계층의 되돌리기다.
+                                                           registry 말고 test_store
+                                                           도 직접 부른다. 애매하면
+                                                           남긴다
+_init/ 셋 (ontology · workflows/static ·            남김   각 계층이 소유한 자산의
+        app/ui/graph_svg)                                  되돌릴 원본이다. 등록은
+                                                           되돌릴 뿐 소유하지 않음.
+                                                           graph_svg 것은 .gitignore
+                                                           패턴이 경로에 묶여 있어
+                                                           옮기면 추적이 끊긴다
+dev/tests/app/api/test_register_colours.py    -     남김   등록이 아니라 **등록
+                                                           장면의 색**을 잰다.
+                                                           보는 것은 /render 의 SVG
+dev/tests/…/test_layout_init_copy.py          -     남김   좌표의 _init 사본과
+                                                           계층 시험이다
+```
+
+★ **프롬프트 문서가 가리킨 `orchestrator/schemas 의 NODE_REGISTRATION_SCHEMA`
+는 거기 없다.** 그 상수는 이미 `registry.py:84` 에 있고 registry 와 함께 갔다.
+`orchestrator/schemas/` 에는 `response_schema.py` 하나뿐이고 등록 관련이 없다.
+
+#### 2. node_service 를 안 갈랐다
+
+프롬프트가 "껍데기를 app/ 에 남기고 알맹이만 보낼지" 를 물었다. **안 갈랐다.
+통째로 남겼다.**
+
+79줄 안에 등록 알맹이가 없다. 진짜 등록은 `registry.register_node` 한 줄이고,
+나머지는 전부 **등록 결과를 화면이 읽을 모양으로 바꾸는 일**이다 — 등록 전후
+차집합(new_solid_edges · new_dotted_edges) · 개수 · 경로 · version.
+
+그리고 그 재료 넷 중 둘이 `app/` 에만 있다.
+
+```
+domain_graph()      -> drawn_nodes()      화면에 그릴 노드를 고르는 판단.
+                                          온톨로지에 없는 kind 를 여기서 붙인다
+ontology_version()                        recipe 파일까지 훑어 만드는 sha1.
+                                          프론트엔드 캐시 키다
+recipe_ids() · paths_for()                이 둘만 graph 로 넘기는 대리인이다
+```
+
+앞의 둘을 registration/ 으로 데려가면 「app/ 안에서 온톨로지를 읽는 유일한
+지점」이 둘로 갈리고, 두고 가면 도메인이 창구를 부르게 된다. 셋째 길은 몸통을
+다시 쓰는 것인데 이번 규칙이 그걸 금지한다. **그래서 안 갈랐다.**
+
+/nodes 의 경로와 응답 모양은 안 바뀌었다.
+
+#### 3. 합친 파일 이름 — screen_service
+
+```
+app/api/services/ontology_service.py  163줄  ─┐
+app/api/services/render_service.py     60줄  ─┴> streamlit/screen_service.py  222줄
+```
+
+둘 다 「온톨로지를 화면이 쓰는 모양으로 바꾼다」는 한 가지 일을 한다.
+`render_service` 는 몸통 60줄 중 판단이 한 줄(모드 확인)이고 나머지는
+`ontology_service` 를 부르는 것이었다.
+
+**이름에 `graph_` 를 안 썼다.** 이 파일은 원래 `graph_service` 였다가
+`graph_svg` 와 헷갈려 지금 이름이 됐고, 그 혼동이 역방향 import 를 만든 적이
+있다. `screen_service` 는 「화면이 받을 모양」이라는 이 파일의 일을 그대로 말한다.
+
+`graph_payload` 는 `screen_payload` 가 됐다. **응답 내용은 한 바이트도 안 바뀌었다.**
+
+#### 4. 창구를 부르는 쪽으로 나눴다
+
+```
+app/api/services/streamlit/   screen_service · node_service
+app/api/services/bridge/      recent_service
+```
+
+**빈 `asap/` 를 안 만들었다.** 저쪽 웹이 부르는 것은 `/chat/stream` 하나이고
+그 알맹이는 `execution/` 에 있다 (2026-08-31 확인). 빈 폴더에 README 를 두면
+"여기 뭔가 들어올 자리" 라는 뜻이 되는데 들어올 것이 없다 — 저쪽 것이 늘어나면
+그때는 `execution/` 이 커지지 이 폴더가 생기지 않는다. 사실은 `services/__init__`
+머리말에 한 줄로 적었다.
+
+`recent_service` 를 `bridge/` 에 둔 것은 저쪽이 넣고 Streamlit 이 읽기
+때문이다. 한쪽만 쓰는 것이 아니라 둘 사이에 있다.
+
+#### 5. 엔드포인트 새 이름 — GET /screen
+
+`graph` 라는 낱말이 셋을 가리켰고, 그중 헷갈림을 실제로 일으킨 것은
+엔드포인트였다. 그리기와 아무 상관이 없는데 이름이 `graph` 였다.
+
+```
+옛  GET /graph    ->  새  GET /screen
+```
+
+새 이름은 그 응답이 하는 일에서 왔다 — **화면이 그리기 전에 받아 두는 것**.
+합친 파일 이름(`screen_service`)과 같은 낱말이다.
+
+부르는 곳은 `app/ui/api_client.py` 하나였다. 저쪽 웹은 `/chat/stream` 만
+부르므로 안 깨진다. `api_client` 쪽도 이름을 맞췄다
+(`get_graph` -> `get_screen` · `GRAPH_TIMEOUT` -> `SCREEN_TIMEOUT` ·
+`GRAPH_CACHE_KEY` -> `SCREEN_CACHE_KEY`).
+
+`ontology/graph.py` 와 `app/ui/graph_svg/` 는 **안 바꿨다.** 둘 다 자기 자리에서
+뜻이 맞는 이름이고(데이터 · 그림) 둘 다 건드리면 이번 변경이 파일 수십 개로
+커진다. 「열린 과제 18」에 적었다.
+
+#### 6. 관문
+
+기준선은 옮기기 전에 뜬 것이다.
+
+```
+                    기준선                              옮긴 뒤
+GET /graph          md5 61f294e0425d7b4e5ff91fbfe832e9d3
+GET /screen                                             같은 md5 · 바이트 같음
+POST /render        md5 b7003d130888c4eb32ad9925aeaaeed1 같은 md5 · 바이트 같음
+check_wiring        md5 1e35f14bce04d8e64632c71107982883 같음
+check_inputs        첫 줄(절대 경로) 빼고                같음
+pytest              1 failed · 485 passed · skipped 0   같음
+계층 시험           통과                                 통과 (registration 더한 뒤)
+```
+
+일부러 둔 실패는 `test_dense_graph_would_move_if_overlap_removal_were_used`
+하나 그대로다. 끄거나 예외를 두지 않았다.
+
+옛 이름 `GET /graph` 는 404 다. openapi 의 경로는
+`/chat · /chat/stream · /nodes · /nodes/reset · /recent · /render · /resolve · /screen`.
+
+#### 7. Streamlit 을 어떻게 쟀나 — 200 만으로는 모자란다
+
+프롬프트가 "8501 은 200 을 내면서도 스크립트가 죽어 있을 수 있다" 고 적었다.
+**화면 HTML 을 보는 것으로도 모자란다.** 루트 문서는 스크립트가 돌기 전의
+껍데기(11KB)라 오류 문구가 거기 실리지 않는다. 죽든 살든 같은 HTML 이 온다.
+
+쓴 손은 **스크립트를 통째로 한 번 돌려 보는 것**이다.
+
+```
+.venv/bin/python -c "import runpy; runpy.run_path('app/ui/main.py', run_name='__main__')"
+```
+
+그러면 import 와 경로가 실제로 풀리고, `api_client` 가 백엔드를 진짜로 부른다.
+6 과 6′ 두 번 다 끝까지 갔고, api 쪽 로그에 그때의
+`GET /screen 200` · `POST /render 200` 이 찍혔다. 「열린 과제 17」에 적었다.
+
+★ tmux 의 `api` · `ui` 두 세션은 단계마다 죽였다 다시 띄웠다. 옛 경로를 붙든
+  프로세스가 남으면 관문이 거짓말을 한다.
+
+#### 8. 판단이 갈렸던 자리
+
+**가) `dev/tools/rebuild_init.py` (224줄) — 남겼다. 제일 오래 갈렸다.**
+
+기준을 그대로 대면 보내야 한다. 이 도구가 부르는 것은 전부 registry 함수이고
+(`all_recipes` · `append_menu` · `append_recipes` · `function_for` ·
+`MENU_BUDGET`), 등록이 나가면 여기서 할 일이 없다.
+
+남긴 까닭은 **`dev/` 가 이미 갈라 둔 갈래**라서다. 「재는 것 — 배포에 안
+들어간다」는 줄을 1단계에서 그어 놓고 이제 와 도구 하나를 도메인 폴더에 넣으면
+그 줄이 무너진다. 그리고 이 도구가 만드는 것은 `_init` 자산이지 등록 그 자체가
+아니다 — `_init` 은 남는 쪽으로 판정했으므로 그것을 만드는 도구도 남는 쪽이다.
+
+★ 등록을 실제로 들어낼 때 다시 볼 자리다. 그때는 `_init` 을 무엇이 만드느냐가
+  같이 정해진다.
+
+**나) `node_registration.md` — 보냈다. 갈렸다.**
+
+프롬프트 자산이라 `workflows/static/prompts/` 에 남기는 손도 있었다. 보낸
+까닭은 읽는 곳이 `infer_node` 하나뿐이고, 보내고 나니 남은 프롬프트 셋이
+전부 해석 것이 되어 `prompts/` 가 오히려 한 갈래로 정리됐기 때문이다.
+대가는 `registration/` 안에 `.py` 와 `.md` 가 섞인다는 것이다.
+
+**다) `CLAUDE.md` 의 폴더 표 — 고쳤다. 범위 밖이다.**
+
+계층 시험의 `DOMAIN_DIRS` 주석이 "CLAUDE.md 「폴더가 말하는 여섯 갈래」에서
+그대로 온다" 고 가리킨다. 표를 어긋난 채로 두면 0단계에서 겪은
+「조용히 죽은 시험」이 그대로 되풀이된다. `registration/` 은 「도메인」이 아니라
+「등록」 갈래에 적었다 — 문서가 그 둘을 이미 다른 갈래로 세고 있다. 다만
+시험의 `DOMAIN_DIRS` 에는 넣었다. 그 목록의 뜻은 갈래 이름이 아니라
+「도메인 규칙을 지는 폴더」다.
+
+**라) `screen_service` 안의 호출 줄 8개 — 관문을 벗어난 유일한 자리다.**
+
+관문이 "바뀐 줄이 전부 import 줄이거나 경로 문자열" 인데, 두 모듈을 합치면
+`ontology_service.domain_graph()` 를 `domain_graph()` 로 부르게 된다. 모듈이
+하나가 됐으므로 접두어를 붙일 곳이 없다. 몸통은 그대로고 접두어만 뗐다.
+
+같은 성격으로 창구 이름이 바뀐 호출 줄이 22개 있다
+(`ontology_service.` · `render_service.` -> `screen_service.`). 시험 · 도구 ·
+`node_service` 쪽이고, 전부 이름만 바뀌었다.
 
 ### 2026-09-01 (일흔째) · 폴더 정리 4·5 — 해석과 실행을 도메인으로 옮겼다
 

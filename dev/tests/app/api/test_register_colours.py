@@ -32,7 +32,7 @@ from app.ui.graph_svg.dot import (
     PATH_NEW,
     PATH_NEW_DIM,
 )
-from app.api.services.ontology_service import recipe_ids
+from app.api.services.streamlit.screen_service import recipe_ids
 from ontology.graph import recipe_nodes
 
 pytestmark = pytest.mark.skipif(
@@ -70,7 +70,7 @@ REGISTERED = list(BY_ENDPOINT.values())
 # 반드시 줄어드는 것이 보장된다.
 NARROW_TO = min(BY_ENDPOINT, key=lambda node: len(recipe_nodes(BY_ENDPOINT[node])))
 
-# 등록 응답에서 그리기가 쓰는 것만 줄인 형태. render_service 가 그대로 받는다.
+# 등록 응답에서 그리기가 쓰는 것만 줄인 형태. screen_service 가 그대로 받는다.
 MARK = {
     "nodes": ["find_cctv"],
     "solid": [],

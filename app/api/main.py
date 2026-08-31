@@ -31,13 +31,9 @@ from app.api.schemas.requests import (
     NodeRegisterRequest,
     RenderRequest,
 )
-from app.api.services import (
-    node_service,
-    ontology_service,
-    recent_service,
-    render_service,
-)
-from app.api.services.render_service import UnknownRenderMode
+from app.api.services.bridge import recent_service
+from app.api.services.streamlit import node_service, screen_service
+from app.api.services.streamlit.screen_service import UnknownRenderMode
 from llm_engine.ollama import make_client
 from llm_engine.profiles import profile
 from registration.registry import (
@@ -113,16 +109,18 @@ async def errors_to_json(request: Request, call_next):
         )
 
 
-@app.get("/graph")
-async def graph_endpoint() -> dict:
-    """온톨로지 그래프 한 벌. 프론트엔드가 그리는 데 필요한 것 전부.
+@app.get("/screen")
+async def screen_endpoint() -> dict:
+    """화면이 그리기 전에 받아 두는 것. 고를 수 있는 타입과 색.
 
     출력  version · colors · types · nodes · solid_edges · dotted_edges
     규칙  version 은 내용 해시라 프론트엔드 캐시 키가 됨
           colors 는 화면이 칩 · 배지 · 안내 문구에 쓸 색.
           색의 출처는 graph_svg 한 곳뿐임
+          지금 화면이 실제로 읽는 것은 types 와 colors 둘뿐임.
+          나머지 셋은 서버가 그리게 된 뒤로 아무도 안 읽음
     """
-    return ontology_service.graph_payload()
+    return screen_service.screen_payload()
 
 
 @app.post("/render")
@@ -139,7 +137,7 @@ async def render_endpoint(form: RenderRequest) -> dict:
           같은 요청은 서버가 캐시함. 키에 온톨로지 version 과 좌표 해시가
           들어가 노드를 등록하면 저절로 빗나감
     """
-    return render_service.render(form.mode, form.recipe_ids, form.mark)
+    return screen_service.render(form.mode, form.recipe_ids, form.mark)
 
 
 @app.post("/resolve")

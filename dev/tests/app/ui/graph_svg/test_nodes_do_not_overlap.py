@@ -24,7 +24,7 @@ import shutil
 
 import pytest
 
-from app.api.services.ontology_service import domain_graph
+from app.api.services.streamlit.screen_service import domain_graph
 from app.ui.graph_svg.build import wrap_node_labels
 from app.ui.graph_svg.dot import (
     GROUP_ATTRS,

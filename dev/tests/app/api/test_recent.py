@@ -17,7 +17,7 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
-from app.api.services import recent_service
+from app.api.services.bridge import recent_service
 
 # vendor_to_be_deleted/asap/workflow_answer 가 만든 답의 모양. 머리말 · 빈 줄 · 번호 줄이다.
 ANSWER = "\n".join(

@@ -32,7 +32,7 @@ from app.ui.graph_svg.dot import NODE_ATTRS, build_dot
 from app.ui.graph_svg.graphviz import render_svg
 from app.ui.graph_svg.layout_store import NEATO_ATTRS, NEATO_FRESH_ATTRS
 from app.ui.graph_svg.graphviz import layout_positions
-from app.api.services.ontology_service import domain_graph, recipe_ids
+from app.api.services.streamlit.screen_service import domain_graph, recipe_ids
 from ontology.graph import highlight_edges, recipe_nodes
 
 pytestmark = [

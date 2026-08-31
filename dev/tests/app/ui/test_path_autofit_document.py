@@ -211,10 +211,10 @@ def app_documents() -> list[str]:
 
     from app.ui import api_client
 
-    # api_client.get_graph 를 안 쓴다 — 그쪽은 st.session_state 를 만지고
+    # api_client.get_screen 을 안 쓴다 — 그쪽은 st.session_state 를 만지고
     # 실패해도 마지막 캐시로 답해서 "서버가 떴는가" 를 못 가린다.
     try:
-        answer = requests.get(f"{api_client.BASE_URL}/graph", timeout=api_client.GRAPH_TIMEOUT)
+        answer = requests.get(f"{api_client.BASE_URL}/screen", timeout=api_client.SCREEN_TIMEOUT)
         answer.raise_for_status()
     except Exception as exc:  # 서버가 없다 · 응답이 이상하다
         pytest.skip(f"8000 이 안 답한다: {exc}")

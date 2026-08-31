@@ -41,7 +41,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from app.api.services import ontology_service  # noqa: E402
+from app.api.services.streamlit import screen_service  # noqa: E402
 from execution.step_service import (  # noqa: E402
     PREVIOUS_STEP,
     SPOKEN_VALUE,
@@ -111,7 +111,7 @@ def wired_chain(recipe_id: str) -> list:
           step_service.wiring_at 을 부른다. 옮겨 적으면 두 곳이 어긋남
     """
     chain, source_id = [], None
-    for entry in ontology_service.path_of(recipe_id):
+    for entry in screen_service.path_of(recipe_id):
         node_id = entry["node_id"]
         wiring = wiring_at(node_id, source_id) if source_id is not None else None
         source_id = node_id
@@ -164,7 +164,7 @@ def findings() -> tuple:
     제약  무엇이 맞는 배선인지 정하지 않는다. 어긋난 자리를 셀 뿐이고 어느
           쪽으로 고칠지는 사람이 정한다
     """
-    recipe_ids = ontology_service.recipe_ids()
+    recipe_ids = screen_service.recipe_ids()
     found, wired = [], 0
 
     for recipe_id in recipe_ids:

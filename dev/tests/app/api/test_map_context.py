@@ -15,7 +15,7 @@ import asyncio
 
 import pytest
 
-from app.api.services import ontology_service
+from app.api.services.streamlit import screen_service
 from execution import execute_service, step_service
 from orchestrator import resolve_service
 
@@ -41,8 +41,8 @@ SPOKEN = ["spoken_place", "spoken_keyword", "spoken_identifier"]
 
 def recipe_for(chain):
     """그 사슬을 가진 recipe id. 번호를 박지 않으려고 찾아서 쓴다."""
-    for recipe_id in ontology_service.recipe_ids():
-        nodes = [entry["node_id"] for entry in ontology_service.path_of(recipe_id)]
+    for recipe_id in screen_service.recipe_ids():
+        nodes = [entry["node_id"] for entry in screen_service.path_of(recipe_id)]
         if nodes == list(chain):
             return recipe_id
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")

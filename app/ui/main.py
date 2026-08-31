@@ -108,7 +108,7 @@ st.session_state.setdefault("side_tab", ASK)
 # ================================================================ 그래프 조회
 # 노드 등록 폼이 인터페이스 목록을 쓰므로 화면을 그리기 전에 한 번 받아둔다.
 try:
-    graph, graph_stale = api_client.get_graph()
+    graph, graph_stale = api_client.get_screen()
 except ApiError:
     graph, graph_stale = None, False
 

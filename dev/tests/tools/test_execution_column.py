@@ -116,9 +116,9 @@ def test_every_expected_recipe_really_exists():
     없는 번호를 가리키면 그 발화는 영영 빗나감으로 찍히는데, 표만 봐서는
     발화가 나쁜 것인지 번호가 밀린 것인지가 안 갈린다.
     """
-    from app.api.services import ontology_service
+    from app.api.services.streamlit import screen_service
 
-    있는_것 = set(ontology_service.recipe_ids())
+    있는_것 = set(screen_service.recipe_ids())
     기대한_것 = {rid for _, _, expected, _ in check_resolve.UTTERANCES for rid in expected}
 
     assert 기대한_것 <= 있는_것
@@ -129,14 +129,14 @@ def test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_scree
 
     번호가 밀리면 조용히 옆 recipe 를 가리키게 된다. 경로 첫 칸으로 지킨다.
     """
-    from app.api.services import ontology_service
+    from app.api.services.streamlit import screen_service
     from execution import step_service
 
     for number, _u, expected, _d in check_resolve.UTTERANCES:
         if number <= check_resolve.EXTENSION_LAST:
             continue
         for recipe_id in expected:
-            path = ontology_service.path_of(recipe_id)
+            path = screen_service.path_of(recipe_id)
             assert path[0]["node_id"] in step_service.CONTEXT_STARTS
 
 

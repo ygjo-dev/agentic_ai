@@ -8,13 +8,13 @@
 좌표 파일은 gitignore 라 저장소에 안 들어간다. 그래서 「커밋에 좌표가 들어
 있는가」로는 못 막고, 노드를 더한 사람의 장비에서 이 시험이 잡는다.
 
-**형식 노드는 안 그린다.** 그리는 노드가 무엇인지는 ontology_service 가 안다.
+**형식 노드는 안 그린다.** 그리는 노드가 무엇인지는 screen_service 가 안다.
 여기서 그 판단을 다시 하지 않는다.
 
 graphviz 를 안 부른다. 파일과 온톨로지만 읽는다.
 """
 
-from app.api.services.ontology_service import drawn_nodes
+from app.api.services.streamlit.screen_service import drawn_nodes
 from app.ui.graph_svg import layout_store
 
 

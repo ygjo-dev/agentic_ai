@@ -40,7 +40,7 @@ LAYOUT = {
 #   5초는 저쪽에서 답이 나온 뒤 화면이 멈춰 있는 구간이 길어 시연에서 걸린다
 FOLLOW_INTERVAL_SECONDS = 3
 
-# 색은 여기 없다. graph_svg 가 정해 /graph 응답으로 내려보내고 theme.py 가 받는다 —
+# 색은 여기 없다. graph_svg 가 정해 /screen 응답으로 내려보내고 theme.py 가 받는다 —
 # 그래프 SVG 와 칩 · 배지가 같은 색이어야 하므로 출처가 하나여야 한다.
 
 # 비율은 리허설 중에 새로고침만으로 맞출 수 있어야 한다. 값이 정해지면 LAYOUT 에 박는다.
