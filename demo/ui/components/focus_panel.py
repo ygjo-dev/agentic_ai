@@ -9,7 +9,8 @@
 
 고른 노드(picked)는 이 문서 안 변수로만 둔다 — 다시 그릴 때마다 전체로
 돌아가는 것이 맞다. 반면 줌 배율은 Run·등록을 건너도 남아야 하므로
-zoom.py 가 세션 저장소에 맡긴다.
+zoom.py 가 세션 저장소에 맡긴다. 고른 경로에 화면을 맞추는 것도 zoom.py 다 —
+여기서는 무엇이 강조인지 알려주는 class 이름만 넘긴다.
 """
 
 import json
@@ -153,7 +154,7 @@ function draw() {{
 document.body.addEventListener("click", () => {{ picked = null; draw(); }});
 draw();
 </script>
-{zoom.zoom_script(zoom.BOTTOM_KEY)}
+{zoom.zoom_script(zoom.BOTTOM_KEY, highlight_class=flow.FLOW_CLASS)}
 {flow.flow_script()}"""
 
 

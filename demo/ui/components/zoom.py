@@ -1,4 +1,4 @@
-"""그래프 줌·팬. 상단과 하단이 같은 스크립트를 쓴다.
+"""그래프 줌·팬, 그리고 고른 경로에 화면을 맞추는 것. 상단과 하단이 같은 스크립트를 쓴다.
 
 두 벌로 나누어 쓰지 않는다 — 한쪽만 고치는 일이 반드시 생기고, 그러면 시연 중에
 위아래가 다르게 반응한다. 여기서 한 벌을 만들고 양쪽이 키만 다르게 부른다.
@@ -11,17 +11,38 @@ SVG 를 다시 그리지 않고 CSS transform 만 건다. 색·굵기·순번을
 `allow-same-origin allow-scripts allow-downloads` 라 웹 스토리지가 동작하지만,
 그건 정적으로 확인한 것이지 실행 시 보장이 아니다. 막히면 부모 창 전역으로,
 그것도 막히면 이 문서 안 변수로 떨어진다. 어느 단계에서도 예외를 올리지 않는다.
+
+**자동 맞춤도 여기 있다.** 배율·평행이동을 이미 이 한 곳이 쥐고 있어서다 —
+따로 스크립트를 두면 scale 사본이 둘이 되어 손으로 굴린 값과 어긋난다.
+고르는 손잡이(강조 엣지 class)는 밖에서 받는다. 이 모듈은 무엇이 강조인지
+정하지 않는다.
 """
 
-# 확대 폭. 근거와 전후 값은 NOTES.md 「쉰두째」.
+# 확대 폭. 근거와 전후 값은 NOTES.md 「쉰두째」 · 「예순다섯째」.
 # 축소는 두 칸이면 바닥이라 그대로 둔다. 확대는 노드 하나가 화면을 채울 때까지
-# 가고, 한 칸이 30% 라 바닥에서 끝까지 아홉 번 남짓이다.
+# 가고, 한 칸이 3% 라 바닥에서 끝까지 마흔여섯 번 남짓이다.
+#
+# **2.5 에서 3.5 로 올렸다** (「예순다섯째」). 자동 맞춤에 따로 상한을 두지 않고
+# 손으로 굴릴 때와 천장을 하나로 뒀다 — 따로 두면 자동으로 3.0 까지 간 화면에서
+# 휠을 한 칸 올리는 순간 2.5 로 뚝 떨어진다. 시연 중에 그 튐이 가장 나쁘다.
+# 3.5 인 이유는 시연 발화 넷을 실제로 재보니 필요한 배율이 2.07 ~ 3.00 이고
+# (NOTES.md 「예순다섯째」 3번 표) 그보다 조금 남겨둔 값이기 때문이다.
+# 한 칸의 크기(ZOOM_STEP)는 안 바꿨다 — 손맛은 그대로이고 천장만 올라간다.
 MIN_SCALE = 0.9
-MAX_SCALE = 2.5
+MAX_SCALE = 3.5
 ZOOM_STEP = 1.03
 # 이만큼 안 움직였으면 클릭으로 본다. 없으면 그래프를 옮길 때마다 후보가
 # 좁혀지고 배경 클릭으로 전체 복귀돼 버린다.
 DRAG_THRESHOLD = 5
+
+# 자동으로 맞출 때 강조 상자 둘레에 남기는 여백(화면 px, 한 변). 하단 칸이
+# 1500x523px 이라 좌우 24px 은 폭의 3.2%, 위아래는 높이의 9.2% 다.
+# 배율에는 거의 영향이 없다 — 시연 발화 넷에서 24 를 40 으로 늘려도 필요한
+# 배율이 2.07 -> 2.02 로만 움직인다(「예순다섯째」 3번). 즉 이 값은 "맞추기
+# 위해" 가 아니라 "선이 칸 테두리에 닿아 보이지 않게" 두는 값이다.
+# getBoundingClientRect 는 선 굵기를 포함해서 재므로 굵은 teal 선(8pt) 몫을
+# 여기서 따로 더할 필요가 없다.
+FIT_PAD = 24
 
 # 상단과 하단은 서로 다른 그래프이므로 배율도 따로 기억한다.
 TOP_KEY = "recipe_zoom_top"
@@ -29,8 +50,9 @@ BOTTOM_KEY = "recipe_zoom_bottom"
 
 _TEMPLATE = """
 (function () {
-  var KEY = "__KEY__", SEL = "__SEL__";
+  var KEY = "__KEY__", SEL = "__SEL__", HL = "__HL__";
   var MIN = __MIN__, MAX = __MAX__, STEP = __STEP__, THRESHOLD = __THRESHOLD__;
+  var PAD = __PAD__;
 
   // ---------------------------------------------------------- 저장소
   var memory = null;
@@ -63,6 +85,9 @@ _TEMPLATE = """
 
   var saved = load() || {};
   var scale = saved.scale || 1, tx = saved.tx || 0, ty = saved.ty || 0;
+  // 마지막으로 맞춰준 경로의 서명. 이것이 그대로면 다시 안 맞춘다 —
+  // 손으로 굴려둔 배율을 다시 그릴 때마다 덮으면 안 되기 때문이다.
+  var fitted = saved.sig || "";
 
   function apply() {
     var svg = box.querySelector("svg");
@@ -72,7 +97,100 @@ _TEMPLATE = """
       "translate(" + tx + "px," + ty + "px) scale(" + scale + ")";
   }
 
-  function commit() { apply(); save({scale: scale, tx: tx, ty: ty}); }
+  function commit() {
+    apply();
+    save({scale: scale, tx: tx, ty: ty, sig: fitted});
+  }
+
+  // ---------------------------------------------------------- 강조 고르기
+  // **색이나 굵기로 고르지 않는다.** flow.py 와 같은 손잡이(class)를 쓴다 —
+  // 색은 상수라 바뀌고, 굵기로 고르면 등록 경로 · 물러난 경로가 함께 걸린다.
+  function flowEdges() {
+    try { return box.querySelectorAll("g." + HL); } catch (e) { return []; }
+  }
+
+  // 강조된 엣지의 <title> 은 "꼬리->머리" 다(Graphviz 실측). 이것을 모아
+  // 정렬한 것이 경로의 서명이고, 양 끝에서 강조 노드 id 도 함께 얻는다.
+  // **노드에는 class 가 없다.** 붙이려면 dot.py 를 고쳐야 하는데 그건 이번
+  // 범위 밖이라, 엣지 제목에서 끌어낸다.
+  function endpoints(edges, into) {
+    var names = [];
+    for (var i = 0; i < edges.length; i++) {
+      var title = edges[i].querySelector("title");
+      if (!title) continue;
+      var text = title.textContent.replace(/\\s+/g, "");
+      names.push(text);
+      if (!into) continue;
+      var ends = text.split("->");
+      for (var k = 0; k < ends.length; k++) if (ends[k]) into[ends[k]] = true;
+    }
+    names.sort();
+    return names.join("|");
+  }
+
+  // 강조 엣지와 그 양 끝 노드. **엣지만 재면 노드 이름이 화면 밖으로 나간다** —
+  // 「문서에서 철도안전법」은 엣지만 재면 5.10배가 필요해 두 노드 상자(195.6px)가
+  // 칸을 넘는다. 노드까지 재면 3.00배다 (NOTES.md 「예순다섯째」 3번).
+  function pieces() {
+    var picked = [], wanted = {};
+    try {
+      var edges = flowEdges();
+      for (var i = 0; i < edges.length; i++) picked.push(edges[i]);
+      endpoints(edges, wanted);
+
+      var nodes = box.querySelectorAll("g.node");
+      for (var j = 0; j < nodes.length; j++) {
+        var title = nodes[j].querySelector("title");
+        if (title && wanted[title.textContent.replace(/\\s+/g, "")]) picked.push(nodes[j]);
+      }
+    } catch (e) {}
+    return picked;
+  }
+
+  // ---------------------------------------------------------- 자동 맞춤
+  // 어느 줄에서 걸려도 아무 일도 안 하고 지금 화면을 그대로 둔다.
+  function fit() {
+    try {
+      if (!HL) return;
+      var sig = endpoints(flowEdges(), null);
+      if (!sig || sig === fitted) return;   // 강조가 없거나 경로가 그대로다
+
+      var parts = pieces();
+      if (!parts.length) return;
+
+      var frame = box.getBoundingClientRect();
+      if (!(frame.width > 0) || !(frame.height > 0)) return;
+
+      var left = Infinity, top = Infinity, right = -Infinity, bottom = -Infinity;
+      for (var i = 0; i < parts.length; i++) {
+        var r = parts[i].getBoundingClientRect();
+        if (!(r.width > 0) && !(r.height > 0)) continue;
+        if (r.left < left) left = r.left;
+        if (r.top < top) top = r.top;
+        if (r.right > right) right = r.right;
+        if (r.bottom > bottom) bottom = r.bottom;
+      }
+      // 화면 좌표를 변형 전 좌표로 되돌린다. 지금 걸린 배율 · 평행이동을
+      // 빼는 것이라 손으로 굴려둔 상태에서 눌러도 같은 답이 나온다.
+      var w = (right - left) / scale, h = (bottom - top) / scale;
+      if (!isFinite(w) || !isFinite(h) || w <= 0 || h <= 0) return;
+      var x = (left - frame.left - tx) / scale, y = (top - frame.top - ty) / scale;
+
+      var next = Math.min((frame.width - 2 * PAD) / w, (frame.height - 2 * PAD) / h);
+      if (!isFinite(next) || next <= 0) return;
+      next = Math.min(MAX, Math.max(MIN, next));
+
+      scale = next;
+      tx = (frame.width - next * w) / 2 - next * x;
+      ty = (frame.height - next * h) / 2 - next * y;
+      fitted = sig;
+      commit();
+    } catch (e) {}
+  }
+
+  // 다시 그린 뒤에는 얹고 나서 맞춘다. 순서가 뒤바뀌면 아직 안 걸린 배율로
+  // 상자를 재게 된다.
+  function refresh() { apply(); fit(); }
 
   // ---------------------------------------------------------- 휠
   box.addEventListener("wheel", function (ev) {
@@ -124,6 +242,8 @@ _TEMPLATE = """
 
   // ---------------------------------------------------------- 복귀
   // 시연 중에 길을 잃었을 때 빠져나올 길. 안내 문구 없이도 짐작되는 몸짓이다.
+  // 서명은 그대로 둔다 — 여기서 지우면 다시 그리는 순간 자동 맞춤이 되살아나
+  // 복귀가 한 순간만 살아 있게 된다. 복귀는 사람이 부른 것이므로 이긴다.
   box.addEventListener("dblclick", function (ev) {
     ev.preventDefault();
     scale = 1; tx = 0; ty = 0;
@@ -132,26 +252,38 @@ _TEMPLATE = """
 
   // 하단은 노드를 누를 때마다 SVG 를 통째로 갈아끼운다. 그때 transform 이
   // 날아가므로 새 SVG 에 다시 얹는다.
-  new MutationObserver(apply).observe(box, {childList: true, subtree: false});
-  apply();
+  new MutationObserver(refresh).observe(box, {childList: true, subtree: false});
+  refresh();
+  // 첫 그림에서 칸 크기가 아직 0 이면 위에서 아무 일도 안 일어났다. 그때는
+  // 더 부를 사람이 없으므로(엣지가 안 바뀌니 MutationObserver 도 안 운다)
+  // 한 프레임 뒤에 한 번만 더 본다. 이미 맞췄으면 서명이 같아 그냥 돌아온다.
+  try { window.requestAnimationFrame(fit); } catch (e) {}
 })();
 """
 
 
-def zoom_script(storage_key: str, selector: str = "#graph") -> str:
-    """줌 · 팬 스크립트 한 벌.
+def zoom_script(
+    storage_key: str, selector: str = "#graph", highlight_class: str = ""
+) -> str:
+    """줌 · 팬 · 자동 맞춤 한 벌.
 
-    입력  storage_key  배율을 기억할 키. 상단 · 하단이 서로 달라야 함
-          selector     줌을 걸 컨테이너. 그 안의 첫 <svg> 에 transform 이 붙음
+    입력  storage_key      배율을 기억할 키. 상단 · 하단이 서로 달라야 함
+          selector         줌을 걸 컨테이너. 그 안의 첫 <svg> 에 transform 이 붙음
+          highlight_class  강조 엣지에 붙은 SVG class. 이것으로 고른 경로를
+                           찾아 화면을 맞춤. 비우면 자동 맞춤을 아예 안 함
     출력  <script> 태그까지 포함한 문자열
+    제약  예외를 안 올린다. 강조가 없거나 상자를 못 재면 아무 일도 안 하고
+          지금 화면을 그대로 둔다
     """
     body = (
         _TEMPLATE.replace("__KEY__", storage_key)
         .replace("__SEL__", selector)
+        .replace("__HL__", highlight_class)
         .replace("__MIN__", str(MIN_SCALE))
         .replace("__MAX__", str(MAX_SCALE))
         .replace("__STEP__", str(ZOOM_STEP))
         .replace("__THRESHOLD__", str(DRAG_THRESHOLD))
+        .replace("__PAD__", str(FIT_PAD))
     )
     return f"<script>{body}</script>"
 

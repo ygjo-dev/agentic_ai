@@ -49,9 +49,11 @@ def graph_fill_html(svg: str, pulse: bool = False) -> str:
         f"{extra}"
         "</style>"
         f'<div id="graph">{svg}</div>'
-        f"{zoom.zoom_script(zoom.TOP_KEY)}"
+        f"{zoom.zoom_script(zoom.TOP_KEY, highlight_class=flow.FLOW_CLASS)}"
         # 상단은 실선을 안 그리므로 걸리는 엣지가 없다. 그래도 같은 한 벌을
         # 붙인다 — 한쪽만 붙이면 언젠가 위아래가 다르게 움직인다.
+        # 자동 맞춤도 같은 이유로 같이 붙인다. 상단에는 class="flow" 엣지가
+        # 하나도 없어(draw_solid=False) 서명이 비고, 아무 일도 안 일어난다.
         f"{flow.flow_script()}"
     )
 
