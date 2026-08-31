@@ -17,8 +17,8 @@ import json
 
 import pytest
 
-from app.api.services import resolve_service
-from app.api.services.resolve_service import (
+from orchestrator import resolve_service
+from orchestrator.resolve_service import (
     FALLBACK_EMPTY,
     FALLBACK_NONE,
     NARROW_ENV,

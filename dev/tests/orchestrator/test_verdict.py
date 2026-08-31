@@ -8,7 +8,7 @@ LLM 이 맞게 고른 답을 덮은 자리가 실측에서 아홉 번 나왔다.
 고른 것이고 표는 NOTES.md 「서른셋째」에 있다.
 """
 
-from app.api.services.resolve_service import _verdict
+from orchestrator.resolve_service import _verdict
 from orchestrator.schemas.response_schema import CLARIFY, NO_MATCH, SELECT
 
 

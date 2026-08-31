@@ -28,13 +28,9 @@ step_service.plan 의 commands 가 그것이다. 저쪽 show-facility plugin 이
 
 from collections import Counter
 
-from app.api.services import (
-    clarify_service,
-    ontology_service,
-    resolve_service,
-    step_service,
-)
+from app.api.services import ontology_service, step_service
 from ontology import graph, store
+from orchestrator import clarify_service, resolve_service
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 from vendor_to_be_deleted.asap.workflow_answer import (
     command_answer,

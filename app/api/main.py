@@ -37,7 +37,6 @@ from app.api.services import (
     ontology_service,
     recent_service,
     render_service,
-    resolve_service,
 )
 from app.api.services.render_service import UnknownRenderMode
 from llm_engine.ollama import make_client
@@ -48,6 +47,7 @@ from ontology.registry import (
     UnknownGroup,
     UnknownType,
 )
+from orchestrator import resolve_service
 from orchestrator.route_resolver import RouteResolutionError
 
 app = FastAPI(

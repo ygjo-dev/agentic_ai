@@ -48,7 +48,7 @@ class ChatRequest(BaseModel):
 
     **sessionId 는 읽는다** (2026-08-26). 되묻기를 세션마다 하나 기억해 두고
     다음 발화가 그것을 고른 것인지 가르는 데 쓴다 —
-    app/api/services/clarify_service.py 다. 빈 문자열이면 그 기능을 안 쓴다.
+    orchestrator/clarify_service.py 다. 빈 문자열이면 그 기능을 안 쓴다.
     text 와 sessionId 말고 둘(context · target_documents)은 여전히 안 읽는다.
     """
 

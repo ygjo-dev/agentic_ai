@@ -10,7 +10,7 @@ LLM 도 온톨로지도 안 부른다. 기억해 둘 후보를 손으로 만들�
 
 import pytest
 
-from app.api.services import clarify_service
+from orchestrator import clarify_service
 
 # 화면에 실제로 나온 되묻기 하나. 「청주시 인구 알려줘」의 후보 넷이다.
 #

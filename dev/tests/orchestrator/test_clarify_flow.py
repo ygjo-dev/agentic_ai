@@ -16,7 +16,8 @@ import asyncio
 
 import pytest
 
-from app.api.services import clarify_service, execute_service
+from app.api.services import execute_service
+from orchestrator import clarify_service
 
 SESSION = "s-demo"
 

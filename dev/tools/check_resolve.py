@@ -34,7 +34,7 @@
 
 `--narrow` 는 /resolve 에 `narrow=true` 를 실어 보낸다. 서버는 LLM 을 두 번 부른다 —
 1차는 menu 없이 축 셋만, 온톨로지가 그 축으로 후보를 좁힌 뒤, 2차가 그 후보
-문장만 보고 고른다 (app/api/services/resolve_service.py). **기본은 끔이고, 끄면
+문장만 보고 고른다 (orchestrator/resolve_service.py). **기본은 끔이고, 끄면
 서버도 이 도구도 스위치를 만들기 전과 한 글자도 다르지 않아야 한다.**
 
 켜면 「검산」이라는 개념이 없어진다. 대조할 두 목록이 없다. 그래서

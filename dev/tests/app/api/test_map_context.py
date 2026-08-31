@@ -15,7 +15,8 @@ import asyncio
 
 import pytest
 
-from app.api.services import execute_service, ontology_service, resolve_service, step_service
+from app.api.services import execute_service, ontology_service, step_service
+from orchestrator import resolve_service
 
 # 저쪽 화면이 실제로 보내는 모양. KRRI_ASAP/ASAP-web 의 ChatRequest 타입과
 # CameraManager.getMapContext 를 그대로 옮긴 것이다 (2026-08-28 확인).
