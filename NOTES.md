@@ -89,7 +89,7 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 끝난 뒤의 일이다. 번호는 그 차례를 잇는다.
 
 ```
- 7  좁히기 스위치(RESOLVE_NARROW · 2단 프롬프트) 걷어내기
+ 7  ~~좁히기 스위치(RESOLVE_NARROW · 2단 프롬프트) 걷어내기~~  ★ 끝났다 (일흔두째)
  8  세션 없애기 — 되묻기 뒤 「1번」으로 고르는 기능(CLARIFY_CHOICE)
  9  description 다듬기 — menu 문장이 틀이 같아 안 갈린다
 10  검산(축 조회 · 대조) 걷어내기. 9 의 결과가 정한다. 조건부다
@@ -104,22 +104,38 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 
 ★ 14 는 지웠다 — 6′ 에서 엔드포인트 이름을 갈랐다. 남은 것은 18 이다.
 
-- **7 · 좁히기 스위치를 걷어낸다.** `resolve_service.resolve` 의 스위치와
-  `_resolve_narrow`(2단 프롬프트) 길을 함께 뺀다. **까닭은 성적이 아니라
-  사람이다** — 리뷰하는 사람이 좁히기·임베딩을 안 좋아한다.
-  **지금 기본이 꺼짐이라 걷어내도 기본 경로가 안 바뀐다.**
+- **~~7 · 좁히기 스위치를 걷어낸다~~ — 끝났다** (2026-09-01 「일흔두째」).
+  **되찾을 태그 : `had-narrow-path`** (`a996184`).
+  `git reset --hard had-narrow-path` 로 통째로 돌아간다. 7개 파일 829줄을 지웠다.
+  까닭은 성적이 아니라 사람이었다 — 리뷰하는 사람이 좁히기·임베딩을 안 좋아한다.
+
+  **좁히기가 무엇이었나.** 다시 만들 사람이 읽을 것이라 남긴다.
 
   ```
-  스위치가 있는 자리 셋
-    resolve_service.py:79  NARROW_ENV = "RESOLVE_NARROW"
-    app/api/main.py:157   /resolve?narrow= 의 기본값 설명
-    dev/tools/check_resolve.py --narrow
+  1차  menu 를 빼고 축 셋(given · want · about)만 LLM 에게 묻는다. 프롬프트가 짧다
+  조회  온톨로지가 그 축으로 recipe 후보를 2~5개로 좁힌다 (shortlist.candidates)
+  2차  좁힌 후보의 menu 문장만 보여주고 그중 하나를 고르게 한다. LLM 을 두 번 부른 셈
   ```
 
-  위의 「좁히기를 스위치 뒤에 둔 채로 접었다」(2026-08-27 「마흔두째」) 항목이
-  **"지우지도 않는다"** 고 적었다. 그때는 지울 까닭이 없었고, 지금은 리뷰라는
-  까닭이 생겼다. 지울 때는 아래 「지운 것을 되찾는 규칙」을 따른다 — 성적표는
-  「마흔한째」·「마흔두째」에 남아 있으므로 코드가 없어져도 사실은 안 없어진다.
+  후보가 하나면 2차를 안 불렀다. 빠져나갈 길이 둘 있었다 — 조회 후보가 비면(가),
+  2차가 "여기 없다" 고 하면(나) 지금 길로 갔다. **기본이 꺼짐이라 화면에는 한 번도
+  안 나왔다.** 성적표는 「마흔한째」·「마흔두째」에 있다 — 코드가 없어져도 사실은
+  안 없어진다.
+
+  ★ **죽은 채 남은 것 넷.** 좁히기만 쓰던 것인데 이번 범위가 아니라 안 지웠다.
+  지울지는 다음 사람이 정한다.
+
+  ```
+  orchestrator/schemas/response_schema.py:81   axis_selection_schema  (1차 스키마)
+  orchestrator/schemas/response_schema.py:108  recipe_pick_schema     (2차 스키마)
+  workflows/static/prompts/recipe_axes.md      1차 프롬프트
+  workflows/static/prompts/recipe_pick.md      2차 프롬프트
+  ```
+
+  ★ **지우면서 알게 된 것.** `check_resolve.py` 의 `_print_narrow` 는 이름과 달리
+  **끔일 때 찍는 시간 줄**(`/resolve` 한 번의 평균 초)을 품고 있었다. 이름만 보고
+  통째로 지웠으면 기본 경로의 표가 한 줄 사라질 뻔했다. `_print_times` 로 이름을
+  고쳐 남겼다.
 
 - **8 · 세션을 없앤다.** 되묻기 뒤 「1번」으로 고르는 기능(`CLARIFY_CHOICE`)을
   뺀다. **까닭 : 리뷰하는 사람이 세션을 아직 만들지 말라고 했다.**
@@ -1842,6 +1858,197 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-01 (일흔두째) · 좁히기 길을 걷어냈다 — B 7
+
+무인 실행. 조건 — `refactor/vendor` · 시작 전 워킹 트리 깨끗함 ·
+되돌리는 태그 **`had-narrow-path`** 를 시작 전에 박았다 (`a996184`).
+
+**동작이 바뀌는 일(B) 중 7 이다.** 8(세션) · 9(description) · 10(검산)은
+이번이 아니다. 손대지 않았다.
+
+#### 1. 왜 걷었나
+
+**성적이 아니라 사람이다.** 좁히기는 성적을 안 재고 지웠다 — 기본이 꺼짐이라
+지금 도는 길이 안 바뀌고, 따라서 적중률도 안 바뀐다. 지운 까닭은 셋이다.
+
+```
+리뷰      코드 리뷰하는 사람이 좁히기·임베딩 방식을 안 좋아한다. 남겨 두면
+          지적받을 자리다
+9 번 준비  resolve_service 가 얇아야 description 을 잴 때 원인이 하나로 좁혀진다
+안 쓴다    스위치 뒤에 접혀 있고 기본이 꺼짐이라 지금 아무도 안 쓴다
+```
+
+「마흔두째」(2026-08-27)가 **"지우지도 않는다"** 고 적었다. 그때는 지울 까닭이
+없었고, 지금은 리뷰라는 까닭이 생겼다. **성적표는 「마흔한째」·「마흔두째」에
+그대로 있으므로 코드가 없어져도 사실은 안 없어진다.**
+
+#### 2. 지운 것 — 7개 파일 829줄
+
+```
+파일                                          줄        무엇
+dev/tests/orchestrator/test_narrow.py        -378  파일째 (시험 25개)
+dev/tests/orchestrator/test_narrow_schema.py  -46  파일째 (시험 4개)
+orchestrator/resolve_service.py         556 -> 356  아래
+dev/tools/check_resolve.py             1962 -> 1830  --narrow 갈래
+app/api/main.py                         306 -> 300  /resolve 의 narrow 인자
+orchestrator/clarify_service.py                -3  RESOLVE_NARROW 을 가리키던 주석
+dev/tests/app/api/test_menu_split.py           ±2  가짜 resolve 의 죽은 narrow 인자
+                                       합계 829 지움 · 66 더함
+```
+
+`resolve_service.py` 에서 지운 것 (줄 번호는 지우기 전 기준)
+
+```
+86~88    narrow_default()          RESOLVE_NARROW 을 읽던 유일한 자리
+407~527  _resolve_narrow           1차(축만) → 조회 → 2차(후보 중 고르기)
+530~543  _fallback                 가) 조회 후보가 빔 · 나) 2차가 "여기 없다"
+546~556  _candidate_lines          2차 프롬프트에 넣을 후보 문장
+70~83    AXES_PROMPT_PATH · PICK_PROMPT_PATH · NARROW_ENV · FALLBACK 둘
+91~113   resolve() 의 narrow 인자와 갈래. 이제 _resolve_full 을 곧장 부른다
+51~54    import os · time · yaml   셋 다 좁히기에서만 썼다
+64~65    axis_selection_schema · recipe_pick_schema 의 import
+1~16     모듈 docstring 의 「길이 둘이다」 절
+```
+
+응답에서 `narrow` 칸이 사라졌다. **켰을 때만 실리던 칸이라 지금 도는 길의
+응답은 한 글자도 안 바뀐다** (아래 관문에서 확인).
+
+#### 3. 남긴 것과 까닭
+
+```
+_resolve_full 268~357 · _verdict 360~401     지금 도는 길이다. 안 건드렸다
+ontology/shortlist.py 전부                    검산이 쓴다
+  ★ shortlist.candidates 는 두 곳에서 불렸다 — 319줄(검산) · 456줄(좁히기).
+    456 만 사라졌다. 319 는 그대로다
+_choices_for · _dropped_starts · _without_dropped
+_starts_at · _points_at_screen · _menu_for   여섯 다 남긴다
+```
+
+**여섯을 세어 봤다. 좁히기 전용이 하나도 없었다.** 전부 `_resolve_full` 이나
+그 안에서 부르는 자리에 걸려 있다.
+
+```
+_choices_for       _resolve_full:294 · (_resolve_narrow:432)
+_dropped_starts    _choices_for:132 · _resolve_full:293 · (_resolve_narrow:431)
+_without_dropped   _resolve_full:320,323 · (_resolve_narrow:457)
+_starts_at         _without_dropped:179 · _menu_for:249,257
+_points_at_screen  _menu_for:260
+_menu_for          _resolve_full:300
+```
+
+괄호가 좁히기 쪽이다. 셋은 좁히기도 썼지만 **지금 길이 먼저 쓰고 있어서**
+좁히기가 사라져도 그대로 남는다. `dev/tests/app/api/test_map_context.py` 와
+`test_menu_split.py` 가 여섯 중 다섯을 직접 부르고 있기도 하다.
+
+#### 4. 관문 — 여덟 다 통과
+
+```
+pytest              ★ 통과   1 failed · 456 passed · skipped 0
+                             485 -> 456. 정확히 29 줄었다
+                             (test_narrow 25 + test_narrow_schema 4)
+                             일부러 둔 실패 test_dense_graph_would_move_if_
+                             overlap_removal_were_used 그대로. 늘지도 줄지도 않음
+POST /resolve       ★ 통과   발화 셋 · 지우기 전후로 status · recipe_id ·
+                             후보 · 축 넷까지 전부 같음. 다시 누를 일 없었다
+check_resolve       ★ 통과   --runs 1 이 36발화 끝까지 돌고 표가 다 나왔다
+                             (출력은 아래)
+GET /screen         ★ 통과   17723바이트 바이트까지 같음
+POST /render        ★ 통과   plain 109509 · 후보 셋 297634. 둘 다 바이트까지 같음
+check_wiring        ★ 통과   md5 1e35f14bce04d8e64632c71107982883 그대로
+check_inputs        ★ 통과   둘째 줄부터 그대로 (첫 줄은 경로라 원래 다름)
+계층 시험            ★ 통과   test_layout_init_copy.py 10 passed
+Streamlit           ★ 통과   runpy 로 app/ui/main.py 통째로 돌려 exit 0.
+                             200 만 보지 않았다 — 「일흔한째」의 그 손이다
+git diff            ★ 통과   execution/ · registration/ · app/ui/ ·
+                             vendor_to_be_deleted/ · KRRI_ASAP 없음
+```
+
+**서버는 `--reload` 라 저절로 다시 떴다.** 새 코드를 보고 있는지는 `/openapi.json`
+의 `/resolve` 인자가 `['utterance','model']` 로 줄어든 것으로 확인했다 —
+그러고 나서 /screen · /render 를 다시 받았다. 안 그러면 「바이트까지 같다」가
+옛 코드의 응답을 견준 것이 된다.
+
+#### 5. 판단이 갈렸던 자리
+
+**가) 죽은 채 남은 것 넷 — 안 지웠다.** 좁히기가 없어지면서 부르는 데가
+없어졌지만 프롬프트에는 안 적혀 있던 것들이다.
+
+```
+orchestrator/schemas/response_schema.py:81   axis_selection_schema
+orchestrator/schemas/response_schema.py:108  recipe_pick_schema
+workflows/static/prompts/recipe_axes.md      1차 프롬프트
+workflows/static/prompts/recipe_pick.md      2차 프롬프트
+```
+
+**경계를 지켰다.** 프롬프트가 「지운다」 목록에 이 넷을 안 적었고, `.md` 둘은
+「마흔두째」부터 여러 번 **"체크섬 그대로"** 를 관문으로 삼아 온 파일이다.
+지우는 쪽이 옳을 수 있지만 **이번 프롬프트가 시킨 일이 아니라 다음 사람이
+정할 일로 넘긴다.** 「열린 과제」에 적었다.
+
+**나) `check_resolve.py` 안에서 이름을 바꿨다.** 프롬프트가 "--narrow 갈래만
+걷어내고 나머지는 한 줄도 안 건드린다" 고 했는데, 갈래를 걷고 나니 이름이
+가리키는 것이 없어졌다. **낡은 이름을 남기지 않는다**(CLAUDE.md)를 따랐다.
+
+```
+NARROW (전역)                     지움
+NARROW_COUNT/CALL/FALLBACK/TIME_WIDTH  지움. 좁히기 표에서만 쓰던 칸 폭 넷
+_print_narrow  ->  _print_times   ★ 끔 갈래가 「시간 줄」이었다. 그것만 남았다
+narrows        ->  times          같은 이유
+```
+
+**★ 잰 값과 정답표와 판정 규칙은 한 줄도 안 건드렸다.** 시간 줄이 찍는 숫자와
+표 넉 장은 그대로다. `_selfcheck` 가 이 파일을 지키고 있고
+(`dev/tests/tools/test_check_resolve_selfcheck.py` 2 passed) 실제로 `--runs 1`
+을 돌려 끝까지 가는 것도 봤다.
+
+**다) `clarify_service.py` 의 주석 세 줄.** 8(세션)은 이번이 아니라 손대면 안
+되지만, 그 파일 주석이 방금 지운 `RESOLVE_NARROW` 를 가리키고 있었다.
+**없는 것을 가리키는 주석을 만들지 않는다**(CLAUDE.md)를 따라 그 비교 문장만
+지웠다. 세션 기능은 한 줄도 안 건드렸다.
+
+**라) 판정을 안 쟀다.** 프롬프트대로다. 좁히기는 기본이 꺼짐이라 지금 도는
+길이 안 바뀌고, 번갈아 재기는 LLM 시간만 쓴다. 대신 위의 관문(응답 바이트
+비교 · 발화 셋)으로 「기본 경로가 안 바뀌었다」를 증명했다.
+
+#### 6. 지우면서 알게 된 것
+
+**`check_resolve.py` 의 「좁히기 표」는 이름과 달리 기본 경로를 품고 있었다.**
+`_print_narrow` 의 `if not NARROW:` 갈래가 **끔일 때 찍는 시간 줄**이었다 —
+`/resolve` 한 번의 평균 초를 묶음마다 내는, 좁히기와 아무 상관 없는 칸이다.
+함수 이름만 보고 통째로 지웠으면 기본 경로의 표가 한 줄 사라질 뻔했다.
+
+**스위치를 지우는 일이 스위치 자리만 지우는 일이 아니었다.** `RESOLVE_NARROW`
+를 읽는 자리는 한 곳(`narrow_default`)인데, 그 값이 흐르는 자리는 여섯이었다 —
+`resolve()` 갈래 · `/resolve` 인자 · `--narrow` 인자 · `_call_resolve` 의 params ·
+`_measure` 의 `if not NARROW` (검산 칸을 안 쌓던 자리) · 적중 표의 「해당 없음」
+갈래. **끔일 때 안 도는 갈래를 지우는 것이라 지우고 나면 코드가 오히려
+짧고 곧아진다** — `_measure` 는 조건 하나가 없어져 늘 검산을 쌓게 됐다.
+
+#### 7. `check_resolve --runs 1` 출력 — 끝까지 돈다
+
+**숫자를 보려고 돌린 것이 아니다.** 도구가 안 죽는지를 본 것이다 (「예순셋째」
+에 조용히 죽은 이력이 있다). 조건 — 발화 36개 × 1회 · `_init` (recipe 60) ·
+모델 서버 기본 · 지도 문맥 both · exit 0 · 표 넉 장 다 나왔다.
+
+```
+발화 36개 × 1회 · _init (recipe 60) · 모델 서버 기본 · 지도 문맥 both
+
+  ... (적중 표 · 축 표 · 후보 표 · 검산 표)
+
+  검산이 바꾼 회차 검산이 살렸다 6회 · ★ 맞는 답을 덮었다 1회 · 바꿨지만 판정은 같다 9회
+  ★ 맞는 답을 덮은 자리가 있다 — resolve_service._verdict 를 다시 본다
+
+  시간 · 기준선 아홉  /resolve 한 번 평균 4.3초 (합 9회)
+  시간 · 확장 스물두  /resolve 한 번 평균 4.5초 (합 22회)
+  시간 · 화면 다섯  /resolve 한 번 평균 4.3초 (합 5회)
+  시간 · 합계         /resolve 한 번 평균 4.4초 (합 36회)
+```
+
+★ 머리줄에서 `· 좁히기 끔` 이 빠졌고 맨 끝의 `좁히기 표 : 해당 없음 (끔 —
+지금 길)` 한 줄도 빠졌다. **그 둘이 이 도구의 출력에서 달라진 전부다.**
+적중 18/36 · 검산이 살린 6회 같은 숫자는 1회 측정이라 기록으로 삼지 않는다 —
+관문이 「끝까지 도는가」였다.
 
 ### 2026-09-01 (일흔한째) · 폴더 정리 6·6′ — 등록을 모으고 창구를 갈랐다
 

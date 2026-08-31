@@ -268,7 +268,7 @@ def test_the_resolve_endpoint_takes_the_context_in_the_request_body(monkeypatch)
 
     받은_것 = {}
 
-    def fake_resolve(utterance, llm_client, reason_max_length, narrow=None, context=None):
+    def fake_resolve(utterance, llm_client, reason_max_length, context=None):
         받은_것["utterance"] = utterance
         받은_것["context"] = context
         return {"status": NO_MATCH, "recipe_id": None, "candidate_recipe_ids": []}
@@ -289,7 +289,7 @@ def test_not_sending_a_context_arrives_as_None(monkeypatch):
 
     받은_것 = {}
 
-    def fake_resolve(utterance, llm_client, reason_max_length, narrow=None, context=None):
+    def fake_resolve(utterance, llm_client, reason_max_length, context=None):
         받은_것["context"] = context
         return {"status": NO_MATCH, "recipe_id": None, "candidate_recipe_ids": []}
 

@@ -144,18 +144,13 @@ async def render_endpoint(form: RenderRequest) -> dict:
 async def resolve_endpoint(
     utterance: str,
     model: str | None = None,
-    narrow: bool | None = None,
     context: dict | None = None,
 ) -> dict:
     """사용자 발화로부터 Recipe 선택.
 
     입력  utterance  사용자 자연어 입력
           model      쓸 LLM 모델 이름. 없으면 기본 모델
-          narrow     좁히기 길(두 번 부르기)을 탈지. **없으면 지금 길(끔)이다.**
-                     환경변수 RESOLVE_NARROW=1 이면 그것이 기본이 됨.
-                     측정용임 — dev/tools/check_resolve.py --narrow 가 켬.
-                     켜면 응답에 narrow 한 칸이 더 실림 (resolve_service 참조)
-          context    화면의 지도 문맥. **요청 본문이다** (나머지 셋은 query).
+          context    화면의 지도 문맥. **요청 본문이다** (나머지 둘은 query).
                      /chat 의 ChatRequest.context 와 같은 모양이고 같은 자리로
                      흐름 — view.bbox · selectedLocation. **없으면 없는 것으로.**
                      안 보내면 이 인자를 만들기 전과 한 글자도 다르지 않음
@@ -174,7 +169,6 @@ async def resolve_endpoint(
         utterance,
         llm_client=make_client(model),
         reason_max_length=profile(model).reason_max_length,
-        narrow=narrow,
         context=context,
     )
 

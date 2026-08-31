@@ -12,7 +12,6 @@
     python dev/tools/check_resolve.py --only 2          고친 발화만 다시
     python dev/tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
     python dev/tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
-    python dev/tools/check_resolve.py --narrow          좁히기 길(두 번 부르기)로. 기본은 끔
     python dev/tools/check_resolve.py --context none    지도 문맥 없이. 「마흔여섯째」 이전과 같은 조건
     python dev/tools/check_resolve.py --context bbox    우클릭 전 (보이는 범위만). 「쉰다섯째」까지의 기본
     python dev/tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
@@ -30,28 +29,15 @@
 꺼지면 전부 실패한다. 적중 판정은 이 칸을 안 본다. 자세한 것은 「실행」 절의
 주석에 있다.
 
-## 「좁히기」 스위치 — 켜면 검산 칸이 「해당 없음」이 된다
+## 시간 — /resolve 한 번의 평균
 
-`--narrow` 는 /resolve 에 `narrow=true` 를 실어 보낸다. 서버는 LLM 을 두 번 부른다 —
-1차는 menu 없이 축 셋만, 온톨로지가 그 축으로 후보를 좁힌 뒤, 2차가 그 후보
-문장만 보고 고른다 (orchestrator/resolve_service.py). **기본은 끔이고, 끄면
-서버도 이 도구도 스위치를 만들기 전과 한 글자도 다르지 않아야 한다.**
+표를 다 찍은 뒤 묶음마다 한 줄씩 찍는다. **이 도구가 잰 값이다** — 요청 직전과
+직후의 perf_counter 차이라 네트워크와 서버 시간이 함께 들어 있다. 서버가 무엇에
+시간을 썼는지는 안 가른다.
 
-켜면 「검산」이라는 개념이 없어진다. 대조할 두 목록이 없다. 그래서
-**LLM 단독 칸과 검산 표는 켰을 때 「해당 없음」으로 남긴다.** 칸을 없애지
-않는 것은 마흔 번의 기록과 이어 읽기 위해서다. 적중 · 근접 · 빗나감 · 못 붙음
-네 칸의 뜻은 두 길에서 같다.
-
-켜면 표를 하나 더 찍는다 (좁히기 표).
-
-    좁힌 후보 수   온톨로지가 1차 축으로 좁힌 후보 수 (shortlist_recipe_ids 의 길이)
-    2차            2차를 부른 횟수. 후보가 하나면 안 부른다
-    폴백 가        조회 후보가 비어 지금 길로 간 횟수
-    폴백 나        2차가 "여기 없다" 고 해서 지금 길로 간 횟수
-    1차 · 2차 · 폴백   각 단계의 LLM 시간 평균(초). 서버가 잰 값
-    합계           이 도구가 잰 /resolve 한 번의 시간 평균(초). 끔 · 켬을 이 칸으로 견준다
-
-끔일 때는 합계 시간만 찍는다. 다른 칸은 그 길에 없다.
+**2026-09-01 에 좁히기(`--narrow` · 두 번 부르기)를 걷어냈다.** 그때까지는 이
+자리에 좁히기 표가 한 장 더 있었다. 그 성적표는 NOTES.md 「마흔한째」·「마흔두째」
+에 남아 있고, 코드는 태그 `had-narrow-path` 에 있다.
 
 ## 「지도 문맥」 옵션 — 기본이 「둘 다」다
 
@@ -109,7 +95,7 @@ menu 에서도(`_menu_for`) 축 선택지에서도(`_choices_for`) 빼기 때문
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:32b 다.
 
 표를 네 장 찍는다. 적중 표 · 축 표 · 후보 표 · 검산 표다. `--execute` 를 붙이면
-실행 칸 표가 한 장 더 나온다 (`--narrow` 를 켜면 좁히기 표도). 후보가 안 맞을 때 LLM 이
+실행 칸 표가 한 장 더 나온다. 후보가 안 맞을 때 LLM 이
 recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다. 축 표에는
 발화에서 뽑은 인자(argument)도 함께 찍는다 — 축이 맞아도 인자가 흔들리면
 실행이 엉뚱한 것을 조회한다.
@@ -557,9 +543,6 @@ INIT_RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "_init" / "recipes"
 
 UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번호로 알아본다.
 
-# 좁히기 스위치. --narrow 가 켠다. **기본은 끔.** main() 만 바꾼다.
-NARROW = False
-
 # 지도 문맥 스위치. --context 가 정한다. **기본은 "both".** main() 만 바꾼다.
 #
 # 고정값은 여기서 다시 적지 않는다. 화면이 보내는 것과 한 글자도 달라지면
@@ -712,9 +695,8 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
     출력  (후보 집합, status, 축 넷, 후보 수와 조회 후보 집합, LLM 단독 후보 집합,
-           좁히기 칸). 후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
-          좁히기 칸은 응답의 narrow(켰을 때만 실림)에 이 도구가 잰 시간(elapsed)
-          을 더한 dict. 끔이면 elapsed 만 있음
+           시간 칸). 후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
+          시간 칸은 이 도구가 잰 /resolve 한 번의 시간(elapsed) 하나뿐인 dict
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
           지도 문맥은 본문으로 실어 보냄. --context none 이면 안 보냄 —
@@ -726,8 +708,6 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     params = {"utterance": utterance}
     if model:
         params["model"] = model
-    if NARROW:
-        params["narrow"] = "true"
 
     started = time.perf_counter()
     try:
@@ -750,7 +730,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
         _axes(result),
         _tally(result),
         _alone(result),
-        {**(result.get("narrow") or {}), "elapsed": elapsed},
+        {"elapsed": elapsed},
     )
 
 
@@ -759,7 +739,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
 
 def _measure(
     entries, runs: int, outcomes: dict, axes: dict, tallies: dict, alones: dict,
-    model: str | None = None, narrows: dict | None = None,
+    model: str | None = None, times: dict | None = None,
 ) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
@@ -778,8 +758,7 @@ def _measure(
           아무것도 안 나오면 멈춘 줄 앎
           오류도 결과의 하나로 Counter 에 남김. 그때 축과 후보 수와 LLM 단독은
           안 쌓음. 응답이 없음
-          narrows[번호] 에 회차마다 좁히기 칸(dict)을 목록으로 쌓음. 좁히기 표가 씀
-          **NARROW 면 alones 를 안 쌓음.** 켜면 검산이 없어 그 칸은 「해당 없음」임
+          times[번호] 에 회차마다 시간 칸(dict)을 목록으로 쌓음. 시간 줄이 씀
     제약  결과를 돌려주지 않는다.
           받은 dict 에 채움. 중간에 끊겨도(Ctrl-C · 서버 중단) 거기까지의
           결과가 부르는 쪽에 남아 있어야 표를 찍을 수 있음
@@ -789,24 +768,23 @@ def _measure(
         axis_counter = Counter()
         tally_counter = Counter()
         alone_counter = Counter()
-        narrow_rows = []
+        time_rows = []
         outcomes[number] = counter
         axes[number] = axis_counter
         tallies[number] = tally_counter
         alones[number] = alone_counter
-        if narrows is not None:
-            narrows[number] = narrow_rows
+        if times is not None:
+            times[number] = time_rows
         sys.stdout.write(f"  {number} ")
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                found, status, axis, tally, alone, narrow = _call_resolve(utterance, model)
+                found, status, axis, tally, alone, timing = _call_resolve(utterance, model)
                 counter[(found, status)] += 1
                 axis_counter[axis] += 1
                 tally_counter[tally] += 1
-                if not NARROW:
-                    alone_counter[(alone, found, status)] += 1
-                narrow_rows.append(narrow)
+                alone_counter[(alone, found, status)] += 1
+                time_rows.append(timing)
                 sys.stdout.write(".")
             except ServerDown:
                 sys.stdout.write("\n")
@@ -1268,8 +1246,6 @@ def _print_sum(label: str, total, total_runs: int, alone: tuple, widths: tuple) 
             + f"← {ALONE}"
             + (f" · LLM 이 아무것도 안 쓴 것 {alone_missing}회" if alone_missing else "")
         )
-    elif NARROW:
-        print(" " * hit_column + _pad("해당 없음", alone_width) + f"← {ALONE} (좁히기 켬 — 검산이 없다)")
 
 
 def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
@@ -1616,14 +1592,9 @@ def _print_verdict_changes(entries, alones: dict) -> None:
         print("  ★ 맞는 답을 덮은 자리가 있다 — resolve_service._verdict 를 다시 본다")
 
 
-# ── 좁히기 표 ───────────────────────────────────────────────────────
+# ── 시간 ────────────────────────────────────────────────────────────
 #
-# 켰을 때만 뜻이 있는 칸들. 끄면 합계 시간만 찍는다. 뜻은 파일 맨 위 주석에 있다.
-
-NARROW_COUNT_WIDTH = 16
-NARROW_CALL_WIDTH = 8
-NARROW_FALLBACK_WIDTH = 9
-NARROW_TIME_WIDTH = 9
+# /resolve 한 번이 몇 초인가. 뜻은 파일 맨 위 주석에 있다.
 
 
 def _mean(values) -> str:
@@ -1631,110 +1602,24 @@ def _mean(values) -> str:
     return f"{sum(values) / len(values):.1f}" if values else "-"
 
 
-def _print_narrow(entries, narrows: dict) -> None:
-    """좁히기 표. 발화마다 좁힌 후보 수 · 2차 · 폴백 둘 · 시간.
+def _print_times(entries, times: dict) -> None:
+    """시간 줄. 묶음마다 /resolve 한 번의 평균.
 
-    입력  발화 목록 · {번호: [좁히기 칸 dict, ...]}
-    규칙  좁힌 후보 수는 나온 값의 분포를 "2×3" 꼴로 적음 (후보 2개가 3회)
-          2차 · 폴백 가 · 폴백 나는 그 발화에서 몇 회였는지
-          시간은 평균(초). 1차 · 2차 · 폴백은 서버가 잰 LLM 시간, 합계는 이
-          도구가 잰 /resolve 한 번의 시간 — 끔 · 켬을 이 칸으로 견줌
-          묶음마다 합계 한 줄. 끔이면 합계 시간만 찍음
-    제약  적중 판정을 안 건드린다. 응답의 narrow 칸과 시간만 읽음
+    입력  발화 목록 · {번호: [시간 칸 dict, ...]}
+    규칙  이 도구가 잰 값임. 묶음이 둘 이상이면 합계 한 줄을 더 찍음
+    제약  적중 판정을 안 건드린다. 시간만 읽음
     """
     print()
-    if not NARROW:
-        totals = {label: [] for label, _group in _groups(entries)}
-        for number, _u, _e, _d in entries:
-            rows = narrows.get(number) or []
-            totals[_group_label(number)] += [
-                row["elapsed"] for row in rows
-            ]
-        measured = [(label, values) for label, values in totals.items() if values]
-        for label, values in measured:
-            print(f"  시간 · {label}  /resolve 한 번 평균 {_mean(values)}초 (합 {len(values)}회)")
-        if len(measured) > 1:
-            everything = [v for _l, values in measured for v in values]
-            print(f"  시간 · 합계         /resolve 한 번 평균 {_mean(everything)}초 (합 {len(everything)}회)")
-        print("  좁히기 표 : 해당 없음 (끔 — 지금 길)")
-        return
-
-    print(
-        "  "
-        + _pad("#", 3)
-        + _pad("발화", UTTERANCE_WIDTH + 4)
-        + _pad("좁힌 후보 수", NARROW_COUNT_WIDTH)
-        + _pad("2차", NARROW_CALL_WIDTH)
-        + _pad("폴백 가", NARROW_FALLBACK_WIDTH)
-        + _pad("폴백 나", NARROW_FALLBACK_WIDTH)
-        + _pad("1차 s", NARROW_TIME_WIDTH)
-        + _pad("2차 s", NARROW_TIME_WIDTH)
-        + _pad("폴백 s", NARROW_TIME_WIDTH)
-        + "합계 s"
-    )
-
-    totals = {label: Counter() for label, _group in _groups(entries)}
-    times = {label: {"first": [], "second": [], "fallback": [], "elapsed": []} for label in totals}
-    for number, utterance, _expected, _default in entries:
-        rows = narrows.get(number) or []
-        if not rows:
-            continue
-        label = _group_label(number)
-        total, clock = totals[label], times[label]
-
-        counts = Counter(row.get("shortlist_count", "-") for row in rows)
-        second = sum(1 for row in rows if row.get("second_called"))
-        empty = sum(1 for row in rows if row.get("fallback") == "empty")
-        none = sum(1 for row in rows if row.get("fallback") == "none")
-        total.update({"runs": len(rows), "second": second, "empty": empty, "none": none,
-                      "single": counts.get(1, 0)})
-        clock["first"] += [row.get("first_seconds") for row in rows]
-        clock["second"] += [row.get("second_seconds") for row in rows]
-        clock["fallback"] += [row.get("fallback_seconds") for row in rows]
-        clock["elapsed"] += [row["elapsed"] for row in rows]
-
-        shown = " ".join(f"{count}×{times_}" for count, times_ in sorted(counts.items(), key=lambda i: str(i[0])))
-        print(
-            "  "
-            + _pad(str(number), 3)
-            + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
-            + _pad(_clip(shown, NARROW_COUNT_WIDTH - 2), NARROW_COUNT_WIDTH)
-            + _pad(str(second), NARROW_CALL_WIDTH)
-            + _pad(str(empty), NARROW_FALLBACK_WIDTH)
-            + _pad(str(none), NARROW_FALLBACK_WIDTH)
-            + _pad(_mean(row.get("first_seconds") for row in rows), NARROW_TIME_WIDTH)
-            + _pad(_mean(row.get("second_seconds") for row in rows), NARROW_TIME_WIDTH)
-            + _pad(_mean(row.get("fallback_seconds") for row in rows), NARROW_TIME_WIDTH)
-            + _mean(row["elapsed"] for row in rows)
-        )
-
-    measured = [(label, totals[label], times[label]) for label in totals if totals[label]]
-    if not measured:
-        return
-    label_width = max(_width(label) for label, _t, _c in measured)
-
-    def _line(label, total, clock):
-        print(
-            "  좁히기 · "
-            + _pad(label, label_width)
-            + f"  시행 {total['runs']}회 · 후보 하나라 2차 안 부름 {total['single']}회"
-            + f" · 2차 {total['second']}회 · 폴백 가 {total['empty']}회 · 폴백 나 {total['none']}회"
-            + f" · 1차 {_mean(clock['first'])}s · 2차 {_mean(clock['second'])}s"
-            + f" · 폴백 {_mean(clock['fallback'])}s · 합계 {_mean(clock['elapsed'])}s"
-        )
-
-    print()
-    for label, total, clock in measured:
-        _line(label, total, clock)
+    totals = {label: [] for label, _group in _groups(entries)}
+    for number, _u, _e, _d in entries:
+        rows = times.get(number) or []
+        totals[_group_label(number)] += [row["elapsed"] for row in rows]
+    measured = [(label, values) for label, values in totals.items() if values]
+    for label, values in measured:
+        print(f"  시간 · {label}  /resolve 한 번 평균 {_mean(values)}초 (합 {len(values)}회)")
     if len(measured) > 1:
-        grand = Counter()
-        grand_clock = {"first": [], "second": [], "fallback": [], "elapsed": []}
-        for _label, total, clock in measured:
-            grand.update(total)
-            for key in grand_clock:
-                grand_clock[key] += clock[key]
-        _line("합계", grand, grand_clock)
-    print("  검산 표 : 해당 없음 (좁히기 켬 — 대조할 두 목록이 없다)")
+        everything = [v for _l, values in measured for v in values]
+        print(f"  시간 · 합계         /resolve 한 번 평균 {_mean(everything)}초 (합 {len(everything)}회)")
 
 
 # 실행 표의 칸 폭.
@@ -1819,7 +1704,6 @@ def _selfcheck() -> None:
           발화가 늘어(화면 다섯) 묶음이 셋이 됐는데 이름을 고르는 자리가
           두 갈래에 머문 것이다. 셋 다 「표를 찍는 마지막에 죽는다」가 같다
     """
-    global NARROW
     labels = {label for label, _group in _groups(UTTERANCES)}
     assert labels == {BASELINE_LABEL, EXTENSION_LABEL, SCREEN_LABEL}, labels
 
@@ -1832,14 +1716,10 @@ def _selfcheck() -> None:
 
     picked = "recipe_019"
     axis = ("picked_point", "item_list", "group_transport", "-")
-    narrow_row = {
-        "elapsed": 1.0, "shortlist_count": 1, "second_called": False,
-        "fallback": None, "first_seconds": 0.5, "second_seconds": None,
-        "fallback_seconds": None,
-    }
+    time_row = {"elapsed": 1.0}
 
     def _fake(entries):
-        outcomes, axes, tallies, alones, narrows, executions = {}, {}, {}, {}, {}, {}
+        outcomes, axes, tallies, alones, times, executions = {}, {}, {}, {}, {}, {}
         for number, _u, expected, _d in entries:
             found = frozenset(expected)
             outcomes[number] = Counter({(found, "OK"): 1})
@@ -1848,31 +1728,25 @@ def _selfcheck() -> None:
             tallies[number] = Counter({("1", "1", "OK", tuple(sorted(expected))): 1})
             # 검산이 답을 바꾼 회차 — _print_verdict_changes 가 볼 줄이 있어야 함
             alones[number] = Counter({(None, found, "OK"): 1})
-            narrows[number] = [dict(narrow_row)]
+            times[number] = [dict(time_row)]
             executions[number] = ("OK", "", picked)
-        return outcomes, axes, tallies, alones, narrows, executions
+        return outcomes, axes, tallies, alones, times, executions
 
     groups = _groups(UTTERANCES)
     subsets = []
     for size in (1, 2, 3):
         subsets += list(itertools.combinations(groups, size))
 
-    was = NARROW
-    try:
-        for subset in subsets:
-            entries = [entry for _label, group in subset for entry in group]
-            outcomes, axes, tallies, alones, narrows, executions = _fake(entries)
-            for narrow in (False, True):
-                NARROW = narrow
-                with contextlib.redirect_stdout(io.StringIO()):
-                    _print_table(entries, outcomes, alones, 1)
-                    _print_axes(entries, axes)
-                    _print_candidates(entries, tallies)
-                    _print_verdict_changes(entries, alones)
-                    _print_narrow(entries, narrows)
-                    _print_execution(entries, executions, "1970-01-01")
-    finally:
-        NARROW = was
+    for subset in subsets:
+        entries = [entry for _label, group in subset for entry in group]
+        outcomes, axes, tallies, alones, times, executions = _fake(entries)
+        with contextlib.redirect_stdout(io.StringIO()):
+            _print_table(entries, outcomes, alones, 1)
+            _print_axes(entries, axes)
+            _print_candidates(entries, tallies)
+            _print_verdict_changes(entries, alones)
+            _print_times(entries, times)
+            _print_execution(entries, executions, "1970-01-01")
 
 
 def main() -> int:
@@ -1885,10 +1759,6 @@ def main() -> int:
     )
     parser.add_argument("--model", default="", help="쓸 모델. 예: qwen2.5:7b (기본: 서버 기본 모델)")
     parser.add_argument(
-        "--narrow", action="store_true",
-        help="좁히기 길(LLM 두 번 부르기)로 잰다. 기본은 끔 — 지금 길",
-    )
-    parser.add_argument(
         "--execute", action="store_true",
         help="실행까지 부른다 (발화마다 한 번 더). 실행 칸 표가 하나 더 나온다",
     )
@@ -1900,8 +1770,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    global NARROW, CONTEXT
-    NARROW = args.narrow
+    global CONTEXT
     CONTEXT = args.context
 
     if args.only:
@@ -1918,16 +1787,15 @@ def main() -> int:
     print(
         f"발화 {len(entries)}개 × {args.runs}회 · {_recipe_state()}"
         f" · 모델 {args.model or '서버 기본'}"
-        f" · 좁히기 {'켬' if NARROW else '끔'}"
         f" · 지도 문맥 {CONTEXT}"
         f"{' · 실행까지' if args.execute else ''}"
     )
     print()
 
-    outcomes, axes, tallies, alones, narrows, note, status = {}, {}, {}, {}, {}, "", 0
+    outcomes, axes, tallies, alones, times, note, status = {}, {}, {}, {}, {}, "", 0
     executions = {}
     try:
-        _measure(entries, args.runs, outcomes, axes, tallies, alones, args.model, narrows)
+        _measure(entries, args.runs, outcomes, axes, tallies, alones, args.model, times)
         if args.execute:
             print()
             print("  실행까지 부른다 (발화마다 한 번)")
@@ -1947,8 +1815,8 @@ def main() -> int:
         _print_candidates(entries, tallies)
     if any(alones.values()):
         _print_verdict_changes(entries, alones)
-    if any(narrows.values()):
-        _print_narrow(entries, narrows)
+    if any(times.values()):
+        _print_times(entries, times)
     if executions:
         _print_execution(entries, executions, time.strftime("%Y-%m-%d"))
     if note:
