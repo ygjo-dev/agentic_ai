@@ -1530,6 +1530,195 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-08-31 (예순여섯째) · 시험 함수 이름 246개를 한글에서 영어로 옮겼다 — 이름만 고쳤다
+
+무인 실행. 조건 — `refactor/vendor` · 되돌림점 `demo-2026-08-31-done` ·
+`.venv/bin/python -m pytest -q` · 서버는 안 띄웠다.
+
+## 왜 했나
+
+시험 함수 이름이 한글이라 저장소를 밖에 보이기 어렵다. 이름 한 줄이 요구사항
+한 문장인 저장소라(CLAUDE.md 「테스트 함수는 예외」) 이름이 안 읽히면 명세가
+통째로 안 읽힌다.
+
+**판정(`check_resolve`)은 안 쟀다.** `tests/` 는 서버 실행 경로에 없다 —
+`demo/api` 도 `orchestrator` 도 `tests/` 를 import 하지 않는다. 시험 몸통을
+한 글자도 안 고쳤으므로 판정에 닿을 길이 없다. 재면 LLM 잡음만 잰다.
+
+## 1. 기준선 (바꾸기 전에 실제로 돌린 것)
+
+```
+시험 함수 총계   436      (tests/ 아래 .py 의 def test… 전부)
+한글 이름         246      19파일
+pytest           1 failed, 476 passed, 1 warning in 60.38s
+  ★ 실패 하나 = tests/demo/graph_svg/test_layout_invariants.py
+               ::test_dense_graph_would_move_if_overlap_removal_were_used
+```
+
+★ 그 실패는 일부러 둔 음성 대조군이다. **이름이 이미 영어였고 그 파일은
+19파일에 없다.** 그래서 이번에 이름이 안 바뀌었고, 끝난 뒤에도 같은 이름으로
+그대로 실패한다.
+
+436 과 246 은 인수인계에 적힌 기대값과 한 개도 안 어긋났다.
+
+## 2. 용어표 — 낱말마다 영어 하나
+
+되풀이되는 낱말을 뽑아 먼저 굳히고 그 표대로 세 묶음을 통일했다. 음역은
+하나도 안 썼다.
+
+| 한글 | 영어 | 한글 | 영어 |
+|---|---|---|---|
+| 되묻기 | clarify | 발화 | utterance |
+| 후보 | candidate | 뽑힌 후보 | shortlist |
+| 고르기 | choice | 차례말 | ordinal word |
+| 축 | axis / axes | 인자 | argument |
+| 1차 · 2차 | first pass · second pass | 폴백 | fallback |
+| 지금 길 | current path | 조회 | lookup |
+| 단계 | step | 앞 단계 | previous step |
+| 줄 | line | 칸 | field |
+| 머리말 | preamble | 답 | answer |
+| 회차 | turn | 기록 | recording |
+| 문맥 | context | 화면 | screen |
+| 보이는 범위 | visible extent | 찍은 지점 | picked point |
+| 배선 · 배선표 | wiring · wiring table | 판정 | verdict |
+| 계기판 | dashboard | 묶음 | group |
+| 조각 | chunk | 쪽 | page |
+| 본문 | body text | 출처 | source |
+| 문서 | document | 경로 · 길 | path |
+| 낱말 | word | 정답표 | answer key |
+| 세션 | session | 상한 | cap |
+| 환경변수 | env var | 켬 · 끔 | on · off |
+| 0건 | zero hits | 못 찾았다 | not found |
+| 안 샌다 · 안 흘린다 | never leaks | 지어내지 않는다 | never invents |
+| 그대로 | verbatim | 통째로 | entirely |
+| 터진다 | blows up | 수치 | figure |
+| 겹친다 | overlap | 안내 | guidance |
+| 시각 | timestamp | 토막 | token |
+
+두 한글 낱말이 한 영어로 모이는 자리는 뒀다 (사유 · 이유 → reason). 거꾸로
+한 한글이 파일마다 다른 영어가 되는 자리는 없다.
+
+**한 자리만 덧붙여 적는다.** 「머리말」은 전부 `preamble` 이다. 다만
+`test_the_arg_in_the_headline_is_substituted_too` 의 `headline` 은 번역이
+아니라 `plan["headline"]` 이라는 칸 이름을 그대로 부른 것이다 — `arg` · `prev` ·
+`menu` 와 같은 자리다.
+
+## 3. 묶음별 개수 (실제 명령 출력)
+
+```
+묶음1  90개   test_workflow_answer 41 · test_narrow 25 · test_clarify_choice 24
+묶음2  83개   test_step_argument 24 · test_recent 22 · test_menu_split 19 ·
+              test_clarify_flow 18
+묶음3  73개   test_map_context 11 · test_clarify_answer 10 · test_follow_panel 9 ·
+              test_execution_column 9 · test_verdict 8 ·
+              test_chat_stream_parity 6 · test_command_step 6 ·
+              test_step_input_schema 5 · test_narrow_schema 4 ·
+              test_layout_covers_every_node 2 ·
+              test_check_resolve_selfcheck 2 · test_check_inputs_selfcheck 1
+합계  246개
+```
+
+묶음마다 관문을 다 통과한 뒤 커밋했다. 세 커밋 모두에서 총계 436 · pytest
+`1 failed, 476 passed` 였다.
+
+## 4. 기준선과 결과
+
+```
+                     기준선                      결과
+시험 함수 총계        436                        436
+한글 이름            246                        0
+pytest              1 failed, 476 passed       1 failed, 476 passed
+일부러 둔 실패        test_dense_graph_would_move_if_overlap_removal_were_used
+                     (이름 안 바뀜 — 그 파일은 19파일 밖이다)
+git diff --name-only  tests/ 아래 .py 16개 + NOTES.md. 그 밖에 없다
+파일 이름            한 개도 안 바뀌었다
+```
+
+**한 파일 안에서 이름이 겹치면 pytest 가 조용히 뒤엣것만 돈다** — 이것이 제일
+위험한 자리라 옮기는 스크립트가 파일마다 새 이름의 중복과 기존 이름과의 충돌을
+먼저 보고 하나라도 걸리면 아무것도 안 쓰고 멈추게 했다. 한 번도 안 걸렸고,
+관문에서도 매번 파일별 중복을 다시 셌다. 총계가 436 에서 안 움직인 것이 그
+증거다.
+
+## 5. ★ 이름과 몸이 어긋난 자리 — 넷
+
+**`tests/demo/api/test_clarify_choice.py`**
+
+```
+옛  test_사슬_줄은_끝_이름만_말해도_그_자리다
+새  test_a_chain_line_matches_from_its_number_with_only_the_tail_name
+왜  이름은 「끝 이름만 말해도」라는데 몸은 pick("2 인구 통계 조회") 다.
+    번호를 함께 준다. 「끝 이름만」을 재는 몸이 아니다 — 「번호 + 끝 이름」이다.
+    (이름만 말하는 자리는 바로 아래 시험이 따로 잰다.)
+```
+
+**`tests/demo/api/test_menu_split.py` — 「기존 마흔」 셋. 수가 낡았다**
+
+```
+옛  test_문맥이_아예_없으면_기존_마흔이다
+새  test_no_context_at_all_gives_the_spoken_start_recipes
+옛  test_화면을_가리켜도_값이_없으면_기존_마흔이다
+새  test_pointing_at_the_screen_without_values_gives_the_spoken_start_recipes
+옛  test_평범한_발화는_프롬프트에_기존_마흔만_싣는다
+새  test_an_ordinary_utterance_carries_only_the_spoken_start_recipes_in_the_prompt
+왜  셋 다 몸은 수를 안 센다. spoken_recipes() 와 집합으로 견줄 뿐이다.
+    그런데 오늘 그 수는 마흔이 아니라 **마흔하나**다 (recipe 60 중 화면에서
+    출발하는 19 를 뺀 41). recipe 가 늘면서 이름의 수만 안 따라왔다.
+    수를 이름에서 빼고 「말로 시작하는 recipe」로 지었다. 다시 안 낡는다.
+```
+
+★ 이 셋은 **몸이 옳고 이름이 틀린** 자리였다. 몸은 한 글자도 안 고쳤다.
+
+어긋난 것은 이 넷뿐이다. 나머지 242 개는 몸이 하는 일과 이름이 맞았다.
+
+수를 담은 이름 중 **맞아서 그대로 옮긴 것**도 적어 둔다 — 다음에 다시 재는
+사람이 헷갈리지 않게.
+
+```
+서른하나 (test_말로_하는_서른하나에…)   맞다. EXTENSION_LAST = 31
+화면 다섯 (test_정답표의_화면_다섯은…)  맞다. UTTERANCES 36 개 중 32~36
+스물 (test_회차가_스물을_넘으면…)       맞다. recent_service.MAX_TURNS = 20
+넷 이상 (test_후보가_넷_이상이면…)      맞다. execute_service.CLARIFY_MANY_FROM = 4
+                                        몸은 다섯으로만 재지만 규칙과는 안 어긋난다
+```
+
+## 6. 안 한 것
+
+- **시험 몸통 안의 한글 지역 변수를 안 고쳤다.** `test_menu_split` 의
+  `걸린_것` · `화면_다섯` · `실린_것` · `받은_것`, `test_execution_column` 의
+  `있는_것` · `기대한_것` · `갈라진_것`, `test_step_input_schema` 의 `없는_칸`,
+  `test_clarify_flow` 의 `켬` · `끔` 이다. 이번 범위는 함수 이름이다. 지역
+  변수는 밖에서 안 보이고, 건드리면 몸을 고치는 것이 된다.
+- **파일 이름을 안 고쳤다.** 한 개도 안 바뀌었다.
+- **`tests/` 밖을 안 고쳤다.** `vendor/` · `KRRI_ASAP` · 서버 코드 전부.
+- **「열린 과제」에서 지운 것이 없다.** 이 일에 해당하는 항목이 거기 없었다
+  (「한글」 · 「영어로」 · 「시험 이름」으로 훑어도 안 나온다). 지시는 있으면
+  지우라는 조건부였고, 없어서 아무것도 안 지웠다.
+
+## 7. ★ 옛 항목이 부르는 시험 이름은 그때 것이다
+
+**옛 항목을 한 줄도 안 고쳤다.** 아래 여섯 자리가 옛 한글 이름을 부르는데
+그대로 뒀다 — 「측정 기록」은 덧붙이기만 하는 곳이다. 그 이름들은 그 항목을
+적던 때의 이름이고, 지금 저장소에는 위 용어표대로 옮겨진 영어 이름이 있다.
+
+줄 번호는 **이 항목을 더한 뒤**의 것이다 (이 항목이 186줄이라 그만큼 밀렸다.
+지시가 준 번호는 더하기 전의 2559 · 3464 · 3466~3467 · 4822 · 8707 · 9508 이다).
+
+```
+2745   test_배선이_보내는_칸이_전부_스키마에_있다
+3650   test_정답표의_화면_다섯은_다_화면_낱말에_걸린다
+3652   test_정답표_서른한_발화에_화면_낱말이_하나도_안_걸린다
+3653   test_말로_하는_서른하나에_화면_낱말이_하나도_안_걸린다
+5008   test_끄면_기억해_두지도_않는다
+8893   test_차례말이_발화_앞에_있으면_새_발화다
+9694   test_글이_아닌_목록은_예전대로_첫_항목만이다
+```
+
+(3652~3653 은 「예순셋째」가 그때 이름을 고친 기록이라 옛 이름과 새 이름이
+나란히 있다. 그 새 이름도 오늘 다시 영어가 됐다.)
+
+---
+
 ### 2026-08-31 (예순다섯째) · 고른 경로가 화면을 채우도록 자동으로 맞춘다 — 화면만 고쳤다
 
 무인 실행. 조건 — `integration/ASAP-Ontology` · recipe 60 · 노드 48 · 하단 칸
