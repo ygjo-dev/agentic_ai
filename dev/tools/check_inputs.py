@@ -15,7 +15,7 @@ dev/tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 
     python dev/tools/check_inputs.py --tools /tmp/tools.json
     python dev/tools/check_inputs.py --refresh           Gateway 에서 다시 받아 파일을 갱신
 
-**표를 복사하지 않는다.** STEP_OF · TOOL_OF 를 demo/api/services/step_service 에서
+**표를 복사하지 않는다.** STEP_OF · TOOL_OF 를 app/api/services/step_service 에서
 그대로 import 한다. 읽기만 한다 — 이 파일은 배선도 온톨로지도 안 고친다.
 
 **TOOL_OF 는 이제 「실행 수단」이다** (「마흔아홉째」). server_id · tool 대신
@@ -121,7 +121,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from demo.api.services.step_service import (  # noqa: E402
+from app.api.services.step_service import (  # noqa: E402
     CENTER_KEYS,
     POINT_RADIUS_TO_BBOX,
     SPOKEN_VALUE,

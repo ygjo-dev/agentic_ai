@@ -68,8 +68,8 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from demo.api.services import gateway_client, step_service  # noqa: E402
-from demo.api.services.execute_service import USER_CONTEXT  # noqa: E402
+from app.api.services import gateway_client, step_service  # noqa: E402
+from app.api.services.execute_service import USER_CONTEXT  # noqa: E402
 # check_resolve 의 밑줄 이름을 그대로 가져온다. 발화 목록과 /resolve 부르는
 # 자리를 여기 베껴 적으면 "같은 경로" 가 아니게 되고, 그러면 이 표의 인자가
 # check_resolve 표의 인자와 다른 것을 재게 된다. 같은 tools/ 안이라 밑줄을

@@ -41,8 +41,8 @@ htmlcov/
 # 작업본만 무시한다. 노드를 등록할 때마다 바뀌므로 커밋하면 시연 중 작업
 # 트리가 더러워진다.
 # **_init 사본은 추적한다** — 사람이 눈으로 골라 확정한 배치이고, 지우면
-# 그 선택이 사라진다. 앞의 /demo 가 없으면 _init 사본까지 함께 무시된다.
-/demo/graph_svg/layout.json
+# 그 선택이 사라진다. 앞의 /app 이 없으면 _init 사본까지 함께 무시된다.
+/app/ui/graph_svg/layout.json
 
 # --- OS ---
 .DS_Store

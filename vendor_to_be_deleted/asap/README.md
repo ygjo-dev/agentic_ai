@@ -88,13 +88,13 @@ _compose_workflow_answer  아래 3번으로 통째로 대체됨
 
 본문은 `workflow_answer.compose_workflow_answer(intent, trace)` 한 줄이 되었다.
 성공한 실행의 첫 줄은 `intent["answer_instruction"]` 을 그대로 쓴다 — 우리 쪽
-`demo/api/services/step_service.py` 의 `STEP_OF` 가 노드마다 적어 넣는다.
+`app/api/services/step_service.py` 의 `STEP_OF` 가 노드마다 적어 넣는다.
 
 원본 `_fallback_workflow_answer` 는 지우지 않았다. 다른 곳에서 쓰이지 않지만
 지우면 병합할 것이 늘어난다.
 
 **`compose_workflow_answer` 를 부르는 자리는 둘이다.** 여기가 하나이고, 우리 쪽
-`demo/api/services/execute_service.run` 이 또 하나다. vendor 는 실패하면
+`app/api/services/execute_service.run` 이 또 하나다. vendor 는 실패하면
 `_failed_workflow_result` 로 **여기까지 오지 않고** 자기 문구를 `answer_draft` 에
 담아 돌아간다. 그 문구가 사용자 화면에 나가면 안 되는 것을 담고 있어(실측 :
 HTTP 오류 문장 · `http://localhost:3000/api/tools/execute` · Gateway 응답 본문

@@ -554,7 +554,7 @@ def reset_to_init() -> None:
     shutil.copytree(paths.INIT_RECIPES_DIR, paths.RECIPES_DIR)
 
     try:
-        from demo.graph_svg import layout_store
+        from app.ui.graph_svg import layout_store
     except ImportError:  # 시연 계층이 없는 설치
         return
     layout_store.restore_from_init()

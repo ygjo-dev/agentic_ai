@@ -1,4 +1,4 @@
-"""대상 : vendor/asap/workflow_answer.py — trace 한 벌을 사람이 읽는 답으로
+"""대상 : vendor_to_be_deleted/asap/workflow_answer.py — trace 한 벌을 사람이 읽는 답으로
 
 순수 함수다. 네트워크 · 온톨로지 · LLM · 파일을 하나도 안 쓴다. trace 를 손으로
 만들어 나온 문자열만 본다.

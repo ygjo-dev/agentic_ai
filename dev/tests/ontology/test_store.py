@@ -1,7 +1,7 @@
 """대상 : ontology/store.py — 온톨로지 저장소와 맞닿는 유일한 파일
 
 지금은 `ontology.yaml` 을 읽고 쓴다. 나중에 그래프DB 로 바뀌면 여기만 교체하면
-되고 `graph.py` · `registry.py` · `demo/` 는 그대로다.
+되고 `graph.py` · `registry.py` · `app/` 는 그대로다.
 
 여기서 지키는 것은 **파일 형식 보존**이다. `yaml.dump` 로 다시 쓰면 파일 상단의
 구조 원칙 주석과 손으로 맞춘 들여쓰기가 통째로 날아간다. 사람이 읽는 문서이자

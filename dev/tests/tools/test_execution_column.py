@@ -83,7 +83,7 @@ def test_a_missing_permission_is_recorded_apart_from_a_crash():
 
 def test_failing_to_extract_an_argument_means_no_tool_was_called():
     """단계가 하나도 없다. 저쪽 데이터 탓이 아니라 우리 해석 탓이다."""
-    from demo.api.services.execute_service import NO_ARGUMENT_ANSWER
+    from app.api.services.execute_service import NO_ARGUMENT_ANSWER
 
     turn = {"answer": NO_ARGUMENT_ANSWER["spoken_place"], "steps": []}
 
@@ -95,7 +95,7 @@ def test_failing_to_extract_an_argument_means_no_tool_was_called():
 
 def test_the_choice_line_after_a_clarify_is_taken_off_the_verdict():
     """그 줄은 늘 성공한 것처럼 생겨서 붙여 두면 0건도 ✓ 로 읽힌다."""
-    from demo.api.services.execute_service import CHOICE_HEAD
+    from app.api.services.execute_service import CHOICE_HEAD
 
     head = CHOICE_HEAD.format(number=1, label="국회의원 전체 선거구 검색")
     zero = turn_of([{"tool": "election.searchAssemblyDistricts", "result": {"count": 0}}])
@@ -116,7 +116,7 @@ def test_every_expected_recipe_really_exists():
     없는 번호를 가리키면 그 발화는 영영 빗나감으로 찍히는데, 표만 봐서는
     발화가 나쁜 것인지 번호가 밀린 것인지가 안 갈린다.
     """
-    from demo.api.services import ontology_service
+    from app.api.services import ontology_service
 
     있는_것 = set(ontology_service.recipe_ids())
     기대한_것 = {rid for _, _, expected, _ in check_resolve.UTTERANCES for rid in expected}
@@ -129,7 +129,7 @@ def test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_scree
 
     번호가 밀리면 조용히 옆 recipe 를 가리키게 된다. 경로 첫 칸으로 지킨다.
     """
-    from demo.api.services import ontology_service, step_service
+    from app.api.services import ontology_service, step_service
 
     for number, _u, expected, _d in check_resolve.UTTERANCES:
         if number <= check_resolve.EXTENSION_LAST:

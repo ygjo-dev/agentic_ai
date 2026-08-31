@@ -34,9 +34,9 @@
 | `workflows/static/prompts/recipe_selection.md` 축 목록 | id + 이름 + 설명 734자 (문맥이 오면 922자) | 채운 프롬프트가 7648자다 (문맥이 오면 7836자). 2026-08-28 「마흔여섯째」에 다시 쟀다 — 화면 시작 노드 둘이 붙어 730 -> 734 · 7133 -> 7648 이 됐고, 는 것의 대부분은 축 목록이 아니라 menu(3321 -> 4833자)다. 문맥을 안 보내면 given 은 셋 그대로다. `num_ctx` 는 32768(토큰) 이라 지금도 여유가 있다 — 옛 근거(8192 · 6758자)는 2026-08-21 측정 기록 쪽에 날짜와 함께 남아 있다. 선택지를 늘릴 때 다시 재는 것은 그대로다 |
 | `ontology/registry.py` `MENU_BUDGET` | `6000` | 근거가 낡았다. `num_ctx` 8192 시절 값이고 지금은 32768 이다. 프로덕션에서 읽는 곳이 0 이고 테스트 하나가 보는 회귀 방지선이다 (`registry.py` 주석). 올릴 이유도 없다 — 진짜 제약은 컨텍스트 크기가 아니라 문장 변별력이다. menu 문장의 앞 30자가 23개나 같아서 shortlist 를 만들었다. 자수를 늘리면 오히려 나빠진다. 개편에서 잴 것은 자수가 아니라 "앞토막이 같은 문장 수" 다 |
 | `ontology/registry.py` `MAX_STEPS` | `4` | 같은 성격이다. `registry.py` 주석이 스스로 "임시방편이다. 경로 길이가 문제가 아니라 말이 안 되는 조합이 섞이는 것이 문제" 라고 적고 있고, 그 조합 문제는 온톨로지 개편이 푼다. 개편에서 다시 본다 |
-| `demo/graph_svg/dot.py` `NODE_ATTRS` fontsize · `layout_store.py` `SPREAD_X` · `NEATO_SPREAD_ATTRS` 의 `sep` | `32` · `5.0` · `+12` | **셋이 한 덩어리다. 하나만 고치면 노드가 겹친다.** 화면 글씨는 `fontsize x 맞춤배율` 이고 맞춤배율은 캔버스가 정한다 — 글씨를 키우면 상자가 커져 붙고, 늘리기를 줄이면 캔버스가 커져 글씨가 작아진다. 지금 값에서 가장 가까운 쌍이 24pt 떨어져 있고 칸의 폭과 높이를 100%·98% 쓴다. **고친 뒤에는 좌표를 다시 만들어야 한다** — `layout.json` 을 지우고 서버를 켜면 다시 계산되고, 그 결과를 `_init/layout.json` 에 복사해야 커밋된다. `tests/demo/graph_svg/test_nodes_do_not_overlap.py` 를 돌린다. 후보 표는 2026-08-29 「쉰셋째」 |
-| `demo/graph_svg/layout_store.py` `DRAW_SCALE` | `1.0` | 그릴 때만 곱하는 배율이다. 지금은 1.0 이라 아무 일도 안 한다 — 배치가 처음부터 촘촘하게 놓이기 때문이다. **좌표를 다시 만들 수 없는 급한 자리에서만 임시로 쓴다.** 줄이면 간격만 줄고 노드 크기는 그대로라 원래 촘촘하던 곳이 먼저 붙는다 (0.64 에서 39쌍 · 0.4 에서 129쌍, 「쉰셋째」) |
-| `demo/graph_svg/_init/layout.json` | 추적한다 | 사람이 눈으로 골라 확정한 배치다. `layout.json`(작업본)은 `.gitignore` 다. `.gitignore` 패턴에서 앞의 `/demo/graph_svg/` 를 빼면 **_init 사본까지 함께 무시된다.** `reset_to_init()` 이 이 사본으로 좌표를 되돌린다 |
+| `app/ui/graph_svg/dot.py` `NODE_ATTRS` fontsize · `layout_store.py` `SPREAD_X` · `NEATO_SPREAD_ATTRS` 의 `sep` | `32` · `5.0` · `+12` | **셋이 한 덩어리다. 하나만 고치면 노드가 겹친다.** 화면 글씨는 `fontsize x 맞춤배율` 이고 맞춤배율은 캔버스가 정한다 — 글씨를 키우면 상자가 커져 붙고, 늘리기를 줄이면 캔버스가 커져 글씨가 작아진다. 지금 값에서 가장 가까운 쌍이 24pt 떨어져 있고 칸의 폭과 높이를 100%·98% 쓴다. **고친 뒤에는 좌표를 다시 만들어야 한다** — `layout.json` 을 지우고 서버를 켜면 다시 계산되고, 그 결과를 `_init/layout.json` 에 복사해야 커밋된다. `tests/app/ui/graph_svg/test_nodes_do_not_overlap.py` 를 돌린다. 후보 표는 2026-08-29 「쉰셋째」 |
+| `app/ui/graph_svg/layout_store.py` `DRAW_SCALE` | `1.0` | 그릴 때만 곱하는 배율이다. 지금은 1.0 이라 아무 일도 안 한다 — 배치가 처음부터 촘촘하게 놓이기 때문이다. **좌표를 다시 만들 수 없는 급한 자리에서만 임시로 쓴다.** 줄이면 간격만 줄고 노드 크기는 그대로라 원래 촘촘하던 곳이 먼저 붙는다 (0.64 에서 39쌍 · 0.4 에서 129쌍, 「쉰셋째」) |
+| `app/ui/graph_svg/_init/layout.json` | 추적한다 | 사람이 눈으로 골라 확정한 배치다. `layout.json`(작업본)은 `.gitignore` 다. `.gitignore` 패턴에서 앞의 `/app/ui/graph_svg/` 를 빼면 **_init 사본까지 함께 무시된다.** `reset_to_init()` 이 이 사본으로 좌표를 되돌린다 |
 | `ontology/shortlist.py` `candidates()` about | 두 단 (걸린 것 우선, 없으면 범용) | 범용 recipe 를 늘 통과시키면 "국회의원 선거구" 에 웹 검색과 VWorld 경계가 따라오고, 늘 빼면 대상 없는 발화에서 후보가 0개가 된다 |
 
 모델마다 다른 값(`num_ctx` · `timeout` · `reason_max_length`)은 `models.yaml` 에 있다.
@@ -52,7 +52,7 @@
 ```
 ontology · orchestrator · llm_engine   제품 명세. 함수 이름이 요구사항 한 문장이고
                                        docstring 에 왜 그런지가 있다
-demo/graph_svg                         배치 불변식. 눈이 못 보는 것만
+app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것만
 ```
 
 **`demo/` 는 189개 중 126개를 지우고 63개를 남겼다.** 남긴 기준은 하나다 —
@@ -95,6 +95,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 10  검산(축 조회 · 대조) 걷어내기. 9 의 결과가 정한다. 조건부다
 11  노드 등록을 다른 저장소로. 먼저 registration/ 으로 모은다(6번)
 12  화면 문맥으로 menu 를 가르는 임시방편 걷기 (다른 방 일)
+13  자리 옮기기가 남긴 낡은 글 다섯. 이름이 아니라 주장이라 안 고쳤다
 ```
 
 - **7 · 좁히기 스위치를 걷어낸다.** `resolve_service.resolve` 의 스위치와
@@ -105,7 +106,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   ```
   스위치가 있는 자리 셋
     resolve_service.py:79  NARROW_ENV = "RESOLVE_NARROW"
-    demo/api/main.py:157   /resolve?narrow= 의 기본값 설명
+    app/api/main.py:157   /resolve?narrow= 의 기본값 설명
     dev/tools/check_resolve.py --narrow
   ```
 
@@ -120,11 +121,11 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
   ```
   세션 상태를 쥔 곳은 저장소에서 하나다 (2026-08-31 세어 확인)
-    demo/api/services/clarify_service.py   _PENDING — 메모리 · 5분 ·
+    app/api/services/clarify_service.py   _PENDING — 메모리 · 5분 ·
                                            한 번 쓰면 지움 · 저장 안 함
   나머지는 session_id 를 지나보내기만 한다
     execute_service.py · main.py · schemas/requests.py · dev/tools/check_resolve.py
-  demo/ui/ 의 session 은 st.session_state 다. 우리 세션이 아니다
+  app/ui/ 의 session 은 st.session_state 다. 우리 세션이 아니다
   ```
 
   위의 「되묻기 뒤 고르기가 스위치 뒤에 있다」(2026-08-29 「쉰한째」) 항목이
@@ -153,7 +154,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   (6번). 지금 `resolve_route` 를 부르는 곳은 제품 코드에서 **둘**이다.
 
   ```
-  demo/api/services/resolve_service.py   해석 (resolve)
+  app/api/services/resolve_service.py   해석 (resolve)
   ontology/registry.py:124               등록
   ```
 
@@ -168,12 +169,44 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
   ```
   걷히면 없어지는 줄 하나
-    resolve_service.py:57  from demo.api.services import ... step_service
+    resolve_service.py:57  from app.api.services import ... step_service
     쓰는 자리 셋 — 156 · 259 · 263 (CONTEXT_STARTS · context_starts)
   ```
 
   4·5 를 하고 나면 이 줄이 **orchestrator → execution 방향**이 된다. 도메인이
   실행 배선을 보는 유일한 줄이라, 12 가 걷히면 그 방향이 사라진다.
+
+- **13 · 자리 옮기기가 남긴 낡은 글 다섯** (2026-08-31 「예순아홉째」 3단계).
+  0~3 은 **이름만** 옮겼다. 아래 다섯은 이름이 아니라 **주장**을 담고 있어
+  손대지 않았다 — 이름만 갈면 「`app/` 은 통째로 사라질 계층이다」 같은 **새
+  거짓말**이 된다. 남아 있는 `demo` 가 「여기는 글을 고쳐야 한다」는 표시다.
+
+  ```
+  ★★ 조용히 죽은 시험 하나 — 이것이 제일 급하다
+  dev/tests/app/ui/graph_svg/test_layout_init_copy.py:123
+    def test_the_core_does_not_import_the_demo_layer_at_module_level():
+        assert "demo" not in head      head = ontology/registry.py 의 첫 def 앞
+    계층 이름이 app 이 됐으므로 이 단언은 이제 늘 참이다. 아무것도 안 지킨다.
+    시험 이름과 몸통은 자리 옮기기의 「안 건드릴 것」이라 그때 안 고쳤다.
+    ★ 고칠 때 — "app" 으로 그냥 바꾸지 않는다. registry.py 머리에 app 이라는
+      글자가 다른 뜻으로 들어 있는지 먼저 본다. 이 시험이 지키려던 것을
+      (핵심이 서비스 계층을 모듈 수준에서 import 하지 않는가) 다시 적는 편이 낫다
+
+  ★ 0단계가 이미 거짓이라고 못박은 주장 넷
+  ontology/registry.py:545-546
+    "좌표는 그리기(demo/)의 자산 … demo/ 가 사라질 때 이 줄만 조용히 건너뜀"
+  dev/tests/app/ui/graph_svg/test_layout_invariants.py:3
+    "`demo/` 는 시연용이고 통째로 사라질 계층이라 그 테스트는 대부분 지웠다"
+  dev/tests/vendor_to_be_deleted/test_workflow_answer.py:8
+    "`demo/` 테스트를 늘리지 말라는 규칙의 밖이다"
+  dev/tests/app/api/test_step_argument.py:367
+    "demo/ 테스트를 늘리지 않는 규칙(CLAUDE.md)"
+    ★ 뒤의 둘은 규칙 문구를 가리킨다. 0단계가 그 문구를
+      「서비스 · 그리기 테스트는 늘리지 않는다」로 갈았다. 결론은 그대로다
+  ```
+
+  **글을 고치는 일이라 자리 옮기기와 같이 하면 안 됐다.** 관문이
+  「바뀐 줄이 전부 import 줄이거나 경로 문자열」인데 이 다섯은 둘 다 아니다.
 
 ### 지운 것을 되찾는 규칙
 
@@ -246,7 +279,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   **★ `CONTEXT_STARTS` 는 지금 `resolve_service` 가 menu 를 가르는 데도 쓴다.**
   `_menu_for` 가 `set(CONTEXT_STARTS) - set(context_starts(context))` 로
   화면 recipe 를 걸러낸다. 그것은 **월요일 시연을 위한 임시방편**이고
-  (`tests/demo/api/test_menu_split.py` 머리말 · 「마흔여덟째」) 이 갈래의 일이
+  (`tests/app/api/test_menu_split.py` 머리말 · 「마흔여덟째」) 이 갈래의 일이
   아니다. 이 방에서는 안 고쳤다.
 
   ```
@@ -255,7 +288,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
       resolve_service._missing_context · execute_service 둘(352 · 455행) ·
       step_service.context_starts 만 남는다
     그 셋은 다 「화면이 무엇을 보냈나」를 묻는다. 그러면 ㉢ 은 배선이 아니라
-      **요청을 받는 쪽**으로 간다 — step_service 가 아니라 demo/api 쪽이다
+      **요청을 받는 쪽**으로 간다 — step_service 가 아니라 app/api 쪽이다
     ★ 지금 옮기면 안 된다. 임시방편이 살아 있는 동안은 resolve 가 이것을
       배선과 같은 자리에서 읽는 것이 오히려 맞다
   ```
@@ -275,9 +308,9 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
     POINT_FROM_CONTEXT 를 지우면 SELECTED_LOCATION 도 읽는 곳이 0 이 된다
 
   ★ 아직 읽는 곳이 있어 여기 없는 것 (시험이 붙들고 있다)
-    SHOW_FACILITY_COMMAND  tests/demo/api/test_command_step.py:48
-    BBOX_FROM_PREVIOUS     tests/demo/api/test_step_input_schema.py:130
-    BBOX_FROM_CONTEXT      tests/demo/api/test_step_input_schema.py:129 · 135
+    SHOW_FACILITY_COMMAND  tests/app/api/test_command_step.py:48
+    BBOX_FROM_PREVIOUS     tests/app/api/test_step_input_schema.py:130
+    BBOX_FROM_CONTEXT      tests/app/api/test_step_input_schema.py:129 · 135
     VIEW_FROM_CONTEXT      BBOX_FROM_CONTEXT 가 쓴다
   ```
 
@@ -494,10 +527,10 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   **노드를 더하는 작업의 관문에 「좌표가 붙었는가」를 넣는다.**
 
   **관문을 시험으로 박았다 (2026-08-29 「마흔아홉째」).**
-  `tests/demo/graph_svg/test_layout_covers_every_node.py` 가 그리는 노드마다
+  `tests/app/ui/graph_svg/test_layout_covers_every_node.py` 가 그리는 노드마다
   좌표가 있는지 센다. 좌표 파일은 gitignore 라 커밋으로는 못 막고, 노드를 더한
   사람의 장비에서 잡는 수밖에 없다. 붙이는 법은
-  `demo/graph_svg/layout_store.ensure_positions` 를 한 번 돌리는 것이다
+  `app/ui/graph_svg/layout_store.ensure_positions` 를 한 번 돌리는 것이다
   (기존 노드는 0.0000pt 움직인다 — 실측).
 
 - **채택한 인자 문안(P1)이 깨뜨린 자리 둘 — 판정에 안 걸린다** (2026-08-28 「마흔넷째」·
@@ -1034,7 +1067,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   갈린다」라고 적어뒀다. **그런데 경고만 있고 `tests/` 에 `chat/stream` 을
   건드리는 시험이 0건이었다.** 누가 한쪽만 고쳐도 안 잡혔다.
 
-  `tests/demo/api/test_chat_stream_parity.py` 여섯 줄로 메웠다 — answer 와
+  `tests/app/api/test_chat_stream_parity.py` 여섯 줄로 메웠다 — answer 와
   commands 가 두 길에서 같은지, `/chat` 이 중간 이벤트를 버리는 의도된 차이,
   SSE 틀(`data: ` · 빈 줄 · `[DONE]`), 한글이 이스케이프 없이 나가는지
   (`ensure_ascii` 제약). `test_recent.py` 의 이벤트 대역 관례를 그대로 쓰고
@@ -1137,7 +1170,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
 
   **풀렸다 (2026-08-26 「서른넷째」).** 되묻기를 세션마다 하나 기억해 두고
   다음 발화가 고르기면 그것을 실행한다 —
-  `demo/api/services/clarify_service.py` 다. 화면에서 `"1번"` 과
+  `app/api/services/clarify_service.py` 다. 화면에서 `"1번"` 과
   `"3 연령별 인구 구성 조회"` 둘 다 실행까지 갔다. LLM 을 다시 안 부른다.
   `_clarify_head` 의 제약 절도 함께 고쳤다 — 이제 그 줄이 곧 고를 수 있는
   이름이다.
@@ -1173,7 +1206,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
   사람이 글로 답하는 길이 유일하다.
 
   **그래도 지금 지우지 않는다.** 이미 짜여 있고 시험이 붙어 있어 두는 값이
-  0 이다 (`tests/demo/api/test_clarify_choice.py` 36개). 빼면 코드를 고치고
+  0 이다 (`tests/app/api/test_clarify_choice.py` 36개). 빼면 코드를 고치고
   화면을 다시 재야 한다 — 안 쓰이는 것을 지우는 데 그만큼 쓸 이유가 없다.
   **버튼이 오면 그때 줄인다.** 줄이는 자리는 `pick` 한 함수다.
 
@@ -1290,7 +1323,7 @@ demo/graph_svg                         배치 불변식. 눈이 못 보는 것�
     "…선" 자가 헛맞아 되던 발화가 깨지면       1순위(빗나감)와 같은 무게로 되돌린다
   걷어내는 자리
     step_service 의 RAILWAY_LINE_SUFFIX · _by_argument · 배선 한 줄의 arg_field.
-    셋뿐이고 tests/demo/api/test_step_argument.py 의 여덟 시험이 그 셋을 지킨다
+    셋뿐이고 tests/app/api/test_step_argument.py 의 여덟 시험이 그 셋을 지킨다
   ```
 
   **자리가 하나 갈렸다 (2026-08-31 「예순일곱째」).** 배선이 `wiring.yaml` 로
@@ -1792,8 +1825,8 @@ LLM 을 부를 까닭이 없다.
 #### 0단계 · CLAUDE.md 의 갈래를 다시 썼다 (코드 0줄)
 
 **고친 까닭.** 옛 CLAUDE.md 는 「핵심 / 시연」 두 갈래였고 `demo/` 를
-「통째로 사라진다」고 적었다. **그것이 사실이 아니다** — `demo/api` 와
-`demo/ui` 는 안 사라진다. 거짓인 문장을 남겨 두면 다음 사람이 그 전제로
+「통째로 사라진다」고 적었다. **그것이 사실이 아니다** — `app/api` 와
+`app/ui` 는 안 사라진다. 거짓인 문장을 남겨 두면 다음 사람이 그 전제로
 판단한다.
 
 ```
@@ -1832,13 +1865,13 @@ CLAUDE.md 에서 고친 자리 셋
 
 ```
 세션 상태를 쥔 곳은 저장소에서 하나다
-  demo/api/services/clarify_service.py 의 _PENDING
+  app/api/services/clarify_service.py 의 _PENDING
   나머지 넷(execute_service · main · schemas/requests · tools/check_resolve)은
   session_id 를 지나보내기만 한다
-  demo/ui/ 의 session 넷은 st.session_state 다. 우리 세션이 아니다
+  app/ui/ 의 session 넷은 st.session_state 다. 우리 세션이 아니다
 
 resolve_route 를 부르는 곳은 제품 코드에서 둘이다
-  demo/api/services/resolve_service.py  (해석)
+  app/api/services/resolve_service.py  (해석)
   ontology/registry.py:124              (등록)
   등록이 나가면 하나만 남는다 — 11 이 그것을 노린다
 ```
@@ -1880,7 +1913,7 @@ probe_out/ · sweep_out/ 은 gitignore 라 추적 밖으로 함께 따라왔다
                                         parent.parent -> parent.parent.parent
 tools 꾸러미를 부르는 import      5줄   from tools -> from dev.tools
                                         dev/tests/tools/test_execution_column.py 1
-                                        dev/tests/demo/api/test_menu_split.py   4
+                                        dev/tests/app/api/test_menu_split.py   4
 pytest.ini  testpaths             1줄   tests -> dev/tests
 .gitignore                        4줄   probe_out/ · sweep_out/ 두 줄과 그 머리말 두 줄
 CLAUDE.md                         4줄   갈래 두 줄 · pytest 명령 · 핵심 시험 경로
@@ -1892,12 +1925,12 @@ CLAUDE.md                         4줄   갈래 두 줄 · pytest 명령 · 핵�
 ```
 가. from tools import 는 하나가 아니라 다섯이다
     프롬프트는 dev/tests/tools/test_execution_column.py 하나를 셌다.
-    dev/tests/demo/api/test_menu_split.py 에 넷이 더 있다 (145 · 164 · 311 · 332).
+    dev/tests/app/api/test_menu_split.py 에 넷이 더 있다 (145 · 164 · 311 · 332).
     함수 안에서 늦게 import 해서 파일 머리만 봐서는 안 보인다.
 
 나. parents[N] 자리 셋은 한 줄도 안 고쳐도 됐다
     프롬프트는 dev/tests/tools/ 둘을 고칠 곳으로 셌다. 세 번째(
-    dev/tests/demo/api/test_step_input_schema.py:22, parents[3])도 찾았다.
+    dev/tests/app/api/test_step_input_schema.py:22, parents[3])도 찾았다.
     그런데 tests 와 tools 가 같은 한 칸을 함께 내려갔으므로 셋 다 그대로 맞다.
       parents[2] / "tools"                -> dev/tools           있다
       parents[3] / "tools" / "probe_out"  -> dev/tools/probe_out  있다
@@ -1918,7 +1951,7 @@ CLAUDE.md                         4줄   갈래 두 줄 · pytest 명령 · 핵�
 짐작해야 하고, 그것은 자리 옮기기의 범위가 아니다.
 
 ```
-demo/graph_svg/dot.py:316   tests/graph_rendering            없다
+app/ui/graph_svg/dot.py:316   tests/graph_rendering            없다
 ontology/registry.py:344    tests/context_loading            없다
 ontology/registry.py:346    tests/node_registration/test_append_menu.py  없다
 ```
@@ -2032,6 +2065,151 @@ pytest        1 failed · 485 passed              기준선과 같다
 git diff      38줄. 전부 import 줄 아니면 경로 문자열
 ```
 
+---
+
+#### 3단계 · `demo/` -> `app/` · `graph_svg` 를 `app/ui/` 밑으로
+
+`demo` 라는 이름이 「통째로 사라질 것」을 말하는데 그것이 사실이 아니다(0단계).
+창구와 화면은 남는다. `graph_svg` 는 UI 를 위해 있는 것이라 `ui` 밑으로 넣었다.
+
+```
+demo/api/        ->  app/api/
+demo/ui/         ->  app/ui/
+demo/graph_svg/  ->  app/ui/graph_svg/      38개
+dev/tests/demo/  ->  dev/tests/app/         29개
+  안쪽 graph_svg 도 dev/tests/app/ui/graph_svg/ 로 따라 맞췄다
+합계                                        67개  전부 R (rename)
+```
+
+고친 줄 — **74파일 200줄.**
+
+```
+import 줄          121   프롬프트가 센 「56파일 121줄」과 정확히 같다
+  app.api           48
+  app.ui.graph_svg  44
+  app.ui 그 밖      29
+경로 문자열         79   .gitignore · CLAUDE.md · 주석 · docstring
+```
+
+**`.gitignore` 의 앞 `/` 가 뜻대로 도는지 실제로 확인했다.**
+
+```
+/demo/graph_svg/layout.json  ->  /app/ui/graph_svg/layout.json
+
+$ git check-ignore -v app/ui/graph_svg/layout.json
+  .gitignore:45:/app/ui/graph_svg/layout.json   app/ui/graph_svg/layout.json   무시된다
+$ git check-ignore -v app/ui/graph_svg/_init/layout.json
+  (아무것도 안 나온다)                                                        추적된다
+$ git ls-files app/ui/graph_svg/_init/layout.json
+  app/ui/graph_svg/_init/layout.json                                          색인에 있다
+```
+
+작업본만 무시되고 `_init` 사본은 그대로 추적된다. 앞 `/` 의 뜻이 유지됐다.
+곁의 주석도 「앞의 /demo」에서 「앞의 /app」으로 고쳤다.
+
+#### ★ 3단계 · 저장소 밖의 `krri` 를 고쳤다. git 이 안 지키는 자리다
+
+`/home/ubuntu/.local/bin/krri`. **먼저 사본을 떴다** — `krri.bak`.
+전문 92줄을 읽어 저장소 경로를 전부 찾았다. **정확히 셋이다.**
+
+```
+20  python -m uvicorn demo.api.main:app  ->  python -m uvicorn app.api.main:app
+23  streamlit run demo/ui/main.py        ->  streamlit run app/ui/main.py
+35  pgrep -f "demo.api.main"             ->  pgrep -f "app.api.main"
+```
+
+35 는 `krri st` 가 켜진 서버의 `/proc/<pid>/environ` 에서 스위치 둘을 읽는
+자리다. 여기를 안 고치면 `st` 의 「스위치」 칸이 조용히 빈다.
+
+`zip` 갈래의 제외 목록(`*/probe_out/*` · `*/sweep_out/*` 등)은 폴더 이름이
+아니라 무늬라 1단계로 옮긴 뒤에도 그대로 맞는다. 안 고쳤다.
+
+#### ★ 3단계 · 옮기다가 돌던 서버를 깨뜨렸고, 고쳐 놓았다
+
+`tmux` 의 `api` 세션에 `--reload` 로 뜬 uvicorn 이 `demo.api.main` 을 보고
+있었다. 이름을 바꾸는 순간 reloader 가 다시 읽고 죽었다.
+
+```
+tmux capture-pane -t api
+  ModuleNotFoundError: No module named 'demo'
+포트 8000 은 부모가 잡은 채로 남아 무응답(000)이었다
+```
+
+**그래서 pytest 가 기준선과 달랐다 — `1 failed · 484 passed · 1 skipped`.**
+건너뛴 하나는 `dev/tests/app/ui/test_path_autofit_document.py:220` 이고
+「8000 이 안 답한다」로 스스로 건너뛴다.
+
+같은 스위치(`RESOLVE_NARROW=0` · `CLARIFY_CHOICE=1`)로 새 이름으로 다시 띄우고
+`pytest` 를 다시 돌렸다. **`1 failed · 485 passed` — 기준선과 같다.**
+
+★ **이 자리를 그냥 지나가면 안 된다.** 건너뛴 시험 하나는 「환경 탓」으로 보여
+넘기기 쉬운데, 실제로는 **이번 변경이 돌던 서버를 죽인 것**이다. 재는 자가
+「서버가 없으면 건너뛴다」로 지어져 있어 빨간불 대신 회색불이 켜졌을 뿐이다.
+
+#### 3단계 · ★ 일부러 안 고친 자리 — 「demo」가 남아 있는 곳
+
+**경로 · 모듈 이름만 고쳤다.** 아래 넷은 *이름*이 아니라 *주장*을 담고 있고,
+그 주장은 0단계가 이미 거짓이라고 못박은 것이다. 이름만 갈면 「app/ 은 통째로
+사라질 계층이다」 같은 **새 거짓말을 내 손으로 쓰게 된다.** 그래서 손대지 않고
+그대로 뒀다. 남아 있는 `demo` 가 「여기는 글을 고쳐야 한다」는 표시다.
+
+```
+ontology/registry.py:545-546
+  "좌표는 그리기(demo/)의 자산 … demo/ 가 사라질 때 이 줄만 조용히 건너뜀"
+dev/tests/app/ui/graph_svg/test_layout_invariants.py:3
+  "`demo/` 는 시연용이고 통째로 사라질 계층이라 그 테스트는 대부분 지웠다"
+dev/tests/vendor_to_be_deleted/test_workflow_answer.py:8
+  "`demo/` 테스트를 늘리지 말라는 규칙의 밖이다"   ← 규칙 문구가 0단계에서 바뀌었다
+dev/tests/app/api/test_step_argument.py:367
+  "demo/ 테스트를 늘리지 않는 규칙(CLAUDE.md)"      ← 같은 규칙을 가리킨다
+```
+
+**★★ 그리고 조용히 죽은 시험이 하나 생겼다.**
+
+```
+dev/tests/app/ui/graph_svg/test_layout_init_copy.py:123
+  def test_the_core_does_not_import_the_demo_layer_at_module_level():
+      head = ontology/registry.py 의 첫 def 앞
+      assert "demo" not in head
+```
+
+계층 이름이 `app` 이 됐으므로 **이 단언은 이제 아무것도 안 지킨다.** 늘 참이다.
+시험 함수 이름과 몸통은 이번 범위의 「안 건드릴 것」이라 안 고쳤다.
+아래 「열린 과제 13」에 적었다. **고칠 때 조심할 것** — `"app"` 으로 바꾸면
+`ontology/registry.py` 의 머리에 `app` 이라는 글자가 다른 뜻으로 들어 있는지
+먼저 봐야 한다.
+
+바로 고친 것 셋 (이름만 남은 자리이고, 안 고치면 깨진다)
+
+```
+dev/tests/app/ui/test_path_autofit_document.py:226
+  REPO_ROOT / "demo" / "ui" / "main.py"  ->  "app" / "ui"
+  ★ 안 고쳤으면 AppTest 가 없는 파일을 열어 시험이 깨졌다
+dev/tests/vendor_to_be_deleted/test_workflow_answer.py:1   2단계에서 빠뜨린 자리
+dev/tests/app/api/test_step_argument.py:368                1단계에서 빠뜨린 자리
+```
+
+#### 3단계 · 관문
+
+```
+check_wiring  1e35f14bce04d8e64632c71107982883   기준선과 같다
+check_inputs  29c2ec6a5b612e1b8c19c6169191e113   1단계 뒤 기준선과 같다
+pytest        1 failed · 485 passed              기준선과 같다 (서버를 되살린 뒤)
+git diff      200줄. 전부 import 줄 아니면 경로 문자열
+              그 밖이 딱 한 줄인데, 0단계에 내가 쓴 CLAUDE.md 갈래 표의
+              줄바꿈을 새 이름 길이에 맞춘 것이다
+```
+
+덧붙여 확인한 둘
+
+```
+app.api.main import   FastAPI 로 뜬다. import 에러 없음
+                      8000 은 되살린 서버가 쓰고 있어 모듈 import 로 확인했다
+krri st               돈다. 스위치 칸이 CLARIFY_CHOICE=1 · RESOLVE_NARROW=0 을
+                      제대로 읽는다 (35줄을 고쳤으므로)
+```
+
+
 
 
 
@@ -2040,8 +2218,8 @@ git diff      38줄. 전부 import 줄 아니면 경로 문자열
 무인 실행. 조건 — `refactor/vendor` · 워킹 트리에 두고 커밋 안 했다 ·
 `.venv/bin/python -m pytest -q` · 서버는 안 띄웠다.
 
-고친 것은 넷이다. `demo/api/services/step_service.py` · `wiring.yaml` ·
-`tests/demo/api/test_wiring_yaml.py` · 이 파일.
+고친 것은 넷이다. `app/api/services/step_service.py` · `wiring.yaml` ·
+`tests/app/api/test_wiring_yaml.py` · 이 파일.
 **`tools/` 아래는 한 줄도 안 고쳤다.** 계기판 두 벌의 출력이 md5 까지 같다.
 
 ## 왜 했나
@@ -2123,7 +2301,7 @@ step_service 에    0줄              위 까닭
 #
 # 진짜 표는 wiring.yaml 이고 아래 _load_wiring 이 그것을 파서 TOOL_OF · STEP_OF
 # 를 채운다. 여기 남은 두 벌은 **같은 값인지 대볼 것**이다 —
-# tests/demo/api/test_wiring_yaml.py 가 dict 를 통째로 맞대고, 그것이 이번
+# tests/app/api/test_wiring_yaml.py 가 dict 를 통째로 맞대고, 그것이 이번
 # 변경의 증거다. 1-b 에서 지운다. 그때 줄마다의 실측 근거 주석이 wiring.yaml 로
 # 간다.
 #
@@ -2186,7 +2364,7 @@ check_inputs   md5 6d0ed14d7ab7c0cdd7f063982eadc83d  전후 같음 (diff 0줄)
 pytest         1 failed, 485 passed, 1 warning in 59.98s
                ★ 488 -> 485. 정확히 셋만 줄었다
                ★ 일부러 둔 실패 그대로 :
-                 tests/demo/graph_svg/test_layout_invariants.py
+                 tests/app/ui/graph_svg/test_layout_invariants.py
                  ::test_dense_graph_would_move_if_overlap_removal_were_used
 TOOL_OF 27 · STEP_OF 36                     그대로
 _TOOL_OF_IN_CODE · _STEP_OF_IN_CODE         코드·시험·계기판에서 0회
@@ -2282,7 +2460,7 @@ menu 를 가르는 임시방편     찾은 것을 「열린 과제」에 적기�
 `.venv/bin/python -m pytest -q` · 서버는 안 띄웠다.
 
 고친 것은 넷이다. 새 파일 `wiring.yaml` · 새 시험
-`tests/demo/api/test_wiring_yaml.py` · `paths.py` · `step_service.py` ·
+`tests/app/api/test_wiring_yaml.py` · `paths.py` · `step_service.py` ·
 이 파일. **`tools/` 아래는 한 줄도 안 고쳤다. 그것이 이번 설계의 요점이다.**
 
 ## 왜 데이터로 뺐나
@@ -2304,7 +2482,7 @@ menu 를 가르는 임시방편     찾은 것을 「열린 과제」에 적기�
 TOOL_OF  27줄 = {server_id, tool, headline} 26 + {command, headline} 1
 STEP_OF  36줄 = input 만 20 · input+input_first 14 · arg_field 1 · adapter 1
 pytest   1 failed, 476 passed, 1 warning in 60.50s
-  ★ 실패 하나 = tests/demo/graph_svg/test_layout_invariants.py
+  ★ 실패 하나 = tests/app/ui/graph_svg/test_layout_invariants.py
                ::test_dense_graph_would_move_if_overlap_removal_were_used
 ```
 
@@ -2332,7 +2510,7 @@ step_of    노드 -> 받는 타입 -> 줄        ★ 두 겹이다
 
 ## 3. `< >` — 「값은 코드에 있다」는 표시
 
-`RADIUS_METERS`(15000)는 배선표에도 오고 `demo/ui/config.py` 도 쓴다. 값을
+`RADIUS_METERS`(15000)는 배선표에도 오고 `app/ui/config.py` 도 쓴다. 값을
 YAML 로 옮기면 원천이 둘이 된다. 그래서 **값은 코드에 남기고 YAML 에는 이름만
 적는다.**
 
@@ -2462,20 +2640,20 @@ import 한다 — `tools/check_wiring.py` · `tools/check_inputs.py` ·
 ④ pytest   1 failed, 488 passed, 1 warning in 60.28s
      476 → 488. 는 것은 새 시험 12개뿐이다
      ★ 일부러 둔 실패가 같은 이름으로 그대로 실패한다
-       tests/demo/graph_svg/test_layout_invariants.py
+       tests/app/ui/graph_svg/test_layout_invariants.py
        ::test_dense_graph_would_move_if_overlap_removal_were_used
 
 ⑤ git status --porcelain
-      M demo/api/services/step_service.py
+      M app/api/services/step_service.py
       M paths.py
-     ?? tests/demo/api/test_wiring_yaml.py
+     ?? tests/app/api/test_wiring_yaml.py
      ?? wiring.yaml
      ★ tools/ 아래가 없다. 고칠 범위 밖의 파일도 없다
 ```
 
 ## 9. 새 시험 열둘
 
-`tests/demo/api/test_wiring_yaml.py`. 서버도 LLM 도 안 부른다.
+`tests/app/api/test_wiring_yaml.py`. 서버도 LLM 도 안 부른다.
 
 ```
 같은가        TOOL_OF · STEP_OF 가 코드의 표와 dict 비교로 같다 · 차례도 같다
@@ -2516,7 +2694,7 @@ import 한다 — `tools/check_wiring.py` · `tools/check_inputs.py` ·
 통째로 안 읽힌다.
 
 **판정(`check_resolve`)은 안 쟀다.** `tests/` 는 서버 실행 경로에 없다 —
-`demo/api` 도 `orchestrator` 도 `tests/` 를 import 하지 않는다. 시험 몸통을
+`app/api` 도 `orchestrator` 도 `tests/` 를 import 하지 않는다. 시험 몸통을
 한 글자도 안 고쳤으므로 판정에 닿을 길이 없다. 재면 LLM 잡음만 잰다.
 
 ## 1. 기준선 (바꾸기 전에 실제로 돌린 것)
@@ -2525,7 +2703,7 @@ import 한다 — `tools/check_wiring.py` · `tools/check_inputs.py` ·
 시험 함수 총계   436      (tests/ 아래 .py 의 def test… 전부)
 한글 이름         246      19파일
 pytest           1 failed, 476 passed, 1 warning in 60.38s
-  ★ 실패 하나 = tests/demo/graph_svg/test_layout_invariants.py
+  ★ 실패 하나 = tests/app/ui/graph_svg/test_layout_invariants.py
                ::test_dense_graph_would_move_if_overlap_removal_were_used
 ```
 
@@ -2616,7 +2794,7 @@ git diff --name-only  tests/ 아래 .py 16개 + NOTES.md. 그 밖에 없다
 
 ## 5. ★ 이름과 몸이 어긋난 자리 — 넷
 
-**`tests/demo/api/test_clarify_choice.py`**
+**`tests/app/api/test_clarify_choice.py`**
 
 ```
 옛  test_사슬_줄은_끝_이름만_말해도_그_자리다
@@ -2626,7 +2804,7 @@ git diff --name-only  tests/ 아래 .py 16개 + NOTES.md. 그 밖에 없다
     (이름만 말하는 자리는 바로 아래 시험이 따로 잰다.)
 ```
 
-**`tests/demo/api/test_menu_split.py` — 「기존 마흔」 셋. 수가 낡았다**
+**`tests/app/api/test_menu_split.py` — 「기존 마흔」 셋. 수가 낡았다**
 
 ```
 옛  test_문맥이_아예_없으면_기존_마흔이다
@@ -2784,7 +2962,7 @@ recipe」로 적었다. 그래서 이 정정이 마지막이 된다.
 
 **★ 결론부터.** 하단 노드 마흔여덟 중 강조되는 것은 두셋뿐인데 지금까지는 사람이
 눈으로 찾아 손으로 확대했다. 이제 경로가 정해지면 저절로 그 경로가 칸을 채운다.
-**좌표도 그리기도 한 글자도 안 고쳤다** — `demo/ui/components/zoom.py` 안에서
+**좌표도 그리기도 한 글자도 안 고쳤다** — `app/ui/components/zoom.py` 안에서
 CSS transform 만 바꾼다. 시연 발화 넷에 필요한 배율이 2.07 ~ 3.00 이라
 확대 천장을 **2.5 -> 3.5** 로 올렸다. 판정은 적중 69/108 (64%) 로 안 바뀌었다.
 
@@ -2866,7 +3044,7 @@ Graphviz 가 `<title>꼬리-&gt;머리</title>` 를 내주므로 따로 만들 �
 세로로 가까워 엣지 상자가 작고, 그것만 재면 노드 상자(195.6px)가 칸 밖으로
 나간다. **여백 상수로 덮을 수 있는 폭이 아니다.** 노드를 함께 잰다.
 
-`tests/demo/ui/test_path_autofit_scale.py` 가 이 자리를 시험으로 못박았다 —
+`tests/app/ui/test_path_autofit_scale.py` 가 이 자리를 시험으로 못박았다 —
 엣지만 재면 천장을 넘고, 노드를 함께 재면 안 넘는다.
 
 **경로가 한 단계뿐이어도(엣지 하나) 같은 계산으로 돈다.** 갈래를 안 만들었다.
@@ -2929,20 +3107,20 @@ CCTV     701.8px    87.2px       2.07             2.02
 #### 4. 무엇을 고쳤나 — 파일 셋과 시험 둘
 
 ```
-demo/ui/components/zoom.py           자동 맞춤을 이 안에 넣었다. 새 파일을 안 만들었다 —
+app/ui/components/zoom.py           자동 맞춤을 이 안에 넣었다. 새 파일을 안 만들었다 —
                                      배율 · 평행이동을 이미 이 한 곳이 쥐고 있어서다.
                                      따로 두면 scale 사본이 둘이 되어 손으로 굴린
                                      값과 어긋난다. 강조를 고르는 class 이름은
                                      밖에서 받는다(zoom_script(..., highlight_class))
-demo/ui/components/focus_panel.py    flow.FLOW_CLASS 를 넘긴다 (한 줄)
-demo/ui/components/graph_section.py  상단도 같은 한 벌을 붙인다 (한 줄).
+app/ui/components/focus_panel.py    flow.FLOW_CLASS 를 넘긴다 (한 줄)
+app/ui/components/graph_section.py  상단도 같은 한 벌을 붙인다 (한 줄).
                                      상단에는 class="flow" 엣지가 하나도 없어
                                      (draw_solid=False) 서명이 비고 아무 일도 안 한다
-tests/demo/ui/test_path_autofit_document.py  문서에 규칙과 선택자가 들었는가 (16)
-tests/demo/ui/test_path_autofit_scale.py     완성된 SVG 를 재서 값이 칸에 드는가 (7)
+tests/app/ui/test_path_autofit_document.py  문서에 규칙과 선택자가 들었는가 (16)
+tests/app/ui/test_path_autofit_scale.py     완성된 SVG 를 재서 값이 칸에 드는가 (7)
 ```
 
-**`dot.py` · `layout.json` · `demo/graph_svg/` 를 안 건드렸다.** 좌표도 그리기도
+**`dot.py` · `layout.json` · `app/ui/graph_svg/` 를 안 건드렸다.** 좌표도 그리기도
 그대로다. 화면에서 보는 자리만 바뀐다.
 
 #### 5. 무엇으로 확인했나
@@ -3014,7 +3192,7 @@ graphviz 음성 대조군(`test_dense_graph_would_move_if_overlap_removal_were_u
 
 **적중은 네 칸이 전부 같다** — 15/27 · 39/66 · 15/15 · 69/108, 56% · 59% ·
 100% · 64%. 근접 24→22 · 빗나감 14→16 은 CLARIFY · SELECT 안에서 LLM 이
-흔들린 것이고, 고친 파일 셋은 `demo/ui/` 라 API 가 아예 안 읽는다.
+흔들린 것이고, 고친 파일 셋은 `app/ui/` 라 API 가 아예 안 읽는다.
 
 #### 6. ★ 사람이 눈으로 확인할 것
 
@@ -3065,7 +3243,7 @@ graphviz 음성 대조군(`test_dense_graph_would_move_if_overlap_removal_were_u
 
 **★ 그래서 커밋한 것은 「사람이 봤고 좋았다」가 아니라 「문서 · 계산 ·
 판정으로 막을 수 있는 데까지 막았다」 이다.** 화면에서 어긋나는 것이
-나오면 되돌릴 자리는 `demo/ui/components/zoom.py` 하나다.
+나오면 되돌릴 자리는 `app/ui/components/zoom.py` 하나다.
 
 #### 7. ★ 오늘 접은 것 — 무리 짓기 (사람이 접었다)
 
@@ -3097,7 +3275,7 @@ dot.py 에 노드 class 를 안 붙였다   엣지 제목으로 노드를 찾을
                                     시점이 흔들린다
 새 파일을 안 만들었다               zoom.py 안이다. scale 사본이 둘이 되면 안 된다
 좌표 · 그리기 변경 0                layout.json · _init/layout.json ·
-                                    demo/graph_svg/ 한 글자도 안 고쳤다
+                                    app/ui/graph_svg/ 한 글자도 안 고쳤다
 새 의존성 0                         requirements.txt 변화 없다. CDN 도 안 썼다
 커밋 안 했다                        남의 것도 안 건드렸다 (KRRI_ASAP/ · vendor/ 변경 0)
 ```
@@ -3259,7 +3437,7 @@ FINAL_top.png · FINAL_bottom.png · FINAL_resolve.png   프로덕션이 저장�
 #### 7. 시험
 
 ```
-tests/demo/graph_svg/       99 passed · 1 failed
+tests/app/ui/graph_svg/       99 passed · 1 failed
                             실패 하나는 test_dense_graph_would_move_if_overlap_
                             removal_were_used — graphviz 판 차이로 원래 우는
                             음성 대조군이다. 이번 변경과 무관하고 안 건드렸다
@@ -3298,7 +3476,7 @@ MIN_GAP 8pt                 안 낮췄다. 8.6pt 로 통과한다
 한 덩어리라는 것은 「측정 기록」 위쪽 표에 이미 적혀 있다.
 
 **★ 21 과 1.1 의 근거는 여기 못 적는다. 내가 고른 값이 아니다.**
-`pytest tests/demo/graph_svg/` 는 이 값에서도 99 passed / 1 failed 로 같다.
+`pytest tests/app/ui/graph_svg/` 는 이 값에서도 99 passed / 1 failed 로 같다.
 
 #### 8. 안 한 것
 
@@ -3487,7 +3665,7 @@ totals[BASELINE_LABEL if number <= BASELINE_LAST else EXTENSION_LABEL]
 있다. **경고만 있고 지키는 장치가 없었다.** `tests/` 에 `chat/stream` 을
 건드리는 시험이 **0건**이라 누가 한쪽만 고쳐도 아무도 안 잡았다.
 
-**무엇을 지키는가** — `tests/demo/api/test_chat_stream_parity.py`, 여섯 줄.
+**무엇을 지키는가** — `tests/app/api/test_chat_stream_parity.py`, 여섯 줄.
 
 ```
 answer 가 두 길에서 같다
@@ -3500,7 +3678,7 @@ SSE 틀 — "data: " 접두어 · 이벤트마다 빈 줄 · 마지막 [DONE]
 한글이 이스케이프 없이 그대로 나간다   ← main.py 가 적은 ensure_ascii 제약
 ```
 
-**대역을 어떻게 했나 — 이미 있는 것을 썼다.** `tests/demo/api/test_recent.py`
+**대역을 어떻게 했나 — 이미 있는 것을 썼다.** `tests/app/api/test_recent.py`
 가 「`/chat` 이 내는 이벤트를 가짜로 흘려 넣는」 관례를 이미 갖고 있었다
 (`executed()` 의 step_start · step_end · result 목록). **그 모양을 그대로
 가져왔다.** 한글과 좌표를 일부러 담아 `ensure_ascii` 와 `commands` 를 함께
@@ -3777,14 +3955,14 @@ pytest                445 passed / 1 failed
                       (test_dense_graph_would_move_if_overlap_removal_were_used).
                       고치기 전 435/1 에서 **더한 만큼만 늘었다. 기존 삭제 0**
 저쪽 무결             KRRI_ASAP/ · vendor/ 변경 0
-온톨로지 등 무손상     ontology/*.yaml · workflows/ · demo/graph_svg/ ·
-                      demo/ui/ · tools/ 변경 0
+온톨로지 등 무손상     ontology/*.yaml · workflows/ · app/ui/graph_svg/ ·
+                      app/ui/ · tools/ 변경 0
 서버                  8000 (uvicorn --reload) · 8501 (streamlit) 떠 있다
 ```
 
 #### 더한 시험 열
 
-`tests/demo/api/test_step_input_schema.py` (여덟, 새 파일) —
+`tests/app/api/test_step_input_schema.py` (여덟, 새 파일) —
 **STEP_OF 전 줄이 보내는 칸이 그 도구 스키마에 있는가**를
 `tools/probe_out/tools.json` 으로 대조한다. LLM 도 서버도 안 부른다.
 어댑터가 걸리는 줄(`point_radius_to_bbox`, 적어 둔 것과 vendor 가 저절로 거는
@@ -3793,7 +3971,7 @@ ev 첫 자리가 평평한 넷인 것 · ev 앞 단계 자리가 안 달라진 �
 **bbox 배열을 받는 넷은 그대로 `bbox` 한 칸인 것**(같이 고치면 깨지는 자리라
 확인을 박아 뒀다) · `BBOX_FROM_CONTEXT` 의 순서다.
 
-`tests/demo/api/test_map_context.py` (둘 더함, 기존 아홉 그대로) —
+`tests/app/api/test_map_context.py` (둘 더함, 기존 아홉 그대로) —
 plan 이 실제로 내놓는 값으로 본다. 보이는 범위로 시작하는 충전소가 평평한 넷을
 받는 것과, 노선이 그대로 `bbox` 한 칸을 받는 것.
 
@@ -3807,8 +3985,8 @@ plan 이 실제로 내놓는 값으로 본다. 보이는 범위로 시작하는 
 - **나머지 넷을 평평한 넷으로 통일하지 않았다** (「열린 과제」의 길 나)).
   스키마상 `bbox` 배열이 정식이고 `_parse_bbox_input` 이 둘 다 받으므로
   고쳐도 달라지는 것이 없다. 고장이 아닌 자리를 만지지 않았다.
-- 온톨로지 · menu · 정답표 · 프롬프트 넷 · `demo/api/services/` 의 다른 파일 ·
-  `demo/graph_svg/` · `demo/ui/` · `vendor/` · `KRRI_ASAP/` 를 안 건드렸다.
+- 온톨로지 · menu · 정답표 · 프롬프트 넷 · `app/api/services/` 의 다른 파일 ·
+  `app/ui/graph_svg/` · `app/ui/` · `vendor/` · `KRRI_ASAP/` 를 안 건드렸다.
   `KRRI_ASAP/ASAP-mcp/main.py` 는 **읽기만** 했다.
 - 커밋하지 않았다. 브랜치는 `integration/ASAP-Ontology` 그대로다.
 - `check_resolve` 를 `--execute` 로는 안 돌렸다. 실행 쪽은 `/chat` 을 직접
@@ -4285,7 +4463,7 @@ candidate_recipe_ids · 단계 줄 · 답 문구다. 응답 본문을 다시 파
 EMPTY_HEADLINE · ERROR_HEADLINE · MISSING_STATUS · NO_PERMISSION_REASON
                                                 vendor/asap/workflow_answer
 CHOICE_HEAD · NO_ARGUMENT_ANSWER · UNWIRED_ANSWER
-                                                demo/api/services/execute_service
+                                                app/api/services/execute_service
 ```
 
 베껴 적으면 저쪽이 문구를 갱신했을 때 **화면은 "찾지 못했습니다" 인데 표는 ✓**
@@ -4692,7 +4870,7 @@ recipe 의 번호를 골라 이어 눌렀고, 둘 다 실행까지 갔다.
 tools/check_resolve.py            --execute · 화면 다섯 · 16번 말투 · 기본 문맥 both ·
                                   묶음 셋으로 가름
 tests/tools/test_execution_column.py   새 파일. 실행 칸 판정 아홉
-tests/demo/api/test_menu_split.py      기존 둘을 사실에 맞춰 고치고 하나를 더함
+tests/app/api/test_menu_split.py      기존 둘을 사실에 맞춰 고치고 하나를 더함
 NOTES.md                          이 글
 ```
 
@@ -5185,7 +5363,7 @@ CDN 0 · 좌표 변경 0 · 사람이 정한 값 변경 0.
 
 ## 값과 근거
 
-**전부 `demo/ui/components/flow.py` 맨 위 한 곳에 있다. 시연장에서 여기만
+**전부 `app/ui/components/flow.py` 맨 위 한 곳에 있다. 시연장에서 여기만
 고치면 된다.**
 
 단위는 SVG 사용자 단위(= DOT 포인트)이지 화면 픽셀이 아니다. 하단 그래프는
@@ -5288,7 +5466,7 @@ SVG 를 갈아끼워도 다시   하단은 노드를 누를 때마다 innerHTML 
 ```
 정지로   같은 DOT 을 class 있는 것 · 없는 것 두 벌로 neato -Tpng 했다.
          610,613 바이트로 **한 바이트도 안 다르다.**
-         tests/demo/graph_svg/test_path_flow.py 가 이것을 지킨다
+         tests/app/ui/graph_svg/test_path_flow.py 가 이것을 지킨다
 문서로   focus_html · graph_fill_html 이 낸 iframe 문서에 @keyframes
          recipeflow · stroke-dashoffset · 값 셋 · 선택자가 들어 있는지 봤다.
          streamlit 런타임이 필요 없는 순수 함수라 AppTest 도 안 썼다
@@ -5333,9 +5511,9 @@ SVG 를 갈아끼워도 다시   하단은 노드를 누를 때마다 innerHTML 
                             문제가 그대로 남아 있다
 원본 선의 굵기 · 색 · 화살촉을 안 건드렸다
                             PATH_PENWIDTH 8 · PATH_ARROWSIZE 2.5 그대로
-flow.py 가 demo/graph_svg 를 import 하지 않는다
+flow.py 가 app/ui/graph_svg 를 import 하지 않는다
                             계층을 지킨다. 대신 class 이름이 두 곳에 있고
-                            tests/demo/ui/test_path_flow_document.py 가 두
+                            tests/app/ui/test_path_flow_document.py 가 두
                             값이 같은지 붙잡는다
 ```
 
@@ -5380,11 +5558,11 @@ flow.py 가 demo/graph_svg 를 import 하지 않는다
 온톨로지 · recipe · menu 와 같은 꼴로 만들었다.
 
 ```
-demo/graph_svg/_init/layout.json    git 이 추적한다. 사람이 고른 배치
-demo/graph_svg/layout.json          작업본. .gitignore 그대로
+app/ui/graph_svg/_init/layout.json    git 이 추적한다. 사람이 고른 배치
+app/ui/graph_svg/layout.json          작업본. .gitignore 그대로
 ```
 
-`.gitignore` 의 `layout.json` 을 `/demo/graph_svg/layout.json` 으로 바꿨다.
+`.gitignore` 의 `layout.json` 을 `/app/ui/graph_svg/layout.json` 으로 바꿨다.
 **앞의 경로가 없으면 `_init` 사본까지 함께 무시된다** — 패턴 하나로 둘 다
 사라질 뻔한 자리다.
 
@@ -5579,7 +5757,7 @@ _init 과 작업본     같은 파일이다 (diff 0)
 /graph · /render   둘 다 200 · SVG · viewBox 2422.60x829.00
 새 의존성 없음      requirements.txt 변화 0
 저쪽 무결          KRRI_ASAP/ · vendor/ 변경 0
-온톨로지 등 무손상  ontology/ · workflows/ · tools/ · demo/api/ 변경 0
+온톨로지 등 무손상  ontology/ · workflows/ · tools/ · app/api/ 변경 0
 pytest             397 passed / 1 failed (graphviz 음성 대조군)
                    1부 394 에서 셋 늘었다. 기존 삭제 0
 결정적             layout.json 을 지우고 두 프로세스에서 다시 만들어 같은 파일
@@ -5734,13 +5912,13 @@ docstring 넷              highlight · highlight_paths · dim_edges · 제약
 **남겨둔 자국이 있다. 이번 범위 밖이라 안 건드렸다.**
 
 ```
-demo/graph_svg/build.py 10 · 193 · 231줄      "순번" 을 말하는 주석 셋
-demo/graph_svg/focus.py 23줄                  "순번을 붙여야 함"
-demo/ui/components/zoom.py 6줄                 "색·굵기·순번을 정하는 규칙"
-demo/ui/components/focus_panel.py 7 · 111줄    같은 문장 둘
+app/ui/graph_svg/build.py 10 · 193 · 231줄      "순번" 을 말하는 주석 셋
+app/ui/graph_svg/focus.py 23줄                  "순번을 붙여야 함"
+app/ui/components/zoom.py 6줄                 "색·굵기·순번을 정하는 규칙"
+app/ui/components/focus_panel.py 7 · 111줄    같은 문장 둘
 tests/ontology/test_graph.py 239줄             "순번 라벨(1, 2, 3)" — 거기서
                                                지키는 것은 순서이지 순번이 아니다
-demo/ui/components/zoom.py 17~18줄             확대 한 칸을 "30%" 라고 적었는데
+app/ui/components/zoom.py 17~18줄             확대 한 칸을 "30%" 라고 적었는데
                                                사람이 1.03(3%)으로 내렸다
 ```
 
@@ -5759,7 +5937,7 @@ demo/ui/components/zoom.py 17~18줄             확대 한 칸을 "30%" 라고 �
                           다 쓰고 있어 급하지 않다
 가로세로를 다른 비율로 누르기  「쉰두째」에서 이미 졌다. 이번 방식은 누르는
                           것이 아니라 늘린 뒤 겹침을 다시 없애는 것이라 다르다
-demo/ui/ 의 여백 · 높이     한 줄도 안 고쳤다
+app/ui/ 의 여백 · 높이     한 줄도 안 고쳤다
 ```
 
 ### 2026-08-29 (쉰두째) · 그래프를 키우고 확대 폭을 넓힌다 — 화면만 고친다
@@ -5909,7 +6087,7 @@ final_bottom_zoom.png                            2.6배로 확대한 것
 글씨만 +2%, +7% 늘고 노드 폭이 237 · 270pt 로 벌어져 짧은 이름과의 차이만 는다.
 
 **다) 칸 높이 늘리기.** 상단과 하단이 화면 높이를 반씩 나눠 갖는다. 한쪽을
-늘리면 다른 쪽이 준다. `demo/ui/` 는 한 줄도 안 고쳤다.
+늘리면 다른 쪽이 준다. `app/ui/` 는 한 줄도 안 고쳤다.
 
 #### 6. 확대 상수 — 전후
 
@@ -5939,7 +6117,7 @@ selenium · rsvg 전부 없음). **새 의존성을 안 더한다는 규칙이 �
 
 ```
 가) 문서를 그대로 만들어 봤다
-    streamlit.testing.v1.AppTest 로 demo/ui/main.py 를 돌렸다 — 예외 0,
+    streamlit.testing.v1.AppTest 로 app/ui/main.py 를 돌렸다 — 예외 0,
     st.components.v1.html 두 번(상단 · 하단)
     그 둘에 들어가는 문서를 뽑아 보니 iframe 높이 상단 538 · 하단 523,
     하단 그래프 칸이 flex 60%, 두 문서 모두 MAX = 12.0 · STEP = 1.3 · <svg> 있음
@@ -6003,7 +6181,7 @@ pytest             384 passed / 1 failed (graphviz 음성 대조군). 전 380/1 
 나왔다. 「★★ 재는 자를 먼저 의심한다」가 말하던 그 흔들림이다.
 
 **구조로도 확인했다.** `resolve_service` 에서 import 를 34개 모듈까지 따라가면
-그리기 쪽으로 닿는 것은 `demo.graph_svg.dot.COLORS` 하나뿐이고
+그리기 쪽으로 닿는 것은 `app.ui.graph_svg.dot.COLORS` 하나뿐이고
 (`ontology_service` 가 색만 물어본다), **이번에 색은 한 글자도 안 고쳤다.**
 크기 · 좌표 · 확대는 `/resolve` 가 보지 않는다.
 
@@ -6014,7 +6192,7 @@ pytest             384 passed / 1 failed (graphviz 음성 대조군). 전 380/1 
                          「열린 과제」에 새 항목으로 세웠다
 폭 41% 를 채우는 것       배치 모델이 만든 모양이라 좌표 배율로는 못 편다.
                          찌그러뜨려 본 결과는 위 5-가) 에 남겼다
-demo/ui/ 의 여백 · 높이   한 줄도 안 고쳤다. 상하가 높이를 반씩 나눠 갖는
+app/ui/ 의 여백 · 높이   한 줄도 안 고쳤다. 상하가 높이를 반씩 나눠 갖는
                          구조라 한쪽을 늘리면 다른 쪽이 준다
 확대를 손으로 굴려 보기    브라우저가 없다. 위 7 참조
 ```
@@ -6053,10 +6231,10 @@ demo/ui/ 의 여백 · 높이   한 줄도 안 고쳤다. 상하가 높이를 �
 ```
 
 ```
-demo/api/services/clarify_service.py   CHOICE_ENV · enabled()      +27줄
-demo/api/services/execute_service.py   chat · _remember_clarify    +25 −8
-tests/demo/api/test_clarify_choice.py  스위치 시험 셋              +23줄
-tests/demo/api/test_clarify_flow.py    스위치 시험 여섯            +75 −4
+app/api/services/clarify_service.py   CHOICE_ENV · enabled()      +27줄
+app/api/services/execute_service.py   chat · _remember_clarify    +25 −8
+tests/app/api/test_clarify_choice.py  스위치 시험 셋              +23줄
+tests/app/api/test_clarify_flow.py    스위치 시험 여섯            +75 −4
 ```
 
 **끄면 기억도 안 한다.** 고르기만 막고 후보를 메모리에 남기면 끈 것이 아니다 —
@@ -6803,13 +6981,13 @@ recipe_004(시설물 표시)로 **확신해서 간다**(3/3). **시연 대본의
 
 ```
 고친 파일   workflows/static/menu/load.py           id 를 주면 그 recipe 만 남긴다
-            demo/api/services/resolve_service.py    SCREEN_WORDS · _points_at_screen · _menu_for
-            demo/api/main.py                        ★ 범위 밖. /resolve 가 context 를 받는 자리가 없었다
-            demo/ui/config.py · api_client.py · main.py · components/input_section.py
+            app/api/services/resolve_service.py    SCREEN_WORDS · _points_at_screen · _menu_for
+            app/api/main.py                        ★ 범위 밖. /resolve 가 context 를 받는 자리가 없었다
+            app/ui/config.py · api_client.py · main.py · components/input_section.py
                                                     고정 문맥을 만들어 보내고 화면에 밝힌다
             tools/check_resolve.py                  --context none|bbox|both (기본 bbox)
-            tests/demo/api/test_menu_split.py       새 파일 열여덟
-            tests/demo/api/test_map_context.py      낡은 주석 한 문단
+            tests/app/api/test_menu_split.py       새 파일 열여덟
+            tests/app/api/test_map_context.py      낡은 주석 한 문단
             NOTES.md
 안 건드림   ontology.yaml 둘 · menu.yaml · recipes/ · _init/ · step_service.py(배선표) ·
             프롬프트 셋(recipe_selection · recipe_axes · recipe_pick) · 정답표 UTTERANCES ·
@@ -7042,7 +7220,7 @@ minLon 127.15983…). 지어낸 값이 아니다. 시연이 오송·청주에서
 (이 화면에는 지도가 없다)". 화면에 「여기」가 통하는데 지도가 없으면 시연장에서
 오해를 부른다.
 
-`tools/check_resolve.py` 는 같은 값을 `demo/ui/config.py` 에서 가져다 쓴다.
+`tools/check_resolve.py` 는 같은 값을 `app/ui/config.py` 에서 가져다 쓴다.
 베껴 적으면 둘이 조용히 어긋나고 「시연과 같은 조건」이라는 말이 거짓이 된다.
 
 #### 9. 읽는 법 넷에 비춘 결과 — 미리 정해 둔 것
@@ -7146,16 +7324,16 @@ menu.yaml 을 안 고쳤다       읽은 문자열에서 뺄 뿐이다
 ```
 고친 파일   ontology/ontology.yaml · ontology/_init/ontology.yaml   노드 둘 · is-a 둘
             workflows/static/_init/ · workflows/static/             rebuild_init --write · reset_to_init
-            demo/api/services/step_service.py                       문맥 참조 상수 · input_first 열다섯 줄 · context_starts
-            demo/api/services/resolve_service.py                    문맥이 없으면 축 선택지와 후보에서 뺌
-            demo/api/services/execute_service.py                    문맥을 해석에 넘김 · 인자 없이도 부름
+            app/api/services/step_service.py                       문맥 참조 상수 · input_first 열다섯 줄 · context_starts
+            app/api/services/resolve_service.py                    문맥이 없으면 축 선택지와 후보에서 뺌
+            app/api/services/execute_service.py                    문맥을 해석에 넘김 · 인자 없이도 부름
             tools/check_resolve.py                                  GT 번호 이동만. 기대값은 한 글자도 안 바꿈
-            tests/demo/api/test_map_context.py                      새 파일 아홉
+            tests/app/api/test_map_context.py                      새 파일 아홉
             tests/ 넷                                               대역 시그니처와 옮긴 번호
             NOTES.md
 안 건드림   KRRI_ASAP/ (추적 파일 변경 0) · vendor/ · 좁히기 프롬프트 둘 · recipe_selection.md ·
             node_registration.md · shortlist.py · graph.py · store.py · registry.py ·
-            check_wiring.py · demo/ui/ · demo/graph_svg/ · 기본값 끔(narrow_default() False)
+            check_wiring.py · app/ui/ · app/ui/graph_svg/ · 기본값 끔(narrow_default() False)
 ```
 
 #### 1. 저쪽이 실제로 보내는 것 — 읽고 확인했다
@@ -7496,10 +7674,10 @@ pytest             ★ 통과   335 passed / 1 failed. 실패는 graphviz 음성
 - **열일곱 개의 덤 recipe 를 눌러 보지 않았다.** 배선(`input_first`)은 열다섯 줄 다
   적었지만 실제로 부른 것은 CCTV 둘뿐이다. 나머지는 `$prev` 로 이미 쓰던 것과 같은
   모양을 문맥으로 바꾼 것이라 지어낸 값은 없지만, **된다고 말할 근거도 없다.**
-- **`demo/api/main.py` 의 낡은 한 줄을 못 고쳤다.** `/chat` docstring 의
+- **`app/api/main.py` 의 낡은 한 줄을 못 고쳤다.** `/chat` docstring 의
   "context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 함" 이 이제 거짓이다
   (해석도 읽는다). 이번 범위 밖 파일이라 손대지 않았다.
-- **`demo/ui/components/sample_picker.py` 의 SAMPLES 도 안 고쳤다.** 거기 적힌
+- **`app/ui/components/sample_picker.py` 의 SAMPLES 도 안 고쳤다.** 거기 적힌
   recipe_002 는 이번 변경 전부터 이미 어긋나 있었다(철도 구간 형상 조회다).
   범위 밖이고, 이번에 새로 어긋난 것이 아니다.
 - **좁히기 길(`--narrow`)로 안 쟀다.** 지금 길만 쟀다.
@@ -7509,7 +7687,7 @@ pytest             ★ 통과   335 passed / 1 failed. 실패는 graphviz 음성
 
 2026-08-28 저녁, 갑작스러운 시연 때문에 이 변경을 잠시 되돌렸다.
 `git stash` 는 **추적 중인 파일만** 숨기므로 새 recipe 열아홉(두 벌)과
-`tests/demo/api/test_map_context.py` 는 남았고, 온톨로지에 없는 노드를 recipe 가
+`tests/app/api/test_map_context.py` 는 남았고, 온톨로지에 없는 노드를 recipe 가
 가리켜 그래프가 안 그려졌다 (`neato: picked_point has no position`).
 사람이 새 파일을 옆으로 옮기고 `layout.json` 을 지워 시연을 마쳤다.
 그 뒤 stash 를 drop 해 변경이 사라졌고, 사람이 따로 갖고 있던 사본으로 되살렸다.
@@ -8326,22 +8504,22 @@ item_list 대신 statistics 로 나와 후보가 011 하나가 됐고 적중 3 �
 적고 사람이 정한다.**
 
 ```
-demo/api/services/resolve_service.py      resolve → 스위치. 지금 길은 _resolve_full 로 이름만
+app/api/services/resolve_service.py      resolve → 스위치. 지금 길은 _resolve_full 로 이름만
                                           옮기고 안을 안 건드렸다. 좁히기 길 _resolve_narrow 새로
 orchestrator/schemas/response_schema.py   axis_selection_schema(1차) · recipe_pick_schema(2차) 더함.
                                           recipe_selection_schema 는 그대로
 workflows/static/prompts/recipe_axes.md   새 파일. 1차 — 지금 프롬프트에서 menu 를 뺀 것
 workflows/static/prompts/recipe_pick.md   새 파일. 2차 — 좁힌 후보 중 고르기
 tools/check_resolve.py                    --narrow 스위치 · 좁히기 표 · 시간 칸. 정답표 · 판정 규칙 0 변경
-tests/demo/api/test_narrow.py             새 파일 25개
+tests/app/api/test_narrow.py             새 파일 25개
 tests/orchestrator/test_narrow_schema.py  새 파일 4개
-demo/api/main.py                          ★ 범위 밖 파일. /resolve 에 narrow query 한 칸 (아래)
+app/api/main.py                          ★ 범위 밖 파일. /resolve 에 narrow query 한 칸 (아래)
 ```
 
 **온톨로지 · menu · recipe · 배선표 · execute_service · vendor/ · KRRI_ASAP/ 변경 0.**
 `git diff --stat` 로 확인했다.
 
-**범위를 하나 넘었다.** 「/resolve 에 켤지 끌지를 받는다」는 `demo/api/main.py` 의
+**범위를 하나 넘었다.** 「/resolve 에 켤지 끌지를 받는다」는 `app/api/main.py` 의
 endpoint 를 고쳐야 되는 일인데 그 파일은 고칠 범위 목록에 없었다. query 인자 하나
 (`narrow: bool | None = None`)와 그것을 넘기는 한 줄만 더했다. 안 주면 None 이고
 None 이면 서비스가 환경변수를 보고, 그것도 없으면 끔이다.
@@ -8965,7 +9143,7 @@ cutoffs 로 "도보 15·30분 도달 영역" 한 줄을 만드는 규칙이 새�
 ### 2026-08-27 (서른여덟째) · 저쪽 화면에서 넣은 발화를 Streamlit 이 따라 그린다
 
 모델 qwen3:32b(서버 기본) · recipe 40 · 무인 실행(10:05~10:45). 고친 것은
-`demo/api` · `demo/ui` · `tests` · 이 파일뿐이다. **`KRRI_ASAP/` 는 추적 파일
+`app/api` · `app/ui` · `tests` · 이 파일뿐이다. **`KRRI_ASAP/` 는 추적 파일
 0줄 변경**(`git status --short` 에 남은 둘은 이번 것이 아니다 —
 `ASAP-mcp/data.bak.20260824/` 와 CLAUDE.md 에 적힌 `docker-compose.override.yml`).
 온톨로지 · menu · 배선표 · 정답표 · `vendor/` · `resolve_service` ·
@@ -8989,8 +9167,8 @@ Streamlit    온톨로지 그래프 · 고른 경로    그 뒤에서 무슨 일
 #### 환경 (재기 전에 적었다)
 
 ```
-uvicorn(8000)     .venv python -m uvicorn demo.api.main:app --reload (pid 1226460)
-streamlit(8501)   .venv streamlit run demo/ui/main.py (pid 2008614)
+uvicorn(8000)     .venv python -m uvicorn app.api.main:app --reload (pid 1226460)
+streamlit(8501)   .venv streamlit run app/ui/main.py (pid 2008614)
 ollama            0.32.15 (pid 72585) · qwen3:32b · GPU0
 KRRI_ASAP         postgis · keycloak · gateway · mcp · web-search-mcp · web 을 올렸다
                   orchestrator 컨테이너는 안 올린다 — 8000 자리가 우리 것이다
@@ -9010,7 +9188,7 @@ KRRI_ASAP         postgis · keycloak · gateway · mcp · web-search-mcp · web
              `ASAP-web/packages/chat/src/api.ts` 의 sendChatMessageStream 이
              보내는 본문(text · sessionId · context · target_documents)과 같고,
              nginx 와 gateway 를 통과하는 것도 같다. 다른 것은 DOM 뿐이다
-Streamlit    streamlit 내장 `streamlit.testing.v1.AppTest` 로 `demo/ui/main.py`
+Streamlit    streamlit 내장 `streamlit.testing.v1.AppTest` 로 `app/ui/main.py`
              를 실제로 돌렸다. 세션 상태 · 위젯 · 그려진 요소를 그대로 읽는다.
              새 의존성이 아니다. 다른 것은 픽셀 뿐이다
 ```
@@ -9021,7 +9199,7 @@ Streamlit    streamlit 내장 `streamlit.testing.v1.AppTest` 로 `demo/ui/main.p
 
 #### 1. 기록하는 것과 안 하는 것
 
-`demo/api/services/recent_service.py` 하나다. 메모리에만 둔다 — 파일도 DB 도
+`app/api/services/recent_service.py` 하나다. 메모리에만 둔다 — 파일도 DB 도
 안 만들었다. 서버를 다시 띄우면 사라지고, 그때는 발화를 다시 넣으면 된다.
 
 ```
@@ -9046,7 +9224,7 @@ Streamlit    streamlit 내장 `streamlit.testing.v1.AppTest` 로 `demo/ui/main.p
 열고 그 뒤 줄을 거기 붙인다. 되묻기 답의 후보 줄(`  1  인구 통계 조회`)은
 앞에 공백이 있고 마침표가 없어 이 꼴에 안 걸린다.
 
-**훔쳐보는 자리가 둘이다.** `demo/api/main.py` 가 한 번 씌우는 껍데기이고
+**훔쳐보는 자리가 둘이다.** `app/api/main.py` 가 한 번 씌우는 껍데기이고
 **값을 하나도 안 바꾼다.**
 
 ```
@@ -9076,7 +9254,7 @@ GET /recent                마지막 다섯 회차(TAIL)
 
 #### 3. 갱신 주기 3초 — 왜 그 값인가
 
-`demo/ui/config.py` 의 `FOLLOW_INTERVAL_SECONDS = 3` 한 곳이다.
+`app/ui/config.py` 의 `FOLLOW_INTERVAL_SECONDS = 3` 한 곳이다.
 
 ```
 저쪽 회차 하나가 2.8~5.8초다(아래 실측). 그보다 촘촘히 물어도 새 것이 없다 —
@@ -9259,9 +9437,9 @@ rtsp:// · "op" · flyTo · map.draw
 소수 넷째 자리로 잘라 적는 지점 하나이고 저쪽 화면에도 이미 그대로 나가는
 문자열이다. 좌표 배열이 아니다.
 
-시험 둘이 이것을 막는다 — `tests/demo/api/test_recent.py` 가 geojson 을 실은
+시험 둘이 이것을 막는다 — `tests/app/api/test_recent.py` 가 geojson 을 실은
 `commands` 로 회차를 만들어 `/recent` 응답 전문을 뒤지고,
-`tests/demo/ui/test_follow_panel.py` 가 화면에 그릴 문자열을 같은 낱말로
+`tests/app/ui/test_follow_panel.py` 가 화면에 그릴 문자열을 같은 낱말로
 뒤진다.
 
 #### 따라 보기를 끄면
@@ -9273,7 +9451,7 @@ rtsp:// · "op" · flyTo · map.draw
 ```
 
 **조각을 화면 맨 끝에서 부른다.** 앞쪽에서 부르면 조각이 거는 전체 rerun 에
-Run 클릭이 삼켜져 발화가 안 들어간다. `demo/ui/main.py` 는 왼쪽 칸에 빈
+Run 클릭이 삼켜져 발화가 안 들어간다. `app/ui/main.py` 는 왼쪽 칸에 빈
 컨테이너(`follow_slot`)만 잡아 두고 맨 끝에서 채운다.
 
 #### 관문 여덟
@@ -9339,7 +9517,7 @@ ollama 설정은 읽기만 했다 — 실험 셋의 모델 내리기(`keep_alive
 
 ```
 ollama            0.32.15 (pid 72585 · 2026-08-22 00:51 부터 떠 있음 · systemd · user ollama)
-uvicorn(8000)     .venv python -m uvicorn demo.api.main:app --reload (pid 1226460)
+uvicorn(8000)     .venv python -m uvicorn app.api.main:app --reload (pid 1226460)
 모델              qwen3:32b · 28 GB · 100% GPU(GPU0) · CONTEXT 32768 · UNTIL 2h
                   ★ 09:13:51 에 이 실험이 아닌 외부 /resolve 호출 한 번으로 적재돼 있었다
                     (journal: cached n_tokens 0→1024→2048→3072, 처음부터 계산)
@@ -9874,12 +10052,12 @@ population  1.1km    1건 (상당구뿐)
 **커밋 안 했다.** 고친 파일은 여섯이다.
 
 ```
-demo/api/services/clarify_service.py    새 파일. 되묻기 하나를 세션마다 두고 가른다
-demo/api/services/execute_service.py    chat · _run_choice · _remember_clarify
-demo/api/main.py                        sessionId 를 chat 에 넘기는 한 줄
-demo/api/schemas/requests.py            docstring ("네 필드 모두 안 읽는다" 가 거짓이 됐다)
-tests/demo/api/test_clarify_choice.py   새 파일 36개
-tests/demo/api/test_clarify_flow.py     새 파일 12개
+app/api/services/clarify_service.py    새 파일. 되묻기 하나를 세션마다 두고 가른다
+app/api/services/execute_service.py    chat · _run_choice · _remember_clarify
+app/api/main.py                        sessionId 를 chat 에 넘기는 한 줄
+app/api/schemas/requests.py            docstring ("네 필드 모두 안 읽는다" 가 거짓이 됐다)
+tests/app/api/test_clarify_choice.py   새 파일 36개
+tests/app/api/test_clarify_flow.py     새 파일 12개
 ```
 
 **온톨로지 · menu · 배선표 · 정답표 · `vendor/` · `resolve_service` 를 안
@@ -9907,7 +10085,7 @@ tests/demo/api/test_clarify_flow.py     새 파일 12개
 
 #### 가르는 규칙 — 네 꼴만 받는다
 
-`demo/api/services/clarify_service.pick` 이다. **LLM 을 안 부른다.**
+`app/api/services/clarify_service.pick` 이다. **LLM 을 안 부른다.**
 부르면 느려지고, 무엇보다 같은 문구에 다른 답이 나온다 — 고르기는 사람이 방금
 화면에서 읽은 것을 되뇌는 일이라 흔들릴 자리가 아니다.
 
@@ -10191,7 +10369,7 @@ check_resolve --runs 3   적중 62/93 · 근접 24 · 빗나감 4 · 못 붙음 
                          여섯. 셋 다 위에 문구 그대로 옮겼다
 새 파일 · 의존성          requirements.txt 에 새 줄 0. import 는 re · time ·
                          collections 셋 다 표준 라이브러리다
-vendor 무결              git diff 에 vendor/ 없음. demo/api 셋과 tests 둘뿐이다
+vendor 무결              git diff 에 vendor/ 없음. app/api 셋과 tests 둘뿐이다
 ```
 
 **★ check_resolve 를 두 번 돌렸다. 첫 회는 믿을 것이 못 됐다.**
@@ -10232,8 +10410,8 @@ stash 로 되돌린 기준선    적중 62/93 · 빗나감 4 · LLM 단독 61/93
   값이다. **5분 경계는 사람이 눌러 확인했지만**(위) 그 값이 알맞은지는 안 쟀다 —
   사람이 되묻기 앞에서 얼마나 머무는지를 세어 본 적이 없다. 세션 상한 64 는
   경계를 아예 못 눌러 봤다. 시연에 세션이 하나뿐이라 넘칠 일이 없다.
-- **Streamlit 화면(`demo/ui/`)을 안 건드렸다.** 그쪽은 `/chat` 을 아예 안
-  부르고 `/resolve` 만 부른다(`demo/ui/api_client.py` 에 `chat` 이 없다).
+- **Streamlit 화면(`app/ui/`)을 안 건드렸다.** 그쪽은 `/chat` 을 아예 안
+  부르고 `/resolve` 만 부른다(`app/ui/api_client.py` 에 `chat` 이 없다).
   되묻기 뒤 고르기는 `POST /chat` · `POST /chat/stream` 계약에만 있다.
 - **`check_argument.py` 와 `check_wiring.py` 의 표를 안 늘렸다.** 고르기는
   발화 해석 밖의 일이라 잴 칸이 없다.
@@ -10243,8 +10421,8 @@ stash 로 되돌린 기준선    적중 62/93 · 빗나감 4 · LLM 단독 61/93
 ### 2026-08-26 (서른셋째) · 검산이 맞는 답을 덮던 규칙을 고친다 — 안 셋을 재고 골랐다
 
 모델 qwen3:32b(서버 기본) · recipe 40 · 31발화 × 3회 × 네 묶음.
-**커밋 안 했다.** 고친 파일은 `demo/api/services/resolve_service.py`
-(`_verdict` 한 함수) · `tests/demo/api/test_verdict.py`(새 파일) · 이 파일뿐이다.
+**커밋 안 했다.** 고친 파일은 `app/api/services/resolve_service.py`
+(`_verdict` 한 함수) · `tests/app/api/test_verdict.py`(새 파일) · 이 파일뿐이다.
 **온톨로지 · menu · 배선표 · 정답표 · `vendor/` 를 안 건드렸다.**
 
 #### 왜 고쳤나 — 규칙 둘이 같은 상황을 다르게 처신하고 있었다
@@ -10692,7 +10870,7 @@ SELECT 10/10 으로 하나에 갔던 것들이다. **표시가 「시연」인�
 
 모델 qwen3:32b(서버 기본) · recipe 40 · 지식베이스 문서 2
 (철도안전법 47쪽 · 철도안전법 시행규칙 52쪽, `knowledge.listDocs` 실측).
-**커밋 안 했다.** 고친 파일은 `demo/api/services/step_service.py`(배선 한 줄) ·
+**커밋 안 했다.** 고친 파일은 `app/api/services/step_service.py`(배선 한 줄) ·
 `vendor/asap/workflow_answer.py`(우리 파일) · 그 둘의 테스트 · 이 파일이다.
 
 #### 1단계 — 문서 이름이 검색어로 걸리는가 (filter_docs 없이 되는가)
@@ -10840,7 +11018,7 @@ step_service 최소 변경 배선 한 줄("k": 6)과 그 줄 주석뿐
 모델 qwen3:32b(서버 기본) · 온톨로지 노드 58 그대로 · 관계 108→107 ·
 recipe 41→40 · 발화 9개 × **3회** × 세 묶음 = 81회.
 **커밋 안 했다.** 고친 파일은 `ontology/ontology.yaml` ·
-`ontology/_init/ontology.yaml` · `demo/api/services/step_service.py` ·
+`ontology/_init/ontology.yaml` · `app/api/services/step_service.py` ·
 `tools/check_resolve.py` · `tests/ontology/test_shortlist.py` ·
 `workflows/static` 의 recipe·menu(도구가 다시 만든 것) · 이 파일이다.
 
@@ -11170,10 +11348,10 @@ CLARIFY 로 돌아갈 수 있는 자리다"*. **68자 짧아지자 4 가 실제�
   설명이지 실측이 아니다. menu 를 인위로 68자 늘려 되돌아가는지 재보면
   갈리지만 안 했다. 7 의 `given` 이 왜 비었는지도 안 갈랐다.
 - **화면(`POST /chat`)으로는 안 눌렀다.** `/resolve` 만 봤다.
-- `vendor/` · `demo/graph_svg/layout.json` 은 안 건드렸다.
+- `vendor/` · `app/ui/graph_svg/layout.json` 은 안 건드렸다.
   `layout.json` 에는 노드가 그대로 다 있다 — 이번에 뺀 것이 노드가 아니라
   관계 한 줄이라 애초에 움직일 것이 없다.
-- `demo/ui/components/sample_picker.py` 의 `SAMPLES` 는 안 건드렸다.
+- `app/ui/components/sample_picker.py` 의 `SAMPLES` 는 안 건드렸다.
   거기 적힌 `recipe_002`(CCTV)는 이번 변경 전에 이미 낡은 번호다.
   범위 밖이라 두고 여기에 적는다.
 
@@ -11543,7 +11721,7 @@ ev.searchStations 사용 권장"). **같은 자리는 더 없다.** 「스물일
 모델 qwen3:32b(서버 기본) · 온톨로지 노드 59→58 · 도구 39→38 ·
 recipe 45→41 · 발화 9개 × 10회 × 세 묶음 = 270회.
 **커밋 안 했다.** 고친 파일은 `ontology/ontology.yaml` ·
-`ontology/_init/ontology.yaml` · `demo/api/services/step_service.py` ·
+`ontology/_init/ontology.yaml` · `app/api/services/step_service.py` ·
 `tools/check_resolve.py` · `tests/ontology/test_shortlist.py` ·
 `workflows/static` 의 recipe·menu(도구가 다시 만든 것) · 이 파일이다.
 
@@ -11778,7 +11956,7 @@ C 는 그대로 `web_fetch × 웹 주소` 하나다. `step_service.py` 에서 �
 - **발화 4 · 6 이 왜 좋아졌는지 확인 안 했다.** 프롬프트 길이라는 것은
   소거법으로 남은 설명이지 실측이 아니다. menu 를 인위로 늘려 되돌아가는지
   재보면 갈리지만 안 했다.
-- `vendor/` · `demo/graph_svg/layout.json` 은 안 건드렸다.
+- `vendor/` · `app/ui/graph_svg/layout.json` 은 안 건드렸다.
   `layout.json` 과 `tools/probe_out/` 에는 `search_ev_chargers` 가 아직
   남아 있다 — 둘 다 이번 변경 범위 밖이다.
 
@@ -12148,7 +12326,7 @@ query="오송역"  0건
 ### 2026-08-25 (스물넷째) · 도구마다 무슨 인자로 불렀고 무엇이 돌아왔는지를 화면에 낸다 · 화면 실측
 
 **「스물셋째」의 「★ 미완성이다」 넷을 다 했다.** 고친 것은
-`vendor/asap/workflow_answer.py` 와 `demo/api/services/step_service.py` 의 답
+`vendor/asap/workflow_answer.py` 와 `app/api/services/step_service.py` 의 답
 첫 줄 조립부 한 곳이다. 온톨로지 · menu · 정답표 · `STEP_OF` · `TOOL_OF` 를 안
 건드렸다. 프롬프트에 안 들어가는 층이라 판정이 움직이면 안 되는 변경이다.
 
@@ -12561,7 +12739,7 @@ referenceDate                 언제 기준인가             2026-06-30
 
 #### 화면 문구 전후 (실제로 나온 문자열)
 
-uvicorn 을 고치기 전 코드로 띄운 채 먼저 받고, `pkill -f "demo.api.main"` 뒤
+uvicorn 을 고치기 전 코드로 띄운 채 먼저 받고, `pkill -f "app.api.main"` 뒤
 다시 띄워 받았다. 모델은 `qwen3:32b`, 온톨로지는 HEAD(a4ae834) 그대로다.
 
 ```
@@ -12845,7 +13023,7 @@ menu.yaml 자수                 3710자 / 6000
 
 #### 세 묶음
 
-각 묶음 발화 9개 × 10회. `pkill -f "demo.api.main"` 후 본 트리에서 uvicorn 을
+각 묶음 발화 9개 × 10회. `pkill -f "app.api.main"` 후 본 트리에서 uvicorn 을
 다시 띄우고 쟀다.
 
 ```
@@ -13066,7 +13244,7 @@ check_resolve 세 묶음                ★ 못 넘었다. 아래
 
 #### 세 묶음 — 셋이 같은 값이다
 
-각 묶음 발화 9개 × 10회. `pkill -f "demo.api.main"` 후 본 트리에서 uvicorn 을
+각 묶음 발화 9개 × 10회. `pkill -f "app.api.main"` 후 본 트리에서 uvicorn 을
 다시 띄우고 쟀다.
 
 ```
@@ -13742,7 +13920,7 @@ menu 문장                             48개 → 45개
   **동기가 사라졌다.** 급하지 않으므로 「열린 과제」에 줄여 남겼다.
 - **`items` 셋 중 무엇을 집을지 가르기.** `items.1`(시군구)로 박았다. 발화가
   시도를 말해도 시군구가 나온다. 「열린 과제」에 새 항목으로 남겼다.
-- **`demo/ui/components/sample_picker.py`.** `"오송역 CCTV 보여줘"` 를
+- **`app/ui/components/sample_picker.py`.** `"오송역 CCTV 보여줘"` 를
   `recipe_002` 로 적어 두었는데 지금 002 는 「말한 장소 → 철도 구간 형상 조회」다.
   CCTV 사슬은 새 022 다. **이번 변경 전부터 어긋나 있었다** — 변경 전에도 그
   사슬은 025 였다. 화면 시연의 기대값이라 사람이 정할 일이고 안 고쳤다.
@@ -13762,7 +13940,7 @@ menu 문장                             48개 → 45개
 **위 「왜 6번이 움직였나」의 소거법은 후보를 하나 빼먹었다.** 지우지 않고
 여기에 덧붙인다.
 
-이번 세 묶음은 `pkill -f "demo.api.main"` 로 서버를 내리고 새로 띄운 uvicorn
+이번 세 묶음은 `pkill -f "app.api.main"` 로 서버를 내리고 새로 띄운 uvicorn
 에서 쟀다. 코드가 바뀌었으니 다시 띄워야 했다. 그런데 기준선 80/90
 (「열일곱째」)은 **그 이전 프로세스**에서 잰 값이다.
 

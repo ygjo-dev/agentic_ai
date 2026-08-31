@@ -34,7 +34,7 @@
 
 `--narrow` 는 /resolve 에 `narrow=true` 를 실어 보낸다. 서버는 LLM 을 두 번 부른다 —
 1차는 menu 없이 축 셋만, 온톨로지가 그 축으로 후보를 좁힌 뒤, 2차가 그 후보
-문장만 보고 고른다 (demo/api/services/resolve_service.py). **기본은 끔이고, 끄면
+문장만 보고 고른다 (app/api/services/resolve_service.py). **기본은 끔이고, 끄면
 서버도 이 도구도 스위치를 만들기 전과 한 글자도 다르지 않아야 한다.**
 
 켜면 「검산」이라는 개념이 없어진다. 대조할 두 목록이 없다. 그래서
@@ -56,7 +56,7 @@
 ## 「지도 문맥」 옵션 — 기본이 「둘 다」다
 
 `--context` 는 /resolve 본문에 저쪽 화면이 보내는 지도 문맥을 실어 보낸다.
-값은 `demo/ui/config.py` 의 고정값이고 거기 근거가 적혀 있다 (오송역 반경 15km).
+값은 `app/ui/config.py` 의 고정값이고 거기 근거가 적혀 있다 (오송역 반경 15km).
 
     none   안 보낸다. 화면 시작 데이터 둘이 죽는다 — 「마흔여섯째」 이전과 같은 조건
     bbox   보이는 범위만. 저쪽 평상시(우클릭 전)와 같은 모양. 「쉰다섯째」까지의 기본
@@ -231,14 +231,14 @@ from pathlib import Path
 import requests
 from dotenv import load_dotenv
 
-# 저장소 뿌리를 path 에 넣는다. tools/ 아래에서 돌아가므로 이것 없이는 demo 를
+# 저장소 뿌리를 path 에 넣는다. dev/tools/ 아래에서 돌아가므로 이것 없이는 app 을
 # 못 찾는다 (check_wiring.py 와 같은 방식이다).
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 # 고정 지도 문맥은 화면이 갖는다. 이 도구가 같은 값을 다시 적으면 둘이 조용히
 # 어긋나고, 그러면 "시연과 같은 조건" 이라는 말이 거짓이 된다.
-from demo.ui import config as ui_config  # noqa: E402
+from app.ui import config as ui_config  # noqa: E402
 
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
@@ -548,7 +548,7 @@ load_dotenv(REPO_ROOT / ".env")
 # 화면이 부르는 주소와 같아야 표를 믿을 수 있다. 그래서 같은 환경변수를 본다.
 BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 # models.yaml 의 가장 큰 timeout(qwen3:32b 900) 보다 짧으면 큰 모델을 잴 때
-# 서버가 답하기 전에 여기서 끊겨 표가 오류로만 찬다. 화면(demo/ui/api_client.
+# 서버가 답하기 전에 여기서 끊겨 표가 오류로만 찬다. 화면(app/ui/api_client.
 # RESOLVE_TIMEOUT 180)과 달리 이 도구는 큰 모델도 재므로 값을 따로 둔다.
 TIMEOUT = 900
 
@@ -563,7 +563,7 @@ NARROW = False
 # 지도 문맥 스위치. --context 가 정한다. **기본은 "both".** main() 만 바꾼다.
 #
 # 고정값은 여기서 다시 적지 않는다. 화면이 보내는 것과 한 글자도 달라지면
-# 표가 시연을 못 말하므로 출처를 하나로 둔다 — demo/ui/config.py 다.
+# 표가 시연을 못 말하므로 출처를 하나로 둔다 — app/ui/config.py 다.
 #
 # **2026-08-30 에 기본을 bbox 에서 both 로 바꿨다** (「쉰여섯째」). 까닭은
 # 하나다 — bbox 뿐이면 **찍은 지점 recipe 아홉을 아예 못 잰다.**
@@ -837,7 +837,7 @@ def _measure(
 # ## 무엇을 부르나 — 저쪽 화면과 같은 길
 #
 # POST /chat 이다. 저쪽 화면이 부르는 것과 같은 길이고(정확히는 /chat/stream
-# 이지만 둘은 같은 흐름을 쓴다 — demo/api/main._chat_events), 해석부터 도구
+# 이지만 둘은 같은 흐름을 쓴다 — app/api/main._chat_events), 해석부터 도구
 # 호출까지 한 번에 지난다. 그다음 GET /recent 로 그 회차를 읽는다. 회차에
 # status · recipe_id · candidate_recipe_ids · 단계 줄 · 답 문구가 다 들어 있어
 # 무엇이 불렸고 무엇이 돌아왔는지를 응답 본문을 다시 파싱하지 않고 읽는다.
@@ -872,7 +872,7 @@ def _measure(
 # 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 저쪽
 # 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
 # 표는 ✓ 로 찍히는 식이다.
-from demo.api.services.execute_service import (  # noqa: E402
+from app.api.services.execute_service import (  # noqa: E402
     CHOICE_HEAD,
     NO_ARGUMENT_ANSWER,
     UNWIRED_ANSWER,

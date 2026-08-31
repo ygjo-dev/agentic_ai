@@ -19,11 +19,12 @@ recipe 매칭 → 실행 → 검증.
   (실행 배선은 아직 갈 곳이 없다. 나중에 execution/ 이 된다)
 
 서비스      안 사라진다
-  demo/api/       창구 — 라우팅 + services
-  demo/ui/        화면 — Streamlit
+  app/api/           창구 — 라우팅 + services
+  app/ui/            화면 — Streamlit
 
 그리기
-  demo/graph_svg/ 온톨로지 → SVG. 그래프DB 로 가면 갈릴 자리다
+  app/ui/graph_svg/  온톨로지 → SVG. UI 를 위해 있는 것이라 ui 밑이다.
+                     그래프DB 로 가면 갈릴 자리다
 
 등록
   아직 흩어져 있다. 나중에 registration/ 으로 모으고, 다른 저장소로 나간다
@@ -32,8 +33,8 @@ recipe 매칭 → 실행 → 검증.
   vendor_to_be_deleted/  저쪽 것. 없어질 것
 
 재는 것     배포에 안 들어간다
-  dev/tools/      계기판
-  dev/tests/      시험
+  dev/tools/         계기판
+  dev/tests/         시험
 ```
 
 **서비스를 위해 도메인을 굽히지 않는다.** 화면이 편해지자고 도메인 모양을 바꾸는
@@ -88,7 +89,7 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 ### 배치
 
 - 모든 노드 좌표를 `layout.json` 에 고정하고 `neato -n` 으로 렌더한다.
-- **`demo/graph_svg/layout.json` 을 지우지 않는다.** 좌표 회전 조건이 임계
+- **`app/ui/graph_svg/layout.json` 을 지우지 않는다.** 좌표 회전 조건이 임계
   근처라 다시 배치하면 지도가 눕는다.
 - 핀이 있는 실행에 `overlap` 금지 — 고정을 무시하고 388~710pt 밀어낸다.
 - `inputscale=72` 없으면 좌표 왕복이 깨진다 (delta 14657).
@@ -109,8 +110,8 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 
 ### 계층
 
-- 화면(`demo/ui/`)에서 `ontology` · `llm_engine` · `paths` import 0건.
-- 그리기(`demo/graph_svg/`)가 `ontology` 를 직접 읽지 않는다 — 도메인 데이터는
+- 화면(`app/ui/`)에서 `ontology` · `llm_engine` · `paths` import 0건.
+- 그리기(`app/ui/graph_svg/`)가 `ontology` 를 직접 읽지 않는다 — 도메인 데이터는
   창구의 `ontology_service` 에서만 온다.
 - `ontology/store.py` 는 `paths` 외의 프로젝트 모듈을 import 하지 않는다.
 - **`yaml.dump` 로 다시 쓰지 않는다** (상단 주석과 들여쓰기가 날아간다).

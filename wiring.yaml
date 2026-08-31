@@ -21,7 +21,7 @@
 #
 # **< > 는 「값은 코드에 있다」는 표시다.** 그 이름을 로더가 코드의 값으로 바꿔
 # 넣고, 모르는 이름이 오면 조용히 넘기지 않고 터진다. 값을 여기 옮겨 적으면
-# 원천이 둘이 되는 것들이다 — <RADIUS_METERS> 는 demo/ui/config.py 도 쓰고,
+# 원천이 둘이 되는 것들이다 — <RADIUS_METERS> 는 app/ui/config.py 도 쓰고,
 # <POINT_RADIUS_TO_BBOX> 는 vendor 어댑터의 이름이고, <RAILWAY_LINE_SUFFIX> 는
 # 값 판단의 자라 뜻이 코드에 있어야 한다.
 #
