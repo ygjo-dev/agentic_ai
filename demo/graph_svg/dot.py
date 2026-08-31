@@ -97,7 +97,7 @@ COLORS = {
 # 채우기를 넣어 선이 노드를 통과해 비치지 않게 한다 — 크기에는 영향이 없다(실측).
 # style 과 color 가 앞 기본값과 두 번 나오지만 Graphviz 는 나중 것을 쓴다(실측).
 NODE_ATTRS = (
-    "fontsize=24",
+    "fontsize=21",
     'margin="0.14,0.07"',
     "width=1.3",
     "height=0.6",

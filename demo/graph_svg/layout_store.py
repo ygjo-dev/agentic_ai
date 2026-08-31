@@ -149,7 +149,7 @@ def transpose(
 # 그릴 때만 곱하는 좌표 배율. 저장된 좌표는 안 고친다 (아래 for_drawing).
 # **1.0 이다** — 배치가 처음부터 촘촘하게 놓이므로 줄일 것이 없다. 0.64 였던
 # 때의 근거와 왜 없어졌는지는 NOTES.md 「쉰두째」·「쉰셋째」.
-DRAW_SCALE = 1.0
+DRAW_SCALE = 1.1
 
 
 def for_drawing(
@@ -217,12 +217,100 @@ NEATO_FRESH_ATTRS = ("inputscale=72", "overlap=voronoi")
 
 # 늘리는 배수. 힘 기반 배치는 등방이라 늘 동그랗게 나오는데(H/W 0.84) 화면
 # 칸은 가로로 길다(0.35). 가로로 늘린 뒤 겹침만 다시 없애면 칸 모양에 맞는다.
-# 5.0 에서 폭과 높이를 둘 다 100% 쓴다 (NOTES.md 「쉰셋째」의 표).
-SPREAD_X = 5.0
+# 5.0 이었다. 뭉치기(CLUSTER_PULL)가 노드를 무리 안으로 당겨 캔버스가 좁아지므로
+# 늘리기를 조금 올려 폭 100% 를 지킨다 (NOTES.md 「예순넷째」의 표).
+SPREAD_X = 5.25
 # 늘린 자리에서 겹침만 다시 없앤다. maxiter=0 이 배치 반복을 건너뛰므로
 # 늘려둔 모양이 그대로 남고, prism 은 겹친 노드만 국소적으로 밀어낸다.
-# sep 은 노드 둘레에 두는 여유(pt). +12 에서 가장 가까운 쌍이 24pt 떨어진다.
-NEATO_SPREAD_ATTRS = ("inputscale=72", "overlap=prism", "maxiter=0", 'sep="+12"')
+# sep 은 노드 둘레에 두는 여유(pt). +12 였다. 뭉치기가 무리 안을 촘촘하게
+# 만들어 +12 로는 캔버스가 커져 글씨가 15.11pt 아래로 떨어진다. +11 에서
+# 가장 가까운 쌍이 8.6pt 떨어지고 화면 글씨가 15.21pt 다.
+NEATO_SPREAD_ATTRS = ("inputscale=72", "overlap=prism", "maxiter=0", 'sep="+11"')
+
+# 무리로 당기는 정도. 0 이면 안 당기고 1 이면 무리의 무게중심에 겹쳐 쌓는다.
+#
+# **사람이 화면을 보고 "난잡하다 · 같은 대상끼리 동그랗게 모이면 좋겠다" 고 했다.**
+# 엣지 길이(dot.py SOLID_LEN · DOTTED_LEN)로 먼저 해봤는데 안 됐다 — 점선을
+# 0.7 에서 0.15 까지 줄여도 뭉침은 2.52 -> 2.6 으로 거의 그대로였고 교차만
+# 116 -> 183 으로 늘었다. 점선을 짧게 두면 별이 자기 안으로 무너지고, 그 뒤에
+# 오는 겹침 제거가 무너진 것을 다시 흩어놓기 때문이다 (NOTES.md 「예순넷째」).
+#
+# 그래서 배치가 끝난 자리에서 좌표를 직접 당긴다. 힘으로 부탁하는 것이 아니라
+# 결과를 옮기는 것이라 확실하다. 당긴 뒤에 prism 이 겹친 쌍만 밀어내므로
+# 겹침 0 은 그대로 지켜진다.
+# 0.7 에서 뭉침 2.52 -> 2.84, 교차 116 -> 123 이다.
+CLUSTER_PULL = 0.7
+
+
+def clusters(nodes: dict, dotted: dict) -> dict[str, str]:
+    """노드가 어느 무리에 드는가. {node_id: 무리 노드 id}
+
+    입력  노드 전체 · 점선(특성 관계)
+    출력  대상 노드와 그 구성원만. 어느 무리에도 안 드는 노드는 안 담김
+    규칙  대상 노드(kind=group)에 점선으로 붙은 것이 그 무리의 구성원.
+          대상 노드 자신도 자기 무리에 넣음 — 당길 때 무게중심에 함께 들어가야
+          별의 한가운데가 딴 데로 밀리지 않음
+    제약  한 노드를 두 무리에 넣지 않는다.
+          평균 거리를 두 번 세게 되고 당기는 방향도 갈림. 먼저 만난 무리로 둠
+    """
+    groups = {nid for nid, node in (nodes or {}).items()
+              if node.get("kind") == "group"}
+    found = {gid: gid for gid in groups}
+
+    for a, b in dotted or ():
+        if (a in groups) == (b in groups):
+            continue  # 무리끼리 · 무리 아닌 것끼리는 소속을 안 만든다
+        group, member = (a, b) if a in groups else (b, a)
+        found.setdefault(member, group)
+
+    return found
+
+
+def pull_to_clusters(
+    positions: dict[str, tuple[float, float]],
+    nodes: dict,
+    dotted: dict,
+    strength: float | None = None,
+) -> dict[str, tuple[float, float]]:
+    """같은 무리 노드를 무게중심 쪽으로 당긴 좌표.
+
+    입력  좌표 · 노드 · 점선 · 당기는 정도(생략하면 CLUSTER_PULL)
+    출력  {node_id: (x, y)}
+    규칙  무리마다 그 안 노드의 평균 자리를 구하고 그쪽으로 strength 만큼 옮김.
+          어느 무리에도 안 드는 노드(지오코딩 · 문서 같은 공용 도구 열일곱)는
+          안 건드림 — 무리가 아니므로 모을 중심이 없음
+    제약  원본을 안 건드림. 새 dict 를 돌려줌
+    제약  이 결과를 그대로 저장하지 않는다.
+          당기면 노드가 겹치므로 prism 겹침 제거를 반드시 뒤에 붙인다(spread)
+    """
+    factor = CLUSTER_PULL if strength is None else strength
+    if not factor:
+        return dict(positions)
+
+    belongs = clusters(nodes, dotted)
+
+    middle: dict[str, tuple[float, float]] = {}
+    for group in set(belongs.values()):
+        members = [nid for nid, gid in belongs.items()
+                   if gid == group and nid in positions]
+        if not members:
+            continue
+        middle[group] = (
+            sum(positions[nid][0] for nid in members) / len(members),
+            sum(positions[nid][1] for nid in members) / len(members),
+        )
+
+    pulled = {}
+    for node_id, (x, y) in positions.items():
+        centre = middle.get(belongs.get(node_id, ""))
+        if centre is None:
+            pulled[node_id] = (x, y)
+            continue
+        pulled[node_id] = (
+            (1 - factor) * x + factor * centre[0],
+            (1 - factor) * y + factor * centre[1],
+        )
+    return pulled
 
 
 def spread(
@@ -233,7 +321,10 @@ def spread(
 
     입력  노드 · 실선 · 점선 · 최초 배치 좌표
     출력  {node_id: (x, y)}
-    규칙  가로만 SPREAD_X 배 늘린 뒤 prism 으로 겹친 쌍만 밀어냄.
+    규칙  가로만 SPREAD_X 배 늘리고, 같은 무리를 무게중심으로 당긴 뒤,
+          prism 으로 겹친 쌍만 밀어냄
+          당기기는 늘리기 **뒤**에 옴. 앞에 두면 늘리기가 동그란 무리를
+          가로로 5배 늘려 다시 납작하게 폄
           늘린 좌표는 핀이 아니라 시작 위치로 넘김(pin=False) — 못박으면
           겹침 제거가 할 일이 없음
           노드 크기를 함께 넘김. 겹침 제거가 상자 크기를 알아야 뜻이 있음
@@ -243,6 +334,7 @@ def spread(
           핀이 있는 실행에 겹침 제거를 걸면 기존 노드가 밀려남
     """
     stretched = {node_id: (x * SPREAD_X, y) for node_id, (x, y) in positions.items()}
+    stretched = pull_to_clusters(stretched, nodes, dotted)
 
     return layout_positions(
         build_dot(
