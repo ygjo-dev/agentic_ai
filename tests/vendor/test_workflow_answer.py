@@ -273,7 +273,7 @@ def test_a_warning_next_to_a_count_never_shows():
 # 사실이 문서에 박혔다 (NOTES.md 2026-08-22 넷째의 정정).
 
 
-def test_200_으로_돌아온_오류도_실패다():
+def test_an_error_returned_as_200_is_still_a_failure():
     """Gateway 는 실패를 200 과 {"error": {...}} 로도 돌려줌.
 
     그것은 item["result"] 에 담기고 item["error"] 는 비어 있음. 그 칸만 보면
@@ -290,7 +290,7 @@ def test_200_으로_돌아온_오류도_실패다():
     assert "error" not in item, "이 항목의 error 칸은 비어 있어야 시험이 성립함"
 
 
-def test_0건은_실패가_아니다():
+def test_zero_hits_is_not_a_failure():
     """호출은 끝났고 결과가 없는 것뿐임.
 
     답 문구가 "찾지 못했습니다" 로 이미 말하므로 진행 표시까지 "실패" 라고
@@ -343,7 +343,7 @@ def age_profile_step(result=AGE_PROFILE):
     }
 
 
-def test_인구_응답의_수치가_답에_실린다():
+def test_population_response_figures_are_carried_in_the_answer():
     """건수 칸이 없는 응답이 칸 이름만 찍혔음.
 
     실측 (2026-08-24 화면) : "춘천역 연령대별 인구 구성을 조회했습니다" 뒤에
@@ -360,7 +360,7 @@ def test_인구_응답의_수치가_답에_실린다():
     assert "칸: datasetId" not in answer
 
 
-def test_인구_응답의_목록_값은_안_샌다():
+def test_population_response_list_values_never_leak():
     """ageBands 23건 · ages 111건이 답에 통째로 실리면 화면이 raw JSON 이 됨."""
     answer = compose_workflow_answer(
         {"answer_instruction": "청주시 흥덕구 연령대별 인구 구성을 조회했습니다."},
@@ -372,7 +372,7 @@ def test_인구_응답의_목록_값은_안_샌다():
     assert "10,849" not in answer
 
 
-def test_여럿_중_하나를_준_것을_밝힌다():
+def test_states_that_one_of_many_was_returned():
     """여덟 건이 맞는데 하나만 주면서 나머지 일곱을 안 알렸음.
 
     실물 : tools/probe_out/election.getDistrict.name-앞두글자충북-2026-08-25.json.
@@ -398,7 +398,7 @@ def test_여럿_중_하나를_준_것을_밝힌다():
     assert "전체 8건 중 하나" in answer
 
 
-def test_전체가_받은_것과_같으면_중_하나라고_안_한다():
+def test_no_one_of_many_when_the_total_equals_what_was_received():
     """totalMatches 1 은 여럿이 아님. 실물 : election.getDistrict.name-실제이름.json."""
     trace = [{
         "id": "s1",
@@ -417,7 +417,7 @@ def test_전체가_받은_것과_같으면_중_하나라고_안_한다():
     assert "중 하나" not in answer
 
 
-def test_totalMatches_가_없으면_지어내지_않는다():
+def test_never_invents_when_totalMatches_is_absent():
     """그 칸을 안 주는 도구가 있음. 실물 : ev.getStation.statId-stationId.json."""
     trace = [{
         "id": "s1",
@@ -437,7 +437,7 @@ def test_totalMatches_가_없으면_지어내지_않는다():
     assert "전체" not in answer
 
 
-def test_단위를_모르는_수치는_이름_옆에_안_붙인다():
+def test_a_figure_with_an_unknown_unit_is_not_put_beside_the_name():
     """무엇의 수인지 못 말하는 숫자는 딴 뜻으로 읽힘.
 
     실물 : ev.getDatasetInfo.기본.json 의 totalRegionCount 는 17 인데,
@@ -462,7 +462,7 @@ def test_단위를_모르는_수치는_이름_옆에_안_붙인다():
     assert "17" not in answer
 
 
-def test_이름도_수치도_없으면_칸_이름_그대로():
+def test_field_names_stay_when_there_is_neither_name_nor_figure():
     """모르는 모양은 여전히 칸 이름만. 실물 : rail.getSectionGeometry.nm-오송역.json.
 
     geometry 를 값으로 내면 화면이 raw JSON 이 됨.
@@ -490,7 +490,7 @@ def test_이름도_수치도_없으면_칸_이름_그대로():
 # 「★ 미완성이다」). 아래 input 은 전부 그 실측에서 실제로 나간 값이다.
 
 
-def test_무엇으로_불렀는지_단계_줄에_적힌다():
+def test_what_the_call_was_made_with_is_recorded_on_the_step_line():
     """"전기차 충전소 데이터 검색해줘" 가 "ev.searchStations 120건" 만 냈음.
 
     무엇으로 검색해 120건인지가 화면에 없었음.
@@ -507,7 +507,7 @@ def test_무엇으로_불렀는지_단계_줄에_적힌다():
     assert "120건" in answer
 
 
-def test_결과에_이미_나온_인자는_다시_안_적는다():
+def test_an_argument_already_shown_in_the_result_is_not_recorded_again():
     """geo.geocode 는 "오송역 → 주소 (경도, 위도)" 로 인자를 이미 말함.
 
     앞에 query="오송역" 을 또 적으면 같은 값이 한 줄에 두 번 나감.
@@ -520,7 +520,7 @@ def test_결과에_이미_나온_인자는_다시_안_적는다():
     assert answer.count("오송역") == 2, "머리말 하나와 단계 줄 하나뿐이어야 함"
 
 
-def test_인자가_비면_그_자리가_통째로_빠진다():
+def test_an_empty_argument_drops_the_slot_entirely():
     """빈 dict 에 "input: {}" 를 찍으면 읽을 것이 없는 칸이 화면을 먹음."""
     trace = [{"id": "s1", "tool": "bim.listModels", "input": {}, "result": []}]
     answer = compose_workflow_answer({"answer_instruction": "모델을 조회했습니다."}, trace)
@@ -528,7 +528,7 @@ def test_인자가_비면_그_자리가_통째로_빠진다():
     assert answer.endswith("bim.listModels    0건")
 
 
-def test_인자의_목록값은_안_적는다():
+def test_list_valued_arguments_are_not_recorded():
     """bbox 두 겹 · 좌표 배열이 인자 자리로 새면 결과 쪽을 막은 뜻이 없음.
 
     실측 : rail.getSectionGeometry 뒤에 오는 단계가 bbox 를 두 겹으로 받음.
@@ -546,7 +546,7 @@ def test_인자의_목록값은_안_적는다():
     assert "limit=50" in answer
 
 
-def test_실수_인자는_좌표_자리수로_자른다():
+def test_float_arguments_are_cut_to_coordinate_precision():
     """어댑터가 만든 bbox 는 소수점이 열대여섯 자리임. 그대로 적으면 줄이 넘침."""
     trace = [{
         "id": "s2",
@@ -587,7 +587,7 @@ NOT_FOUND = {
 }
 
 
-def test_못_찾았다는_응답이_제_사유를_말한다():
+def test_a_not_found_response_states_its_reason():
     """message 에 사유가 있는데 칸 이름만 찍혔음."""
     trace = [{
         "id": "s1",
@@ -605,7 +605,7 @@ def test_못_찾았다는_응답이_제_사유를_말한다():
     assert "칸: status" not in answer
 
 
-def test_못_찾았을_때_무엇으로_물었는지도_남는다():
+def test_what_was_asked_is_kept_when_not_found():
     """인자가 틀려서 못 찾은 것인지 데이터가 없는 것인지를 갈라야 함."""
     trace = [{
         "id": "s1",
@@ -618,7 +618,7 @@ def test_못_찾았을_때_무엇으로_물었는지도_남는다():
     assert 'name="충북 제1선거구"' in answer
 
 
-def test_못_찾았다는_응답도_큰_값은_안_샌다():
+def test_a_not_found_response_never_leaks_big_values():
     """dataset 안에 bbox 와 설명이 통째로 들어 있음."""
     trace = [{
         "id": "s1",
@@ -632,7 +632,7 @@ def test_못_찾았다는_응답도_큰_값은_안_샌다():
     assert "124.61169218381582" not in answer
 
 
-def test_데이터가_있는_status_는_못_찾았다고_안_한다():
+def test_a_status_that_has_data_is_not_called_not_found():
     """status 넷 중 ready · syncing 은 데이터가 있는 상태임.
 
     실물 : ev.getDatasetInfo.기본.json 이 status "syncing" 인데 충전소가
@@ -656,7 +656,7 @@ def test_데이터가_있는_status_는_못_찾았다고_안_한다():
     assert "한국환경공단 전기자동차 충전소" in answer
 
 
-def test_적재된_것이_없으면_없다고_한다():
+def test_says_there_is_none_when_nothing_is_loaded():
     """status "empty" 는 데이터가 하나도 안 들어온 것임. message 는 안 옴.
 
     실물 : ev.getDatasetInfo.json 이 stationCount 0 · totalRegionCount 17 임.
@@ -709,7 +709,7 @@ def knowledge_step(result=KNOWLEDGE):
     return {"id": "s1", "tool": "knowledge.query", "input": {"query": "철도 안전"}, "result": result}
 
 
-def test_문서_이름과_본문이_답에_실린다():
+def test_document_name_and_body_text_are_carried_in_the_answer():
     """본문이 오는데 세기만 했음. "4건" 은 문서 수도 아니고 k 의 기본값임."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
@@ -720,7 +720,7 @@ def test_문서_이름과_본문이_답에_실린다():
     assert "1건" in answer
 
 
-def test_본문은_잘라서_싣고_잘랐다고_밝힌다():
+def test_body_text_is_carried_truncated_and_states_that_it_was():
     """content 가 962~995자임. 통째로 실으면 화면이 응답 전문이 됨."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
@@ -730,7 +730,7 @@ def test_본문은_잘라서_싣고_잘랐다고_밝힌다():
     assert "일부개정" not in answer, "본문 끝까지 실리면 안 됨"
 
 
-def test_본문의_잇단_공백은_한_칸으로_붙인다():
+def test_runs_of_whitespace_in_body_text_collapse_to_one():
     """PDF 본문이 공백 수십 칸을 달고 옴. 그대로 실으면 한 줄이 텅 빔."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
@@ -739,7 +739,7 @@ def test_본문의_잇단_공백은_한_칸으로_붙인다():
     assert "  " not in answer.split("knowledge.query")[1].split("「")[1]
 
 
-def test_경로는_안_보여준다():
+def test_the_path_is_never_shown():
     """metadata.file_path 는 저쪽 컨테이너의 /tmp 경로임. 사람이 볼 것이 아님."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
@@ -749,7 +749,7 @@ def test_경로는_안_보여준다():
     assert "1T3XT" not in answer
 
 
-def test_첫_목록이_비면_다음_목록을_본다():
+def test_when_the_first_list_is_empty_the_next_list_is_read():
     """한 응답이 목록을 둘 담아 오고 첫째가 비어 있음.
 
     실물 : adminBoundary.findBoundaryByPoint 가 features 0건 · items 3건.
@@ -778,7 +778,7 @@ def test_첫_목록이_비면_다음_목록을_본다():
     assert "127.275651" not in answer
 
 
-def test_첫_항목이_좌표_덩어리면_건수만_낸다():
+def test_only_the_count_is_given_when_the_first_item_is_a_coordinate_blob():
     """geojson feature 는 {geometry, properties, type} 이라 읽을 칸이 없음.
 
     properties 안에 name 이 있지만 안 파고듦. 그 안에는 좌표와 목록이 함께 있음.
@@ -807,7 +807,7 @@ def test_첫_항목이_좌표_덩어리면_건수만_낸다():
     assert "#D8E4BC" not in answer
 
 
-def test_cctv_주소는_첫_항목이어도_안_샌다():
+def test_a_cctv_url_never_leaks_even_as_the_first_item():
     """cctvUrl 이 화면에 raw 로 새던 값 중 하나임. 88자짜리 서명 붙은 주소임.
 
     실물 : tools/probe_out/road.getCctv.cctv-오송역.json 의 첫 항목.
@@ -872,7 +872,7 @@ def knowledge_chunks_step(result=KNOWLEDGE_CHUNKS):
             "input": {"query": "철도 안전 교육"}, "result": result}
 
 
-def test_글_목록은_조각_두셋이_각각_문서_이름과_쪽으로_나온다():
+def test_text_list_chunks_each_come_out_with_document_name_and_page():
     """첫 조각만 보이면 나머지를 찾아온 것이 화면에 없음.
 
     실측 (2026-08-26) : "철도 안전 교육" k=6 이 법 4 · 시행규칙 2 조각을
@@ -889,7 +889,7 @@ def test_글_목록은_조각_두셋이_각각_문서_이름과_쪽으로_나온
     assert "제24조" in answer and "유효기간" in answer and "제41조" in answer
 
 
-def test_넷째_조각부터는_안_실린다():
+def test_the_fourth_chunk_onward_is_not_carried():
     """전부 늘어놓으면 화면이 응답 전문이 됨. 두셋에서 멈춰야 함."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
@@ -899,7 +899,7 @@ def test_넷째_조각부터는_안_실린다():
     assert "넷째조각표시글" not in answer
 
 
-def test_쪽수는_사람이_세는_수로_낸다():
+def test_page_numbers_are_given_as_people_count_them():
     """응답의 page 는 0부터 셈. 그대로 내면 문서에 찍힌 쪽과 하나 어긋남.
 
     실측 : page 11 조각의 본문 머리가 "12", page 50 조각이 "51"
@@ -915,7 +915,7 @@ def test_쪽수는_사람이_세는_수로_낸다():
     assert "11쪽" not in answer
 
 
-def test_쪽을_못_읽으면_출처만_남는다():
+def test_only_the_source_remains_when_the_page_cannot_be_read():
     """page 가 없거나 수가 아닌 응답도 조용히 돌아야 함. 지어내지 않음."""
     chunk = {
         "content": "안전관리체계의 승인을 받은 철도운영자등은",
@@ -930,7 +930,7 @@ def test_쪽을_못_읽으면_출처만_남는다():
     assert "쪽" not in answer
 
 
-def test_글이_아닌_목록은_예전대로_첫_항목만이다():
+def test_a_non_text_list_is_still_only_its_first_item():
     """이름 목록에 두셋 규칙이 걸리면 다른 도구의 답이 세 줄로 늘어남.
 
     글 목록 판정은 첫 항목의 TEXT_KEYS 임. 이름만 있는 항목은 안 걸림.
@@ -948,7 +948,7 @@ def test_글이_아닌_목록은_예전대로_첫_항목만이다():
     assert "청주시 서원구" not in answer, "첫 항목 하나만 봄"
 
 
-def test_낱자로_풀린_문서_이름은_붙여서_전부_보인다():
+def test_a_decomposed_document_name_is_composed_and_shown_whole():
     """실물 source 는 한글이 낱자(NFD)로 풀려 옴. 낱자로 세면 눈에 41자인
     이름이 len 67 이라 48 한도에서 어중간하게 잘림 (2026-08-26 화면 실측 —
     "「철도안전법 시행규칙(국토교통부령)(제015…」" 로 나왔음).
@@ -970,7 +970,7 @@ def test_낱자로_풀린_문서_이름은_붙여서_전부_보인다():
     assert "「철도안전법 시행규칙(국토교통부령)(제01571호)(20260324).pdf」" in answer
 
 
-def test_조각_여럿이어도_긴_토막은_안_샌다():
+def test_long_tokens_never_leak_even_with_many_chunks():
     """조각마다 본문 · 출처가 실리므로 자르는 상한이 조각 수만큼 돌아야 함."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
@@ -981,7 +981,7 @@ def test_조각_여럿이어도_긴_토막은_안_샌다():
     assert len(longest) <= 60, f"{longest} 가 통째로 나갔음"
 
 
-def test_어떤_결과도_긴_토막을_화면에_안_흘린다():
+def test_no_result_leaks_a_long_token_to_the_screen():
     """자르는 상한을 하나라도 빠뜨리면 여기서 걸림.
 
     위 시험들은 아는 값 하나씩을 짚는다. 이것은 모르는 값을 막는다 —
@@ -1045,7 +1045,7 @@ SEARCH_BOUNDARIES_EMPTY = {
 }
 
 
-def test_0건이면_어디를_뒤졌고_어떻게_말하면_되는지가_함께_나온다():
+def test_zero_hits_gives_where_it_searched_and_how_to_rephrase():
     """"찾지 못했습니다." 한 줄로는 다음에 무엇을 할지 알 수 없음.
 
     실측 : 화면에 "찾지 못했습니다." 와 단계 줄 하나만 나왔고 사용자가
@@ -1066,7 +1066,7 @@ def test_0건이면_어디를_뒤졌고_어떻게_말하면_되는지가_함께_
     assert "다른 낱말로 다시 말씀해 주세요." in answer
 
 
-def test_어디를_뒤졌는지는_응답이_들고_온_이름으로만_적는다():
+def test_where_it_searched_is_recorded_only_from_the_name_the_response_carried():
     """이름을 코드에 안 적음. 응답의 dataset.name 하나만 봄.
 
     source 는 데이터의 출처지 사람이 읽을 이름이 아님 — 그 칸만 있는
@@ -1088,7 +1088,7 @@ def test_어디를_뒤졌는지는_응답이_들고_온_이름으로만_적는�
     assert "다른 낱말로 다시 말씀해 주세요." in answer
 
 
-def test_not_found_는_0건과_다르게_말한다():
+def test_not_found_speaks_differently_from_zero_hits():
     """뜻이 다름. 0건은 낱말이 안 겹친 것이고 not_found 는 그 이름이 없는 것임.
 
     낱말을 바꿔 보라고 하면 안 됨 — 이름을 지정해 집어 오는 호출이라
@@ -1106,7 +1106,7 @@ def test_not_found_는_0건과_다르게_말한다():
     assert "다른 낱말로 다시 말씀해 주세요." not in answer
 
 
-def test_적재된_것이_없으면_다시_말하라고_안_한다():
+def test_does_not_ask_to_rephrase_when_nothing_is_loaded():
     """status "empty" 는 데이터가 안 들어온 것임. 사람이 다시 말해서 될 일이 아님."""
     trace = [{
         "id": "s1",
@@ -1125,7 +1125,7 @@ def test_적재된_것이_없으면_다시_말하라고_안_한다():
     assert "말씀해 주세요" not in answer
 
 
-def test_좌표로만_부른_0건에는_다시_말하라고_안_한다():
+def test_does_not_ask_to_rephrase_for_zero_hits_called_by_coordinates_only():
     """그 단계에 사람이 고쳐 말할 낱말이 없음. 지점을 찍어 부른 호출임."""
     trace = [
         geocode_step(OSONG),
@@ -1146,7 +1146,7 @@ def test_좌표로만_부른_0건에는_다시_말하라고_안_한다():
     assert "말씀해 주세요" not in answer
 
 
-def test_넓어진_머리말도_raw_JSON_을_안_흘린다():
+def test_the_widened_preamble_never_leaks_raw_JSON():
     """dataset 안에 bbox 두 겹과 datasetId 가 통째로 들어 있음."""
     for result in (SEARCH_DISTRICTS_EMPTY, SEARCH_BOUNDARIES_EMPTY, NOT_FOUND):
         answer = compose_workflow_answer(
@@ -1160,7 +1160,7 @@ def test_넓어진_머리말도_raw_JSON_을_안_흘린다():
         assert len(longest) <= 60, f"{longest} 가 통째로 나갔음"
 
 
-def test_0건이_아닌_답은_머리말이_한_줄_그대로다():
+def test_a_non_zero_hit_answer_keeps_its_preamble_one_line_verbatim():
     """넓힌 것은 0건 자리뿐임. 성공 · 오류 문구가 한 글자도 안 달라져야 함."""
     success = compose_workflow_answer(
         {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]

@@ -69,7 +69,7 @@ def pending(**overrides):
     ],
     ids=["번호만", "번호와_번", "번호와_요", "번호와_이요", "마침표", "앞뒤_공백"],
 )
-def test_번호만_말하면_그_자리를_고른다(spoken, index):
+def test_saying_only_the_number_picks_that_position(spoken, index):
     """화면에 번호가 보이므로 사람은 번호로 답한다. 이것이 기본 꼴임."""
     assert clarify_service.pick(spoken, pending()) == index
 
@@ -84,17 +84,17 @@ def test_번호만_말하면_그_자리를_고른다(spoken, index):
     ],
     ids=["화면_줄_그대로", "사슬_줄_그대로", "셋째_줄", "번호에_번이_붙은_것"],
 )
-def test_번호와_이름을_함께_말하면_그_자리를_고른다(spoken, index):
+def test_saying_the_number_together_with_the_name_picks_that_position(spoken, index):
     """화면 줄을 그대로 되뇌는 사람이 있음. 지금은 그것이 새 발화로 처리됐음."""
     assert clarify_service.pick(spoken, pending()) == index
 
 
-def test_사슬_줄은_끝_이름만_말해도_그_자리다():
+def test_a_chain_line_matches_from_its_number_with_only_the_tail_name():
     """"장소 좌표 변환 -> 인구 통계 조회" 를 통째로 옮겨 적는 사람은 없음."""
     assert clarify_service.pick("2 인구 통계 조회", pending()) == 1
 
 
-def test_이름만_말해도_후보_하나에만_걸리면_고른다():
+def test_the_name_alone_picks_when_it_matches_only_one_candidate():
     """번호를 안 보고 이름을 말하는 사람도 있음. 하나로 좁혀질 때만 받음."""
     assert clarify_service.pick("연령별 인구 구성 조회", pending()) == 2
 
@@ -104,7 +104,7 @@ def test_이름만_말해도_후보_하나에만_걸리면_고른다():
     [("첫 번째", 0), ("두번째", 1), ("세 번째", 2), ("네번째요", 3)],
     ids=["첫", "두", "세", "네"],
 )
-def test_차례말도_받는다(spoken, index):
+def test_ordinal_words_are_accepted_too(spoken, index):
     """전체가 차례말일 때만 받음. "첫 번째 역이 어디야" 는 아래에서 안 걸림."""
     assert clarify_service.pick(spoken, pending()) == index
 
@@ -119,7 +119,7 @@ def test_차례말도_받는다(spoken, index):
     ],
     ids=["1호선", "2호선", "1번_출구"],
 )
-def test_숫자로_시작해도_뒤가_후보_이름이_아니면_새_발화다(spoken):
+def test_starting_with_a_digit_is_a_new_utterance_when_the_rest_is_not_a_candidate_name(spoken):
     """숫자로 시작하는 멀쩡한 발화가 많음. 번호만으로 고르기로 보면 안 됨."""
     assert clarify_service.pick(spoken, pending()) is None
 
@@ -133,40 +133,40 @@ def test_숫자로_시작해도_뒤가_후보_이름이_아니면_새_발화다(
     ],
     ids=["방법_알려줘", "조회해줘", "장소가_앞에"],
 )
-def test_이름을_담고_있어도_통째로_같지_않으면_새_발화다(spoken):
+def test_containing_a_name_is_a_new_utterance_unless_it_matches_entirely(spoken):
     """담고 있는 것으로 보면 이름이 든 어떤 발화도 삼켜짐."""
     assert clarify_service.pick(spoken, pending()) is None
 
 
-def test_후보_수를_벗어난_번호는_고르기가_아니다():
+def test_a_number_outside_the_candidate_count_is_not_a_choice():
     """후보가 넷인데 "9번" 이면 무엇을 고른 것인지 알 수 없음."""
     assert clarify_service.pick("9번", pending()) is None
     assert clarify_service.pick("0", pending()) is None
 
 
-def test_이름이_여러_후보에_걸리면_고르기가_아니다():
+def test_a_name_matching_several_candidates_is_not_a_choice():
     """"인구 통계 조회" 는 1번과 2번의 끝 이름임. 무엇을 고른 것인지 모름."""
     assert clarify_service.pick("인구 통계 조회", pending()) is None
 
 
-def test_차례말이_발화_앞에_있으면_새_발화다():
+def test_an_ordinal_word_at_the_front_of_an_utterance_is_a_new_utterance():
     """전체 일치만 받는 근거. 이것이 걸리면 차례말을 넣을 수 없음."""
     assert clarify_service.pick("첫 번째 역이 어디야", pending()) is None
     assert clarify_service.pick("두번째 CCTV 보여줘", pending()) is None
 
 
-def test_빈_발화는_고르기가_아니다():
+def test_an_empty_utterance_is_not_a_choice():
     assert clarify_service.pick("", pending()) is None
     assert clarify_service.pick("   ", pending()) is None
 
 
-def test_후보가_비면_어떤_문구도_고르기가_아니다():
+def test_no_phrase_is_a_choice_when_the_candidates_are_empty():
     """고를 것이 없는데 번호를 받으면 IndexError 로 죽음."""
     assert clarify_service.pick("1", pending(recipe_ids=[], labels=[], names=[])) is None
 
 
 # ── 기억해 두는 자리 ───────────────────────────────────────────────
-def test_남긴_것을_꺼내면_지워진다():
+def test_taking_what_was_stored_clears_it():
     """되묻기는 한 번 주고받는 일임. 고른 뒤에 남으면 두 번 실행됨."""
     clarify_service.remember(
         "s1", recipe_ids=RECIPE_IDS, labels=LABELS, names=NAMES,
@@ -177,7 +177,7 @@ def test_남긴_것을_꺼내면_지워진다():
     assert clarify_service.take("s1") is None
 
 
-def test_세션이_빈_문자열이면_기억하지도_꺼내지도_않는다():
+def test_an_empty_session_string_neither_remembers_nor_takes():
     """저쪽 화면이 세션을 안 보내면 지금까지와 똑같이 동작해야 함."""
     clarify_service.remember(
         "", recipe_ids=RECIPE_IDS, labels=LABELS, names=NAMES,
@@ -187,7 +187,7 @@ def test_세션이_빈_문자열이면_기억하지도_꺼내지도_않는다():
     assert clarify_service.take("") is None
 
 
-def test_세션이_다르면_남의_되묻기를_못_꺼낸다():
+def test_a_different_session_cannot_take_another_ones_clarify():
     clarify_service.remember(
         "s1", recipe_ids=RECIPE_IDS, labels=LABELS, names=NAMES,
         argument="청주시", given=None, text="청주시 인구 알려줘",
@@ -197,12 +197,12 @@ def test_세션이_다르면_남의_되묻기를_못_꺼낸다():
     assert clarify_service.take("s1") is not None
 
 
-def test_되묻기가_없었으면_꺼낼_것이_없다():
+def test_there_is_nothing_to_take_when_there_was_no_clarify():
     """직전에 되묻기가 없으면 "1번" 도 새 발화임."""
     assert clarify_service.take("s1") is None
 
 
-def test_오래된_되묻기는_없는_것으로_본다(monkeypatch):
+def test_an_old_clarify_counts_as_absent(monkeypatch):
     """화면을 띄워두고 자리를 비웠다가 돌아와 다른 것을 묻는 자리임."""
     clock = [1000.0]
     monkeypatch.setattr(clarify_service.time, "monotonic", lambda: clock[0])
@@ -216,7 +216,7 @@ def test_오래된_되묻기는_없는_것으로_본다(monkeypatch):
     assert clarify_service.take("s1") is None
 
 
-def test_TTL_안에서는_그대로_꺼내진다(monkeypatch):
+def test_within_the_TTL_it_is_taken_unchanged(monkeypatch):
     clock = [1000.0]
     monkeypatch.setattr(clarify_service.time, "monotonic", lambda: clock[0])
 
@@ -229,7 +229,7 @@ def test_TTL_안에서는_그대로_꺼내진다(monkeypatch):
     assert clarify_service.take("s1") is not None
 
 
-def test_세션_수가_상한을_넘으면_오래된_것부터_버린다():
+def test_exceeding_the_session_cap_evicts_the_oldest_first():
     """세션이 언제 끝나는지 우리는 모름. 상한이 없으면 무한히 늚."""
     for index in range(clarify_service.MAX_SESSIONS + 3):
         clarify_service.remember(
@@ -242,7 +242,7 @@ def test_세션_수가_상한을_넘으면_오래된_것부터_버린다():
     assert clarify_service.take(f"s{clarify_service.MAX_SESSIONS + 2}") is not None
 
 
-def test_같은_세션에_다시_남기면_덮어쓴다():
+def test_storing_again_in_the_same_session_overwrites():
     """직전 되묻기 하나임. 두 발화 전의 후보가 살아 있으면 안 됨."""
     clarify_service.remember(
         "s1", recipe_ids=RECIPE_IDS, labels=LABELS, names=NAMES,
@@ -257,7 +257,7 @@ def test_같은_세션에_다시_남기면_덮어쓴다():
     assert clarify_service.take("s1")["recipe_ids"] == ["recipe_012"]
 
 
-def test_후보가_비면_남기지_않는다():
+def test_empty_candidates_are_not_stored():
     """NO_MATCH 는 화면에 번호를 안 보임. 고를 것이 없음."""
     clarify_service.remember(
         "s1", recipe_ids=[], labels=[], names=[],
@@ -270,20 +270,20 @@ def test_후보가_비면_남기지_않는다():
 # ── 스위치 ──────────────────────────────────────────────────────────
 
 
-def test_환경변수가_없으면_켬이다(monkeypatch):
+def test_no_env_var_means_on(monkeypatch):
     """기본이 켬임. 지금 동작을 지킴."""
     monkeypatch.delenv(clarify_service.CHOICE_ENV, raising=False)
 
     assert clarify_service.enabled() is True
 
 
-def test_환경변수가_0_이면_끔이다(monkeypatch):
+def test_the_env_var_being_0_means_off(monkeypatch):
     monkeypatch.setenv(clarify_service.CHOICE_ENV, "0")
 
     assert clarify_service.enabled() is False
 
 
-def test_0_이_아닌_값은_켬이다(monkeypatch):
+def test_any_value_other_than_0_means_on(monkeypatch):
     """끄는 값은 "0" 하나임. 오타로 꺼지지 않아야 함."""
     for value in ["1", "true", "off", ""]:
         monkeypatch.setenv(clarify_service.CHOICE_ENV, value)

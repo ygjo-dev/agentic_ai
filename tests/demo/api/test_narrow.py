@@ -86,7 +86,7 @@ def no_env(monkeypatch):
 # ── 스위치 ──────────────────────────────────────────────────────────
 
 
-def test_기본은_끔이라_LLM_을_한_번만_부르고_menu_를_넣는다(lookup):
+def test_the_default_is_off_so_the_LLM_is_called_once_with_the_menu(lookup):
     """스위치를 안 주면 지금 길. 응답에 narrow 칸도 없다."""
     lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FULL)
@@ -99,7 +99,7 @@ def test_기본은_끔이라_LLM_을_한_번만_부르고_menu_를_넣는다(loo
     assert result["recipe_id"] == "recipe_045"
 
 
-def test_끄면_켜기_전과_같은_key_를_낸다(lookup):
+def test_turning_it_off_yields_the_same_keys_as_before(lookup):
     lookup["result"] = ["recipe_045"]
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FULL), 200, narrow=False)
 
@@ -110,7 +110,7 @@ def test_끄면_켜기_전과_같은_key_를_낸다(lookup):
     }
 
 
-def test_환경변수가_1_이면_기본이_켬이다(lookup, monkeypatch):
+def test_the_env_var_being_1_makes_the_default_on(lookup, monkeypatch):
     monkeypatch.setenv(NARROW_ENV, "1")
     lookup["result"] = ["recipe_045"]
 
@@ -119,7 +119,7 @@ def test_환경변수가_1_이면_기본이_켬이다(lookup, monkeypatch):
     assert result["narrow"]["enabled"] is True
 
 
-def test_환경변수가_1_이_아니면_끔이다(lookup, monkeypatch):
+def test_the_env_var_not_being_1_means_off(lookup, monkeypatch):
     monkeypatch.setenv(NARROW_ENV, "true")
     lookup["result"] = ["recipe_045"]
 
@@ -128,7 +128,7 @@ def test_환경변수가_1_이_아니면_끔이다(lookup, monkeypatch):
     assert "narrow" not in result
 
 
-def test_인자가_환경변수보다_앞선다(lookup, monkeypatch):
+def test_the_argument_takes_precedence_over_the_env_var(lookup, monkeypatch):
     monkeypatch.setenv(NARROW_ENV, "1")
     lookup["result"] = ["recipe_045"]
 
@@ -140,7 +140,7 @@ def test_인자가_환경변수보다_앞선다(lookup, monkeypatch):
 # ── 1차 ──────────────────────────────────────────────────────────────
 
 
-def test_1차_프롬프트에_menu_가_없고_축_선택지는_있다(lookup):
+def test_the_first_pass_prompt_has_no_menu_but_has_the_axis_choices(lookup):
     lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FIRST)
 
@@ -153,7 +153,7 @@ def test_1차_프롬프트에_menu_가_없고_축_선택지는_있다(lookup):
     assert "오송역 근처 충전소 찾아줘" in prompt
 
 
-def test_1차_스키마는_축과_인자만_받는다(lookup):
+def test_the_first_pass_schema_takes_only_the_axes_and_the_argument(lookup):
     lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FIRST)
 
@@ -162,7 +162,7 @@ def test_1차_스키마는_축과_인자만_받는다(lookup):
     assert llm.schemas[0]["required"] == ["reason", "given", "want", "about", "argument"]
 
 
-def test_1차가_쓴_축_셋으로_온톨로지를_조회한다(lookup):
+def test_the_ontology_is_looked_up_with_the_three_axes_the_first_pass_wrote(lookup):
     lookup["result"] = ["recipe_045"]
 
     resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200, narrow=True)
@@ -173,7 +173,7 @@ def test_1차가_쓴_축_셋으로_온톨로지를_조회한다(lookup):
 # ── 후보 하나 ────────────────────────────────────────────────────────
 
 
-def test_후보가_하나면_2차를_안_부르고_그것으로_SELECT(lookup):
+def test_a_single_candidate_skips_the_second_pass_and_selects_it(lookup):
     lookup["result"] = ["recipe_045"]
     llm = SequenceLLM(FIRST)
 
@@ -190,7 +190,7 @@ def test_후보가_하나면_2차를_안_부르고_그것으로_SELECT(lookup):
     assert result["narrow"]["second_seconds"] is None
 
 
-def test_2차를_안_불렀으면_LLM_날것_칸이_비어_있다(lookup):
+def test_the_raw_LLM_fields_are_empty_when_the_second_pass_was_not_called(lookup):
     lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200, narrow=True)
@@ -199,7 +199,7 @@ def test_2차를_안_불렀으면_LLM_날것_칸이_비어_있다(lookup):
     assert result["llm_candidate_recipe_ids"] == []
 
 
-def test_축과_인자는_1차가_쓴_그대로_실린다(lookup):
+def test_the_axes_and_argument_are_carried_verbatim_from_the_first_pass(lookup):
     lookup["result"] = ["recipe_045"]
 
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST), 200, narrow=True)
@@ -213,7 +213,7 @@ def test_축과_인자는_1차가_쓴_그대로_실린다(lookup):
 # ── 2차 ──────────────────────────────────────────────────────────────
 
 
-def test_후보가_여럿이면_2차에_그_문장만_보여준다(lookup):
+def test_several_candidates_show_the_second_pass_only_those_lines(lookup):
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_045", candidates=["recipe_045"]))
 
@@ -227,7 +227,7 @@ def test_후보가_여럿이면_2차에_그_문장만_보여준다(lookup):
     assert "오송역 근처 충전소 찾아줘" in second
 
 
-def test_2차_스키마가_후보_밖의_id_를_막는다(lookup):
+def test_the_second_pass_schema_blocks_ids_outside_the_candidates(lookup):
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_045", candidates=["recipe_045"]))
 
@@ -238,7 +238,7 @@ def test_2차_스키마가_후보_밖의_id_를_막는다(lookup):
     assert schema["properties"]["candidate_recipe_ids"]["items"]["enum"] == ["recipe_045", "recipe_040"]
 
 
-def test_2차가_하나_고르면_SELECT(lookup):
+def test_the_second_pass_picking_one_selects_it(lookup):
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_040", candidates=["recipe_040"]))
 
@@ -255,7 +255,7 @@ def test_2차가_하나_고르면_SELECT(lookup):
     assert result["narrow"]["second_seconds"] is not None
 
 
-def test_2차가_여럿_남기면_조회_차례로_CLARIFY(lookup):
+def test_the_second_pass_leaving_several_clarifies_in_lookup_order(lookup):
     """되묻기 후보 목록이 여기서 만들어진다. 차례는 조회 후보(파일 이름 순)."""
     lookup["result"] = ["recipe_011", "recipe_044", "recipe_038"]
     llm = SequenceLLM(FIRST, pick(status=CLARIFY, candidates=["recipe_038", "recipe_011"]))
@@ -268,7 +268,7 @@ def test_2차가_여럿_남기면_조회_차례로_CLARIFY(lookup):
     assert result["paths"].keys() == {"recipe_011", "recipe_038"}
 
 
-def test_2차의_reason_이_실린다(lookup):
+def test_the_second_pass_reason_is_carried(lookup):
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_045", candidates=["recipe_045"]))
 
@@ -277,7 +277,7 @@ def test_2차의_reason_이_실린다(lookup):
     assert result["reason"] == "후보 가운데 골랐다"
 
 
-def test_2차가_후보_밖을_쓰면_버린다(lookup):
+def test_the_second_pass_writing_outside_the_candidates_is_discarded(lookup):
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(status=CLARIFY, candidates=["recipe_045", "recipe_099"]))
 
@@ -290,7 +290,7 @@ def test_2차가_후보_밖을_쓰면_버린다(lookup):
 # ── 폴백 가 · 나 ─────────────────────────────────────────────────────
 
 
-def test_조회_후보가_비면_지금_길로_간다(lookup):
+def test_an_empty_lookup_candidate_set_goes_to_the_current_path(lookup):
     """폴백 가. 2차 없이 지금 길(menu 전체)을 한 번 더 부른다."""
     lookup["result"] = []
     llm = SequenceLLM(FIRST, FULL)
@@ -305,7 +305,7 @@ def test_조회_후보가_비면_지금_길로_간다(lookup):
     assert result["status"] == SELECT and result["recipe_id"] == "recipe_045"
 
 
-def test_축이_셋_다_null_이면_조회하지_않고_지금_길로_간다(lookup):
+def test_all_three_axes_being_null_skips_the_lookup_and_goes_to_the_current_path(lookup):
     """지금 길과 같은 이유 — 전체를 후보로 삼으면 영역 밖 발화가 되묻기가 된다."""
     blank = {**FIRST, "given": None, "want": None, "about": None, "argument": None}
     lookup["result"] = ["recipe_001"]  # 부르면 이것이 나오지만 안 불러야 한다
@@ -319,7 +319,7 @@ def test_축이_셋_다_null_이면_조회하지_않고_지금_길로_간다(loo
     assert result["status"] == NO_MATCH
 
 
-def test_2차가_여기_없다_고_하면_지금_길로_간다(lookup):
+def test_the_second_pass_saying_no_match_goes_to_the_current_path(lookup):
     """폴백 나. LLM 을 세 번 부르게 된다."""
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(status=NO_MATCH), FULL)
@@ -333,7 +333,7 @@ def test_2차가_여기_없다_고_하면_지금_길로_간다(lookup):
     assert result["status"] == SELECT and result["recipe_id"] == "recipe_045"
 
 
-def test_2차가_후보_밖만_쓰면_여기_없다_로_본다(lookup):
+def test_the_second_pass_writing_only_outside_the_candidates_counts_as_no_match(lookup):
     lookup["result"] = ["recipe_045", "recipe_040"]
     llm = SequenceLLM(FIRST, pick(recipe_id="recipe_099", candidates=["recipe_099"]), FULL)
 
@@ -343,7 +343,7 @@ def test_2차가_후보_밖만_쓰면_여기_없다_로_본다(lookup):
     assert result["narrow"]["fallback"] == FALLBACK_NONE
 
 
-def test_폴백이_돌아도_1차가_쓴_축은_narrow_에_남는다(lookup):
+def test_the_first_pass_axes_stay_in_narrow_even_when_the_fallback_runs(lookup):
     """폴백 결과의 축은 지금 길 것으로 덮인다. 1차 것은 따로 있어야 왜 빠졌는지 읽힌다."""
     lookup["result"] = []
     other = {**FULL, "given": "spoken_keyword"}
@@ -356,7 +356,7 @@ def test_폴백이_돌아도_1차가_쓴_축은_narrow_에_남는다(lookup):
     assert result["narrow"]["first"]["argument"] == "오송역"
 
 
-def test_폴백_결과는_지금_길의_key_를_다_가진다(lookup):
+def test_the_fallback_result_has_every_key_of_the_current_path(lookup):
     lookup["result"] = []
     result = resolve("오송역 근처 충전소 찾아줘", SequenceLLM(FIRST, FULL), 200, narrow=True)
 
@@ -366,7 +366,7 @@ def test_폴백_결과는_지금_길의_key_를_다_가진다(lookup):
 # ── 후보 문장 ────────────────────────────────────────────────────────
 
 
-def test_후보_문장은_menu_의_function_을_id_와_함께_적는다():
+def test_candidate_lines_record_the_menu_function_along_with_the_id():
     lines = resolve_service._candidate_lines(["recipe_001", "recipe_045"]).splitlines()
 
     assert lines[0].startswith("- recipe_001: 말한 장소로 좌표를 찾는다")
@@ -374,5 +374,5 @@ def test_후보_문장은_menu_의_function_을_id_와_함께_적는다():
     assert len(lines) == 2
 
 
-def test_menu_에_없는_id_는_id_만_적는다():
+def test_an_id_absent_from_the_menu_records_only_the_id():
     assert resolve_service._candidate_lines(["recipe_999"]) == "- recipe_999"
