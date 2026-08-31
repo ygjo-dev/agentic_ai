@@ -3,8 +3,9 @@
 LLM 을 부르지 않는다. 어느 문장이 프롬프트에 실리는가만 본다.
 
 **관문 둘이다.**
-  발화가 화면을 안 가리키면 「마흔여섯째」 이전과 같은 마흔 줄이 실린다
-  낱말이 걸려도 문맥에 값이 없으면 마흔 줄이다 — 없는 것을 제안하면
+  발화가 화면을 안 가리키면 「마흔여섯째」 이전과 같이 말로 시작하는
+  recipe 줄만 실린다
+  낱말이 걸려도 문맥에 값이 없으면 그 줄만이다 — 없는 것을 제안하면
   LLM 이 고르고 나서 `_without_dropped` 에 지워진다
 
 recipe id 를 박지 않는다. 온톨로지가 바뀌면 번호가 통째로 밀리므로 경로 첫 칸으로
@@ -50,7 +51,10 @@ def starting_at(*node_ids) -> set:
 
 
 def spoken_recipes() -> set:
-    """화면에서 안 오는 시작 데이터에서 출발하는 recipe. 「기존 마흔」이다."""
+    """화면에서 안 오는 시작 데이터에서 출발하는 recipe. 말로 시작하는 것 전부다.
+
+    수를 안 적는다. recipe 가 늘면 함께 느는 값이라 적어 두면 낡는다.
+    """
     return set(ontology_service.recipe_ids()) - starting_at(*step_service.CONTEXT_STARTS)
 
 
@@ -152,7 +156,8 @@ def test_not_one_screen_word_matches_the_thirty_one_spoken_utterances():
 def test_all_five_screen_utterances_in_the_answer_key_match_a_screen_word():
     """하나라도 안 걸리면 그 줄은 화면 recipe 를 아예 못 보고 재어진다.
 
-    걸려야 menu 에 화면 recipe 가 실린다. 안 걸리면 「기존 마흔」을 보게 되어
+    걸려야 menu 에 화면 recipe 가 실린다. 안 걸리면 말로 시작하는 recipe 만
+    보게 되어
     기대값에 닿을 길이 없는데, 표에는 그냥 빗나감으로 찍혀 발화가 나쁜 것인지
     낱말이 안 걸린 것인지가 안 갈린다.
     """
