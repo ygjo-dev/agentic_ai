@@ -1,7 +1,5 @@
 steps:
 
-  - node: spoken_place
+  - node: visible_extent
 
-  - node: geocode_place
-
-  - node: search_admin_boundaries
+  - node: search_ev_stations

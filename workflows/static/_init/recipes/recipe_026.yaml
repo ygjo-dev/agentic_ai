@@ -2,4 +2,4 @@ steps:
 
   - node: visible_extent
 
-  - node: find_cctv
+  - node: get_vworld_boundaries

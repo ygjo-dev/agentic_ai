@@ -88,6 +88,25 @@ anchors:
   # 값싸므로 세 겹으로 둔다.
   reach_cutoffs: &reach_cutoffs [10, 20, 30]
 
+  # 도달권을 대중교통으로 잰다. 보도자료 본문이 「전국 대중교통의 시간표와
+  # 환승 정보를 바탕으로」로 못박혀 있고 개념도의 주요 원인이 「환승 대기」다.
+  # 그림이 WALK 이면 본문과 다른 것을 보여 주게 된다.
+  reach_mode: &reach_mode "TRANSIT"
+
+  # **TRANSIT 은 날짜를 우리가 채워야 한다.** 도구 기본값이 "2026-03-23" 인데
+  # 그 날짜로는 실패한다(2026-09-01 실측). WALK 은 시간표를 안 봐서 안 걸리던
+  # 자리다.
+  #
+  # <이름> 기호를 쓰지 않는다. 그것은 파일을 팔 때 한 번 박히고 다시 파는 것은
+  # mtime 이 바뀔 때뿐이라 서버가 뜬 날짜에 얼어붙는다. @today 는 plan 이
+  # 부를 때마다 그날로 채운다 (execution/step_service.py 의 TODAY).
+  reach_date: &reach_date "@today"
+
+  # 도구 기본값과 같은 값이다. 그래도 적는 것은 시간표를 보는 mode 에서
+  # 출발 시각이 결과를 가르는 값이기 때문이다 — 원격 기본값이 조용히 바뀌면
+  # 그림이 달라지는데 여기를 봐도 모른다.
+  reach_time: &reach_time "08:00"
+
 
 # 노드 -> 도구. **온톨로지 밖이다.**
 #
@@ -346,19 +365,27 @@ step_of:
   # {lon, lat} 이라는 칸 이름까지 함께 묶은 것이고, 이 도구의 칸은
   # origin_lon · origin_lat 이다. 그래서 낱개 앵커로 적는다.
   #
-  # 세 겹으로 자르는 것 말고는 아무것도 안 보낸다. mode 는 기본이 WALK 이고,
-  # departure_date 기본값이 2026-03-23 으로 반년 전이지만 WALK 은 시간표를
-  # 안 보므로 무관하다. max_minutes 기본 30 이 cutoffs 의 맨 끝과 같다.
+  # 여섯 칸을 보낸다. 좌표 둘 · 자를 겹 · mode · 날짜 · 시각이다.
+  # max_minutes 는 안 보낸다 — 기본 30 이 cutoffs 의 맨 끝과 같다.
+  #
+  # **날짜와 시각은 mode 를 TRANSIT 으로 바꾸면서 함께 온 것이다.** WALK 일
+  # 때는 시간표를 안 봐서 기본값이 반년 전이어도 무관했다.
   compute_reach_area:
     point:
       input:
         origin_lon: *prev_lon
         origin_lat: *prev_lat
         cutoffs_minutes: *reach_cutoffs
+        mode: *reach_mode
+        departure_date: *reach_date
+        departure_time: *reach_time
       input_first:
         origin_lon: *picked_lon
         origin_lat: *picked_lat
         cutoffs_minutes: *reach_cutoffs
+        mode: *reach_mode
+        departure_date: *reach_date
+        departure_time: *reach_time
 
   # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
   # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.

@@ -1,7 +1,7 @@
 steps:
 
-  - node: picked_point
+  - node: spoken_keyword
 
-  - node: find_admin_boundary_by_point
+  - node: web_search
 
-  - node: get_local_pledge_summary
+  - node: web_fetch

@@ -2,4 +2,4 @@ steps:
 
   - node: picked_point
 
-  - node: find_election_district_by_point
+  - node: compute_reach_area

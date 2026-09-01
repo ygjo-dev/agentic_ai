@@ -2,4 +2,4 @@ steps:
 
   - node: visible_extent
 
-  - node: search_ev_stations
+  - node: search_population_statistics

@@ -1,5 +1,5 @@
 steps:
 
-  - node: visible_extent
+  - node: picked_point
 
-  - node: search_admin_boundaries
+  - node: find_local_pledge_summary_by_point

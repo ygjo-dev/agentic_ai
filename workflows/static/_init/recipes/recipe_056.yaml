@@ -1,7 +1,7 @@
 steps:
 
-  - node: visible_extent
+  - node: picked_point
 
-  - node: search_ev_stations
+  - node: find_admin_boundary_by_point
 
-  - node: get_ev_station
+  - node: get_age_profile

@@ -2,4 +2,4 @@ steps:
 
   - node: visible_extent
 
-  - node: search_assembly_districts
+  - node: get_railway_lines

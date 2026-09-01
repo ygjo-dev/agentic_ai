@@ -36,6 +36,7 @@ argument 로 함께 내놓고, 그것이 없을 때만 place_in 이 장소 하�
 """
 
 import re
+from datetime import date
 
 import yaml
 
@@ -65,6 +66,22 @@ RADIUS_METERS = 15000
 # "장소" 를 뜻하면 안 된다. 그 값이 장소인지 키워드인지 식별자인지는 발화 해석
 # 응답의 given 이 말한다 — 여기는 그것을 구분하지 않는다.
 SPOKEN_VALUE = "@arg"
+
+# 오늘 날짜가 들어가는 자리. plan 을 부를 때마다 그날로 채워진다.
+#
+# **<이름> 기호로 넣으면 안 되는 자리다.** 그쪽은 wiring.yaml 을 팔 때
+# _resolved 가 한 번만 돌고, 다시 파는 것은 파일 mtime 이 바뀔 때뿐이다
+# (reload_wiring). 파일을 안 고치면 서버가 뜬 날짜에 얼어붙어 다음 날부터
+# 어제 날짜로 도구를 부르게 된다.
+#
+# @arg 옆에 둔 것은 이것도 **우리 표시**이기 때문이다. $prev · $context 는
+# vendor 의 _resolve_reference 가 푸는 저쪽 문법이라 늘리면 저쪽과 맞대야
+# 하는데, @ 로 시작하는 것은 _filled 가 여기서 다 푼다.
+#
+# 왜 필요한가 : compute_isochrone 의 departure_date 기본값이 "2026-03-23" 인데
+# TRANSIT 은 그 날짜로 실패한다(2026-09-01 실측). WALK 은 시간표를 안 봐서
+# 안 걸리던 자리다.
+TODAY = "@today"
 
 # 발화에서 온 값이 노선 이름인지 가르는 어미.
 #
@@ -627,6 +644,7 @@ def _filled(value, argument: str, previous_id: str | None):
     출력  같은 모양에 표시만 바뀐 것. 앞 단계가 없어 채울 수 없던 칸은 빠짐
     규칙  "@arg" 는 어절 전체가 표시일 때만 바꿈. 값의 타입이 바뀌므로
           문자열 안에 섞어 쓰지 않음
+          "@today" 는 부르는 그날 날짜(YYYY-MM-DD)로 바꿈
           "$prev" 로 시작하면 뒤의 경로는 그대로 두고 앞만 바꿈
           앞 단계가 없으면 그 칸을 DROP 으로 표시하고 dict · list 에서 뺌
     제약  값을 지어내지 않는다. 앞 단계가 없을 때 좌표를 만들어 넣지 않고
@@ -653,6 +671,8 @@ def _filled(value, argument: str, previous_id: str | None):
         return [item for item in filled if item is not DROP]
     if value == SPOKEN_VALUE:
         return argument
+    if value == TODAY:
+        return date.today().isoformat()
     if isinstance(value, str) and value.startswith(PREVIOUS_STEP):
         if previous_id is None:
             return DROP

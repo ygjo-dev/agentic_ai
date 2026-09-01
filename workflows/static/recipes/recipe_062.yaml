@@ -4,4 +4,6 @@ steps:
 
   - node: geocode_place
 
-  - node: find_local_pledge_summary_by_point
+  - node: search_ev_stations
+
+  - node: get_ev_station
