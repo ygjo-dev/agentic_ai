@@ -1,6 +1,8 @@
 steps:
 
-  - node: picked_point
+  - node: spoken_place
+
+  - node: geocode_place
 
   - node: compute_reach_area
 

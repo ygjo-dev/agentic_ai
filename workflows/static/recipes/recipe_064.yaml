@@ -4,4 +4,6 @@ steps:
 
   - node: geocode_place
 
-  - node: compute_reach_area
+  - node: search_ev_stations
+
+  - node: get_ev_station

@@ -104,6 +104,14 @@ RAILWAY_LINE_SUFFIX = "선"
 # 칸은 조용히 지나간다. 그래서 저쪽 파일을 고치지 않고 답까지 실어 보낼 수 있다.
 STEP_NAME = "name"
 
+# 그 노드를 vendor 가 아니라 우리가 부른다는 표시.
+#
+# 같은 도구를 점마다 되풀이해 부르는 자리가 하나 있다(도달 지역). vendor 는
+# step 하나에 호출 하나이고, 부를 점은 앞 단계 응답이 와야 알 수 있어 step 으로
+# 미리 적을 수가 없다. 무엇을 부르는지는 그대로 TOOL_OF 에 있고 부르는 쪽만
+# 다르다 — execution/reach_districts 가 그 자리다.
+SAMPLED = "sampled"
+
 # 지도 명령 하나가 곧 실행인 자리의 op 이름.
 #
 # 저쪽 화면이 이 op 을 이름으로 알아본다 — KRRI_ASAP/ASAP-web 의
@@ -505,10 +513,16 @@ def plan(recipe_id: str, argument: str) -> dict:
           nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
           commands  도구를 안 부르고 곧장 내는 지도 명령
           command_nodes  commands 와 같은 길이. commands[i] 를 만든 노드 id
+          sampled_nodes  vendor 가 아니라 우리가 부를 노드 id. 경로 차례
           headline  답의 첫 줄. 경로의 마지막 실행 노드가 정함
     규칙  step id 는 s1 · s2 … 로 붙음. $prev 를 앞 step 의 id 로 바꿈
           배선 줄에 command 가 적힌 노드는 step 이 아니라 지도 명령이 됨.
           그 노드는 부를 도구가 없음
+          배선 줄에 sampled 가 적힌 노드는 step 을 안 만듦. 부를 점이 앞
+          단계 응답에 있어 미리 적을 수가 없고, 한 번이 아니라 여럿을 부름.
+          execution/reach_districts 가 vendor 뒤에 실행함
+          sampled 노드도 previous_id 를 안 바꿈. vendor 에 넘어간 step 이
+          없어 $prev 로 가리킬 것이 없음
           지도 명령을 낸 노드는 previous_id 를 안 바꿈. vendor 에 넘어간
           step 이 없어 $prev 로 가리킬 것이 없음
           어느 배선 줄을 쓸지는 앞 노드가 건네는 타입이 정함. wiring_at 이 그것임
@@ -537,6 +551,7 @@ def plan(recipe_id: str, argument: str) -> dict:
     nodes: list[str] = []
     commands: list[dict] = []
     command_nodes: list[str] = []
+    sampled_nodes: list[str] = []
     headline = ""
     previous_id = None
     source_id = None
@@ -561,6 +576,10 @@ def plan(recipe_id: str, argument: str) -> dict:
             command_nodes.append(node_id)
             continue
 
+        if tool.get(SAMPLED):
+            sampled_nodes.append(node_id)
+            continue
+
         step_id = f"s{len(steps) + 1}"
         step = {
             "id": step_id,
@@ -580,6 +599,7 @@ def plan(recipe_id: str, argument: str) -> dict:
         "nodes": nodes,
         "commands": commands,
         "command_nodes": command_nodes,
+        "sampled_nodes": sampled_nodes,
         "headline": headline,
     }
 

@@ -157,6 +157,20 @@ tool_of:
     tool: adminBoundary.findBoundaryByPoint
     headline: "{arg} 행정구역을 조회했습니다."
 
+  # 같은 도구를 **여러 번** 부르는 자리다. 그래서 vendor 를 안 지난다 —
+  # _execute_generic_mcp_workflow 는 step 하나에 호출 하나이고, 부를 점은
+  # 앞 단계 응답(도달권 폴리곤)이 와야 알 수 있어 미리 step 으로 적을 수가
+  # 없다. `sampled` 가 그 표시이고 execution/reach_districts.py 가 실행한다.
+  #
+  # server_id · tool 은 그대로 둔다. 부르는 것이 vendor 가 아닐 뿐 같은
+  # Gateway 의 같은 도구이고, 이 표가 「그 노드가 무엇을 부르는가」를 적는
+  # 한 자리라는 것이 안 흔들려야 한다.
+  list_reach_districts:
+    server_id: *server_id
+    tool: adminBoundary.findBoundaryByPoint
+    sampled: true
+    headline: "{arg} 도달 지역을 조회했습니다."
+
   find_election_district_by_point:
     server_id: *server_id
     tool: election.findDistrictByPoint
@@ -396,6 +410,14 @@ step_of:
     point:
       input: *point_from_previous
       input_first: *point_from_context
+
+  # 받는 것이 앞 단계의 응답 전체다. 폴리곤에서 점을 뽑는 일을 우리가 하므로
+  # 칸 이름을 맞출 것이 없다 — vendor 의 참조 문법($prev.…)도 안 쓴다.
+  # input 이 비어 있지만 줄은 있어야 한다. 줄이 없으면 unwired 가 「배선이
+  # 안 붙은 노드」로 세고 execute_service.run 이 도구를 하나도 안 부른다.
+  list_reach_districts:
+    reach_area:
+      input: {}
 
   find_election_district_by_point:
     point:

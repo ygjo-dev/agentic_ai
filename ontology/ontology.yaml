@@ -366,6 +366,25 @@ nodes:
     name: 도달권 계산
     description: 한 지점에서 대중교통으로 갈 수 있는 구역을 시간대별로 계산한다.
 
+  # 도달권 계산 뒤에만 선다. 받는 것이 「도달권」이고 그것을 내놓는 노드가
+  # 하나뿐이기 때문이다 — 다른 자리에 끼어들 수가 없다.
+  #
+  # **내놓는 것을 「목록」에 얹었다. 타입을 새로 내지 않았다.** 나오는 것이
+  # 행정동 이름 여럿이고 그것은 「조건에 맞는 항목들」 그대로다. 「경계 도형」이
+  # 아닌 것은 도형을 안 내놓기 때문이고(이름만 모은다), 새 타입을 내면 받는
+  # 노드가 하나도 없는 타입이 또 하나 늘 뿐이다. 「목록」은 지금 받는 노드가
+  # 없어(hasInput 이 0건, 2026-09-01 실측) 이 노드 뒤에 아무도 안 선다.
+  #
+  # **대상을 안 붙였다.** 부르는 도구가 adminBoundary 계열이고 그 셋은 전부
+  # 범용이다(위 「범용 도구에는 about 을 붙이지 않았다」). 경로에 이미
+  # 도달권 계산이 교통을 달고 있어 shortlist 의 첫 단에도 걸리지 않는다.
+  #
+  # 이 설명 문장은 menu 문장의 재료다(registration/registry.function_for).
+  # 「행정동」이 있어야 발화의 「어느 동네」·「어디까지」가 여기로 온다.
+  list_reach_districts:
+    name: 도달 지역
+    description: 도달권 안에 드는 행정동을 시군구와 함께 모은다.
+
   # ---------------------------------------------------------- 기능 : 선거
 
   election_district_dataset_info:
@@ -571,6 +590,11 @@ edges:
   # 줄로 함께 받는다.
   - { from: compute_reach_area, to: point,      predicate: hasInput }
   - { from: compute_reach_area, to: reach_area, predicate: hasOutput }
+
+  # 「도달권」을 받는 첫 노드다. 이 한 줄이 서기 전까지 reach_area 는 받는
+  # 노드가 없는 타입이었고, 그래서 도달권 계산 뒤에는 아무도 못 섰다.
+  - { from: list_reach_districts, to: reach_area, predicate: hasInput }
+  - { from: list_reach_districts, to: item_list,  predicate: hasOutput }
 
   # ---------------------------------------------------------- hasInput / hasOutput : 선거
   - { from: election_district_dataset_info, to: dataset_info, predicate: hasOutput }

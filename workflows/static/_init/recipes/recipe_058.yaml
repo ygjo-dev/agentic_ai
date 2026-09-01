@@ -1,7 +1,7 @@
 steps:
 
-  - node: visible_extent
+  - node: picked_point
 
-  - node: search_ev_stations
+  - node: compute_reach_area
 
-  - node: get_ev_station
+  - node: list_reach_districts

@@ -39,7 +39,7 @@ plugin 셋이 하는 일이 그것이다. 아래 「도구가 안 돈 자리」 
               그것을 쓰기만 한다 — 이 파일은 여전히 도구 이름을 모르고,
               48개 노드가 한 자리에서 같은 규칙으로 갈린다
   호출 인자   칸 이름을 늘어놓지 않는다. 사람이 읽을 조건만 적는다
-              (수단 · 출발 시각 · 자를 겹 · 발화에서 온 낱말). 무엇을 적을지는
+              (수단 · 출발 시각 · 발화에서 온 낱말). 무엇을 적을지는
               **칸 이름을 미리 정해 두고** 고른다 — 결과 쪽에서 이 파일이
               이미 하던 것과 같은 방식이다
   좌표        경위도 숫자를 화면에 안 낸다. 주소는 남긴다 — 엉뚱한 곳을
@@ -301,17 +301,17 @@ GUIDE_JOIN = " "
 # 들고 와도 화면에 안 샌다.
 #
 # **수는 안 적는다.** 배선에 실려 오는 실수는 전부 경위도이고
-# (origin_lon · minLat …) 정수는 단위를 몰라 딴 뜻으로 읽힌다. 아래
-# CUTOFFS_KEY 하나만 뜻과 단위를 알아서 예외다.
+# (origin_lon · minLat …) 정수는 단위를 몰라 딴 뜻으로 읽힌다. 뜻과 단위를
+# 아는 것이 cutoffs_minutes 하나였는데 그것도 뺐다 (아래 「자를 겹」).
+# 지금은 예외가 없다.
 #
-# 적는 것이 넷이고 이 차례로 이어 붙는다.
+# 적는 것이 셋이고 이 차례로 이어 붙는다.
 #
 #   MODE_KEY       무엇으로 갔는가. 값이 영어 enum 이라 우리말로 바꿔 적는다.
 #                  도구 스키마의 enum 넷이 근거다 (WALK · BICYCLE · CAR ·
 #                  TRANSIT, 2026-09-01 /api/tools 실측). 표에 없는 값은
 #                  안 적는다 — 모르는 낱말을 화면에 옮기지 않는다
 #   DEPARTURE_*    언제 떠났는가. 시간표를 보는 mode 에서 결과를 가르는 값이다
-#   CUTOFFS_KEY    몇 분으로 잘랐는가. 정수 목록이고 단위가 분이다
 #   SPOKEN_KEYS    사람이 입으로 말한 낱말이 앉는 칸. 실측 배선에서 @arg 가
 #                  앉는 여섯 칸뿐이다 (execution/wiring.yaml). level="sigungu"
 #                  같은 기계 낱말은 여기 없어 저절로 빠진다
@@ -330,11 +330,23 @@ MODE_WORDS = {
     "TRANSIT": "대중교통",
 }
 
+# 출발 날짜와 시각. **단계 줄에는 안 적는다** (2026-09-01 「일흔아홉째」).
+# 답 첫 줄이 「(2026년 9월 1일 08시 15분 출발 기준)」으로 이미 말하고, 두 곳이
+# 같은 것을 말하면 둘째 줄이 길어지기만 한다. 첫 줄을 짓는 자리는
+# execution/execute_service.py 이고 이 두 이름을 그쪽이 읽는다.
 DEPARTURE_DATE_KEY = "departure_date"
 DEPARTURE_TIME_KEY = "departure_time"
-DEPARTURE_LINE = "{when} 출발"
 
+# 자를 겹. **「일흔여덟째」가 뺐던 것을 이름을 붙여 되살린다**
+# (2026-09-01 「일흔아홉째」). 그때 뺀 까닭은 「10 / 20 / 30분」이 바로 아래
+# 「30분 이내 도달 면적」과 같은 수를 두 번 말한다는 것이었는데, 수가 겹치는
+# 것이 아니라 **그 수가 무엇인지 안 적힌 것**이 문제였다. 지도에 세 겹이
+# 그려지는데 답에는 그 셋을 가리키는 말이 하나도 없었다.
+#
+# 앞머리를 붙여 「도달 시간 10 / 20 / 30분」으로 적는다. 배선의 cutoffs 에서
+# 오고 글자로 안 박는다.
 CUTOFFS_KEY = "cutoffs_minutes"
+CUTOFFS_LEAD = "도달 시간 "
 CUTOFFS_JOIN = " / "
 CUTOFFS_SUFFIX = "분"
 
@@ -405,11 +417,14 @@ def compose_workflow_answer(
           _compose_workflow_answer 호출부가 안 바뀌어야 함
           단계 이름은 intent.steps 가 들고 옴. step id 로 맞춰 씀 — trace 는
           부른 데까지만 있고 intent 는 부르려던 전부라 길이가 다를 수 있음
+          면적을 견줄 넓이도 intent 가 들고 옴. 없으면 견줌이 안 붙음.
+          어느 장소의 넓이인지는 이 파일이 모름
     """
     verdict = _verdict(trace, failed)
     names = _step_names(intent)
+    reference = intent.get(AREA_REFERENCE_INTENT_KEY)
     lines = [
-        f"{index}. {step_line(item, names.get(item.get('id'), ''))}"
+        f"{index}. {step_line(item, names.get(item.get('id'), ''), reference)}"
         for index, item in enumerate(trace, start=1)
     ]
 
@@ -474,10 +489,11 @@ def step_failed(item: Dict[str, Any]) -> bool:
     return "error" in item or _has_error(item.get("result"))
 
 
-def step_line(item: Dict[str, Any], name: str = "") -> str:
+def step_line(item: Dict[str, Any], name: str = "", reference: Any = None) -> str:
     """단계 하나의 줄. 단계 이름 · 어떤 조건으로 불렀는가 · 결과 한 마디.
 
-    입력  trace 항목 하나 · 부르는 쪽이 실어 보낸 단계 이름(없으면 "")
+    입력  trace 항목 하나 · 부르는 쪽이 실어 보낸 단계 이름(없으면 "") ·
+          면적을 견줄 넓이(없으면 None)
     출력  "이름 — 조건  결과" 한 줄. 결과가 아래로 내려가면 두 줄
     규칙  이름이 없으면 도구 이름으로 되돌아감. 시험이 이름 없이 부름
           이름과 뒤를 STEP_JOIN 으로 가름. 줄맞춤을 안 함 — 이름이 한글이라
@@ -491,7 +507,7 @@ def step_line(item: Dict[str, Any], name: str = "") -> str:
           geo.geocode 가 아니라 「장소 좌표 변환」이 보여야 함 (2026-09-01)
     """
     head = name.strip() or str(item.get("tool") or "")
-    outcome = _outcome(item)
+    outcome = _outcome(item, reference)
     given = _input_text(item.get("input"), outcome)
 
     if not given:
@@ -508,7 +524,7 @@ def _input_text(tool_input: Any, shown: str) -> str:
 
     입력  vendor 가 참조와 어댑터까지 푼 실제 호출 인자 · 같은 줄의 결과 문구
     출력  조건을 INPUT_JOIN 으로 이은 줄
-    규칙  미리 정한 칸만 읽음. 수단 · 출발 · 자를 겹 · 발화에서 온 낱말 넷이고
+    규칙  미리 정한 칸만 읽음. 수단 · 출발 · 발화에서 온 낱말 셋이고
           적히는 차례도 그 순서임
           dict 가 아니면 ""
           발화에서 온 낱말은 한 칸만. SPOKEN_KEYS 를 순서대로 보고 먼저
@@ -519,11 +535,12 @@ def _input_text(tool_input: Any, shown: str) -> str:
           `origin_lon=…` 은 사람이 읽을 것이 아니다. 뜻이 우리말로 안 되는
           칸은 아예 안 적는다
           수를 안 적는다.
-          배선의 실수는 전부 경위도이고 정수는 단위를 모른다. 뜻과 단위를
-          아는 CUTOFFS_KEY 하나가 예외다
+          배선의 실수는 전부 경위도이고 정수는 단위를 모른다. 예외가 없다
     이력  문자열 · 정수 · 실수인 칸을 순서대로 `key=value` 로 적었음.
           화면이 `origin_lon=126.9482 · origin_lat=37.3201 · mode="TRANSIT" ·
           departure_date="2026-09-01"…` 이었음 (2026-09-01 실측)
+          자를 겹(`10 / 20 / 30분`)을 넷째로 적었음. 바로 아래 면적 줄이
+          같은 수를 다시 말해 뺐음 (2026-09-01 「일흔여덟째」)
     """
     if not isinstance(tool_input, dict):
         return ""
@@ -532,7 +549,6 @@ def _input_text(tool_input: Any, shown: str) -> str:
         text
         for text in (
             _mode_text(tool_input),
-            _departure_text(tool_input),
             _cutoffs_text(tool_input),
             _spoken_text(tool_input, shown),
         )
@@ -552,34 +568,25 @@ def _mode_text(tool_input: Dict[str, Any]) -> str:
     return MODE_WORDS.get(value, "") if isinstance(value, str) else ""
 
 
-def _departure_text(tool_input: Dict[str, Any]) -> str:
-    """언제 떠났는지 한 마디. 날짜도 시각도 없으면 "".
-
-    규칙  날짜와 시각을 한 칸 띄워 이음. 둘 중 하나만 있으면 그것만
-          문자열이 아니거나 비면 그 칸을 뺌. 도구가 어떤 꼴로 받는지는
-          이 파일이 모르므로 값을 다시 짜지 않고 그대로 씀
-    """
-    parts = []
-    for key in (DEPARTURE_DATE_KEY, DEPARTURE_TIME_KEY):
-        value = tool_input.get(key)
-        if isinstance(value, str) and value.strip():
-            parts.append(value.strip())
-    return DEPARTURE_LINE.format(when=" ".join(parts)) if parts else ""
-
-
 def _cutoffs_text(tool_input: Dict[str, Any]) -> str:
     """몇 분으로 잘랐는지 한 마디. 셀 것이 없으면 "".
 
     규칙  CUTOFFS_KEY 하나만 봄. 정수 목록이어야 함
           정수가 아닌 항목은 건너뜀. 하나도 안 남으면 ""
           단위는 맨 끝에 한 번만. "10분 / 20분 / 30분" 은 같은 말을 세 번 함
+          앞머리를 붙임. 수만 늘어놓으면 그 수가 무엇인지 알 수 없음
+    제약  값을 코드에 적지 않는다.
+          몇 겹으로 자를지는 배선(execution/wiring.yaml 의 reach_cutoffs)이
+          정하고 응답이 그대로 들고 온다
     """
     values = tool_input.get(CUTOFFS_KEY)
     if not isinstance(values, list):
         return ""
 
     minutes = [str(value) for value in values if _int_value(value) is not None]
-    return CUTOFFS_JOIN.join(minutes) + CUTOFFS_SUFFIX if minutes else ""
+    if not minutes:
+        return ""
+    return CUTOFFS_LEAD + CUTOFFS_JOIN.join(minutes) + CUTOFFS_SUFFIX
 
 
 def _spoken_text(tool_input: Dict[str, Any], shown: str) -> str:
@@ -601,9 +608,10 @@ def _spoken_text(tool_input: Dict[str, Any], shown: str) -> str:
     return ""
 
 
-def summarize(tool_input: Any, result: Any) -> str:
+def summarize(tool_input: Any, result: Any, reference: Any = None) -> str:
     """결과 모양만 보고 한 마디.
 
+    입력  실제 호출 인자 · 도구 응답 · 면적을 견줄 넓이(없으면 None)
     규칙  위에서부터 걸리는 데서 멈춤
           error 칸이 있으면 오류. 200 으로 돌아온 실패가 이 모양임
           배열이면 건수. 0건도 배열임. 첫 항목에서 고를 것이 있으면 함께 냄
@@ -612,6 +620,7 @@ def summarize(tool_input: Any, result: Any) -> str:
           location 이 [lon, lat] 이면 주소. 어디를 찍었는지 사람이 알아볼 수
           있어야 함. 좌표 숫자는 안 냄
           도달권 폴리곤이 실려 왔으면 제일 바깥 겹의 면적. _reach_line 임
+          행정동 목록이 실려 왔으면 그것. _districts_line 임
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
           한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
           그보다 많으면 여럿 중 하나라는 것을 밝힘
@@ -636,7 +645,11 @@ def summarize(tool_input: Any, result: Any) -> str:
         if _lon_lat(result.get("location")):
             return _place_line(tool_input, result)
 
-        reach = _reach_line(result)
+        districts = _districts_line(result)
+        if districts:
+            return districts
+
+        reach = _reach_line(result, reference)
         if reach:
             return reach
 
@@ -847,9 +860,10 @@ def _verdict(trace: List[Dict[str, Any]], failed: bool) -> str:
     return SUCCESS
 
 
-def _outcome(item: Dict[str, Any]) -> str:
+def _outcome(item: Dict[str, Any], reference: Any = None) -> str:
     """단계 줄의 뒷부분. 실패한 단계면 사유, 아니면 결과 한 마디.
 
+    입력  trace 항목 하나 · 면적을 견줄 넓이(없으면 None)
     규칙  실패인지는 step_failed 가 가름. 여기서 따로 판정하지 않음
           실패 모양이 둘임. error 칸이 있으면 vendor 가 거기서 멈춘 것이라
           result 가 없고 _failure_reason 이 사유를 씀
@@ -858,7 +872,7 @@ def _outcome(item: Dict[str, Any]) -> str:
     """
     if step_failed(item) and "error" in item:
         return FAILED_MARK + _failure_reason(item)
-    return summarize(item.get("input"), item.get("result"))
+    return summarize(item.get("input"), item.get("result"), reference)
 
 
 def _failure_reason(item: Dict[str, Any]) -> str:
@@ -935,7 +949,7 @@ def _place_line(tool_input: Any, result: Dict[str, Any]) -> str:
 #
 # 검산 — 같은 폴리곤을 위도 보정한 평면(x = R·λ·cos φ₀, y = R·φ)으로도 재서
 # 29.734 대 29.735 km² 로 맞췄다. R 을 평균반지름 · 등적반지름 · 6371000 중
-# 무엇으로 잡아도 소수 한 자리가 안 움직인다 (2026-09-01, NOTES.md 「일흔일곱째」).
+# 무엇으로 잡아도 소수 둘째 자리가 안 움직인다 (2026-09-01, NOTES.md 「일흔일곱째」·「일흔여덟째」).
 #
 # **제일 큰 겹 하나만 잰다.** 응답의 겹은 누적이다 — 10분 폴리곤의 꼭짓점
 # 열여섯 개가 모두 30분 폴리곤 안에 있다(실측). 그래서 겹을 더하면 안 되고
@@ -952,16 +966,59 @@ def _place_line(tool_input: Any, result: Dict[str, Any]) -> str:
 # CUTOFF_KEY         그 겹이 몇 분짜리인지 (properties 안)
 # EARTH_RADIUS_M     지구 평균 반지름 (IUGG). 위 검산 참고
 # REACH_MIN_RING     넓이를 잴 수 있는 최소 꼭짓점 수. 닫힌 삼각형이 넷이다
-# REACH_LINE         화면에 나갈 한 줄. 소수 한 자리
+# REACH_LINE         화면에 나갈 한 줄. 소수 둘째 자리
+#
+# **소수 둘째 자리다.** 한 자리로 자르면 29.960 이 30.0 으로 떨어져,
+# 재서 얻은 수가 어림잡아 적은 수처럼 보인다 (2026-09-01 「일흔여덟째」).
+# 잰 값의 자릿수는 검산이 소수 셋째 자리까지 맞은 것이 근거다 — 위
+# 「검산」 문단의 29.734 대 29.735 가 그것이다.
 REACH_KEY = "feature_collections"
 REACH_POLYGON_KEY = "polygons"
 CUTOFF_KEY = "cutoff_min"
 EARTH_RADIUS_M = 6371008.8
 REACH_MIN_RING = 4
-REACH_LINE = "{cutoff}분 이내 도달 면적 {area:.1f} km²"
+REACH_LINE = "{cutoff}분 이내 도달 면적 {area:.2f} km²"
+
+# 면적 옆에 붙는 견줌. **값은 부르는 쪽이 준다.**
+#
+# 「29.96 km² 가 넓은가 좁은가」를 사람이 스스로 답할 수 없다. 아는 넓이 하나에
+# 대면 읽힌다. 그 넓이는 장소마다 다르고 이 파일은 어느 장소인지 모르므로,
+# 값이 있을 때만 괄호가 붙는다 — 없으면 괄호가 통째로 안 나온다. 아무 시군구
+# 면적이나 갖다 대면 조용히 틀린 수가 붙는다.
+#
+# **넓이를 견준 것이지 그 안에 든다는 뜻이 아니다.** 의왕역 30분 겹은
+# 군포·안양·수원까지 걸친다(실측). 그래서 「의왕시의 55%」가 아니라
+# 「의왕시 전체 면적 …의 55%」로 적는다.
+# 부르는 쪽이 견줌을 실어 보내는 칸. intent 에 얹힌다.
+AREA_REFERENCE_INTENT_KEY = "area_reference"
+AREA_REFERENCE_NAME = "name"
+AREA_REFERENCE_AREA = "area_km2"
+AREA_REFERENCE_LINE = "  ({name} 전체 면적 {area:.2f} km² 의 {percent}%)"
+
+# ── 도달 지역 ─────────────────────────────────────────────────
+#
+# execution/reach_districts 가 도달권 안에서 점을 뽑아 행정동을 모아 온 것이다.
+# 여기는 그 목록을 줄로 만들기만 한다.
+#
+# **시군구로 묶는다.** 「삼동 · 내손동 · 산본동」만 늘어놓으면 어느 시의 동인지
+# 모르고, 동마다 시를 붙이면 같은 시가 되풀이된다.
+#
+# **열까지 적고 그 뒤는 조용히 자른다.** 앞에 오는 것이 점이 많이 걸린
+# 차례라(reach_districts 가 그 차례로 준다) 넓게 걸치는 곳이 남는다.
+#
+# ★ **수를 안 쓴다.** 「외 N곳」을 뒀다가 걷었다 — N 이 「우리가 찾은 수」이지
+# 실제 수가 아니기 때문이다. 격자 사이로 빠지는 동이 있어서(500m 예산에서
+# 스물다섯 중 스물) 「외 5곳」이라고 적으면 틀린 값이 화면에 박힌다.
+# 이름은 실제로 찾은 것이라 참이고, 수만 참이 아니다 (NOTES.md 「일흔아홉째」).
+DISTRICTS_KEY = "districts"
+DISTRICTS_SIGUNGU = "sigungu"
+DISTRICTS_EMD = "emd"
+DISTRICTS_SHOWN = 10
+DISTRICTS_EMD_JOIN = " · "
+DISTRICTS_GROUP_JOIN = ", "
 
 
-def _reach_line(result: Dict[str, Any]) -> str:
+def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
     """도달권 면적 한 줄. 잴 것이 없으면 "".
 
     입력  결과 dict
@@ -973,20 +1030,86 @@ def _reach_line(result: Dict[str, Any]) -> str:
           몇 분으로 자를지는 배선이 정하고 응답이 들고 온다. 30 을 여기 적으면
           배선을 고쳤을 때 이 줄만 조용히 사라진다
     """
-    features = _reach_features(result)
+    features = reach_features(result)
     if not features:
         return ""
 
     cutoff, geometry = max(features, key=lambda pair: pair[0])
-    area = _geometry_area(geometry) / 1_000_000
+    area = geometry_area(geometry) / 1_000_000
     if area <= 0:
         return ""
 
     number = int(cutoff) if float(cutoff).is_integer() else cutoff
-    return BELOW + RECORD_INDENT + REACH_LINE.format(cutoff=number, area=area)
+    line = REACH_LINE.format(cutoff=number, area=area)
+    return BELOW + RECORD_INDENT + line + _area_reference_text(area, reference)
 
 
-def _reach_features(result: Any) -> List[Tuple[float, Any]]:
+def _area_reference_text(area: float, reference: Any) -> str:
+    """면적 옆의 견줌 한 마디. 견줄 것이 없으면 "".
+
+    입력  잰 넓이(km²) · 부르는 쪽이 준 {name, area_km2}
+    출력  " (의왕시 전체 면적 54.02 km² 의 55%)" 꼴
+    규칙  이름과 넓이가 다 있고 넓이가 0보다 클 때만 적음
+          백분율은 반올림해 정수로. 소수를 적으면 잰 값처럼 보임
+    제약  견줄 넓이를 여기서 고르지 않는다.
+          이 파일은 어느 장소인지 모른다. 아무 시군구 넓이나 갖다 대면
+          조용히 틀린 수가 화면에 붙는다
+    """
+    if not isinstance(reference, dict):
+        return ""
+    name = reference.get(AREA_REFERENCE_NAME)
+    whole = reference.get(AREA_REFERENCE_AREA)
+    if not isinstance(name, str) or not name.strip():
+        return ""
+    if isinstance(whole, bool) or not isinstance(whole, (int, float)) or whole <= 0:
+        return ""
+    return AREA_REFERENCE_LINE.format(
+        name=name.strip(), area=float(whole), percent=round(area / float(whole) * 100)
+    )
+
+
+def _districts_line(result: Dict[str, Any]) -> str:
+    """도달권 안의 행정동 한 줄. 그런 응답이 아니면 "".
+
+    입력  execution/reach_districts 가 만든 결과
+    출력  "의왕시 삼동 · 내손동, 군포시 산본동" 꼴
+    규칙  받은 차례를 지킴. 점이 많이 걸린 차례로 와 있음
+          시군구로 묶음. 묶음 안의 차례도 받은 차례임
+          DISTRICTS_SHOWN 개까지만 적고 나머지는 조용히 자름
+          시군구와 읍면동이 둘 다 문자열인 항목만 셈
+    제약  몇 곳인지를 화면에 안 적는다.
+          센 수가 격자가 찾은 수이지 실제 수가 아니다. 이름은 참이고
+          수는 참이 아니다
+    """
+    if not isinstance(result, dict):
+        return ""
+    found = result.get(DISTRICTS_KEY)
+    if not isinstance(found, list):
+        return ""
+
+    pairs = []
+    for entry in found:
+        if not isinstance(entry, dict):
+            continue
+        sigungu = entry.get(DISTRICTS_SIGUNGU)
+        emd = entry.get(DISTRICTS_EMD)
+        if isinstance(sigungu, str) and isinstance(emd, str) and sigungu and emd:
+            pairs.append((sigungu, emd))
+    if not pairs:
+        return ""
+
+    shown = pairs[:DISTRICTS_SHOWN]
+    grouped: Dict[str, List[str]] = {}
+    for sigungu, emd in shown:
+        grouped.setdefault(sigungu, []).append(emd)
+
+    groups = [
+        f"{sigungu} {DISTRICTS_EMD_JOIN.join(names)}" for sigungu, names in grouped.items()
+    ]
+    return DISTRICTS_GROUP_JOIN.join(groups)
+
+
+def reach_features(result: Any) -> List[Tuple[float, Any]]:
     """도달권 폴리곤의 (cutoff, geometry) 짝들. 그런 응답이 아니면 빈 목록.
 
     규칙  REACH_KEY 안의 REACH_POLYGON_KEY 안의 "features" 만 봄.
@@ -1018,7 +1141,7 @@ def _reach_features(result: Any) -> List[Tuple[float, Any]]:
     return found
 
 
-def _geometry_area(geometry: Any) -> float:
+def geometry_area(geometry: Any) -> float:
     """폴리곤 하나의 넓이 (m²). 못 재면 0.
 
     규칙  Polygon 이면 고리 목록 한 벌, MultiPolygon 이면 그것이 여럿
