@@ -98,12 +98,14 @@ SIGUNGU_KEY = "sigungu"
 EMD_KEY = "emd"
 
 
-async def run(tool: dict, previous: dict, user_context: dict) -> dict:
-    """도달권 안의 행정동을 모아 trace 항목 하나로.
+async def run(tool: dict, previous: dict, user_context: dict, sent: int = 0) -> tuple:
+    """도달권 안의 행정동을 모아 trace 항목 하나로. (항목, 창에 보낸 수).
 
-    입력  TOOL_OF 한 줄 · 앞 단계(도달권 계산)의 응답 · Gateway 에 보낼 권한
+    입력  TOOL_OF 한 줄 · 앞 단계(도달권 계산)의 응답 · Gateway 에 보낼 권한 ·
+          이 창에 이미 보낸 건수. 앞 sampled 노드가 쓰고 넘긴 것임
     출력  vendor 의 trace 항목과 같은 모양. result 아니면 error 하나를 담음.
           id 는 안 붙임. 부르는 쪽이 노드 id 로 붙임
+          창 셈을 함께 냄. 다음 sampled 노드가 이어 세야 함
     규칙  제일 큰 겹 하나만 봄. 겹이 누적이라 안쪽 겹은 이미 그 안에 듦.
           넓이를 재는 자리와 같은 겹을 봐야 두 줄이 같은 것을 말함
           CHUNK 건마다 창이 빌 때까지 쉼. 예산이 Gateway 한도보다 큼
@@ -118,15 +120,38 @@ async def run(tool: dict, previous: dict, user_context: dict) -> dict:
     """
     geometry = _widest(previous)
     if geometry is None:
-        return _failed(tool, "도달권 폴리곤이 없어 행정동을 찾지 못했습니다.")
+        return _failed(tool, "도달권 폴리곤이 없어 행정동을 찾지 못했습니다."), sent
 
     points = sample_points(geometry, SAMPLE_BUDGET)
     if not points:
-        return _failed(tool, "도달권 안에서 찍을 지점을 얻지 못했습니다.")
+        return _failed(tool, "도달권 안에서 찍을 지점을 얻지 못했습니다."), sent
 
+    hits, failures, sent = await gather(tool, points, user_context, sent)
+    if not hits:
+        return _failed(tool, "도달권 안의 행정동을 찾지 못했습니다."), sent
+
+    return {
+        "server_id": tool["server_id"],
+        "tool": tool["tool"],
+        "input": {"points": len(points), "failed": failures},
+        "result": {DISTRICTS_KEY: districts_in_order(hits)},
+    }, sent
+
+
+async def gather(tool: dict, points: list, user_context: dict, sent: int) -> tuple:
+    """점들을 하나씩 물어 동을 셈. (동별 점 수, 실패한 점 수, 창에 보낸 수).
+
+    입력  TOOL_OF 한 줄 · (경도, 위도) 목록 · 권한 · 이 창에 이미 보낸 건수
+    출력  {(시군구, 읍면동): 걸린 점 수} · 못 얻은 점 수 · 창에 보낸 건수
+    규칙  CHUNK 건마다 창이 빌 때까지 쉬고 셈을 0으로 되돌림
+          _ask 가 창을 기다렸다고 하면 그때도 셈을 되돌림. 새 창이 열린 것임
+          점 하나가 터져도 멈추지 않음. 나머지로 답함
+    제약  창 셈을 이 함수 안에서 새로 시작하지 않는다.
+          한 발화가 sampled 노드를 둘 지난다. 뒤엣것이 0부터 다시 세면 앞
+          노드가 이미 쓴 건수를 모른 채로 보내 한도에 걸린다
+    """
     hits: dict = {}
     failures = 0
-    sent = 0
     for lon, lat in points:
         if sent >= CHUNK:
             await asyncio.sleep(WINDOW_WAIT_S)
@@ -139,21 +164,18 @@ async def run(tool: dict, previous: dict, user_context: dict) -> dict:
         found = _district_of(result)
         if found:
             hits[found] = hits.get(found, 0) + 1
+    return hits, failures, sent
 
-    if not hits:
-        return _failed(tool, "도달권 안의 행정동을 찾지 못했습니다.")
 
+def districts_in_order(hits: dict) -> list:
+    """동별 점 수를 화면이 읽는 목록으로. 점이 많이 걸린 차례.
+
+    출력  [{sigungu, emd}, …]
+    제약  점 수를 함께 내보내지 않는다.
+          격자 간격이 정하는 값이라 사람이 읽어서 뜻을 알 수 없다
+    """
     ordered = sorted(hits.items(), key=lambda pair: -pair[1])
-    return {
-        "server_id": tool["server_id"],
-        "tool": tool["tool"],
-        "input": {"points": len(points), "failed": failures},
-        "result": {
-            DISTRICTS_KEY: [
-                {SIGUNGU_KEY: sigungu, EMD_KEY: emd} for (sigungu, emd), _ in ordered
-            ]
-        },
-    }
+    return [{SIGUNGU_KEY: sigungu, EMD_KEY: emd} for (sigungu, emd), _ in ordered]
 
 
 async def _ask(tool: dict, lon: float, lat: float, user_context: dict) -> tuple:
@@ -211,8 +233,8 @@ def sample_points(geometry: dict, budget: int) -> list:
     제약  간격을 상수로 박지 않는다.
           넓은 구역에서 429 를 맞고 좁은 구역에서 동을 통째로 빠뜨린다
     """
-    rings = _rings(geometry)
-    if not rings:
+    polygons = rings(geometry)
+    if not polygons:
         return []
 
     area = geometry_area(geometry)
@@ -220,8 +242,8 @@ def sample_points(geometry: dict, budget: int) -> list:
         return []
 
     step = max(math.sqrt(area / budget), MIN_STEP_M)
-    xs = [x for polygon in rings for x, _ in polygon[0]]
-    ys = [y for polygon in rings for _, y in polygon[0]]
+    xs = [x for polygon in polygons for x, _ in polygon[0]]
+    ys = [y for polygon in polygons for _, y in polygon[0]]
     min_lon, max_lon = min(xs), max(xs)
     min_lat, max_lat = min(ys), max(ys)
 
@@ -234,7 +256,7 @@ def sample_points(geometry: dict, budget: int) -> list:
     while lat < max_lat and len(points) < budget:
         lon = min_lon + delta_lon / 2
         while lon < max_lon and len(points) < budget:
-            if _inside(lon, lat, rings):
+            if inside(lon, lat, polygons):
                 points.append((round(lon, 6), round(lat, 6)))
             lon += delta_lon
         lat += delta_lat
@@ -252,7 +274,7 @@ def _widest(previous: dict):
     return max(features, key=lambda pair: pair[0])[1]
 
 
-def _rings(geometry) -> list:
+def rings(geometry) -> list:
     """도형을 폴리곤 목록으로. 폴리곤이 아니면 빈 목록.
 
     출력  [[바깥고리, 구멍…], …]
@@ -270,7 +292,7 @@ def _rings(geometry) -> list:
     return []
 
 
-def _inside(lon: float, lat: float, rings: list) -> bool:
+def inside(lon: float, lat: float, polygons: list) -> bool:
     """그 점이 폴리곤 안인가.
 
     규칙  바깥 고리 안이고 어느 구멍에도 안 들면 참
@@ -278,7 +300,7 @@ def _inside(lon: float, lat: float, rings: list) -> bool:
     return any(
         _in_ring(lon, lat, polygon[0])
         and not any(_in_ring(lon, lat, hole) for hole in polygon[1:])
-        for polygon in rings
+        for polygon in polygons
         if polygon
     )
 

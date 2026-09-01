@@ -7,3 +7,5 @@ steps:
   - node: compute_reach_area
 
   - node: list_reach_districts
+
+  - node: list_shadow_districts

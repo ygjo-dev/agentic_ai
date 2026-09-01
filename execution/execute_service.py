@@ -28,7 +28,7 @@ step_service.plan 의 commands 가 그것이다. 저쪽 show-facility plugin 이
 
 from collections import Counter
 
-from execution import reach_districts, step_service
+from execution import reach_districts, shadow_districts, step_service
 from ontology import graph, store
 from orchestrator import resolve_service
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
@@ -39,6 +39,7 @@ from vendor_to_be_deleted.asap.workflow_answer import (
     DEPARTURE_TIME_KEY,
     MODE_KEY,
     MODE_WORDS,
+    SHADOW_KEY,
     command_answer,
     compose_workflow_answer,
     no_match_answer,
@@ -99,6 +100,16 @@ CLARIFY_MANY_FROM = 4
 
 # 부를 것이 하나도 없을 때의 답은 vendor_to_be_deleted/asap/workflow_answer.no_match_answer 가
 # 만든다. 문구는 한 글자도 안 바뀌었고 뒤에 안내 두 줄이 붙는다.
+
+# 배선에 sampled 가 적힌 노드를 무엇이 실행하는가.
+#
+# 둘 다 adminBoundary.findBoundaryByPoint 를 여러 번 부르고 도달권 응답을
+# 읽는다. 갈리는 것은 어느 점을 찍느냐다 — 도달 범위 안이냐, 그 볼록 껍질
+# 안이면서 도달 범위 밖이냐.
+SAMPLED_RUNNERS = {
+    "list_reach_districts": reach_districts.run,
+    "list_shadow_districts": shadow_districts.run,
+}
 
 # 도구를 안 부르는 단계의 진행 표시. 도구 단계와 같은 모양이라 저쪽 화면이
 # 따로 알아볼 것이 없다 — 그 자리에 도구 이름 대신 지도 명령 op 이 온다.
@@ -179,6 +190,33 @@ REACH_CONDITION = "({year}년 {month}월 {day}일 {hour:02d}시 {minute:02d}분 
 AREA_REFERENCE = {
     "의왕역": {"name": "의왕시", "area_km2": 54.02},
 }
+
+# 음영 지역의 볼록 껍질 테두리. **점선 한 겹만 얹는다.**
+#
+# 음영 폴리곤을 통째로 칠하지 않은 까닭은 색이 넷이 되어 도달권 세 겹이
+# 흐려지기 때문이다. 테두리는 색을 안 늘리고 「어디를 놓고 잰 것인가」만 말한다.
+#
+# ★ **저쪽 화면에 line-dasharray 가 없다** (ASAP-web 의
+# packages/map/src/components/MapLibre2DMap.tsx, managed line 레이어를 읽기만
+# 했다. `dasharray` 검색 0건). 그래서 점선을 **조각으로 나눠** 보낸다 —
+# shadow_districts.dashes 가 그 일을 한다.
+#
+# **이름표는 선을 안 그리는 feature 하나가 따로 진다.** 같은 레이어의 label
+# 층은 `$type == LineString` 이고 `showLabel == 1` 인 것을 고르는데(위 파일
+# 1373~1380줄) 선을 그리는 층은 `outline != false` 를 함께 본다. 그래서 고리
+# 전체를 `outline: false` 로 한 벌 더 보내면 선은 안 그려지고 글자만 테두리를
+# 따라 붙는다. **`showLabel` 은 참이 아니라 1 이다** — 저쪽 필터가 수 1 과
+# 견준다.
+#
+# 이름을 붙이는 까닭은 껍질 안쪽 전체가 음영으로 읽히는 것을 막기 위해서다.
+# 실제 음영은 그 안에서 도달권 세 겹을 뺀 나머지다.
+SHADOW_HULL_LAYER = "shadow-hull"
+SHADOW_HULL_LABEL = "음영 지역 판정 범위"
+SHADOW_HULL_COLOR = "#6B7280"
+SHADOW_HULL_WIDTH = 2
+# 획과 틈의 길이(m). 껍질 둘레가 28.6km 라 획 29개가 된다 (2026-09-01 실측).
+SHADOW_DASH_M = 600.0
+SHADOW_GAP_M = 400.0
 
 
 async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
@@ -269,7 +307,8 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         yield {"type": "step_end", "node": shown, "message": f"{tool} {outcome}"}
 
     yield _result(
-        _answer(intent, executed, sampled), _commands(executed) + plan["commands"]
+        _answer(intent, executed, sampled),
+        _commands(executed) + plan["commands"] + _shadow_commands(sampled),
     )
 
 
@@ -547,14 +586,22 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
 
     입력  배선에 sampled 가 적힌 노드 id 목록 · vendor 가 쌓은 trace
     출력  trace 항목과 같은 모양의 목록. 부른 차례
-    규칙  vendor 가 마지막에 부른 것의 응답을 받아 씀. 이 노드들은 경로의
-          끝에 서고 앞 단계가 vendor 의 마지막 step 임
+    규칙  vendor 가 마지막에 부른 것의 응답을 노드마다 그대로 넘김. 이 노드들은
+          경로의 끝에 늘어서고 둘 다 도달권 폴리곤을 읽음. 앞 sampled 노드가
+          내놓는 것은 동 이름뿐이라 이어 받을 것이 없음
+          어느 노드를 무엇이 실행하는지는 SAMPLED_RUNNERS 가 앎. 표에 없는
+          노드는 건너뜀
           앞에 성공한 단계가 하나도 없으면 아무것도 안 부름. 받을 것이 없음
           앞 단계가 실패했으면 안 부름. vendor 가 거기서 멈춘 것이라
           이어서 부를 근거가 없음
+          한 단계가 실패하면 뒤엣것도 안 부름. 같은 응답을 읽으므로 앞이
+          못 읽은 것을 뒤가 읽을 수 있을 리 없음
+          Gateway 창에 보낸 건수를 노드 사이에 이어 셈. 둘이 따로 세면 뒤엣
+          노드가 앞 노드의 건수를 모른 채 보내 한도에 걸림
           항목의 id 를 노드 id 로 붙임. 답이 그 id 로 단계 이름을 찾음
     제약  여기서 도구를 부르지 않는다.
-          무엇을 어떻게 부르는지는 execution/reach_districts 가 안다
+          무엇을 어떻게 부르는지는 execution/reach_districts ·
+          execution/shadow_districts 가 안다
     """
     if not nodes or not trace:
         return []
@@ -563,17 +610,83 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
         return []
 
     done = []
-    previous = last["result"]
+    sent = 0
     for node_id in nodes:
-        item = await reach_districts.run(
-            step_service.TOOL_OF[node_id], previous, dict(USER_CONTEXT)
+        runner = SAMPLED_RUNNERS.get(node_id)
+        if runner is None:
+            continue
+        item, sent = await runner(
+            step_service.TOOL_OF[node_id], last["result"], dict(USER_CONTEXT), sent
         )
         item["id"] = node_id
         done.append(item)
         if step_failed(item):
             break
-        previous = item["result"]
     return done
+
+
+def _shadow_commands(sampled: list[dict]) -> list[dict]:
+    """★ 임시 · 보도자료용. 음영 지역의 볼록 껍질 테두리를 그리는 명령. 없으면 빈 목록.
+
+    입력  _sampled 가 낸 항목들
+    출력  map.clear 하나와 map.draw 하나. 그리기 전에 지움
+    규칙  껍질을 실어 온 항목이 있을 때만 냄. 실패한 항목에는 없음
+          획을 조각으로 나눠 보냄. 저쪽에 점선 속성이 없음
+          이름표는 선을 안 그리는 feature 한 벌이 따로 짐
+          지도 명령 뒤에 붙임. 나중에 그린 것이 위에 올라감
+    제약  음영 폴리곤을 칠하지 않는다.
+          색이 넷이 되어 도달권 세 겹이 흐려진다. 그것은 사람이 정한 값이다
+    ★ 이 함수는 SHADOW_HULL_LAYER 무리와 함께 걷는다
+    """
+    hull = None
+    for item in sampled:
+        shadow = (item.get("result") or {}).get(SHADOW_KEY)
+        if isinstance(shadow, dict):
+            hull = shadow.get(shadow_districts.HULL_KEY)
+    if not isinstance(hull, dict):
+        return []
+
+    segments = shadow_districts.dashes(hull, SHADOW_DASH_M, SHADOW_GAP_M)
+    if not segments:
+        return []
+
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [list(point) for point in segment],
+            },
+            "properties": {
+                "id": f"{SHADOW_HULL_LAYER}-{index}",
+                "name": SHADOW_HULL_LABEL,
+                "color": SHADOW_HULL_COLOR,
+                "outlineColor": SHADOW_HULL_COLOR,
+                "width": SHADOW_HULL_WIDTH,
+            },
+        }
+        for index, segment in enumerate(segments)
+    ]
+    features.append(
+        {
+            "type": "Feature",
+            "geometry": {
+                "type": "LineString",
+                "coordinates": [list(point) for point in hull["coordinates"][0]],
+            },
+            "properties": {
+                "id": f"{SHADOW_HULL_LAYER}-label",
+                "name": SHADOW_HULL_LABEL,
+                "label": SHADOW_HULL_LABEL,
+                "showLabel": 1,
+                "outline": False,
+            },
+        }
+    )
+    return [
+        {"op": "map.clear", "args": {"layerId": SHADOW_HULL_LAYER}},
+        {"op": "map.draw", "args": {"layerId": SHADOW_HULL_LAYER, "features": features}},
+    ]
 
 
 def _trace(executed: dict) -> list[dict]:

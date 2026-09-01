@@ -621,6 +621,7 @@ def summarize(tool_input: Any, result: Any, reference: Any = None) -> str:
           있어야 함. 좌표 숫자는 안 냄
           도달권 폴리곤이 실려 왔으면 제일 바깥 겹의 면적. _reach_line 임
           행정동 목록이 실려 왔으면 그것. _districts_line 임
+          음영 지역이 실려 왔으면 넓이와 그 안의 동. _shadow_line 임
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
           한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
           그보다 많으면 여럿 중 하나라는 것을 밝힘
@@ -648,6 +649,10 @@ def summarize(tool_input: Any, result: Any, reference: Any = None) -> str:
         districts = _districts_line(result)
         if districts:
             return districts
+
+        shadow = _shadow_line(result)
+        if shadow:
+            return shadow
 
         reach = _reach_line(result, reference)
         if reach:
@@ -1010,6 +1015,25 @@ AREA_REFERENCE_LINE = "  ({name} 전체 면적 {area:.2f} km² 의 {percent}%)"
 # 실제 수가 아니기 때문이다. 격자 사이로 빠지는 동이 있어서(500m 예산에서
 # 스물다섯 중 스물) 「외 5곳」이라고 적으면 틀린 값이 화면에 박힌다.
 # 이름은 실제로 찾은 것이라 참이고, 수만 참이 아니다 (NOTES.md 「일흔아홉째」).
+# ── 음영 지역 ─────────────────────────────────────────────────
+#
+# execution/shadow_districts 가 낸 것이다. 여기는 줄로 만들기만 한다.
+#
+# **뜻을 화면에도 적는다.** 「음영 지역」만 적으면 읽는 사람이 자기 정의로
+# 읽는다 — 대개 「30분에 못 가는 곳 전부」로 읽고, 그러면 부산과 제주가 든
+# 수처럼 보인다. 실제로 잰 것은 도달 범위 조각들의 볼록 껍질에서 도달 범위를
+# 뺀 것, 곧 조각 사이에 남은 틈이다.
+#
+# **동 이름은 아랫줄로 내린다.** 넓이와 한 줄에 두면 줄이 길어 접힌다.
+# 도달 지역 줄과 같은 들여쓰기를 쓴다.
+#
+# ★ **수를 안 쓴다.** 도달 지역과 같은 까닭이다 — 이름은 참이고 몇 곳인지는
+# 격자가 정하는 값이라 참이 아니다 (NOTES.md 「여든째」).
+SHADOW_KEY = "shadow"
+SHADOW_AREA_KEY = "area_km2"
+SHADOW_DISTRICTS_KEY = "districts"
+SHADOW_LINE = "도달 범위에 둘러싸였으나 닿지 않는 곳 {area:.2f} km²"
+
 DISTRICTS_KEY = "districts"
 DISTRICTS_SIGUNGU = "sigungu"
 DISTRICTS_EMD = "emd"
@@ -1083,9 +1107,21 @@ def _districts_line(result: Dict[str, Any]) -> str:
     """
     if not isinstance(result, dict):
         return ""
-    found = result.get(DISTRICTS_KEY)
-    if not isinstance(found, list):
+    pairs = _district_pairs(result.get(DISTRICTS_KEY))
+    if not pairs:
         return ""
+
+    return _grouped_districts(pairs)
+
+
+def _district_pairs(found: Any) -> List[Tuple[str, str]]:
+    """목록에서 (시군구, 읍면동) 짝만. 그런 목록이 아니면 빈 목록.
+
+    규칙  둘 다 문자열이고 비어 있지 않은 항목만 셈
+          받은 차례를 지킴. 점이 많이 걸린 차례로 와 있음
+    """
+    if not isinstance(found, list):
+        return []
 
     pairs = []
     for entry in found:
@@ -1095,18 +1131,54 @@ def _districts_line(result: Dict[str, Any]) -> str:
         emd = entry.get(DISTRICTS_EMD)
         if isinstance(sigungu, str) and isinstance(emd, str) and sigungu and emd:
             pairs.append((sigungu, emd))
-    if not pairs:
-        return ""
+    return pairs
 
-    shown = pairs[:DISTRICTS_SHOWN]
+
+def _grouped_districts(pairs: List[Tuple[str, str]]) -> str:
+    """동 이름을 시군구로 묶은 한 마디. 적을 것이 없으면 "".
+
+    출력  "의왕시 삼동 · 내손동, 군포시 산본동" 꼴
+    규칙  DISTRICTS_SHOWN 개까지만 적고 나머지는 조용히 자름
+          묶음 안의 차례도 받은 차례임
+    제약  몇 곳인지를 적지 않는다.
+          센 수가 격자가 찾은 수이지 실제 수가 아니다
+    """
     grouped: Dict[str, List[str]] = {}
-    for sigungu, emd in shown:
+    for sigungu, emd in pairs[:DISTRICTS_SHOWN]:
         grouped.setdefault(sigungu, []).append(emd)
 
     groups = [
         f"{sigungu} {DISTRICTS_EMD_JOIN.join(names)}" for sigungu, names in grouped.items()
     ]
     return DISTRICTS_GROUP_JOIN.join(groups)
+
+
+def _shadow_line(result: Dict[str, Any]) -> str:
+    """음영 지역 한 줄. 그런 응답이 아니면 "".
+
+    입력  execution/shadow_districts 가 만든 결과
+    출력  뜻과 넓이 한 줄. 동을 찾았으면 아랫줄에 들여 써 붙임
+    규칙  넓이가 0보다 클 때만 적음. 0.00 km² 라고 적으면 잰 것처럼 보임
+          뜻을 넓이와 함께 적음. 「음영 지역」이라는 이름만으로는 무엇을 잰
+          수인지 읽는 사람이 알 수 없음
+          동을 못 찾았으면 넓이만. 넓이는 폴리곤에서 잰 것이라 점 뽑기가
+          실패해도 참임
+    제약  넓이를 여기서 재지 않는다.
+          무엇을 어떻게 재는지는 execution/shadow_districts 가 안다
+    """
+    if not isinstance(result, dict):
+        return ""
+    shadow = result.get(SHADOW_KEY)
+    if not isinstance(shadow, dict):
+        return ""
+
+    area = shadow.get(SHADOW_AREA_KEY)
+    if isinstance(area, bool) or not isinstance(area, (int, float)) or area <= 0:
+        return ""
+
+    line = SHADOW_LINE.format(area=float(area))
+    names = _grouped_districts(_district_pairs(shadow.get(SHADOW_DISTRICTS_KEY)))
+    return line + BELOW + RECORD_INDENT + names if names else line
 
 
 def reach_features(result: Any) -> List[Tuple[float, Any]]:
