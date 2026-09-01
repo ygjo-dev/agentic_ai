@@ -90,7 +90,7 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 
 ```
  7  ~~좁히기 스위치(RESOLVE_NARROW · 2단 프롬프트) 걷어내기~~  ★ 끝났다 (일흔두째)
- 8  세션 없애기 — 되묻기 뒤 「1번」으로 고르는 기능(CLARIFY_CHOICE)
+ 8  ~~세션 없애기 — 되묻기 뒤 「1번」으로 고르는 기능(CLARIFY_CHOICE)~~  ★ 끝났다 (일흔셋째)
  9  description 다듬기 — menu 문장이 틀이 같아 안 갈린다
 10  검산(축 조회 · 대조) 걷어내기. 9 의 결과가 정한다. 조건부다
 11  노드 등록을 다른 저장소로. registration/ 으로는 모았다(6번 · 일흔한째)
@@ -137,22 +137,46 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
   통째로 지웠으면 기본 경로의 표가 한 줄 사라질 뻔했다. `_print_times` 로 이름을
   고쳐 남겼다.
 
-- **8 · 세션을 없앤다.** 되묻기 뒤 「1번」으로 고르는 기능(`CLARIFY_CHOICE`)을
-  뺀다. **까닭 : 리뷰하는 사람이 세션을 아직 만들지 말라고 했다.**
-  **되묻기 자체는 남는다.** 없어지는 것은 되묻기 *뒤* 한 걸음뿐이다.
+- **~~8 · 세션을 없앤다~~ — 끝났다** (2026-09-01 「일흔셋째」).
+  **되찾을 태그 : `had-clarify-session`** (`91f3218`).
+  `git reset --hard had-clarify-session` 으로 통째로 돌아간다.
+  4개 파일 1024줄을 지웠다. **까닭은 리뷰다** — 세션을 아직 만들지 말라고 했다.
+  **되묻기 자체는 그대로 난다.** 없어진 것은 되묻기 *뒤* 한 걸음뿐이다.
+
+  **세션이 무엇이었나.** 다시 만들 사람이 읽을 것이라 남긴다.
 
   ```
-  세션 상태를 쥔 곳은 저장소에서 하나다 (2026-08-31 세어 확인)
-    app/api/services/clarify_service.py   _PENDING — 메모리 · 5분 ·
-                                           한 번 쓰면 지움 · 저장 안 함
-  나머지는 session_id 를 지나보내기만 한다
-    execute_service.py · main.py · schemas/requests.py · dev/tools/check_resolve.py
-  app/ui/ 의 session 은 st.session_state 다. 우리 세션이 아니다
+  세션마다 직전 되묻기 하나를 메모리에 두었다. TTL 5분 · 상한 64개(LRU) ·
+  한 번 꺼내면 지움 · 파일도 DB 도 안 만듦
+  다음 발화가 그중 하나를 고른 것인지 LLM 없이 문자열로만 갈랐다 — 번호만
+  ("1번") · 번호+이름 · 이름만 · 차례말("첫 번째") 넷
+  고른 것이면 resolve 를 다시 안 부르고 기억해 둔 recipe 와 인자로 곧장
+  실행했다. 답 맨 앞에 「고르신 것 — 1 인구 통계 조회」 한 줄이 붙었다
   ```
 
-  위의 「되묻기 뒤 고르기가 스위치 뒤에 있다」(2026-08-29 「쉰한째」) 항목이
-  적어 둔 대가를 그대로 진다 — **끄면 정답표의 근접 서른셋 회가 막다른 길이
-  된다.** 그것을 감수하는 판단이 이미 섰다(리뷰).
+  「쉰한째」가 적어 둔 대가를 그대로 진다 — **정답표의 근접 서른셋 회가
+  막다른 길이 됐다.** 감수하는 판단이 이미 서 있었다(리뷰).
+
+  ★ **지우면서 알게 된 것 둘.**
+
+  ```
+  번지는 범위     CLARIFY_CHOICE 를 읽는 자리는 하나(enabled)인데, 문구 상수
+                  (CHOICE_HEAD)를 import 해 쓰던 자리가 execute_service 밖에
+                  둘 더 있었다 — check_resolve 의 CHOICE_PREFIX 와 시험 하나.
+                  상수를 가져다 쓰는 곳을 먼저 세면 범위가 미리 보인다
+  끄고 재기       이 스위치는 /chat 에만 걸려 있는데 계기판 기본 명령은
+                  /resolve 만 부른다. 켬·끔이 같게 나온 것은 좋은 소식이
+                  아니라 애초에 안 지나는 길이었다는 뜻이다. 대가는
+                  --execute 쪽에 있고 그 표에는 안 나온다
+  ```
+
+  ★ **`--execute` 를 다음에 돌리는 사람에게.** 되묻기가 나는 발화는 이제
+  번호를 눌러도 안 닿아 **`?`** 로 찍힌다. 도구가 고장난 것이 아니다.
+
+  ★ **`krri` 를 저장소 밖에서 함께 고쳤다** (`~/.local/bin/krri`, 사본은
+  `krri.bak`). `no-choice` · `CLARIFY_CHOICE` · 7번이 남긴 `narrow` ·
+  `RESOLVE_NARROW` 를 뺐고, `st` 의 스위치 절은 볼 것이 없어져 「없음」 한
+  줄이 됐다. 전문은 「일흔셋째」 보고에 있다.
 
 - **9 · `description` 을 다듬는다.** `menu` 문장의 틀이 같아서 안 갈린다.
   문장을 만드는 재료가 노드의 `name` 과 `description` 이므로 고칠 자리는
@@ -1858,6 +1882,270 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-01 (일흔셋째) · 세션을 걷어냈다 — B 8
+
+무인 실행. 조건 — `refactor/vendor` · 시작 전 워킹 트리 깨끗함 ·
+되돌리는 태그 **`had-clarify-session`** 를 시작 전에 박았다 (`91f3218`).
+
+**동작이 바뀌는 일(B) 중 8 이다.** 9(description) · 10(검산)은 이번이 아니다.
+손대지 않았다.
+
+#### 1. 왜 걷었나
+
+**코드 리뷰하는 사람이 세션을 아직 만들지 말라고 했다.** 「열린 과제 8」이
+적어 둔 그 요구다. 세션 상태를 쥔 곳은 이 저장소에서 `clarify_service` 한
+곳뿐이었으므로, 그것을 걷으면 저장소에서 세션이 완전히 사라진다.
+
+**갈라서 적는다. 되묻기가 없어진 것이 아니다.**
+
+```
+사라진 것   되묻기 뒤에 「1번」이라고 답해서 고르는 뒷단계 한 걸음
+남은 것     되묻기 자체 — CLARIFY 로 답하며 번호 붙은 후보를 보이는 것
+```
+
+#### 2. 켠 것과 끈 것을 나란히 쟀다 — 지우기 전에
+
+좁히기(7번)와 달리 이것은 **기본이 켬**이라 지우면 지금 도는 길이 바뀐다.
+그래서 지우기 전에 「꺼도 성적이 안 떨어지는가」를 쟀다.
+
+**읽는 법을 숫자를 보기 전에 정해 두었다** (프롬프트가 정해 준 것이다).
+적중이 같거나 늘면 지운다 · 1~2 줄면 지운다(하루 안 잡음) · 3 이상 줄면
+멈추고 보고한다.
+
+조건 — 발화 36개 × 1회 · `_init` (recipe 60) · 모델 서버 기본 · 지도 문맥
+both · 둘을 겹쳐 안 돌리고 하나 끝난 뒤 다음을 돌렸다 · 각 판 앞에
+`krri down` 을 넣었다.
+
+```
+                    적중    근접   빗나감   못 붙음   기준선 아홉  확장 스물둘  화면 다섯
+켬 (CLARIFY_CHOICE=1)  19/36   12     5        0         4/9          10/22       5/5
+끔 (CLARIFY_CHOICE=0)  19/36   12     5        0         4/9          10/22       5/5
+```
+
+**갈린 발화가 하나도 없다.** 표 넉 장 전부를 `diff` 로 견줬고 시간 줄
+(`/resolve` 한 번 평균 4.8초 대 4.6초) 말고는 **한 글자도 안 달랐다.**
+
+★ **왜 갈릴 수가 없는지도 함께 적는다.** `check_resolve --runs 1` 은
+`POST /resolve` 만 부르고, `/resolve` 는 세션을 지나지 않는다. 세션을 지나는
+것은 `POST /chat` 이고 그것은 `--execute` 를 붙여야 불린다. **그러니까 이
+측정은 「안 떨어졌다」를 발견한 것이 아니라 확인한 것이다.** 대가는 성적표가
+아니라 사람이 겪는 것에서 나온다 — 아래 4 를 본다.
+
+#### 3. ★ 같은 판이 하루 안에 19/36 에서 23/36 으로 옮겨갔다 — 코드가 아니다
+
+지우고 나서 관문으로 `--runs 1` 을 다시 돌렸더니 **적중이 23/36** 이었다.
+켬·끔을 잰 두 판(19/36)과 다르다. 코드가 성적을 올린 것처럼 보이는 자리라
+확인했다.
+
+```
+판  때        코드            적중    비고
+1   09:55    지우기 전 · 켬   19/36
+2   09:59    지우기 전 · 끔   19/36   1 판과 시간 줄 빼고 동일
+3   10:12    지운 뒤          23/36   ★ 옮겨갔다
+4   10:16    지운 뒤          23/36   3 판과 완전히 동일
+5   10:21    지우기 전        23/36   ★ git stash 로 되돌려 다시 쟀다.
+                                     4 판과 완전히 동일
+```
+
+**5 판이 답이다.** 지우기 전 코드를 `git stash` 로 되살려 그 자리에서 다시
+재니 **23/36 이 나왔다.** 옮겨간 것은 코드가 아니라 장비 쪽이다.
+
+`llm_engine/ollama.py:89` 가 `temperature 0 · seed 0` 을 준다. 그래서 **한
+번 실린 모델 안에서는 완전히 결정적**이다 — 1·2 판이 글자까지 같고 3·4·5
+판도 글자까지 같은 것이 그것이다. 판 묶음이 갈린 자리는 그 사이에 모델이
+내려갔다 다시 실린 것으로 보인다 (GPU 넷에 나뉘어 실리므로 자리가 바뀌면
+수치가 미세하게 갈린다). **원인을 더 파지는 않았다.**
+
+★ **이 저장소의 「판정은 날짜를 건너 안 이어진다」가 하루 안에서도 그렇다.**
+나란히 잰 것끼리만 견준다. 이번 판단의 근거는 1 대 2 이지 2 대 3 이 아니다.
+
+#### 4. 지운 것 — 4개 파일 · 1024줄 지움 · 36줄 더함
+
+```
+파일                                          줄        무엇
+orchestrator/clarify_service.py              -238  파일째
+dev/tests/orchestrator/test_clarify_choice.py -290  파일째 (시험 24 def · 39 수집)
+dev/tests/orchestrator/test_clarify_flow.py   -317  파일째 (시험 18)
+execution/execute_service.py            326 -> 232  아래
+dev/tools/check_resolve.py             1830 -> 1808  세션 인자와 그 뒤끝
+app/api/main.py                                 ±5  session_id 를 넘기던 한 줄
+app/api/schemas/requests.py                    ±12  sessionId 칸
+dev/tests/tools/test_execution_column.py       -14  시험 1 (아래 ★)
+dev/tests/app/api/test_chat_stream_parity.py    +3  주석만
+```
+
+`execute_service.py` 에서 지운 것 (줄 번호는 지우기 전 기준)
+
+```
+33       from orchestrator import clarify_service      import 에서 뺌
+103~107  CHOICE_HEAD                                   고른 것을 되뇌는 줄
+188      chat() 의 session_id 인자
+224~231  take / pick / _run_choice 로 빠지는 갈래
+234~265  _run_choice                                   고른 것을 곧장 실행
+252      _remember_clarify 부르는 자리
+269~310  _remember_clarify                             후보를 세션에 남기던 자리
+```
+
+`argument` 를 뽑는 줄을 SELECT 판정 **뒤로** 옮겼다. 앞에 있던 까닭이
+「되묻기 때도 뽑아 둬야 고른 뒤에 쓸 수 있다」였는데 그 자리가 없어졌다.
+`step_service.place_in` 은 정규식뿐이라 옮겨도 도는 것이 안 바뀐다.
+
+★ **시험 하나를 더 지웠다** —
+`test_execution_column.py::test_the_choice_line_after_a_clarify_is_taken_off_the_verdict`.
+`CHOICE_HEAD` 를 import 해서 쓰던 시험이라 상수가 없어지면 수집이 깨진다.
+같은 까닭으로 `check_resolve.py` 의 `CHOICE_PREFIX` 와 `_answer_body` 도
+지웠다 — 「고르신 것 —」 로 시작하는 답이 이제 나올 수 없으므로 그 줄을
+떼어내는 일이 없다. **판정 규칙에 손댄 유일한 자리이고, 안 지우면 import
+가 깨져서 고르고 말 것이 없었다.**
+
+#### 5. 남긴 것과 까닭
+
+```
+dev/tests/execution/test_clarify_answer.py 10개   ★ 되묻기 자체를 재는 시험이
+                                                  전부 여기 있다. 안 건드렸다
+execute_service._clarify_head · _candidate_labels 되묻기 문구를 만드는 자리다
+CLARIFY_HEADLINE · CLARIFY_MANY_HEADLINE          문구 그 자체다
+resolve_service 전부 · _verdict · shortlist       이번 범위가 아니다
+recent_service                                    세션이 아니다. 저쪽 화면의
+                                                  마지막 한 회차일 뿐이다
+```
+
+★ **`test_clarify_flow.py` 가 되묻기 자체를 재는 시험을 품고 있는지 먼저
+세어 봤다.** 18개 전부 「고르기」 시험이었다. 문구를 재는 시험 하나
+(`test_being_off_does_not_change_the_clarify_wording`)는 **켬과 끔을 견주는**
+것이라 스위치가 없어지면 잴 것이 없다. 되묻기 문구 자체는
+`test_clarify_answer.py` 의 10개가 지키고 있어 **옮길 것이 없었다.**
+
+#### 6. `sessionId` 는 계약에서 뺐지만 받기는 받는다
+
+저쪽 화면(`ASAP-web/packages/chat/src/hooks/useChat.ts:56`)이 `uuidv4()` 를
+만들어 **지금도 보낸다.** 실측으로 확인했다.
+
+`ChatRequest` 에서 칸을 지워도 안 깨진다 — pydantic 은 모르는 칸을 그냥
+버린다(`extra="ignore"` 가 기본). **오히려 남겨 두는 쪽이 위험했다** —
+지금 모양이 `sessionId: str` 인 required 라, 저쪽이 안 보내는 날 422 가 난다.
+그래서 지우는 것이 저쪽에 더 너그럽다.
+
+`test_chat_stream_parity.py` 의 본문에 `sessionId` 를 **일부러 남겼다.**
+모르는 칸이 와도 422 가 안 나는 것을 두 창구가 함께 지키는 자리가 됐다.
+
+#### 7. 대가 — `--execute` 표의 되묻기 자리가 「?」가 된다
+
+`check_resolve` 는 되묻기가 나면 그 번호를 눌러 이어 본다(사람이 화면에서
+하는 것과 같다). 그 번호가 이제 고르기가 아니라 새 발화라 기대 recipe 에
+안 닿고 **`?` 로 찍힌다.**
+
+**누르는 것은 그대로 남겼다.** 화면 앞의 사람이 겪는 것이 이것이고, 표가
+그것을 그대로 보여야 한다. 「쉰한째」가 적어 둔 대가 — 정답표의 근접
+서른셋 회가 막다른 길이 된다 — 를 그대로 진다. 리뷰가 그것을 감수하기로
+했다.
+
+#### 8. `krri` 를 저장소 밖에서 고쳤다
+
+`~/.local/bin/krri` 는 git 이 안 지킨다. 사본을 `~/.local/bin/krri.bak` 에
+뒀다. 뺀 것 — `no-choice` 명령 · `CLARIFY_CHOICE` · 7번에서 코드가 없어진
+뒤에도 남아 있던 `narrow` 와 `RESOLVE_NARROW` · `st` 의 스위치 읽는 절 ·
+도움말의 스위치 세 줄. **볼 스위치가 하나도 안 남아서 `st` 의 그 절은
+「없음」 한 줄로 바꿨다.** 고친 전문은 커밋 메시지가 아니라 이 항목 아래
+보고에 붙였다.
+
+`krri down && krri up` 으로 실제로 떴다.
+
+#### 9. 관문 — 열둘 다 통과
+
+```
+켬·끔 견주기        ★ 통과   적중 19/36 대 19/36. 갈린 발화 0
+pytest              ★ 통과   1 failed · 398 passed · skipped 0
+                             456 -> 398. 정확히 58 줄었다
+                             (choice 39 + flow 18 + execution_column 1)
+                             일부러 둔 실패 test_dense_graph_would_move_if_
+                             overlap_removal_were_used 그대로
+POST /chat/stream   ★ 통과   sessionId 를 실어 보내도 HTTP 200. 이벤트 흐름
+                             (step_start · step_end · result · [DONE]) 그대로
+되묻기              ★ 통과   「국회의원 선거구 찾아줘」 · 문맥 both.
+                             CLARIFY 후보 다섯 줄이 지우기 전후로 diff 0.
+                             이어서 「1번」은 NO_MATCH 로 갔다 (없앤 걸음이다)
+check_resolve       ★ 통과   --runs 1 이 36발화 끝까지 · exit 0 · 표 넉 장
+GET /screen         ★ 통과   17723바이트 바이트까지 같음
+POST /render        ★ 통과   plain 109509 · 후보 셋 297634. 둘 다 바이트까지 같음
+check_wiring        ★ 통과   md5 1e35f14bce04d8e64632c71107982883 그대로
+check_inputs        ★ 통과   둘째 줄부터 그대로
+계층 시험            ★ 통과   test_layout_init_copy.py 10 passed
+Streamlit           ★ 통과   runpy 로 app/ui/main.py 통째로 돌려 exit 0
+git diff            ★ 통과   registration/ · app/ui/graph_svg/ ·
+                             vendor_to_be_deleted/ · KRRI_ASAP 없음
+```
+
+★ **서버가 새 코드를 보는지 `/openapi.json` 으로 먼저 확인했다** —
+`ChatRequest` 의 `required` 가 `['text','sessionId']` 에서 `['text']` 로
+줄어든 것을 보고 나서 /screen · /render 를 다시 받았다.
+
+★ **관문 문구의 「416 − 지운 시험 수」는 안 맞는다.** 시작 전 실측 통과 수가
+**456** 이었다 (일흔두째가 적어 둔 것과 같다). 456 − 58 = 398 이고 실제로
+398 이 나왔다. 416 은 프롬프트의 낡은 숫자로 보고 456 으로 검산했다.
+
+#### 10. 저장소에 남은 `session` 이라는 낱말
+
+```
+app/api/main.py:225,233                     sessionId 를 안 읽는다고 적은 주석
+app/api/schemas/requests.py:49~55           칸을 왜 지웠는지 적은 주석
+dev/tests/app/api/test_chat_stream_parity.py:59~62  일부러 남긴 것 (위 6)
+app/ui/components/node_form.py              st.session_state — Streamlit 것이다
+app/ui/components/zoom.py                   window.sessionStorage — 브라우저 것이다
+NOTES.md                                    옛 기록. 안 건드린다
+```
+
+**우리가 쥔 세션 상태는 하나도 안 남았다.** 남은 것은 저쪽이 보내는 칸
+이름과 그것을 안 읽는다고 적은 글이다.
+
+#### 11. 판단이 갈렸던 자리
+
+**가) `check_resolve` 의 「번호를 눌러 본다」를 안 지웠다.** 프롬프트가
+「재는 규칙 · 정답표 · 판정 규칙을 안 건드린다. 세션 인자를 넘기는 자리만」
+이라고 못 박았다. 지금은 그 번호가 안 먹지만 **누르는 것 자체가 사람이 겪는
+것**이라 남기는 쪽이 표를 더 정직하게 만든다. 주석만 사실에 맞게 고쳤다.
+
+**나) `CHOICE_PREFIX` · `_answer_body` 는 지울 수밖에 없었다.** `CHOICE_HEAD`
+를 import 해서 만드는 값이라 상수가 없어지면 **파일이 수집조차 안 된다.**
+판정 규칙을 안 건드린다는 선을 넘은 유일한 자리이고, 넘지 않으면 아무것도
+못 돌린다.
+
+**다) `sessionId` 칸을 남길지 지울지.** `requests.py` 의 모듈 주석이
+「안 읽는 필드도 선언은 해둔다」고 적고 있어 남기는 쪽도 근거가 있었다.
+지운 까닭은 위 6 이다 — required 로 남겨 두는 것이 저쪽에 더 위험하다.
+
+**라) 되묻기 줄에 번호는 그대로 뒀다.** 이제 「1번」이 안 먹으므로 번호가
+사람을 헷갈리게 할 수 있다. 그래도 **후보 문구를 안 건드린다**가 이번
+규칙이라 한 글자도 안 바꿨다. 고칠지는 9번(description)을 하는 사람이 정한다.
+
+#### 12. 세션이 무엇이었나 — 다시 만들 사람이 읽을 것
+
+```
+세션마다 직전 되묻기 하나를 메모리에 두었다. TTL 5분 · 상한 64개(LRU) ·
+한 번 꺼내면 지움 · 파일도 DB 도 안 만듦.
+다음 발화가 그중 하나를 고른 것인지는 LLM 없이 문자열로만 갈랐다 —
+번호만("1번") · 번호+이름 · 이름만 · 차례말("첫 번째") 넷.
+고른 것이면 resolve 를 다시 안 부르고 기억해 둔 recipe 와 인자로 곧장 실행,
+답 맨 앞에 「고르신 것 — 1 인구 통계 조회」 한 줄을 붙였다.
+```
+
+성적표와 실측은 「서른넷째」 · 「쉰한째」에 있다. 코드는 태그
+`had-clarify-session` 에 있다.
+
+#### 13. 지우면서 알게 된 것
+
+**스위치를 지우는 일이 그 스위치를 읽는 자리를 지우는 일이 아니었다.**
+`CLARIFY_CHOICE` 를 읽는 자리는 `clarify_service.enabled()` 한 곳인데,
+지우고 나니 **`execute_service` 밖으로 두 칸 더 번졌다** — `check_resolve` 의
+`CHOICE_PREFIX`(상수를 가져다 쓰던 자리)와 그것을 재던 시험 하나다. 7번
+때와 같은 모양이다. **문구 상수를 저쪽에서 import 해 쓰는 자리를 먼저
+세어 보면 번지는 범위가 미리 보인다.**
+
+**「끄고 재기」가 늘 무엇을 재는 것은 아니다.** 이번 스위치는 `/chat` 에만
+걸려 있는데 계기판의 기본 명령은 `/resolve` 만 부른다. 나란히 잰 표가 같은
+것은 좋은 소식이 아니라 **애초에 안 지나는 길이었다**는 뜻이다. 대가는
+`--execute` 쪽에 있고 그것은 이 표에 안 나온다.
 
 ### 2026-09-01 (일흔두째) · 좁히기 길을 걷어냈다 — B 7
 

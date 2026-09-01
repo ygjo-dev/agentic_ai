@@ -214,7 +214,6 @@ def _chat_events(form: ChatRequest, model: str | None = None):
             llm_client=make_client(model),
             reason_max_length=profile(model).reason_max_length,
             context=form.context,
-            session_id=form.sessionId,
         ),
     )
 
@@ -223,7 +222,7 @@ def _chat_events(form: ChatRequest, model: str | None = None):
 async def chat_endpoint(form: ChatRequest) -> dict:
     """KRRI_ASAP 이 부르는 ASAP-orchestrator 자리를 대신 받음.
 
-    입력  form  text · sessionId · context · target_documents
+    입력  form  text · context (sessionId · target_documents 는 안 읽음)
     출력  answer 와 commands. commands 는 vendor 가 결과에서 만든 지도 명령임
     규칙  발화를 해석해 recipe 를 고르고 그 노드 순서를 steps 로 바꿔
           vendor 실행기에 넘김. 부른 순서가 answer 에 그대로 적힘
@@ -231,7 +230,7 @@ async def chat_endpoint(form: ChatRequest) -> dict:
           result 만 돌려줄 뿐임
     제약  form 의 target_documents 를 해석하지 않는다. 아직 쓰는 곳이 없다.
           context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 함
-          sessionId 는 되묻기를 기억하는 자리로만 씀. 대화 기록을 쌓지 않음
+          sessionId 는 받기만 하고 안 읽는다. 2026-09-01 에 세션을 걷었다
     """
     last = {"answer": "", "commands": []}
     async for payload in _chat_events(form):

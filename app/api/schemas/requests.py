@@ -46,13 +46,15 @@ class ChatRequest(BaseModel):
     선언은 해둔다 — 없는 필드가 오면 FastAPI 가 422 를 내고, 저쪽 화면에서는
     연결이 안 된 것과 구분되지 않는다.
 
-    **sessionId 는 읽는다** (2026-08-26). 되묻기를 세션마다 하나 기억해 두고
-    다음 발화가 그것을 고른 것인지 가르는 데 쓴다 —
-    orchestrator/clarify_service.py 다. 빈 문자열이면 그 기능을 안 쓴다.
-    text 와 sessionId 말고 둘(context · target_documents)은 여전히 안 읽는다.
+    **sessionId 는 안 받는다** (2026-09-01). 2026-08-26 부터 되묻기를 세션마다
+    하나 기억해 두는 데 썼는데, 세션을 걷어내면서 읽을 데가 없어졌다. 칸을
+    지워도 저쪽 화면은 안 깨진다 — 저쪽(ASAP-web useChat)은 여전히 uuid 를
+    실어 보내지만 pydantic 이 모르는 칸을 그냥 버린다. **칸을 남겨 두는 쪽이
+    오히려 위험하다** — 지금 모양이 required 라, 저쪽이 안 보내는 날 422 가 난다.
+
+    text 말고 둘(context · target_documents)은 여전히 안 읽는다.
     """
 
     text: str
-    sessionId: str  # noqa: N815 — 저쪽 계약의 이름이다. 바꾸면 422 가 난다.
     context: dict = {}
     target_documents: list = []

@@ -56,6 +56,9 @@ EVENTS = [
     {"type": "result", "answer": ANSWER, "commands": COMMANDS},
 ]
 
+# sessionId 를 일부러 남겨 둔다. 2026-09-01 에 세션을 걷으면서 ChatRequest 의
+# 칸을 지웠으므로 이것은 이제 모르는 칸이다. 저쪽 화면(ASAP-web)은 여전히
+# 보내므로, 모르는 칸이 와도 422 가 안 나는 것을 두 창구가 함께 지킨다.
 BODY = {"text": "오송역 CCTV 보여줘", "sessionId": "parity", "context": {}}
 
 

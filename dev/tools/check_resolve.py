@@ -851,7 +851,6 @@ def _measure(
 # 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
 # 표는 ✓ 로 찍히는 식이다.
 from execution.execute_service import (  # noqa: E402
-    CHOICE_HEAD,
     NO_ARGUMENT_ANSWER,
     UNWIRED_ANSWER,
 )
@@ -867,10 +866,6 @@ RAN, EMPTY, UNMEASURED = "✓", "✗", "?"
 # 배선이 없을 때의 답에서 이름 뒤에 붙는 부분. 문구를 다시 적지 않으려고
 # 틀에서 잘라 쓴다.
 UNWIRED_TAIL = UNWIRED_ANSWER.split("{names}")[-1]
-
-# 되묻기 뒤에 고른 답 맨 앞에 붙는 줄의 앞머리. 판정은 그 뒤의 진짜 답으로
-# 한다 — 앞줄은 무엇을 골랐는지 되뇌는 것이라 늘 성공한 것처럼 생겼다.
-CHOICE_PREFIX = CHOICE_HEAD.split("{")[0]
 
 # 왜 ✗ 인지를 가르는 말. 표의 「왜」 칸 맨 앞에 온다.
 #
@@ -911,21 +906,20 @@ def _recent_seq() -> int:
     return response.json().get("seq") or 0
 
 
-def _chat_turn(text: str, session_id: str, since: int) -> tuple:
+def _chat_turn(text: str, since: int) -> tuple:
     """POST /chat 한 번과 그것이 남긴 회차.
 
-    입력  보낼 말 · 세션 id · 부르기 전의 회차 번호
+    입력  보낼 말 · 부르기 전의 회차 번호
     출력  (회차 dict, 새 회차 번호). 회차가 안 남았으면 (None, 그대로)
     규칙  회차는 GET /recent 로 읽음. /chat 응답에는 status 도 후보도 없고
           답 문구뿐임
-          세션 id 를 실어 보냄. 되묻기 뒤에 번호로 고르려면 그것이 있어야 함
     제약  서버에 못 닿으면 ServerDown 을 올린다.
           측정과 같은 처신임. 재시도하지 않음
     """
     try:
         response = requests.post(
             f"{BASE_URL}/chat",
-            json={"text": text, "sessionId": session_id, "context": _context_payload()},
+            json={"text": text, "context": _context_payload()},
             timeout=TIMEOUT,
         )
     except requests.exceptions.ConnectionError as exc:
@@ -937,21 +931,6 @@ def _chat_turn(text: str, session_id: str, since: int) -> tuple:
     ).json()
     turns = recent.get("turns") or []
     return (turns[-1] if turns else None), (recent.get("seq") or since)
-
-
-def _answer_body(turn: dict) -> str:
-    """되묻기 뒤에 고른 줄을 떼어낸 진짜 답.
-
-    입력  /recent 의 회차 하나
-    출력  답 문구. 고르기가 아니면 받은 그대로
-    규칙  고른 것을 되뇌는 첫 줄과 그 뒤 빈 줄을 뗌. 그 줄은 늘 성공한
-          것처럼 생겨서 붙어 있으면 0건도 ✓ 로 읽힘
-    """
-    answer = turn.get("answer") or ""
-    if not answer.startswith(CHOICE_PREFIX):
-        return answer
-    _head, _, rest = answer.partition("\n\n")
-    return rest or answer
 
 
 def _last_step(turn: dict) -> str:
@@ -984,7 +963,7 @@ def _execution_of(turn: dict) -> tuple:
           결과 모양을 아는 것은 vendor_to_be_deleted/asap/workflow_answer 이고, 여기가
           또 세면 두 곳이 다른 기준을 갖게 된다
     """
-    answer = _answer_body(turn)
+    answer = turn.get("answer") or ""
     detail = _last_step(turn)
 
     if answer.startswith(EMPTY_HEADLINE):
@@ -1015,8 +994,6 @@ def _execute(entries, executions: dict) -> None:
           누름. 사람이 화면에서 하는 것과 같음
           해석이 다른 데로 갔으면 `?` 임. 기대 recipe 가 안 돌았으므로
           이 표가 그 자리를 말할 수 없음
-          발화마다 세션을 따로 씀. 앞 발화의 되묻기가 남아 다음 발화를
-          고르기로 읽는 일이 없어야 함
           오류도 결과의 하나로 남김. 표가 비는 것보다 무엇이 터졌는지가 나음
     제약  결과를 돌려주지 않는다.
           받은 dict 에 채움. 중간에 끊겨도 거기까지가 부르는 쪽에 남아야 함
@@ -1031,9 +1008,8 @@ def _execute(entries, executions: dict) -> None:
                 continue
 
             wanted = next(iter(expected))
-            session = f"check_resolve-{number}"
             since = _recent_seq()
-            turn, since = _chat_turn(utterance, session, since)
+            turn, since = _chat_turn(utterance, since)
             picked = False
 
             if turn is None:
@@ -1041,14 +1017,14 @@ def _execute(entries, executions: dict) -> None:
                 sys.stdout.write("?\n")
                 continue
 
-            # 되묻기일 때만 고른다. SELECT 는 서버가 기억해 둔 것이 없어
-            # (execute_service._remember_clarify) 번호를 보내면 그것이 새
-            # 발화로 해석된다 — LLM 을 한 번 더 부르고 얻는 것이 없다.
+            # 되묻기일 때만 번호를 눌러 본다. 사람이 화면에서 하는 것과 같다.
+            #
+            # 2026-09-01 에 세션을 걷어낸 뒤로 이 번호는 고르기가 아니라 새
+            # 발화로 해석된다. 그래도 누르는 것을 남긴다 — 화면 앞의 사람이
+            # 겪는 것이 이것이고, 그 결과는 아래에서 「?」로 표에 남는다.
             candidates = turn.get("candidate_recipe_ids") or []
             if turn.get("recipe_id") is None and wanted in candidates:
-                turn, since = _chat_turn(
-                    str(candidates.index(wanted) + 1), session, since
-                )
+                turn, since = _chat_turn(str(candidates.index(wanted) + 1), since)
                 picked = True
 
             if turn is None or turn.get("recipe_id") != wanted:

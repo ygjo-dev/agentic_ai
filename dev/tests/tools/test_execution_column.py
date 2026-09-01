@@ -93,20 +93,6 @@ def test_failing_to_extract_an_argument_means_no_tool_was_called():
     assert why.startswith(check_resolve.WHY_ARGUMENT)
 
 
-def test_the_choice_line_after_a_clarify_is_taken_off_the_verdict():
-    """그 줄은 늘 성공한 것처럼 생겨서 붙여 두면 0건도 ✓ 로 읽힌다."""
-    from execution.execute_service import CHOICE_HEAD
-
-    head = CHOICE_HEAD.format(number=1, label="국회의원 전체 선거구 검색")
-    zero = turn_of([{"tool": "election.searchAssemblyDistricts", "result": {"count": 0}}])
-    turn = {**zero, "answer": f"{head}\n\n{zero['answer']}"}
-
-    mark, why = check_resolve._execution_of(turn)
-
-    assert mark == check_resolve.EMPTY
-    assert why.startswith(check_resolve.WHY_EMPTY)
-
-
 # ── 정답표가 온톨로지와 안 어긋났는가 ───────────────────────────────
 
 
