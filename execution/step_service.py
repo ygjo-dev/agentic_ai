@@ -41,7 +41,7 @@ from datetime import date
 import yaml
 
 import paths
-from ontology import graph
+from ontology import graph, store
 
 SERVER_ID = "asap-mcp-core"
 
@@ -90,6 +90,19 @@ TODAY = "@today"
 #       "…선" 도 "…역" 도 아닌 값("청주")은 역 이름 자리에 그대로 남는다.
 #       실측 표와 언제 이 자를 걷어내는지는 NOTES.md 「쉰째」에 있다
 RAILWAY_LINE_SUFFIX = "선"
+
+# 단계 줄에 적을 이름이 실리는 칸. step 에 얹어 vendor 를 지나 답까지 간다.
+#
+# **이름의 원천은 온톨로지의 노드 name 하나다.** 「장소 좌표 변환」·「도달권
+# 계산」이 이미 거기 있고, 답에 쓸 이름을 여기(또는 wiring.yaml)에 또 적으면
+# 원천이 둘이 되어 노드 이름을 고쳤을 때 화면만 옛 이름으로 남는다.
+# headline 을 wiring.yaml 이 갖는 것과 다르다 — 그쪽은 인자가 들어간 완결된
+# 문장이라 노드 이름으로는 만들 수 없다.
+#
+# **vendor 는 이 칸을 안 읽는다.** _execute_generic_mcp_workflow 가 step 에서
+# 보는 것은 id · tool · server_id · inputAdapter · input 뿐이라(실측) 모르는
+# 칸은 조용히 지나간다. 그래서 저쪽 파일을 고치지 않고 답까지 실어 보낼 수 있다.
+STEP_NAME = "name"
 
 # 지도 명령 하나가 곧 실행인 자리의 op 이름.
 #
@@ -518,6 +531,7 @@ def plan(recipe_id: str, argument: str) -> dict:
           걸림. _filled 의 이력 절 참고
     """
     reload_wiring()
+    named = store.nodes()
 
     steps: list[dict] = []
     nodes: list[str] = []
@@ -552,6 +566,7 @@ def plan(recipe_id: str, argument: str) -> dict:
             "id": step_id,
             "server_id": tool["server_id"],
             "tool": tool["tool"],
+            STEP_NAME: _node_name(named, node_id),
             "input": filled,
         }
         if wiring.get("adapter") and _has_center(step["input"]):
@@ -567,6 +582,23 @@ def plan(recipe_id: str, argument: str) -> dict:
         "command_nodes": command_nodes,
         "headline": headline,
     }
+
+
+def _node_name(named: dict, node_id: str) -> str:
+    """그 노드의 사람이 읽는 이름. 없으면 "".
+
+    입력  store.nodes() 한 벌 · 노드 id
+    출력  온톨로지에 적힌 name. 없거나 빈 값이면 ""
+    규칙  온톨로지의 name 을 그대로 씀. 여기서 다듬지 않음 — 다듬기 시작하면
+          화면의 이름과 등록 화면의 이름이 갈림
+          없으면 "". 답 쪽이 그때 도구 이름으로 되돌아감
+    제약  이름을 여기서 짓지 않는다.
+          노드마다 name 이 이미 있고, 없는 노드가 생기면 그것은 등록이
+          모자란 것이지 이 파일이 메울 일이 아니다
+    """
+    node = named.get(node_id)
+    name = node.get("name") if isinstance(node, dict) else None
+    return name.strip() if isinstance(name, str) else ""
 
 
 def _by_argument(wiring: dict, tool_input: dict, argument: str) -> dict:

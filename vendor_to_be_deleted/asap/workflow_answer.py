@@ -28,19 +28,59 @@ raw JSON 으로 새던 자리가 _preview 하나였고 지웠다. 모르는 결�
 한 파일에 모아 두려는 것이다 — 실행이 돌았을 때와 안 돌았을 때의 말투가
 갈리면 화면에서 그 둘이 다른 시스템처럼 보인다. 그 자리가 둘이고, 저쪽
 plugin 셋이 하는 일이 그것이다. 아래 「도구가 안 돈 자리」 절을 본다.
+
+**읽는 사람이 기자와 일반 독자로 바뀌었다** (2026-09-01, feature/accessibility).
+지금까지 이 파일이 적어 온 것은 「우리가 화면만 보고 무엇이 틀렸는지 가른다」
+였다 — 도구 이름 · 호출 인자 · 모르는 결과의 칸 이름이 그 자리였다. 보도자료
+그림에 실릴 화면은 그 셋을 읽을 사람이 아무도 없다. 세 가지가 바뀌었다.
+
+  단계 이름   도구 이름(geo.geocode) 대신 **온톨로지 노드의 name**
+              (「장소 좌표 변환」). 부르는 쪽이 step 에 실어 보내고 여기는
+              그것을 쓰기만 한다 — 이 파일은 여전히 도구 이름을 모르고,
+              48개 노드가 한 자리에서 같은 규칙으로 갈린다
+  호출 인자   칸 이름을 늘어놓지 않는다. 사람이 읽을 조건만 적는다
+              (수단 · 출발 시각 · 자를 겹 · 발화에서 온 낱말). 무엇을 적을지는
+              **칸 이름을 미리 정해 두고** 고른다 — 결과 쪽에서 이 파일이
+              이미 하던 것과 같은 방식이다
+  좌표        경위도 숫자를 화면에 안 낸다. 주소는 남긴다 — 엉뚱한 곳을
+              찍었는지는 주소로 알아본다("오송시" 가 거제시 오송리를 찍은 일)
+
+**되돌리는 자리를 좁혀 뒀다.** 셋 다 상수와 작은 함수로 갈라 두었고, 판정
+(_verdict · step_failed)과 결과 요약(_counted · _record_line)은 손대지 않았다.
 """
 
+import math
 import unicodedata
 from typing import Any, Dict, List, Optional, Tuple
 
-# 단계 줄에서 도구 이름 칸의 전체 폭. 도구 이름은 전부 ASCII 라 ljust 로 맞는다.
-TOOL_COLUMN = 18
-
-# 이름이 칸보다 길 때도 요약과 벌어져 있어야 하는 최소 간격.
+# ── 단계 줄의 이름 ──────────────────────────────────────────────
 #
-# 실측 : 이름이 42자인 도구가 있다 (election.findAssemblyPledgeDistrictByPoint).
-# TOOL_COLUMN 을 거기 맞추면 짧은 이름 쪽이 스무 칸 넘게 빈다.
-TOOL_GAP = 2
+# **이름은 부르는 쪽이 실어 보낸다.** step 에 얹힌 칸 하나를 읽을 뿐이고,
+# 그 값의 원천은 온톨로지의 노드 name 이다 (execution/step_service.STEP_NAME).
+# 이 파일은 여전히 도구 이름을 모르고, 노드가 늘어도 여기는 그대로다.
+#
+# 없으면 도구 이름으로 되돌아간다. 이름을 안 실어 보내는 부르는 쪽이 있고
+# (시험이 step_line 을 직접 부른다) 그때 이름 자리가 통째로 비면 어느 단계가
+# 무엇이었는지 아무것도 안 남는다.
+STEP_NAME_KEY = "name"
+
+# 이름과 그 뒤(조건 · 결과)를 가르는 표시.
+#
+# 예전에는 칸 폭(18)으로 줄을 맞췄다. 이름이 한글이 되면서 그 자가 안 맞는다 —
+# 한글은 한 글자가 두 칸을 차지해 글자 수로 ljust 하면 오히려 어긋난다.
+# 줄맞춤을 걷고 표시 하나로 가른다. 사진에서는 칸이 맞는 것보다 이름과 내용이
+# 갈리는 것이 읽힌다.
+STEP_JOIN = " — "
+
+# 조건과 결과를 벌리는 간격.
+STEP_GAP = 2
+
+# 결과 한 마디를 조건 아래 줄로 내리는 표시.
+#
+# 이 글자로 시작하는 결과는 조건과 한 줄에 안 붙이고 줄을 바꿔 들여 쓴다.
+# 도달권이 그 자리다 — 조건(수단 · 출발 · 자를 겹)과 면적이 한 줄에 다 들어가면
+# 여든 칸이 넘고, 접힌 줄은 사진에서 안 읽힌다.
+BELOW = "\n"
 
 # 오류 문구를 잘라내는 길이.
 SUMMARY_LIMIT = 120
@@ -107,6 +147,12 @@ CALL_FAILED_REASON = "도구 호출에 실패했습니다"
 # 모양을 못 알아본 결과 · message 가 없는 오류.
 UNKNOWN_RESULT = "결과를 받았습니다"
 ERROR_WITHOUT_MESSAGE = "오류가 돌아왔습니다"
+
+# 좌표는 왔는데 주소가 없을 때의 한 마디.
+#
+# 좌표 숫자를 안 내기로 하면서 생긴 자리다. 예전에는 주소가 없으면 좌표만
+# 보여줬다. 지어낼 것이 없으므로 무엇이 왔는지만 말한다.
+POINT_FOUND = "좌표를 찾았습니다"
 
 # 모르는 결과에서 보여줄 최상위 칸 이름의 최대 개수와 그 사이 표시.
 KEY_LIMIT = 6
@@ -240,24 +286,59 @@ RETRY_OF_STATUS = {"not_found": "데이터에 있는 이름을 그대로 말씀�
 # 머리말 둘째 줄의 조각 사이 표시.
 GUIDE_JOIN = " "
 
-# ── 무엇으로 불렀는가 ──────────────────────────────────────────────
+# ── 어떤 조건으로 불렀는가 ────────────────────────────────────────
 #
 # trace 항목의 input 은 vendor 가 참조와 어댑터까지 푼 실제 호출 인자다.
 #
-# 적을 수 있는 것만 적는다. 문자열 · 정수 · 실수만 적고 dict · list 는
-# 통째로 건너뛴다. 목록형 인자를 적기 시작하면 bbox 두 겹 · geojson 이
-# 화면으로 흘러나오고, 그것이 이 파일이 _preview 를 지운 이유다.
+# **칸을 늘어놓지 않는다. 미리 정한 칸만 읽는다.** 예전에는 문자열 · 정수 ·
+# 실수인 칸을 순서대로 `key=value` 로 적었다. 그것이 화면에
+# `origin_lon=126.9482 · origin_lat=37.3201 · mode="TRANSIT" ·
+# departure_date="2026-09-01"…` 로 나갔다 (2026-09-01 실측). 읽을 사람이
+# 기자와 일반 독자인 화면에서 그 줄이 알려주는 것은 없다.
 #
-# INPUT_KEY_LIMIT  한 줄에 적을 칸 수. 실측 배선의 최대가 넷이다
-#                  (road.getCctv · ev.searchStations 의 bbox 넷)
-# INPUT_VALUE_LIMIT 문자열 값 하나를 자르는 길이
-# COORD_DIGITS     실수의 소수점 자리. _place_line 이 좌표에 쓰는 것과 같다
+# 결과 쪽에서 이 파일이 이미 하던 것과 같은 방식으로 바꿨다 — 칸 이름을
+# 미리 정해 두고 그 칸만 읽는다. 모르는 칸은 안 읽으므로 새 도구가 무엇을
+# 들고 와도 화면에 안 샌다.
+#
+# **수는 안 적는다.** 배선에 실려 오는 실수는 전부 경위도이고
+# (origin_lon · minLat …) 정수는 단위를 몰라 딴 뜻으로 읽힌다. 아래
+# CUTOFFS_KEY 하나만 뜻과 단위를 알아서 예외다.
+#
+# 적는 것이 넷이고 이 차례로 이어 붙는다.
+#
+#   MODE_KEY       무엇으로 갔는가. 값이 영어 enum 이라 우리말로 바꿔 적는다.
+#                  도구 스키마의 enum 넷이 근거다 (WALK · BICYCLE · CAR ·
+#                  TRANSIT, 2026-09-01 /api/tools 실측). 표에 없는 값은
+#                  안 적는다 — 모르는 낱말을 화면에 옮기지 않는다
+#   DEPARTURE_*    언제 떠났는가. 시간표를 보는 mode 에서 결과를 가르는 값이다
+#   CUTOFFS_KEY    몇 분으로 잘랐는가. 정수 목록이고 단위가 분이다
+#   SPOKEN_KEYS    사람이 입으로 말한 낱말이 앉는 칸. 실측 배선에서 @arg 가
+#                  앉는 여섯 칸뿐이다 (execution/wiring.yaml). level="sigungu"
+#                  같은 기계 낱말은 여기 없어 저절로 빠진다
+#
+# **발화에서 온 낱말은 0건일 때 특히 있어야 한다.** _empty_headline 이
+# 「무엇으로 찾았는지는 머리말이 되풀이하지 않는다」로 서 있고, 그 근거가
+# 단계 줄이 그 낱말을 적는다는 것이다.
 INPUT_JOIN = " · "
-INPUT_FORMAT = "{key}={value}"
-INPUT_KEY_LIMIT = 4
 INPUT_VALUE_LIMIT = 24
-INPUT_MORE = "…"
-COORD_DIGITS = 4
+
+MODE_KEY = "mode"
+MODE_WORDS = {
+    "WALK": "도보",
+    "BICYCLE": "자전거",
+    "CAR": "승용차",
+    "TRANSIT": "대중교통",
+}
+
+DEPARTURE_DATE_KEY = "departure_date"
+DEPARTURE_TIME_KEY = "departure_time"
+DEPARTURE_LINE = "{when} 출발"
+
+CUTOFFS_KEY = "cutoffs_minutes"
+CUTOFFS_JOIN = " / "
+CUTOFFS_SUFFIX = "분"
+
+SPOKEN_KEYS = ("query", "name", "stationName", "sectionName", "railwayName", "facilityName")
 
 # ── 목록의 항목 ──────────────────────────────────────────────────
 #
@@ -322,9 +403,15 @@ def compose_workflow_answer(
           trace 가 비면 단계 목록이 없으므로 첫 줄만 남음
           failed 는 키워드 전용이고 기본이 거짓임. vendor 의
           _compose_workflow_answer 호출부가 안 바뀌어야 함
+          단계 이름은 intent.steps 가 들고 옴. step id 로 맞춰 씀 — trace 는
+          부른 데까지만 있고 intent 는 부르려던 전부라 길이가 다를 수 있음
     """
     verdict = _verdict(trace, failed)
-    lines = [f"{index}. {step_line(item)}" for index, item in enumerate(trace, start=1)]
+    names = _step_names(intent)
+    lines = [
+        f"{index}. {step_line(item, names.get(item.get('id'), ''))}"
+        for index, item in enumerate(trace, start=1)
+    ]
 
     if verdict == SUCCESS:
         headline = str(intent.get("answer_instruction") or "").strip()
@@ -338,6 +425,33 @@ def compose_workflow_answer(
     if not lines:
         return headline
     return "\n".join([headline, "", *lines])
+
+
+def _step_names(intent: Dict[str, Any]) -> Dict[str, str]:
+    """step id -> 단계 이름. 실려 온 것이 없으면 빈 표.
+
+    입력  부르는 쪽이 만든 intent. steps 는 vendor 에 넘긴 그 배열임
+    출력  {step id: 이름}
+    규칙  STEP_NAME_KEY 가 있고 문자열이고 비어 있지 않은 것만 담음
+          steps 가 없거나 모양이 다르면 빈 표. 그때는 단계 줄이 도구 이름으로
+          되돌아감
+    제약  이름을 여기서 짓지 않는다.
+          원천은 온톨로지의 노드 name 하나이고, 부르는 쪽이 그것을 실어 보낸다.
+          여기서 도구 이름을 한국어로 옮기기 시작하면 원천이 둘이 된다
+    """
+    steps = intent.get("steps")
+    if not isinstance(steps, list):
+        return {}
+
+    names: Dict[str, str] = {}
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        step_id = step.get("id")
+        name = step.get(STEP_NAME_KEY)
+        if isinstance(step_id, str) and isinstance(name, str) and name.strip():
+            names[step_id] = name.strip()
+    return names
 
 
 def step_failed(item: Dict[str, Any]) -> bool:
@@ -360,81 +474,131 @@ def step_failed(item: Dict[str, Any]) -> bool:
     return "error" in item or _has_error(item.get("result"))
 
 
-def step_line(item: Dict[str, Any]) -> str:
-    """단계 하나의 줄. 도구 이름 · 무엇으로 불렀는가 · 결과 한 마디.
+def step_line(item: Dict[str, Any], name: str = "") -> str:
+    """단계 하나의 줄. 단계 이름 · 어떤 조건으로 불렀는가 · 결과 한 마디.
 
-    규칙  이름이 칸보다 길어도 TOOL_GAP 만큼은 벌림. 안 벌리면 요약과 붙어
-          한 낱말로 읽힘 (adminBoundary.findBoundaryByPoint0건)
-          짧은 이름의 정렬은 안 달라짐. 칸을 좁힌 만큼 뒤에 다시 붙임
-          인자는 도구 이름과 결과 사이. 적을 것이 없으면 그 자리가 통째로
-          빠짐. 빈 dict 에 "input: {}" 를 찍지 않음
-          결과 줄에 이미 나온 값은 인자로 다시 안 적음. 무엇을 고를지는
+    입력  trace 항목 하나 · 부르는 쪽이 실어 보낸 단계 이름(없으면 "")
+    출력  "이름 — 조건  결과" 한 줄. 결과가 아래로 내려가면 두 줄
+    규칙  이름이 없으면 도구 이름으로 되돌아감. 시험이 이름 없이 부름
+          이름과 뒤를 STEP_JOIN 으로 가름. 줄맞춤을 안 함 — 이름이 한글이라
+          글자 수로 ljust 하면 오히려 어긋남
+          조건은 이름과 결과 사이. 적을 것이 없으면 그 자리가 통째로 빠짐
+          결과가 BELOW 로 시작하면 조건과 한 줄에 안 붙이고 줄을 바꿈.
+          도달권의 면적이 그 자리임
+          결과 줄에 이미 나온 값은 조건으로 다시 안 적음. 무엇을 고를지는
           _input_text 임
+    이력  이름 자리가 도구 이름이었음. 보도자료 그림에 실릴 화면이라
+          geo.geocode 가 아니라 「장소 좌표 변환」이 보여야 함 (2026-09-01)
     """
-    tool = str(item.get("tool") or "")
+    head = name.strip() or str(item.get("tool") or "")
     outcome = _outcome(item)
     given = _input_text(item.get("input"), outcome)
-    tail = f"{given}{' ' * TOOL_GAP}{outcome}" if given else outcome
-    return f"{tool.ljust(TOOL_COLUMN - TOOL_GAP)}{' ' * TOOL_GAP}{tail}"
+
+    if not given:
+        tail = outcome
+    elif outcome.startswith(BELOW):
+        tail = given + outcome
+    else:
+        tail = f"{given}{' ' * STEP_GAP}{outcome}"
+    return f"{head}{STEP_JOIN}{tail}" if head else tail
 
 
 def _input_text(tool_input: Any, shown: str) -> str:
-    """무엇으로 불렀는지 한 마디. 적을 것이 없으면 "".
+    """어떤 조건으로 불렀는지 한 마디. 적을 것이 없으면 "".
 
     입력  vendor 가 참조와 어댑터까지 푼 실제 호출 인자 · 같은 줄의 결과 문구
-    출력  key=value 를 INPUT_JOIN 으로 이은 줄. 칸이 남으면 끝에 INPUT_MORE
-    규칙  dict 가 아니면 "". 값이 dict · list · bool · None 인 칸은 건너뜀
-          값이 결과 문구에 이미 있으면 건너뜀. geo.geocode 의 query 가
-          "오송역 → 주소 (경도, 위도)" 의 앞머리로 이미 나와 있음
-          INPUT_KEY_LIMIT 개까지. 넘으면 끝에 INPUT_MORE 를 붙여 밝힘
-    제약  값을 통째로 적지 않는다.
-          목록 · 중첩 dict 는 안 적고 문자열은 INPUT_VALUE_LIMIT 에서 자른다.
-          bbox 두 겹 · geojson 이 화면으로 흘러나오던 자리다
+    출력  조건을 INPUT_JOIN 으로 이은 줄
+    규칙  미리 정한 칸만 읽음. 수단 · 출발 · 자를 겹 · 발화에서 온 낱말 넷이고
+          적히는 차례도 그 순서임
+          dict 가 아니면 ""
+          발화에서 온 낱말은 한 칸만. SPOKEN_KEYS 를 순서대로 보고 먼저
+          걸리는 것 하나를 씀 — 배선이 그 값을 한 자리에만 앉힘
+          그 값이 결과 문구에 이미 있으면 건너뜀. geo.geocode 의 query 가
+          "오송역 → 주소" 의 앞머리로 이미 나와 있음
+    제약  칸 이름을 화면에 안 낸다.
+          `origin_lon=…` 은 사람이 읽을 것이 아니다. 뜻이 우리말로 안 되는
+          칸은 아예 안 적는다
+          수를 안 적는다.
+          배선의 실수는 전부 경위도이고 정수는 단위를 모른다. 뜻과 단위를
+          아는 CUTOFFS_KEY 하나가 예외다
+    이력  문자열 · 정수 · 실수인 칸을 순서대로 `key=value` 로 적었음.
+          화면이 `origin_lon=126.9482 · origin_lat=37.3201 · mode="TRANSIT" ·
+          departure_date="2026-09-01"…` 이었음 (2026-09-01 실측)
     """
     if not isinstance(tool_input, dict):
         return ""
 
-    parts: List[str] = []
-    more = False
-    for key, value in tool_input.items():
-        pair = _input_pair(value)
-        if pair is None:
-            continue
-        raw, text = pair
-        if raw in shown:
-            continue
-        if len(parts) >= INPUT_KEY_LIMIT:
-            more = True
-            break
-        parts.append(INPUT_FORMAT.format(key=key, value=text))
-
-    if not parts:
-        return ""
-    return INPUT_JOIN.join(parts) + (INPUT_MORE if more else "")
+    parts = [
+        text
+        for text in (
+            _mode_text(tool_input),
+            _departure_text(tool_input),
+            _cutoffs_text(tool_input),
+            _spoken_text(tool_input, shown),
+        )
+        if text
+    ]
+    return INPUT_JOIN.join(parts)
 
 
-def _input_pair(value: Any):
-    """인자 값 하나의 (겹침을 볼 원문, 화면에 적을 것). 적을 수 없으면 None.
+def _mode_text(tool_input: Dict[str, Any]) -> str:
+    """무엇으로 갔는지 한 낱말. 모르는 값이면 "".
 
-    규칙  bool 은 안 적음. 참·거짓만으로는 무엇을 물었는지 못 말하고 실측
-          배선(STEP_OF)에 bool 인자가 없음
-          실수는 COORD_DIGITS 자리까지. 배선의 실수는 전부 좌표임
-          문자열은 한 줄로 붙이고 INPUT_VALUE_LIMIT 에서 자른 뒤 따옴표
-          dict · list · None 은 None 을 냄
+    규칙  MODE_KEY 하나만 봄. 값이 MODE_WORDS 에 있을 때만 적음
+    제약  모르는 값을 그대로 옮기지 않는다.
+          영어 enum 이 화면에 나가면 우리말 줄 가운데 낱말 하나만 영어가 된다
     """
-    if isinstance(value, bool) or value is None:
-        return None
-    if isinstance(value, float):
-        text = f"{value:.{COORD_DIGITS}f}"
-        return text, text
-    if isinstance(value, int):
-        return str(value), str(value)
-    if isinstance(value, str):
+    value = tool_input.get(MODE_KEY)
+    return MODE_WORDS.get(value, "") if isinstance(value, str) else ""
+
+
+def _departure_text(tool_input: Dict[str, Any]) -> str:
+    """언제 떠났는지 한 마디. 날짜도 시각도 없으면 "".
+
+    규칙  날짜와 시각을 한 칸 띄워 이음. 둘 중 하나만 있으면 그것만
+          문자열이 아니거나 비면 그 칸을 뺌. 도구가 어떤 꼴로 받는지는
+          이 파일이 모르므로 값을 다시 짜지 않고 그대로 씀
+    """
+    parts = []
+    for key in (DEPARTURE_DATE_KEY, DEPARTURE_TIME_KEY):
+        value = tool_input.get(key)
+        if isinstance(value, str) and value.strip():
+            parts.append(value.strip())
+    return DEPARTURE_LINE.format(when=" ".join(parts)) if parts else ""
+
+
+def _cutoffs_text(tool_input: Dict[str, Any]) -> str:
+    """몇 분으로 잘랐는지 한 마디. 셀 것이 없으면 "".
+
+    규칙  CUTOFFS_KEY 하나만 봄. 정수 목록이어야 함
+          정수가 아닌 항목은 건너뜀. 하나도 안 남으면 ""
+          단위는 맨 끝에 한 번만. "10분 / 20분 / 30분" 은 같은 말을 세 번 함
+    """
+    values = tool_input.get(CUTOFFS_KEY)
+    if not isinstance(values, list):
+        return ""
+
+    minutes = [str(value) for value in values if _int_value(value) is not None]
+    return CUTOFFS_JOIN.join(minutes) + CUTOFFS_SUFFIX if minutes else ""
+
+
+def _spoken_text(tool_input: Dict[str, Any], shown: str) -> str:
+    """사람이 입으로 말한 낱말. 없거나 이미 나왔으면 "".
+
+    규칙  SPOKEN_KEYS 를 순서대로 보고 먼저 걸리는 것 하나만 씀
+          문자열이어야 하고 한 줄로 붙인 뒤 비면 건너뜀
+          결과 문구에 이미 그대로 있으면 건너뜀
+          INPUT_VALUE_LIMIT 에서 자른 뒤 따옴표로 감쌈
+    """
+    for key in SPOKEN_KEYS:
+        value = tool_input.get(key)
+        if not isinstance(value, str):
+            continue
         text = " ".join(value.split())
-        if not text:
-            return None
-        return text, QUOTE.format(text=_clip(text, INPUT_VALUE_LIMIT))
-    return None
+        if not text or text in shown:
+            continue
+        return QUOTE.format(text=_clip(text, INPUT_VALUE_LIMIT))
+    return ""
 
 
 def summarize(tool_input: Any, result: Any) -> str:
@@ -445,8 +609,9 @@ def summarize(tool_input: Any, result: Any) -> str:
           배열이면 건수. 0건도 배열임. 첫 항목에서 고를 것이 있으면 함께 냄
           status 가 "없다" 고 말하면 그 사유. 건수 칸이 아예 없는 응답이
           0건 판정에 안 걸려 칸 이름만 나가던 자리임
-          location 이 [lon, lat] 이면 주소와 좌표. 어디를 찍었는지 사람이
-          알아볼 수 있어야 함
+          location 이 [lon, lat] 이면 주소. 어디를 찍었는지 사람이 알아볼 수
+          있어야 함. 좌표 숫자는 안 냄
+          도달권 폴리곤이 실려 왔으면 제일 바깥 겹의 면적. _reach_line 임
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
           한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
           그보다 많으면 여럿 중 하나라는 것을 밝힘
@@ -468,9 +633,12 @@ def summarize(tool_input: Any, result: Any) -> str:
         if missing:
             return missing
 
-        point = _lon_lat(result.get("location"))
-        if point:
-            return _place_line(tool_input, result, point)
+        if _lon_lat(result.get("location")):
+            return _place_line(tool_input, result)
+
+        reach = _reach_line(result)
+        if reach:
+            return reach
 
         counted = _counted(result)
         if counted:
@@ -725,20 +893,190 @@ def _without_step_prefix(message: str, step_id: Any) -> str:
     return message
 
 
-def _place_line(tool_input: Any, result: Dict[str, Any], point: Tuple[float, float]) -> str:
-    """좌표를 찍은 결과 한 줄.
+def _place_line(tool_input: Any, result: Dict[str, Any]) -> str:
+    """좌표를 찍은 결과 한 줄. **좌표는 안 적는다.**
 
-    규칙  주소를 반드시 보여줌. 좌표만 보이면 엉뚱한 곳을 찍어도 사람이
-          알아챌 방법이 없음. "오송시" 가 경상남도 거제시 동부면 오송리를
-          찍은 일이 있음
-          주소가 없으면 그 칸을 뺌. query 가 없으면 그 칸을 뺌
+    규칙  주소를 보여줌. 좌표만 보이면 엉뚱한 곳을 찍어도 사람이 알아챌
+          방법이 없음. "오송시" 가 경상남도 거제시 동부면 오송리를 찍은
+          일이 있음 — 그것을 알아챈 것은 좌표가 아니라 주소였음
+          주소가 없으면 좌표를 찾았다는 사실만. 값을 지어내지 않음
+          query 가 없으면 그 칸을 뺌
+    제약  경위도 숫자를 화면에 안 낸다.
+          기자와 일반 독자가 보는 화면이고 (126.9482, 37.3201) 이 알려주는
+          것이 없다. 좌표가 맞는지는 주소로 본다
+    이력  주소 뒤에 (126.9482, 37.3201) 을 붙였음. 우리가 화면만 보고
+          디버깅하던 때의 자리임 (2026-09-01 걷음)
     """
     query = tool_input.get("query") if isinstance(tool_input, dict) else None
     address = result.get("address")
 
-    coordinates = f"({point[0]:.4f}, {point[1]:.4f})"
-    tail = f"{address} {coordinates}" if address else coordinates
+    tail = str(address).strip() if isinstance(address, str) and address.strip() else POINT_FOUND
     return f"{query} → {tail}" if query else tail
+
+
+# ── 도달권의 넓이 ─────────────────────────────────────────────────
+#
+# 도달권 응답은 이 파일이 아는 모양이 하나도 아니다 — 건수 칸도 이름 칸도
+# 없고 location 도 없다. 그래서 화면에 `칸: status · scenario_id · origin ·
+# max_minutes · cutoffs_minutes · mode` 만 나갔다 (2026-09-01 실측).
+# 사람이 알고 싶은 것 하나는 **얼마나 넓은 구역에 갈 수 있는가** 인데
+# 응답은 그 수를 안 준다. 폴리곤은 준다.
+#
+# **면적은 응답의 폴리곤에서 잰다. 지어내지 않는다.**
+#
+# 재는 법 — 구면 다각형의 넓이를 닫힌 고리의 좌표만으로 구하는 식이다.
+#
+#     A = R² / 2 · | Σ (λ_{i+1} − λ_i) · (2 + sin φ_i + sin φ_{i+1}) |
+#
+# λ 는 경도, φ 는 위도(라디안), R 은 지구 평균 반지름이다. **위도 보정이
+# 식 안에 들어 있다** — sin φ 가 그 자리다. 경위도를 평면처럼 재면
+# 우리 위도(37.3°)에서 1/cos(37.3°) = 1.257 배, 25.7% 크게 나온다
+# (실측 : 29.7 km² 를 37.4 km² 로 셌다).
+#
+# 검산 — 같은 폴리곤을 위도 보정한 평면(x = R·λ·cos φ₀, y = R·φ)으로도 재서
+# 29.734 대 29.735 km² 로 맞췄다. R 을 평균반지름 · 등적반지름 · 6371000 중
+# 무엇으로 잡아도 소수 한 자리가 안 움직인다 (2026-09-01, NOTES.md 「일흔일곱째」).
+#
+# **제일 큰 겹 하나만 잰다.** 응답의 겹은 누적이다 — 10분 폴리곤의 꼭짓점
+# 열여섯 개가 모두 30분 폴리곤 안에 있다(실측). 그래서 겹을 더하면 안 되고
+# 제일 큰 cutoff 하나가 곧 「그 시간 안에 갈 수 있는 구역」이다.
+# 30을 코드에 안 적는다 — 자를 겹은 배선이 정하고 응답이 그대로 들고 온다.
+#
+# **조각이 여럿이면 더한다. 구멍은 뺀다.** 30분 겹이 조각 여섯이고
+# (버스·전철이 끊긴 자리마다 따로 뜬다) GeoJSON 은 한 폴리곤의 첫 고리가
+# 바깥, 나머지가 구멍이다. 조각끼리 겹치는지는 안 본다 — MultiPolygon 은
+# 겹치지 않는 것이 규약이고, 실측에서도 겹친 짝이 없었다(20만 점 표본).
+#
+# REACH_KEY          폴리곤이 담겨 오는 최상위 칸
+# REACH_POLYGON_KEY  그 안에서 넓이를 잴 것. lines 는 테두리라 넓이가 없다
+# CUTOFF_KEY         그 겹이 몇 분짜리인지 (properties 안)
+# EARTH_RADIUS_M     지구 평균 반지름 (IUGG). 위 검산 참고
+# REACH_MIN_RING     넓이를 잴 수 있는 최소 꼭짓점 수. 닫힌 삼각형이 넷이다
+# REACH_LINE         화면에 나갈 한 줄. 소수 한 자리
+REACH_KEY = "feature_collections"
+REACH_POLYGON_KEY = "polygons"
+CUTOFF_KEY = "cutoff_min"
+EARTH_RADIUS_M = 6371008.8
+REACH_MIN_RING = 4
+REACH_LINE = "{cutoff}분 이내 도달 면적 {area:.1f} km²"
+
+
+def _reach_line(result: Dict[str, Any]) -> str:
+    """도달권 면적 한 줄. 잴 것이 없으면 "".
+
+    입력  결과 dict
+    출력  BELOW 로 시작하는 들여 쓴 한 줄. 조건 아래에 딸려 붙음
+    규칙  제일 큰 cutoff 하나만 잼. 겹이 누적이라 더하면 두 번 셈
+          cutoff 를 못 읽는 feature 는 건너뜀
+          잰 넓이가 0이면 "". 0.0 km² 라고 적으면 잰 것처럼 보임
+    제약  cutoff 값을 코드에 안 적는다.
+          몇 분으로 자를지는 배선이 정하고 응답이 들고 온다. 30 을 여기 적으면
+          배선을 고쳤을 때 이 줄만 조용히 사라진다
+    """
+    features = _reach_features(result)
+    if not features:
+        return ""
+
+    cutoff, geometry = max(features, key=lambda pair: pair[0])
+    area = _geometry_area(geometry) / 1_000_000
+    if area <= 0:
+        return ""
+
+    number = int(cutoff) if float(cutoff).is_integer() else cutoff
+    return BELOW + RECORD_INDENT + REACH_LINE.format(cutoff=number, area=area)
+
+
+def _reach_features(result: Any) -> List[Tuple[float, Any]]:
+    """도달권 폴리곤의 (cutoff, geometry) 짝들. 그런 응답이 아니면 빈 목록.
+
+    규칙  REACH_KEY 안의 REACH_POLYGON_KEY 안의 "features" 만 봄.
+          그 세 겹이 다 있어야 도달권 응답으로 봄
+          properties.CUTOFF_KEY 가 수인 것만. bool 은 수로 안 봄
+    """
+    if not isinstance(result, dict):
+        return []
+
+    collections = result.get(REACH_KEY)
+    if not isinstance(collections, dict):
+        return []
+    polygons = collections.get(REACH_POLYGON_KEY)
+    if not isinstance(polygons, dict):
+        return []
+    features = polygons.get("features")
+    if not isinstance(features, list):
+        return []
+
+    found = []
+    for feature in features:
+        if not isinstance(feature, dict):
+            continue
+        properties = feature.get("properties")
+        cutoff = properties.get(CUTOFF_KEY) if isinstance(properties, dict) else None
+        if isinstance(cutoff, bool) or not isinstance(cutoff, (int, float)):
+            continue
+        found.append((float(cutoff), feature.get("geometry")))
+    return found
+
+
+def _geometry_area(geometry: Any) -> float:
+    """폴리곤 하나의 넓이 (m²). 못 재면 0.
+
+    규칙  Polygon 이면 고리 목록 한 벌, MultiPolygon 이면 그것이 여럿
+          한 벌의 첫 고리가 바깥이고 나머지는 구멍이라 빼냄
+          구멍이 바깥보다 크게 나오면 그 벌은 0으로 봄. 음수 넓이를 더해
+          전체를 줄이지 않음
+    """
+    if not isinstance(geometry, dict):
+        return 0.0
+
+    kind = geometry.get("type")
+    coordinates = geometry.get("coordinates")
+    if not isinstance(coordinates, list):
+        return 0.0
+
+    if kind == "Polygon":
+        rings = [coordinates]
+    elif kind == "MultiPolygon":
+        rings = [item for item in coordinates if isinstance(item, list)]
+    else:
+        return 0.0
+
+    total = 0.0
+    for polygon in rings:
+        if not polygon:
+            continue
+        outer = _ring_area(polygon[0])
+        holes = sum(_ring_area(ring) for ring in polygon[1:])
+        total += max(outer - holes, 0.0)
+    return total
+
+
+def _ring_area(ring: Any) -> float:
+    """닫힌 고리 하나가 두르는 구면 넓이 (m²). 못 재면 0.
+
+    규칙  위 절의 식 그대로. 위도 보정이 sin φ 로 식 안에 들어 있음
+          꼭짓점이 REACH_MIN_RING 보다 적으면 0. 넓이가 없음
+          수로 못 읽는 꼭짓점이 하나라도 있으면 0. 반쯤 재지 않음
+          도는 방향은 안 봄. 절댓값을 냄
+    """
+    if not isinstance(ring, list) or len(ring) < REACH_MIN_RING:
+        return 0.0
+
+    points = []
+    for point in ring:
+        if not isinstance(point, (list, tuple)) or len(point) < 2:
+            return 0.0
+        try:
+            points.append((float(point[0]), float(point[1])))
+        except (TypeError, ValueError):
+            return 0.0
+
+    total = 0.0
+    for (lon1, lat1), (lon2, lat2) in zip(points, points[1:]):
+        total += math.radians(lon2 - lon1) * (
+            2 + math.sin(math.radians(lat1)) + math.sin(math.radians(lat2))
+        )
+    return abs(total) * EARTH_RADIUS_M * EARTH_RADIUS_M / 2
 
 
 def _count_line(count: int, total: Optional[int], notice: str = "") -> str:
