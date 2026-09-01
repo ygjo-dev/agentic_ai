@@ -100,6 +100,7 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 16  resolve 응답의 paths 를 도메인이 만든다. path_of 를 가르려면 여기가 먼저다
 17  krri st 의 8501 칸이 HTTP 상태만 본다. 화면이 죽어도 초록불이 켜진다
 18  옮기고 남은 graph 이름 둘. 이번에 엔드포인트만 갈랐다
+19  layout.json 에 묵은 좌표가 남아 있다. 도달권 노드가 그것과 겹친다
 ```
 
 ★ 14 는 지웠다 — 6′ 에서 엔드포인트 이름을 갈랐다. 남은 것은 18 이다.
@@ -292,6 +293,26 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
     import 와 경로가 실제로 풀리고, 백엔드까지 진짜로 부른다.
 
   ★ `krri` 는 저장소 밖이다 (`~/.local/bin/krri`).
+
+- **19 · `layout.json` 에 묵은 좌표가 남아 있다** (2026-09-01 「일흔넷째」).
+  `app/ui/graph_svg/layout.json` 이 **온톨로지에 없던 `compute_reach_area` 의
+  좌표 `[991.77, 28.0]` 을 들고 있었다.** 전에 같은 이름으로 등록을 해 보고
+  온톨로지만 되돌린 자국이다 — 그 파일은 추적 파일이 아니라 `git checkout` 으로
+  안 돌아간다. `registry.reset_to_init` 의 주석이 경고해 둔 그 자리다.
+
+  「일흔넷째」가 그 이름으로 노드를 넣으면서 묵은 좌표가 살아났고,
+  `group_transport [968.82, 76.873]` 과 상자가 겹친다 (dx 22.95 · dy 48.87).
+  겹침 시험 셋이 그것 하나를 잡는다.
+
+  ```
+  test_no_two_nodes_touch[상단] · [하단] · test_registering_a_node_does_not_make_it_touch
+    -> ('group_transport', 'compute_reach_area')
+  ```
+
+  **안 고쳤다.** 좌표를 다시 잡는 것은 「노드를 등록해도 기존 노드가
+  0.0000pt 움직여야 한다」는 시연의 핵심 장면을 건드리는 일이라
+  **그 장면을 아는 사람이 정할 것**이다. 고르는 길은 둘이다 —
+  묵은 한 줄만 지워 새로 놓이게 하거나, 좌표를 손으로 옮기거나.
 
 - **18 · 옮기고 남은 `graph` 이름 둘** (2026-09-01 「일흔한째」).
 
@@ -761,6 +782,11 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
   isochrone-from-place            같다
   current-view-isochrone          같다 + 「현재 화면 범위」를 받는 입력이 우리에 없다
                                   (2026-08-28 : 뒤엣것은 풀렸다. r5-server 만 남는다)
+                                  (2026-09-01 「일흔넷째」 : r5-server 도 풀렸다.
+                                   서버가 꺼진 것이 아니라 주소가 바뀐 것이었고
+                                   servers.json 두 줄을 고치니 도구가 42 -> 47 이 됐다.
+                                   셋 다 「도달권 계산」 노드 하나로 덮인다 —
+                                   다만 recipe 가 아직 없어 발화로는 못 닿는다)
   otp-plan-trip                   otp-router 가 없다
   transit-route-between-places    같다
   current-view-cctv               「현재 화면 범위」 입력이 없다
@@ -902,7 +928,9 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 - **대표님께 물어볼 목록**
 
   ```
-  r5-server · otp-router 재가동            월요일 회의 뒤. 도달권 셋 · 경로 탐색 둘이 여기 걸려 있다
+  ~~r5-server · otp-router 재가동~~        ★ 끝났다 (2026-09-01 「일흔넷째」). 재가동이 아니라
+                                           주소였다. 도달권 셋은 노드가 붙었고 경로 탐색 둘은
+                                           도구만 보이는 채로 남아 있다
   web-search 권한                          "MCP tool 'web-search/web.search' is not applied
                                            for this user." 우리가 못 연다
   ★ digitalTwin.showFacility 를 화면이     명령은 나가는데 화면이 안 바뀐다.
@@ -1882,6 +1910,297 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-01 (일흔넷째) · 도달권 노드 하나를 붙였다 — 그리고 배치 관문에 걸렸다
+
+무인 실행. 조건 — `feature/accessibility` · 시작 전 워킹 트리 깨끗함 ·
+고친 파일은 셋뿐이다 (`execution/execute_service.py` ·
+`ontology/ontology.yaml` · `execution/wiring.yaml`). 커밋 안 했다.
+
+**★ 관문 하나에 걸렸다.** `pytest` 실패가 1 이 아니다. 아래 8 을 먼저 본다.
+노드와 배선은 다 들어갔고 계기판 둘은 노린 값이 나왔다.
+
+#### 1. 서버가 안 열렸던 진짜 까닭은 주소였다
+
+「서른아홉째」가 `r5-server: connect EHOSTUNREACH` 를 보고 **서버가 꺼져
+있다**고 적었다. 아니었다. **주소가 바뀐 것이었다.** 저쪽 맥이
+Tailscale 로 붙어 있고 그 주소가 `100.115.112.17` 이다.
+`ASAP-Gateway/data/servers.json` 두 줄을 고쳤다.
+
+```
+otp-router   "url": "http://175.196.203.153:8001/mcp"  ->  "http://100.115.112.17:8001/mcp"
+r5-server    "url": "http://175.196.203.153:8002/mcp"  ->  "http://100.115.112.17:8002/mcp"
+```
+
+도구가 **42 -> 47** 이 됐다. 다섯이 새로 보인다.
+
+```
+r5-server    health_check · compute_isochrone · compute_od_matrix
+otp-router   otp_health_check · otp_plan_trip
+```
+
+★ **`servers.json` 을 고쳐도 Gateway 가 그것을 안 읽을 수 있다.** 뜰 때
+로그에 이렇게 찍힌다.
+
+```
+[Registry] Loaded 4 servers from ./data/servers.json. Ignored existing IDs.
+```
+
+**같은 id 가 DB 에 이미 있으면 DB 쪽이 이긴다.** 파일을 고치고 「왜 안
+바뀌지」로 헤맬 자리다. 다음에 주소가 또 바뀌면 파일이 아니라 DB 를 본다.
+
+#### 2. `compute_isochrone` 의 required 가 둘뿐이다 — 물음 하나가 없어졌다
+
+서버에서 `inputSchema` 를 직접 떴다 (`dev/tools/probe_out/tools.json`,
+2026-09-01 에 새로 받았다).
+
+```
+required           origin_lon · origin_lat        ★ 둘뿐이다
+max_minutes        default 30
+cutoffs_minutes    default null  -> 응답은 [30] 한 겹
+mode               default WALK   (WALK · BICYCLE · CAR · TRANSIT)
+departure_date     default "2026-03-23"           ★ 반년 전이다
+departure_time     default "08:00"
+include_points     default false
+include_boundary_cells  default false             ← 인수인계 문서에 없던 칸
+kde_bandwidth_m    default null                   ← 같다
+```
+
+★ **그래서 「인자 둘」 설계 물음이 사라졌다.** 인수인계 문서가 제일 큰
+물음이라고 적어 둔 것이다. 발화에서 「몇 분」을 뽑을 필요가 없다.
+`@arg` · `$prev` · `$context` 문법을 하나도 안 늘렸다.
+
+#### 3. 권한 — 재고 나서 고쳤다
+
+코드를 고치기 전에 `POST localhost:3000/api/tools/execute` 에
+`user_context` 를 실어 보내 권한만 쟀다
+(`vendor_to_be_deleted/asap/mcp_client.py:79` 가 쓰는 창구다).
+같은 도구 · 같은 인자 · `refs` 만 갈랐다.
+
+```
+refs                                    결과
+asap-mcp-core/*                         HTTP 500 · 80 B
+                                        {"error":"MCP tool 'r5-server/compute_isochrone'
+                                          is not applied for this user."}
+asap-mcp-core/* · r5-server/*           HTTP 200 · 3,391 B · 0.71초
+```
+
+**「막힐 것이다」가 아니라 막힌다는 것을 쟀다.** 문구는 위에 그대로 적었다.
+`web-search` 권한이 없을 때 나오는 문구
+(`"MCP tool 'web-search/web.search' is not applied for this user."`)와
+같은 틀이다 — **한 서버에 한 줄씩** 있어야 한다는 뜻이다.
+`USER_CONTEXT` 의 `selected_mcp_tool_refs` 에 `r5-server/*` 를 더했다.
+
+#### 4. Gateway 를 거친 응답 모양 — 봉투가 없다
+
+「서른아홉째」가 못 본 자리다. **Gateway 는 `content[0].text` 봉투를 벗겨
+평평한 dict 로 준다.**
+
+```
+top keys   status · scenario_id · origin · max_minutes · cutoffs_minutes ·
+           mode · smoothing · reachable_cell_count · elapsed_ms · feature_collections
+feature_collections   polygons · lines   (둘 다 FeatureCollection)
+```
+
+`mcp_result_inspector._extract_isochrone(:213)` 은 `value["feature_collections"]`
+를 곧장 읽으므로 **봉투가 있든 없든 그대로 맞물린다.**
+`_parse_json_text(:155)` 는 이 길에서 안 불린다.
+
+#### 5. cutoffs 세 겹은 값이 싸다 — 재고 정했다
+
+의왕역 (126.9482, 37.3201) · 세 번씩 · Gateway 경유.
+
+```
+                     응답 크기   feature 수        elapsed_ms      벽시계
+안 보냄 (기본)        3,391 B    폴리곤 1 · 선 1   248 · 242 · 251  0.29 · 0.27 · 0.31초
+[10, 20, 30]         6,763 B    폴리곤 3 · 선 3   242 · 240 · 252  0.26 · 0.31 · 0.30초
+```
+
+**크기는 두 배가 되고 시간은 안 는다.** `reachable_cell_count` 는 140 으로
+같다 — 격자는 한 번만 풀고 자르기만 세 번 하는 것이다. 보도자료 그림이
+세 겹이 낫다는 판단과 값이 맞으므로 배선에 `[10, 20, 30]` 상수로 적었다.
+
+`departure_date` · `departure_time` · `mode` 는 안 적었다. WALK 은 시간표를
+안 보므로 기본 날짜가 반년 전이어도 무관하다. `max_minutes` 기본 30 이
+cutoffs 의 맨 끝과 같아 그것도 안 적었다.
+
+#### 6. 노드 하나 · 타입 하나
+
+```
+compute_reach_area   도달권 계산
+                     한 지점에서 걸어서 갈 수 있는 구역을 시간대별로 계산한다.
+  hasInput   point            (지점 좌표)
+  hasOutput  reach_area       (도달권)
+  about      group_transport  (교통)
+
+reach_area           도달권
+                     한 지점에서 정해진 시간 안에 닿을 수 있는 구역. 시간대마다 한 겹이다.
+```
+
+**새 관계(predicate)는 안 만들었다.** 넷 그대로다.
+
+★ **타입을 새로 만든 까닭.** 「경계 도형」에 얹을 수 있는지를 먼저 봤다.
+그것은 행정구역 경계이고 이것은 한 지점을 시간으로 자른 구역이라 뜻이
+다르다. 얹으면 둘 중 하나가 거짓이 된다 — 경계 도형의 설명을 넓히면
+행정구역 발화가 이쪽으로 새고, 안 넓히면 도달권 발화가 「행정구역 경계」라는
+선택지를 골라야 한다.
+
+★ **「범위」를 안 쓰고 「구역」으로 적었다.** 지도 범위 · 보이는 범위가 이미
+그 낱말을 쓰고 있고 그 둘은 발화 서른여섯 중 여럿이 닿는 자리다.
+`facility_view` 의 주석(「마흔아홉째」)이 문장 하나가 판정 셋을 갈랐다고
+적어 둔 것을 읽고 정했다. 문안을 흔들기 전에 그것을 읽는다.
+
+`want` 축 선택지가 **11 -> 12** 가 됐다. 실린 줄은 이렇다.
+
+```
+- reach_area  (도달권 — 한 지점에서 정해진 시간 안에 닿을 수 있는 구역. 시간대마다 한 겹이다.)
+```
+
+#### 7. 배선 — 앵커를 낱개로 갈랐다
+
+`tool_of` 는 한 줄이다. **`server_id` 는 컨테이너 이름(`mcp-r5`)이 아니라
+Gateway 의 serverId(`r5-server`) 다.**
+
+`step_of` 는 경위도를 **평평한 두 칸**으로 받는다. 기존
+`point_from_previous` 앵커는 `{lon, lat}` 이라는 칸 이름까지 함께 묶은
+것이라 못 쓴다 — 이 도구의 칸은 `origin_lon` · `origin_lat` 이다.
+그래서 `$prev.lon` · `$prev.lat` 과 `$context.selectedLocation.lon` · `.lat` 을
+**낱개 앵커로 갈랐고, 묶음 앵커가 그 낱개를 가리키게 했다.** 파일이 이미
+적어 둔 규칙 그대로다("낱개로도 묶는다"). 값은 한 글자도 안 바뀌었다 —
+`STEP_OF` 를 파서 기존 두 줄이 예전과 같은 dict 인 것을 확인했다.
+
+`- 마흔은 여기, web.search 하나만 다른 서버다` 주석이 사실과 어긋나게 되어
+함께 고쳤다.
+
+★ **`$prev.lon` 이 통하는 것을 확인했다.** `geo.geocode` 는 `lon` · `lat` 칸을
+안 준다 — `location: [126.948…, 37.320…]` 배열 하나다. 벤더의
+`_resolve_reference(:801)` 가 `lon` · `lat` 를 `location[0]` · `location[1]` 로
+풀어 주기 때문에 통한다. **손으로 흉내 내면 KeyError 가 난다** — 이 자리를
+잴 때는 그 함수를 직접 불러야 한다.
+
+배선이 만드는 것을 처음부터 끝까지 한 번 눌러 봤다 (실측 2026-09-01).
+
+```
+1  geo.geocode "의왕역"        location [126.94821341201332, 37.32011340539614]
+2  배선이 만든 input           {origin_lon: 126.948…, origin_lat: 37.320…,
+                                cutoffs_minutes: [10, 20, 30]}
+3  r5-server/compute_isochrone HTTP 200 · 6,787 B · 0.62초
+                              status success · mode WALK · cutoffs [10, 20, 30]
+                              reachable_cell_count 140 · elapsed_ms 265
+                              폴리곤 3 겹 (cutoff_min 10 · 20 · 30)
+   headline                   "의왕역 도달권을 계산했습니다."
+4  mcp_result_inspector       알아본다. polygons · lines · bbox · geometry_validation
+                              까지 붙여 돌려준다
+```
+
+**네 칸이 다 맞물린다.** 남은 것은 이 노드를 지나는 recipe 뿐이다 (아래 10).
+
+#### 8. ★ 계기판 — 관문 하나에 걸렸다
+
+```
+check_wiring    전 : recipe 60 · STEP_OF 36줄 · A 0 · B 0 · C 1
+                후 : recipe 60 · STEP_OF 37줄 · A 0 · B 0 · C 1     ← 노린 값
+                C 는 전후 같은 것 하나다 (web_fetch × 웹 주소)
+
+check_inputs    후 : 판정한 행 53 · 맞다 53 · 없는 칸 0 · 안 보낸 required 0
+                compute_reach_area × point       cutoffs_minutes · origin_lat · origin_lon  맞다
+                compute_reach_area × point (첫)  같다
+                ★ 돌리기 전에 42개짜리 묵은 tools.json 을 지우고 --refresh 로 다시 받았다
+
+pytest          전 : 3 failed · 396 passed · skipped 0
+                후 : 5 failed · 394 passed · skipped 0
+```
+
+★ **인수인계 문서가 적어 둔 「1 failed」가 이 장비에서 맞지 않는다.**
+**내 변경 전에 이미 3 이었다** (stash 로 재서 확인했다). 셋은 이렇다.
+
+```
+test_dense_graph_would_move_if_overlap_removal_were_used   assert 0.0 > 1.0
+                                                           graphviz 판 차이. 알려진 그 하나다
+test_the_shipped_pair_holds_the_same_coordinates           layout.json 과 _init 사본이
+                                                           y 로 2.58pt 어긋나 있다
+test_coordinates_for_undrawn_nodes_are_not_kept            layout.json 에 온톨로지에 없는
+                                                           'compute_reach_area' 좌표가 있다
+```
+
+★★ **셋째가 이번의 발견이다.** `app/ui/graph_svg/layout.json` 에
+**`compute_reach_area` 좌표 `[991.77, 28.0]` 이 이미 들어 있었다.**
+전에 같은 이름으로 등록을 해 보고 온톨로지만 되돌린 자국이다 —
+`layout.json` 은 추적 파일이 아니라 `git checkout` 으로 안 돌아간다.
+`registry.reset_to_init` 의 주석이 경고해 둔 바로 그 자리다
+("등록한 노드가 사라진 뒤에도 그 좌표가 남아").
+
+그래서 내 변경이 **그 시험 하나를 고치고**(노드가 생겼으니 더 이상 「없는
+노드의 좌표」가 아니다) **셋을 새로 깨뜨렸다.** 셋 다 같은 한 쌍이다.
+
+```
+test_no_two_nodes_touch[상단]              ('group_transport', 'compute_reach_area')
+test_no_two_nodes_touch[하단]              같다
+test_registering_a_node_does_not_make_it_touch  같다
+
+compute_reach_area  [991.77, 28.0 ]
+group_transport     [968.82, 76.873]      dx 22.95 · dy 48.87
+```
+
+**묵은 좌표가 노드 상자를 겹치게 놓았다.** 내가 고른 자리가 아니라 앞선
+등록이 남긴 자리다.
+
+★ **안 고쳤다.** `layout.json` 은 이번에 고칠 세 파일이 아니고,
+CLAUDE.md 가 좌표를 함부로 다시 잡지 말라고 못 박은 자산이다
+("노드를 등록해도 기존 노드가 0.0000pt 움직여야 한다" — 시연의 핵심 장면).
+묵은 한 줄을 지워 새로 배치할 것인지는 **그 장면을 아는 사람이 정한다.**
+
+#### 9. check_resolve — 전후를 한 세션 안에서 잇달아 쟀다
+
+발화 36개 × 3회 · recipe 60 · 모델 서버 기본 · 지도 문맥 both ·
+겹쳐 안 돌렸다. 노드를 더하기 직전과 직후다.
+
+```
+              적중       근접   빗나감   못 붙음   기준선 아홉   확장 스물둘   화면 다섯
+전 (노드 없음)  69/108 64%   23     16       0        18/27 67%    36/66 55%    15/15 100%
+후 (노드 있음)  66/108 61%   33      9       0        15/27 56%    36/66 55%    15/15 100%
+차                 -3       +10     -7       0           -3            0            0
+```
+
+**-3 이다. 미리 정한 ±3 안이라 그냥 적는다.**
+
+★ **그런데 합계보다 갈린 발화가 훨씬 많다. 여섯이 오르고 여섯이 내렸다.**
+
+```
+ 1 오송역 위치 보여줘                 1/3 -> 3/3  ↑     6 국회의원 선거구 찾아줘        1/3 -> 0/3  ↓
+ 8 철도 안전 문서 찾아줘              1/3 -> 3/3  ↑     7 전기차 충전소 데이터 검색해줘  3/3 -> 0/3  ↓
+12 청주시 행정경계 보여줘             0/3 -> 3/3  ↑     9 충북 제1선거구 알려줘         3/3 -> 0/3  ↓
+14 오송역 국회의원 공약 보여줘        2/3 -> 3/3  ↑    11 오송역 행정경계 보여줘        3/3 -> 0/3  ↓
+25 문서에서 철도안전법 관련 내용      0/3 -> 3/3  ↑    13 오송역 국회의원 누구야        3/3 -> 0/3  ↓
+26 문서에서 철도 안전 교육 내용       1/3 -> 3/3  ↑    15 청주 선거구 찾아줘            3/3 -> 0/3  ↓
+                                                    나머지 24 는 안 갈렸다
+```
+
+★ **이 -3 을 「내가 넣은 선택지가 세 자리를 빼앗았다」로 읽지 않는다.**
+오름과 내림이 여섯 대 여섯으로 같고, 갈린 것이 거의 다 0/3 과 3/3
+사이의 전부-아니면-전무다. 「일흔셋째」 3절이 **코드를 한 글자도 안 고치고
+같은 판이 하루 안에 19/36 에서 23/36 으로 옮겨간 것**을 적어 두었다.
+그 잡음 바닥 위에서 -3 은 가릴 수 없는 크기다.
+
+**빗나감이 16 -> 9 로 줄고 근접이 23 -> 33 으로 늘었다.** 이 저장소의
+원칙("틀린 답보다 정직한 되물음이 낫다")으로 읽으면 나쁜 쪽이 아니다.
+다만 이것도 같은 잡음 안이라 **공으로 세지 않는다.**
+
+#### 10. recipe 번호는 안 밀렸다 — recipe 를 안 만들었기 때문이다
+
+`workflows/static/recipes/` 와 `menu` 는 「건드리지 않는 것」이라 손대지
+않았다. **recipe 는 60개 그대로이고 번호도 그대로다.** 새 노드를 지나는
+경로가 아직 하나도 없다.
+
+★ **그래서 지금 이 노드는 발화로 닿을 수 없다.** 온톨로지에 있고 배선이
+있고 권한이 있지만 recipe 가 없다. 등록(`registry.register_node`)이나
+`rebuild_init` 이 경로를 만들어 주어야 살아난다 — 다음 차례(6 화면 확인)의
+일이다.
+
+★ **`rebuild_init` 은 지금 막혀 있다.** `ontology/ontology.yaml` 이
+`ontology/_init/ontology.yaml` 과 달라졌고 그 도구는 둘이 같을 것을
+요구한다. 새 노드를 `_init` 에도 넣을지는 **`_init` 을 다시 뜨는 판단**이라
+안 했다.
 
 ### 2026-09-01 (일흔셋째) · 세션을 걷어냈다 — B 8
 

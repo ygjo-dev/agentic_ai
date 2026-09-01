@@ -43,9 +43,14 @@ from vendor_to_be_deleted.asap.workflow_answer import (
 #
 # 빠뜨리면 요청마다 새 guest 가 만들어지고 adminBoundary 셋 말고는 전부
 # 거부된다(실측).
+#
+# **서버마다 한 줄이 있어야 한다.** refs 에 없는 서버의 도구를 부르면 Gateway 가
+# 500 에 "MCP tool 'r5-server/compute_isochrone' is not applied for this user."
+# 를 실어 돌려준다 — 도구가 /api/tools 에 보이고 인자가 맞아도 그렇다. 한 줄을
+# 더하니 같은 호출이 200 이 됐다(2026-09-01 실측, NOTES.md 「일흔넷째」).
 USER_CONTEXT = {
     "user_id": "asap-ontology-orchestrator",
-    "selected_mcp_tool_refs": ["asap-mcp-core/*"],
+    "selected_mcp_tool_refs": ["asap-mcp-core/*", "r5-server/*"],
 }
 
 # vendor 가 steps 를 workflow 로 알아보게 하는 이름.

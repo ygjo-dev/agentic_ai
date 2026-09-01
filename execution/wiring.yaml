@@ -38,7 +38,8 @@
 # 낱개를 안 묶으면 같은 문자열을 두 번 적게 된다.
 anchors:
 
-  # 마흔은 여기, web.search 하나만 다른 서버다. tools.json 의 serverId 가 근거다.
+  # 마흔은 여기, web.search 와 compute_isochrone 이 다른 서버다.
+  # tools.json 의 serverId 가 근거다.
   server_id: &server_id "asap-mcp-core"
 
   # 발화에서 온 값을 가리키는 표시. 장소인지 키워드인지 식별자인지는 안 가른다.
@@ -54,9 +55,11 @@ anchors:
     - *prev_min_lat
     - *prev_max_lon
     - *prev_max_lat
+  prev_lon: &prev_lon "$prev.lon"
+  prev_lat: &prev_lat "$prev.lat"
   point_from_previous: &point_from_previous
-    lon: "$prev.lon"
-    lat: "$prev.lat"
+    lon: *prev_lon
+    lat: *prev_lat
   location_from_previous: &location_from_previous "$prev.location"
   admin_level_from_previous: &admin_level_from_previous
     level: "$prev.items.1.layerId"
@@ -73,9 +76,17 @@ anchors:
     - *view_max_lon
     - *view_max_lat
   selected_location: &selected_location "$context.selectedLocation"
+  picked_lon: &picked_lon "$context.selectedLocation.lon"
+  picked_lat: &picked_lat "$context.selectedLocation.lat"
   point_from_context: &point_from_context
-    lon: "$context.selectedLocation.lon"
-    lat: "$context.selectedLocation.lat"
+    lon: *picked_lon
+    lat: *picked_lat
+
+  # 도달권을 몇 겹으로 자를 것인가. 안 보내면 도구 기본값이 null 이고 응답은
+  # 30분 한 겹이다. 세 겹으로 눌러 봤더니 응답이 3,391 B -> 6,763 B 로 늘고
+  # 서버 시간은 안 늘었다 (elapsed_ms 242~252 대 248~251, 세 번씩·2026-09-01).
+  # 값싸므로 세 겹으로 둔다.
+  reach_cutoffs: &reach_cutoffs [10, 20, 30]
 
 
 # 노드 -> 도구. **온톨로지 밖이다.**
@@ -111,6 +122,13 @@ tool_of:
     server_id: *server_id
     tool: geo.getRailwayLines
     headline: "{arg} 철도 노선을 조회했습니다."
+
+  # 컨테이너 이름(mcp-r5)이 아니라 Gateway 의 serverId 다. tools.json 의
+  # serverId 가 근거다.
+  compute_reach_area:
+    server_id: "r5-server"
+    tool: compute_isochrone
+    headline: "{arg} 도달권을 계산했습니다."
 
   find_admin_boundary_by_point:
     server_id: *server_id
@@ -322,6 +340,25 @@ step_of:
     map_extent:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
+
+  # 지점 좌표를 받는 여섯 중 이것만 칸 모양이 다르다. 경위도를 평평한 두 칸으로
+  # 받으므로 아래 다섯이 쓰는 point_from_previous 를 못 쓴다 — 그 앵커는
+  # {lon, lat} 이라는 칸 이름까지 함께 묶은 것이고, 이 도구의 칸은
+  # origin_lon · origin_lat 이다. 그래서 낱개 앵커로 적는다.
+  #
+  # 세 겹으로 자르는 것 말고는 아무것도 안 보낸다. mode 는 기본이 WALK 이고,
+  # departure_date 기본값이 2026-03-23 으로 반년 전이지만 WALK 은 시간표를
+  # 안 보므로 무관하다. max_minutes 기본 30 이 cutoffs 의 맨 끝과 같다.
+  compute_reach_area:
+    point:
+      input:
+        origin_lon: *prev_lon
+        origin_lat: *prev_lat
+        cutoffs_minutes: *reach_cutoffs
+      input_first:
+        origin_lon: *picked_lon
+        origin_lat: *picked_lat
+        cutoffs_minutes: *reach_cutoffs
 
   # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
   # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.
