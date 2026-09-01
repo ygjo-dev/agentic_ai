@@ -106,6 +106,56 @@ STEP_JOIN = " -> "
 UNWIRED_MARK = " (아직 실행할 수 없음)"
 
 
+# ── ★ 임시 · 보도자료용 이름표 ──────────────────────────────────
+#
+# **이것은 임시다. 보도자료 이미지를 찍고 나면 걷는다.**
+# 걷는 자리가 이 파일 하나다 — 표 셋(DISPLAY_NAME · RESOLVE_STEP_NAME ·
+# DISPLAY_HEADLINE)과 그것을 쓰는 함수 셋(_relabel · _relabel_headline ·
+# _shown_name)을 지우고, run 과 chat 에서 부르던 세 줄을 되돌리면 끝난다.
+# (2026-09-01 「일흔여덟째」. NOTES.md 「열린 과제」에 항목이 있다.)
+#
+# **원천이 둘이 되는 것을 알고 한다.** 이름의 원천은 온톨로지의 노드 name 이고
+# step_service 가 그것을 step 에 실어 보낸다. 여기 표는 그 위에 덧씌운다.
+# 노드 이름을 고쳐도 표에 든 둘은 안 따라 바뀐다.
+#
+# **왜 온톨로지를 안 고치나.** 노드 name 은 프롬프트의 축 목록에도 실린다
+# (ontology/shortlist.py:102). 이름을 바꾸면 발화 판정이 함께 흔들리고,
+# 그것을 다시 재는 것이 이번 일이 아니다. 화면에 찍는 이름만 따로 둔다.
+#
+# **표에 없는 노드는 온톨로지 name 이 그대로 나간다.** 조용히 빈칸이 되면
+# 어느 단계였는지가 화면에서 사라진다 — _shown_name 의 되돌아가는 차례가
+# 이름표 -> 온톨로지 name -> node_id 다.
+DISPLAY_NAME = {
+    "geocode_place": "장소 위치 찾기",
+    "compute_reach_area": "도달 범위 계산",
+}
+
+# 발화를 해석하는 단계의 이름.
+#
+# **이 자리는 노드가 아니다.** 온톨로지에 없고 recipe 를 고르는 우리 단계다.
+# 그래서 이름을 여기서 짓는다 — `resolve` 는 개발자 낱말이라 화면에 못 쓴다.
+# 저쪽 화면이 자기 오케스트레이터의 parse_intent 를 「요청 이해」로 적고
+# 있어(ASAP-web ChatPanel.PROCESS_STEP_META, 읽기만 했다) 같은 말을 쓴다.
+# ★ 이것도 위 표와 함께 걷는다.
+RESOLVE_STEP_NAME = "요청 이해"
+
+# 답의 첫 줄에 남은 같은 낱말.
+#
+# 단계 이름을 「도달 범위 계산」으로 바꾸면 첫 줄만 「의왕역 도달권을
+# 계산했습니다.」로 남는다. **한 답 안에서 두 줄이 다른 말을 하면 안 된다.**
+#
+# 첫 줄의 원천은 `execution/wiring.yaml` 의 headline 이고 그 파일은 이번에
+# 안 연다. 그래서 여기서 낱말 하나만 갈아 끼운다 — {노드 id: (전, 후)} 이고,
+# 그 노드가 이번 실행에 든 것일 때만 갈린다. 「도달권」이 든 headline 틀은
+# 48줄 중 그 하나뿐이다 (`grep 도달권 execution/wiring.yaml`, 2026-09-01).
+#
+# ★ 임시다. 위 표와 함께 걷는다. **제대로 고치는 자리는 여기가 아니라**
+# `execution/wiring.yaml:153` 의 한 낱말이다 — 걷을 때 그쪽을 고친다.
+DISPLAY_HEADLINE = {
+    "compute_reach_area": ("도달권을", "도달 범위를"),
+}
+
+
 async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
     """recipe 의 노드 순서대로 도구를 부름. 이벤트를 차례로 냄.
 
@@ -119,6 +169,9 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
           지도 명령이 도구 단계와 함께 있으면 도구 응답에서 나온 명령 뒤에
           붙임. 순서가 곧 경로 순서임
           부를 것도 낼 것도 없으면 곧장 result
+          ★ 화면에 나가는 이름은 이름표를 한 번 지남. 답의 단계 이름과
+            이벤트의 node 가 같은 표를 보므로 두 곳이 갈리지 않음
+            (임시다 — 위 「보도자료용 이름표」)
           한 단계가 실패하면 vendor 가 거기서 멈춤. trace 에 그 단계까지만
           담기므로 이벤트도 거기까지만 나감
           실패한 실행의 답은 vendor 의 answer_draft 를 버리고 trace 로 다시
@@ -136,6 +189,9 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         return
 
     plan = step_service.plan(recipe_id, argument)
+    named = {entry["node_id"]: entry["name"] for entry in graph.path_of(recipe_id)}
+    _relabel(plan["steps"], plan["nodes"])
+    plan["headline"] = _relabel_headline(plan["headline"], plan["nodes"])
     if not plan["steps"] and not plan["commands"]:
         yield _result("부를 도구가 없습니다.", [])
         return
@@ -143,14 +199,15 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
     if not plan["steps"]:
         for node_id, command in zip(plan["command_nodes"], plan["commands"]):
             op = command["op"]
+            shown = _shown_name(node_id, named)
             yield {
                 "type": "step_start",
-                "node": node_id,
+                "node": shown,
                 "message": COMMAND_START.format(op=op),
             }
             yield {
                 "type": "step_end",
-                "node": node_id,
+                "node": shown,
                 "message": COMMAND_END.format(op=op),
             }
         yield _result(command_answer(plan["headline"]), plan["commands"])
@@ -172,9 +229,10 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
 
     for node_id, item in zip(plan["nodes"], _trace(executed)):
         tool = item.get("tool") or ""
-        yield {"type": "step_start", "node": node_id, "message": f"{tool} 호출 중입니다..."}
+        shown = _shown_name(node_id, named)
+        yield {"type": "step_start", "node": shown, "message": f"{tool} 호출 중입니다..."}
         outcome = "실패" if step_failed(item) else "완료"
-        yield {"type": "step_end", "node": node_id, "message": f"{tool} {outcome}"}
+        yield {"type": "step_end", "node": shown, "message": f"{tool} {outcome}"}
 
     yield _result(_answer(intent, executed), _commands(executed) + plan["commands"])
 
@@ -209,7 +267,11 @@ async def chat(
           2026-09-01 에 세션을 걷었다. 되묻기 뒤에 「1번」으로 고르던 한
           걸음이 그것을 쓰던 유일한 자리였다 — 되묻기 자체는 그대로 난다
     """
-    yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
+    yield {
+        "type": "step_start",
+        "node": RESOLVE_STEP_NAME,
+        "message": "발화를 해석하고 있습니다...",
+    }
     resolved = resolve_service.resolve(
         text,
         llm_client=llm_client,
@@ -219,7 +281,7 @@ async def chat(
     recipe_id = resolved.get("recipe_id")
     yield {
         "type": "step_end",
-        "node": "resolve",
+        "node": RESOLVE_STEP_NAME,
         "message": f"{resolved.get('status')} {recipe_id or ''}".strip(),
     }
 
@@ -234,6 +296,64 @@ async def chat(
 
     async for payload in run(recipe_id, argument, text=text, context=context):
         yield payload
+
+
+def _relabel(steps: list[dict], nodes: list[str]) -> None:
+    """★ 임시 · 보도자료용. 답에 찍히는 단계 이름을 이름표로 갈아 끼운다.
+
+    입력  step_service.plan 의 steps · 같은 차례의 노드 id 목록
+    출력  없음. steps 를 그 자리에서 고침
+    규칙  DISPLAY_NAME 에 있는 노드만 갈아 끼움. 없는 노드는 손대지 않아
+          step_service 가 실어 둔 온톨로지 name 이 그대로 남음
+          steps 와 nodes 는 step_service.plan 이 같은 차례로 쌓음
+    제약  이름이 없는 노드에 뭔가를 지어 넣지 않는다.
+          그때는 workflow_answer 가 도구 이름으로 되돌아가는 것이 맞다 —
+          그것이 이 표가 있기 전부터 서 있던 규칙이다
+    ★ 이 함수는 DISPLAY_NAME 과 함께 걷는다. 표가 없으면 부를 이유가 없다
+    """
+    for node_id, step in zip(nodes, steps):
+        label = DISPLAY_NAME.get(node_id)
+        if label:
+            step[step_service.STEP_NAME] = label
+
+
+def _relabel_headline(headline: str, nodes: list[str]) -> str:
+    """★ 임시 · 보도자료용. 답 첫 줄에 남은 낱말을 단계 이름과 맞춘다.
+
+    입력  step_service 가 만든 첫 줄 · 이번에 부른 노드 id 목록
+    출력  낱말 하나만 갈린 첫 줄. 갈 것이 없으면 받은 것 그대로
+    규칙  DISPLAY_HEADLINE 의 노드가 이번 실행에 들었을 때만 봄
+          그 낱말이 실제로 있을 때만 갈아 끼움
+    제약  어미를 자르거나 문장을 다시 쓰지 않는다.
+          낱말 하나를 그대로 바꾸는 것뿐이다. 문형이 늘 때마다 규칙이
+          느는 자리를 만들지 않는다 (workflow_answer 의 _empty_headline 이
+          같은 이유로 headline 을 안 건드린다)
+    ★ 이 함수는 DISPLAY_HEADLINE 과 함께 걷는다
+    """
+    for node_id, (before, after) in DISPLAY_HEADLINE.items():
+        if node_id in nodes and before in headline:
+            return headline.replace(before, after)
+    return headline
+
+
+def _shown_name(node_id: str, named: dict) -> str:
+    """★ 임시 · 보도자료용. 생성과정 화면에 찍힐 단계 이름.
+
+    입력  노드 id · {노드 id: 온톨로지 name}
+    출력  화면에 그대로 나갈 한 마디. 절대 빈 문자열이 아님
+    규칙  이름표 -> 온톨로지 name -> node_id 차례로 되돌아감
+          답과 같은 표를 봄. 두 곳이 다른 말을 하면 안 됨
+    제약  빈칸을 내놓지 않는다.
+          저쪽 화면이 이 값을 단계의 제목으로 그대로 찍고(ASAP-web
+          ChatPanel.getStepMeta, 읽기만 했다) step_start 와 step_end 를
+          맞추는 열쇠로도 쓴다. 비면 단계가 사라진다
+    ★ 이 함수는 DISPLAY_NAME 과 함께 걷는다
+    """
+    label = DISPLAY_NAME.get(node_id)
+    if label:
+        return label
+    name = named.get(node_id)
+    return name.strip() if isinstance(name, str) and name.strip() else node_id
 
 
 def _from_screen(given: str | None) -> bool:
