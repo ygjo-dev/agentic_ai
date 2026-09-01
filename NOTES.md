@@ -101,6 +101,8 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 17  krri st 의 8501 칸이 HTTP 상태만 본다. 화면이 죽어도 초록불이 켜진다
 18  옮기고 남은 graph 이름 둘. 이번에 엔드포인트만 갈랐다
 19  layout.json 에 묵은 좌표가 남아 있다. 도달권 노드가 그것과 겹친다
+20  ★ feature/accessibility 는 보도자료 이미지용 가지다. 병합하지 않는다
+21  ★ recipe 번호가 밀렸다. 정답표와 시험 둘이 아직 옛 번호다
 ```
 
 ★ 14 는 지웠다 — 6′ 에서 엔드포인트 이름을 갈랐다. 남은 것은 18 이다.
@@ -293,6 +295,46 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
     import 와 경로가 실제로 풀리고, 백엔드까지 진짜로 부른다.
 
   ★ `krri` 는 저장소 밖이다 (`~/.local/bin/krri`).
+
+- **20 · ★ `feature/accessibility` 는 보도자료 이미지용 가지다**
+  (2026-09-01 「일흔여섯째」). **병합하지 않는다.** 접근성 모듈은
+  `refactor/vendor` 위에서 다시 붙인다. 그래서 이 가지의 판단은 「나중에
+  깨끗한가」가 아니라 「지금 그림이 나오는가」로 내렸다. **다시 붙이는 사람이
+  몰라서 밟으면 안 되는 것을 아래에 모은다.**
+
+  ```
+  _init 을 다시 떴다        ontology/_init/ontology.yaml 과 workflows/static/_init 을
+                            지금 온톨로지로 갈아엎었다. 「등록 장면」(등록해도 기존
+                            노드가 0.0000pt 움직인다)은 이 가지에서 안 지켜진다
+  layout.json 을 안 고쳤다  그래서 겹침 시험 셋이 아직 빨갛다 (위 19)
+  reset_to_init 을 안 불렀다 그 함수의 마지막 걸음(layout_store.restore_from_init)이
+                            layout.json 을 되돌리므로 앞 세 걸음만 손으로 했다
+  check_resolve 36벌 안 쟀다 GT 번호가 밀려 지금 재면 거짓이 된다 (아래 21)
+  답 문장 둘째 줄            개발자용 칸 나열 그대로다. 문구 판단이라 안 고쳤다
+                            (「일흔여섯째」 6절)
+  ```
+
+- **21 · ★ recipe 번호가 밀렸는데 정답표가 안 따라갔다**
+  (2026-09-01 「일흔여섯째」). 도달권 recipe 둘이 끼면서 60 -> 62 가 됐고
+  **두 자리에서 밀린다.**
+
+  ```
+  recipe_001 ~ 019   그대로
+  옛 020 ~ 037  ->   새 021 ~ 038   (+1)   새 recipe_020 (찍은 지점 → 도달권 계산)
+  옛 038 ~ 060  ->   새 040 ~ 062   (+2)   새 recipe_039 (말한 장소 → 좌표 → 도달권 계산)
+  ```
+
+  아직 옛 번호를 들고 있는 곳 셋이다. **고치는 것은 정답을 정하는 일이라
+  사람이 한다.**
+
+  ```
+  dev/tools/check_resolve.py                GT 36줄
+  dev/tests/ontology/test_shortlist.py      recipe_046 -> recipe_048
+  dev/tests/tools/test_execution_column.py  화면 다섯의 기대값
+  ```
+
+  `dev/tools/rebuild_init.py` 가 돌 때마다 **새 번호 ↔ 현재 번호 대응표**를
+  찍는다. 갈아끼울 때 그 표가 근거다.
 
 - **19 · `layout.json` 에 묵은 좌표가 남아 있다** (2026-09-01 「일흔넷째」).
   `app/ui/graph_svg/layout.json` 이 **온톨로지에 없던 `compute_reach_area` 의
@@ -1910,6 +1952,208 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-01 (일흔여섯째) · 도달권을 발화로 닿게 하고 대중교통으로 바꿨다
+
+무인 실행. 조건 — `feature/accessibility` · 「일흔넷째」의 커밋(`45fa4a4`) 위 ·
+커밋 안 했다.
+
+**★ 이 가지는 보도자료 이미지용이다. 병합하지 않는다.** 접근성 모듈은
+`refactor/vendor` 위에서 다시 붙인다. 그래서 이번 판단의 자는 「나중에
+깨끗한가」가 아니라 **「지금 그림이 나오는가」**다. 속도를 위해 건너뛴 것은
+「열린 과제」에 ★ 로 적었다.
+
+#### 1. 경로를 살렸다 — `_init` 을 다시 떴다
+
+「일흔넷째」가 노드와 배선을 넣고 멈춘 자리다. 노드를 지나는 recipe 가 없어
+발화로 닿을 수 없었고, `rebuild_init` 은 `ontology.yaml` 과
+`ontology/_init/ontology.yaml` 이 같기를 요구해 막혀 있었다.
+
+**`_init` 을 다시 떴다.** 추적 파일이라 `git` 으로 돌아온다. 「등록해도 기존
+노드가 0.0000pt 움직여야 한다」는 시연 장면을 지키는 것은 이번 목표가 아니다.
+
+★ **`reset_to_init` 을 부르지 않고 앞 세 걸음만 손으로 했다.** 그 함수는
+마지막에 `layout_store.restore_from_init()` 로 **`layout.json` 까지 되돌리는데**
+이번에 그 파일은 손대지 않기로 한 자산이다. menu 둘과 recipe 디렉터리만
+`_init` 에서 작업본으로 옮겼다.
+
+**recipe 60 -> 62.** 두 개가 새로 생겼고 **둘 다 실제로 새 노드를 지난다**
+(파일 안의 `node:` 로 확인했다).
+
+```
+recipe_020   찍은 지점 → 도달권 계산
+recipe_039   말한 장소 → 장소 좌표 변환 → 도달권 계산
+```
+
+★★ **번호가 밀렸다. 두 자리에서 밀린다.**
+
+```
+recipe_001 ~ 019     그대로
+옛 020 ~ 037   ->    새 021 ~ 038      (+1)   ← 새 recipe_020 이 앞에 끼었다
+옛 038 ~ 060   ->    새 040 ~ 062      (+2)   ← 새 recipe_039 가 또 끼었다
+```
+
+**정답표와 시험이 함께 움직여야 한다. 안 고쳤다** — 정답표는 사람이 정하는
+것이고 시험 파일은 이번에 열어 둔 자리가 아니다. 지금 어긋난 자리는 셋이다.
+
+```
+dev/tools/check_resolve.py   GT 36줄이 recipe id 를 박고 있다. 020 이상이 전부 밀렸다
+                             ★ 그래서 이번에 36벌을 안 쟀다. 지금 돌리면 옛 번호와
+                               맞대게 되어 숫자가 거짓이 된다
+dev/tests/ontology/test_shortlist.py        기대 recipe_046 -> 실제 recipe_048
+dev/tests/tools/test_execution_column.py    화면 다섯의 기대 recipe 가 밀려
+                                            spoken_keyword 로 시작하는 것을 가리킨다
+```
+
+#### 2. 대중교통으로 바꿨다 — 배선과 문장을 함께
+
+보도자료 본문이 「전국 대중교통의 시간표와 환승 정보를 바탕으로」로 못박혀
+있고 개념도의 주요 원인이 「환승 대기」다. 지금까지는 배선이 mode 를 안 적어
+기본 WALK 이었고 노드 설명도 「걸어서」였다. **둘이 함께 움직여야 한다** —
+노드 설명이 menu 문장의 재료이고(`registry.function_for`) 그 문장이 발화
+매칭의 유일한 근거다.
+
+```
+배선   mode: TRANSIT · departure_date: @today · departure_time: "08:00"
+노드   한 지점에서 걸어서 갈 수 있는 구역을 …
+    -> 한 지점에서 대중교통으로 갈 수 있는 구역을 시간대별로 계산한다.
+menu   말한 장소로 좌표를 찾고 한 지점에서 대중교통으로 갈 수 있는 구역을 …
+```
+
+★ **날짜를 `<이름>` 기호로 넣으면 안 되는 자리였다.** `_resolved` 는
+`wiring.yaml` 을 팔 때 한 번만 돌고 다시 파는 것은 파일 mtime 이 바뀔
+때뿐이다(`reload_wiring`). 그 길로 넣으면 **서버가 뜬 날짜에 얼어붙어**
+다음 날부터 어제 날짜로 도구를 부른다.
+
+**그래서 `@today` 를 만들었다** (`execution/step_service.py` 의 `TODAY`).
+`@arg` 옆자리다 — `@` 로 시작하는 것은 **우리 표시**이고 `_filled` 가
+`plan` 시점에 푼다. `$prev` · `$context` 는 vendor 의 `_resolve_reference` 가
+푸는 저쪽 문법이라 늘리면 저쪽과 맞대야 하는데, 이쪽은 안 건드렸다.
+
+```
+STEP_OF 에 든 것    departure_date: "@today"
+plan 이 낸 것       departure_date: "2026-09-01"
+```
+
+`departure_time` 은 도구 기본값과 같은 `"08:00"` 이다. 그래도 적었다 —
+시간표를 보는 mode 에서는 출발 시각이 결과를 가르는 값이라, 원격 기본값이
+조용히 바뀌면 그림이 달라지는데 배선을 봐도 모른다.
+
+#### 3. TRANSIT 시간 — 157초를 못 봤다
+
+배선을 거쳐 연달아 두 번 눌렀다. 의왕역 · `[10, 20, 30]` · 2026-09-01 08:00.
+
+```
+        HTTP   응답 크기   벽시계    elapsed_ms   셀     폴리곤
+1번째   200    18,786 B    14.1초    13,927       566    3 겹
+2번째   200    18,786 B    14.1초    14,049       566    3 겹
+```
+
+★ **인수인계 문서의 157,495ms 를 재현하지 못했다.** 두 번 다 14초다.
+셀 수는 563 대 566 으로 거의 같으니 같은 계산이다. **첫 번이 느린 것을 나는
+못 봤다** — 내가 누르기 전에 이미 누군가 눌러 R5 그래프가 더워져 있었을
+수 있다. **차가운 상태를 안 재봤으므로 「첫 번은 빠르다」로 적지 않는다.**
+
+#### 4. 타임아웃은 안 고쳤다
+
+**미리 정한 자대로다** — 두 번째도 120초를 넘으면 고치고 안 넘으면 안 고친다.
+14.1초라 안 넘었다. `MCP_TIMEOUT` 120 · `RESOLVE_TIMEOUT` 180 그대로 둔다.
+
+#### 5. 화면 — 발화가 붙었다
+
+`POST /resolve` 가 한 번에 골랐다.
+
+```
+status      SELECT
+recipe_id   recipe_039        후보도 recipe_039 하나뿐이다
+축          given=spoken_place · want=reach_area · about=group_transport
+argument    의왕역
+reason      "…대중교통으로 이동 가능한 구역을 시간대별로 계산하는 작업을 끝으로 한다.
+             '30분 안에 갈 수 있는 곳'은 지점에서 도달 가능한 구역을 의미한다."
+```
+
+★ **「일흔넷째」의 세 판단이 다 값을 했다.** 새 타입 `reach_area` 를 want 로
+골랐고, `about` 에 붙여 둔 `group_transport` 로 걸러졌고, 「구역」이라는 낱말이
+「지도 범위」와 안 겹쳤다.
+
+`POST /chat/stream` (저쪽 화면이 부르는 바로 그 창구)를 그대로 눌렀다.
+
+```
+step_start/end  resolve → geocode_place → compute_reach_area   세 쌍이 순서대로
+답 첫 줄        "의왕역 도달권을 계산했습니다."
+지도 명령       8건
+  map.clear ×4         r5-isochrone-polygons · lines · points · origin
+  map.draw             r5-isochrone-polygons   feature 3개
+                       10분 #22C55E · 20분 #EAB308 · 30분 #B91C1C
+  map.draw             r5-isochrone-lines      feature 3개
+  map.draw             r5-isochrone-origin     feature 1개 ("출발지")
+  view.camera.flyTo    bbox [[126.8946, 37.2140], [127.0343, 37.4161]] · 2.0초
+```
+
+**폴리곤 세 겹이 색과 이름까지 붙어 나간다.** 보도자료 그림이 요구한 그것이다.
+
+★★ **브라우저에서 눈으로는 못 봤다.** Gateway 의 `/chat/stream` 은 로그인한
+세션이라야 지나간다 — 인증 없이 부르면 이렇게 막힌다.
+
+```
+{"error":"Forbidden: No permission defined"}
+docker logs : [Permission Warning] No permissions defined for POST /chat/stream
+```
+
+이 장비에 브라우저가 없다. **그래서 「화면이 이것을 그렸다」가 아니라
+「화면이 받을 것이 이것이다」까지가 이번에 잰 것이다.** 넷 중 셋(과정 · 폴리곤
+세 겹 · 답 문장)은 실려 나가는 것을 확인했고, **그 넷이 그려지는 것은 사람이
+브라우저에서 봐야 한다.** 저쪽 로그에는 오늘 04:52 에 사람이 붙어 200 으로
+지나간 자국이 있다.
+
+#### 6. ★ 답 문장의 둘째 줄이 보도자료에 안 어울린다
+
+이번에 고치지 않았지만 그림에 그대로 찍힐 자리다.
+
+```
+의왕역 도달권을 계산했습니다.
+
+1. geo.geocode       의왕역 → 경기도 의왕시 삼동 473 (126.9482, 37.3201)
+2. compute_isochrone  origin_lon=126.9482 · origin_lat=37.3201 · mode="TRANSIT" ·
+                      departure_date="2026-09-01"…  칸: status · scenario_id ·
+                      origin · max_minutes · cutoffs_minutes · mode
+```
+
+**둘째 줄이 인자와 응답 칸 이름을 늘어놓는다.** 「서른아홉째」가 이미
+"우리 답 문구는 칸 이름만 나열한다"로 적어 둔 그 자리다. 첫 줄은 배선의
+headline 이라 좋은데 둘째 줄이 개발자용이다. 사람이 볼 문장으로 바꾸려면
+`vendor_to_be_deleted/asap/workflow_answer.py` 를 손대야 하고 **그것은 문구
+판단이라 혼자 정하지 않았다.**
+
+#### 7. 계기판
+
+```
+check_wiring   recipe 62 · STEP_OF 37줄 · A 0 · B 0 · C 1     ← 노린 값
+               C 는 전과 같은 하나다 (web_fetch × 웹 주소)
+check_inputs   판정한 행 53 · 맞다 53 · 없는 칸 0 · 안 보낸 required 0
+               compute_reach_area × point
+                 cutoffs_minutes · departure_date · departure_time · mode ·
+                 origin_lat · origin_lon      맞다
+pytest         7 failed · 392 passed · skipped 0
+               바닥 3 + layout.json 2 + 번호 밀림 2 다. 아래로 갈린다
+check_resolve  ★ 안 쟀다. 위 1 의 까닭이다 (GT 번호가 밀렸다)
+```
+
+`pytest` 일곱을 갈라 적는다.
+
+```
+바닥 3      test_dense_graph_would_move_if_overlap_removal_were_used   graphviz 판 차이
+            test_the_shipped_pair_holds_the_same_coordinates           _init 사본과 2.58pt
+            (셋째였던 test_coordinates_for_undrawn_nodes_are_not_kept 는
+             「일흔넷째」가 노드를 넣으면서 풀렸다)
+layout 2·3  test_no_two_nodes_touch[상단] · [하단] ·
+            test_registering_a_node_does_not_make_it_touch
+            ('group_transport', 'compute_reach_area') 한 쌍. 「열린 과제 19」
+번호 2      test_shortlist … narrow_to_what_the_utterance_asked   046 -> 048
+            test_execution_column … five_screen_utterances        기대값이 밀렸다
+```
+
+**skipped 는 0 이다.** 8000 은 살아 있다.
 
 ### 2026-09-01 (일흔넷째) · 도달권 노드 하나를 붙였다 — 그리고 배치 관문에 걸렸다
 
