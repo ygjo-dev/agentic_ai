@@ -731,12 +731,16 @@ def test_body_text_is_carried_truncated_and_states_that_it_was():
 
 
 def test_runs_of_whitespace_in_body_text_collapse_to_one():
-    """PDF 본문이 공백 수십 칸을 달고 옴. 그대로 실으면 한 줄이 텅 빔."""
+    """PDF 본문이 공백 수십 칸을 달고 옴. 그대로 실으면 한 줄이 텅 빔.
+
+    줄 끝의 공백 둘은 마크다운 줄바꿈이라 세지 않음 (MARKDOWN_BREAK).
+    """
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
     )
+    body = answer.split("knowledge.query")[1].split("「")[1]
 
-    assert "  " not in answer.split("knowledge.query")[1].split("「")[1]
+    assert "  " not in "\n".join(line.rstrip() for line in body.splitlines())
 
 
 def test_the_path_is_never_shown():
@@ -1161,11 +1165,14 @@ def test_the_widened_preamble_never_leaks_raw_JSON():
 
 
 def test_a_non_zero_hit_answer_keeps_its_preamble_one_line_verbatim():
-    """넓힌 것은 0건 자리뿐임. 성공 · 오류 문구가 한 글자도 안 달라져야 함."""
+    """넓힌 것은 0건 자리뿐임. 성공 · 오류 문구가 한 글자도 안 달라져야 함.
+
+    줄 끝의 공백 둘은 마크다운 줄바꿈이라 글자로 세지 않음 (MARKDOWN_BREAK).
+    """
     success = compose_workflow_answer(
         {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
     )
-    assert success.splitlines()[0] == "오송역 좌표를 조회했습니다."
+    assert success.splitlines()[0].rstrip() == "오송역 좌표를 조회했습니다."
     assert "말씀해 주세요" not in success
     assert "찾아본 곳은" not in success
 
@@ -1174,6 +1181,6 @@ def test_a_non_zero_hit_answer_keeps_its_preamble_one_line_verbatim():
         [{"id": "s1", "tool": "geo.geocode", "input": {"query": "지금 보이는 곳"},
           "error": "s1 단계 장소 '지금 보이는 곳'을(를) 찾을 수 없습니다."}],
     )
-    assert failure.splitlines()[0] == "조회하지 못했습니다."
+    assert failure.splitlines()[0].rstrip() == "조회하지 못했습니다."
     assert "말씀해 주세요" not in failure
     assert "찾아본 곳은" not in failure

@@ -81,6 +81,24 @@ RECORD_INDENT = "   "
 # 한글은 한 글자가 두 칸이라 글자 수로 ljust 하면 오히려 어긋난다.
 STEP_JOIN = BELOW + RECORD_INDENT
 
+# 줄 끝에 붙여 마크다운에서 줄바꿈을 살리는 표시. **공백 둘이다.**
+#
+# 저쪽 화면(ASAP-web packages/chat/src/components/ChatPanel.tsx)이 답을
+# `<ReactMarkdown>{msg.text}</ReactMarkdown>` 로 그린다. react-markdown 10 을
+# 플러그인 없이 쓰므로 CommonMark 그대로이고, **줄바꿈 하나는 공백이 된다** —
+# 우리가 나눈 줄이 저쪽에서 한 줄로 붙는다 (2026-09-02 실측).
+#
+# CommonMark 에서 줄바꿈을 살리는 길이 셋이고 이것을 골랐다.
+#
+#   공백 둘      <br> 하나. 줄 간격이 안 벌어지고 글자가 하나도 안 바뀐다
+#   빈 줄        문단이 나뉘어 줄 사이가 벌어진다. 사진에서 네 덩이가 흩어진다
+#   목록 기호    "- " 가 화면에 새 글자로 나간다. 답의 낱말이 바뀐다
+#
+# **답을 짓는 쪽은 이것을 모른다.** 줄은 BELOW 로만 나누고, 내보내기 직전에
+# _for_markdown 이 한 번 얹는다. 저쪽 화면이 마크다운을 안 쓰게 되면 그
+# 함수 하나만 걷는다.
+MARKDOWN_BREAK = "  "
+
 # 오류 문구를 잘라내는 길이.
 SUMMARY_LIMIT = 120
 
@@ -422,6 +440,7 @@ def compose_workflow_answer(
           부른 데까지만 있고 intent 는 부르려던 전부라 길이가 다를 수 있음
           면적을 견줄 넓이도 intent 가 들고 옴. 없으면 견줌이 안 붙음.
           어느 장소의 넓이인지는 이 파일이 모름
+          내보내기 직전에 줄 끝마다 마크다운 줄바꿈을 얹음. _for_markdown 임
     """
     verdict = _verdict(trace, failed)
     names = _step_names(intent)
@@ -439,10 +458,29 @@ def compose_workflow_answer(
         headline = ERROR_HEADLINE
 
     if not headline:
-        return "\n".join(lines)
+        return _for_markdown("\n".join(lines))
     if not lines:
-        return headline
-    return "\n".join([headline, "", *lines])
+        return _for_markdown(headline)
+    return _for_markdown("\n".join([headline, "", *lines]))
+
+
+def _for_markdown(answer: str) -> str:
+    """줄 끝마다 MARKDOWN_BREAK 를 얹은 답. 줄이 하나면 그대로.
+
+    입력  BELOW 로만 나뉜 답 전체
+    출력  같은 답. 빈 줄이 아닌 줄마다 끝에 공백 둘이 붙음
+    규칙  빈 줄에는 안 붙임. 공백만 있는 줄이 되면 문단 가르기가 흐려짐
+          문단 마지막 줄에 붙는 것은 CommonMark 가 무시함. 가려내지 않음
+          글자를 하나도 안 더함. 공백은 화면에 안 보임
+    제약  줄을 나누는 자리에서 얹지 않는다.
+          답을 짓는 자리(step_line · _shadow_line …)는 저쪽 화면이 무엇으로
+          그리는지 모른다. 내보내기 직전 한 자리에서만 얹는다
+    이력  저쪽이 react-markdown 을 플러그인 없이 써서 줄바꿈 하나가 공백이
+          됐음. 답이 화면에서 한 줄로 붙었음 (2026-09-02. MARKDOWN_BREAK)
+    """
+    return "\n".join(
+        line + MARKDOWN_BREAK if line.strip() else line for line in answer.split("\n")
+    )
 
 
 def _step_names(intent: Dict[str, Any]) -> Dict[str, str]:
