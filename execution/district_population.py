@@ -83,18 +83,18 @@ async def attach(item: dict, user_context: dict, sent: int, cache: dict) -> tupl
     제약  항목을 새로 만들지 않는다.
           부르는 쪽이 이미 id 를 붙여 두었고 그 자리에서 이어 쓴다
     """
-    found = _holder(item.get("result"))
+    found = holder(item.get("result"))
     if found is None:
         return item, sent
 
-    holder, districts = found
+    target, districts = found
     counted, sent = await totals(districts, user_context, sent, cache)
     if counted:
-        holder[POPULATION_KEY] = counted
+        target[POPULATION_KEY] = counted
     return item, sent
 
 
-def _holder(result) -> tuple | None:
+def holder(result) -> tuple | None:
     """(인구를 얹을 dict, 그 안의 동 목록). 그런 응답이 아니면 None.
 
     규칙  음영 지역을 먼저 봄. 두 칸 이름이 같아 도달 지역으로 먼저 보면
@@ -137,11 +137,11 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
     if not tool or not isinstance(districts, list):
         return None, sent
 
-    wanted = _wanted(districts)
-    if not wanted:
+    pairs = wanted(districts)
+    if not pairs:
         return None, sent
 
-    for sigungu_code in dict.fromkeys(code for code, _ in wanted):
+    for sigungu_code in dict.fromkeys(code for code, _ in pairs):
         if sigungu_code in cache:
             continue
         if sent >= reach_districts.CHUNK:
@@ -156,7 +156,7 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
         cache[sigungu_code] = _read(result)
 
     total = senior = counted = 0
-    for sigungu_code, emd_code in wanted:
+    for sigungu_code, emd_code in pairs:
         row = cache.get(sigungu_code, _empty())[ROWS_KEY].get(emd_code)
         if row is None:
             continue
@@ -176,7 +176,7 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
     }, sent
 
 
-def _wanted(districts: list) -> list:
+def wanted(districts: list) -> list:
     """셀 수 있는 동의 (시군구 코드, 읍면동 코드) 짝들. 없으면 빈 목록.
 
     규칙  두 코드가 다 문자열이고 비어 있지 않은 항목만 셈
@@ -184,7 +184,7 @@ def _wanted(districts: list) -> list:
           두 번 더하면 인구가 갑절이 됨
           받은 차례를 지킴. 어느 시군구를 먼저 부를지가 그 차례임
     """
-    wanted = []
+    pairs = []
     for entry in districts:
         if not isinstance(entry, dict):
             continue
@@ -195,9 +195,9 @@ def _wanted(districts: list) -> list:
         if not isinstance(emd_code, str) or not emd_code:
             continue
         pair = (sigungu_code, emd_code)
-        if pair not in wanted:
-            wanted.append(pair)
-    return wanted
+        if pair not in pairs:
+            pairs.append(pair)
+    return pairs
 
 
 def _read(result) -> dict:

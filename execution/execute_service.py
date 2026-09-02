@@ -30,6 +30,7 @@ import math
 from collections import Counter
 
 from execution import (
+    district_overlap,
     district_population,
     reach_districts,
     shadow_districts,
@@ -750,12 +751,17 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
           Gateway 창에 보낸 건수를 노드 사이에 이어 셈. 둘이 따로 세면 뒤엣
           노드가 앞 노드의 건수를 모른 채 보내 한도에 걸림
           항목의 id 를 노드 id 로 붙임. 답이 그 id 로 단계 이름을 찾음
-          성공한 항목에는 그 동들의 인구를 얹음. 실패한 항목에는 셀 동이 없음
+          성공한 항목에는 그 동들의 인구와 걸침 몫을 얹음. 실패한 항목에는
+          셀 동이 없음
+          걸침 몫은 도달권 응답을 함께 넘겨야 잼. 잴 구역이 노드마다 다르고
+          둘 다 그 응답에서 나옴
           시군구 응답 보관을 노드 사이에 이어 씀. 두 노드가 같은 시군구를
-          많이 나눠 가져 두 번 부를 까닭이 없음
+          많이 나눠 가져 두 번 부를 까닭이 없음. 인구와 경계가 서로 다른
+          도구라 보관도 둘임
     제약  여기서 도구를 부르지 않는다.
           무엇을 어떻게 부르는지는 execution/reach_districts ·
-          execution/shadow_districts · execution/district_population 이 안다
+          execution/shadow_districts · execution/district_population ·
+          execution/district_overlap 이 안다
     """
     if not nodes or not trace:
         return []
@@ -766,6 +772,7 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
     done = []
     sent = 0
     held: dict = {}
+    bounds: dict = {}
     for node_id in nodes:
         runner = SAMPLED_RUNNERS.get(node_id)
         if runner is None:
@@ -777,6 +784,9 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
         if not step_failed(item):
             item, sent = await district_population.attach(
                 item, dict(USER_CONTEXT), sent, held
+            )
+            item, sent = await district_overlap.attach(
+                item, last["result"], dict(USER_CONTEXT), sent, bounds
             )
         done.append(item)
         if step_failed(item):

@@ -1050,6 +1050,21 @@ DISTRICTS_SHOWN = 10
 DISTRICTS_EMD_JOIN = " · "
 DISTRICTS_GROUP_JOIN = ", "
 
+# ── 「(일부)」 ────────────────────────────────────────────────
+#
+# execution/district_overlap 이 동 경계와 구역을 겹쳐 재고 문턱과 견준 것이다.
+# 여기는 그 판정을 읽어 꼬리표를 붙이기만 한다 — 몇 %를 일부로 볼지는 사람이
+# 정한 값이라 재는 쪽이 그 한 줄을 가진다.
+#
+# **왜 붙이나.** 이름만 늘어놓으면 그 동의 99%가 든 곳과 0.2%만 스친 곳이
+# 화면에서 똑같이 보인다 (의왕역 30분 겹에서 고천동 99.17% · 세류동 0.16%).
+#
+# ★ **못 잰 동에는 아무것도 안 붙인다.** 경계를 못 받았거나 코드가 안 실려
+# 온 동이다. 「(일부)」가 없는 것이 「거의 다 걸친다」는 뜻이 되지만, 안 잰
+# 것을 잰 것처럼 적는 것보다 낫다. 몇 곳을 쟀는지는 결과의 share 칸에 있다.
+DISTRICTS_PARTIAL_KEY = "partial"
+DISTRICTS_PARTIAL_MARK = "(일부)"
+
 # ── 그 동들의 인구 ────────────────────────────────────────────
 #
 # execution/district_population 이 센 것이다. 여기는 줄로 만들기만 한다.
@@ -1176,11 +1191,15 @@ def _districts_line(result: Dict[str, Any]) -> str:
     return line + BELOW + RECORD_INDENT + people if people else line
 
 
-def _district_pairs(found: Any) -> List[Tuple[str, str]]:
-    """목록에서 (시군구, 읍면동) 짝만. 그런 목록이 아니면 빈 목록.
+def _district_pairs(found: Any) -> List[Tuple[str, str, bool]]:
+    """목록에서 (시군구, 읍면동, 일부인가) 셋만. 그런 목록이 아니면 빈 목록.
 
-    규칙  둘 다 문자열이고 비어 있지 않은 항목만 셈
+    규칙  이름 둘이 다 문자열이고 비어 있지 않은 항목만 셈
           받은 차례를 지킴. 점이 많이 걸린 차례로 와 있음
+          일부인지는 실어 온 칸을 그대로 읽음. 그 칸이 없으면 못 잰 동이라
+          일부로 안 봄
+          참인 것만 참으로 봄. 문턱을 여기서 안 견줌 — 몇 %를 일부로 볼지는
+          사람이 정한 값이고 execution/district_overlap 이 그 한 줄을 가짐
     """
     if not isinstance(found, list):
         return []
@@ -1192,22 +1211,23 @@ def _district_pairs(found: Any) -> List[Tuple[str, str]]:
         sigungu = entry.get(DISTRICTS_SIGUNGU)
         emd = entry.get(DISTRICTS_EMD)
         if isinstance(sigungu, str) and isinstance(emd, str) and sigungu and emd:
-            pairs.append((sigungu, emd))
+            pairs.append((sigungu, emd, entry.get(DISTRICTS_PARTIAL_KEY) is True))
     return pairs
 
 
-def _grouped_districts(pairs: List[Tuple[str, str]]) -> str:
+def _grouped_districts(pairs: List[Tuple[str, str, bool]]) -> str:
     """동 이름을 시군구로 묶은 한 마디. 적을 것이 없으면 "".
 
-    출력  "의왕시 삼동 · 내손동, 군포시 산본동" 꼴
+    출력  "의왕시 삼동 · 내손동(일부), 군포시 산본동" 꼴
     규칙  DISTRICTS_SHOWN 개까지만 적고 나머지는 조용히 자름
           묶음 안의 차례도 받은 차례임
+          일부만 걸치는 동은 이름 바로 뒤에 꼬리표를 붙임. 사이를 안 띄움
     제약  몇 곳인지를 적지 않는다.
           센 수가 격자가 찾은 수이지 실제 수가 아니다
     """
     grouped: Dict[str, List[str]] = {}
-    for sigungu, emd in pairs[:DISTRICTS_SHOWN]:
-        grouped.setdefault(sigungu, []).append(emd)
+    for sigungu, emd, partial in pairs[:DISTRICTS_SHOWN]:
+        grouped.setdefault(sigungu, []).append(emd + DISTRICTS_PARTIAL_MARK if partial else emd)
 
     groups = [
         f"{sigungu} {DISTRICTS_EMD_JOIN.join(names)}" for sigungu, names in grouped.items()
