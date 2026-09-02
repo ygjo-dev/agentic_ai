@@ -48,6 +48,7 @@ from vendor_to_be_deleted.asap.workflow_answer import (
     SHADOW_AREA_KEY,
     SHADOW_CUTOFF_KEY,
     SHADOW_DISTRICTS_KEY,
+    SHADOW_HULL_AREA_KEY,
     SHADOW_KEY,
     geometry_area,
     reach_features,
@@ -78,6 +79,12 @@ MIN_STEP_M = 50.0
 # 화면에 테두리를 그리는 자리가 이것을 읽는다(execute_service._shadow_commands).
 # 답 문장은 이 칸을 안 본다 — workflow_answer 는 넓이와 동 이름만 읽는다.
 HULL_KEY = "hull"
+
+# 결과에 껍질 넓이(km²)를 담는 칸. 답 문구의 「30분 권역의 38%」의 분모다.
+#
+# **도형이 아니라 잰 수를 담는다.** 화면을 짓는 자리는 넓이를 안 잰다.
+# **분모는 볼록 껍질(48.27 km²)이지 도달 범위(29.96 km²)가 아니다.**
+# 화면에는 「30분 권역」으로 짧게 적는다. NOTES.md 「여든다섯째」.
 
 
 async def run(tool: dict, previous: dict, user_context: dict, sent: int = 0) -> tuple:
@@ -120,6 +127,7 @@ async def run(tool: dict, previous: dict, user_context: dict, sent: int = 0) -> 
         "result": {
             SHADOW_KEY: {
                 SHADOW_AREA_KEY: area / 1_000_000,
+                SHADOW_HULL_AREA_KEY: geometry_area(hull) / 1_000_000,
                 SHADOW_CUTOFF_KEY: cutoff,
                 SHADOW_DISTRICTS_KEY: reach_districts.districts_in_order(hits),
                 HULL_KEY: hull,

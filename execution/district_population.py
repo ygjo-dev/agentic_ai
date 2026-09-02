@@ -19,6 +19,16 @@ query 는 읍면동 이름 칸과 맞춰 보므로 시군구 이름이 안 걸�
 65세 이상을 더한 것과 **같다** (실측 : 군포시 부곡동 41410103 이 양쪽 다 2694).
 동마다 한 번을 더 부르면 호출이 갑절이 되고 값은 안 바뀐다.
 
+**유소년도 같은 응답에 함께 온다. `metric` 을 바꿔 다시 부르지 않는다** (실측,
+2026-09-02). 항목 하나가 `childrenPopulation` · `workingAgePopulation` ·
+`seniorPopulation` 을 한꺼번에 들고 오고 **그 셋을 더하면 `totalPopulation` 과
+글자 그대로 같다** (청주시 흥덕구 43113 : 37,163 + 211,864 + 43,598 = 292,625).
+곧 셋이 인구를 겹치지 않고 나눠 가진다.
+
+★ **`childrenPopulation` 은 0~14세다.** getAgeProfile 의 `0~4` · `5~9` ·
+`10~14` 세 구간을 더한 것과 같다 (같은 구, 10,849 + 12,097 + 14,217 = 37,163).
+같은 응답의 `youthPopulation`(청년)은 생산가능인구와 겹치므로 안 쓴다.
+
 **보이는 동과 세는 동이 다르다.** 화면에는 열까지만 적고(workflow_answer 의
 DISTRICTS_SHOWN) 인구는 **찾은 동 전부**를 더한다. 열만 더하면 「해당 지역」이
 화면에 적힌 열 곳이라는 뜻이 되는데, 그 열은 점이 많이 걸린 차례로 자른 것이지
@@ -56,6 +66,12 @@ ITEMS_KEY = "items"
 ITEM_CODE_KEY = "code"
 ITEM_TOTAL_KEY = "totalPopulation"
 ITEM_SENIOR_KEY = "seniorPopulation"
+
+# 유소년(0~14세)이 담겨 오는 칸. **같은 응답에 이미 들어 있다.**
+#
+# 교통약자를 세려고 얹었다. 호출이 한 건도 안 는다 — metric 을 바꿔 다시
+# 부르는 길로 가지 않은 까닭이 그것이다 (위 모듈 주석).
+ITEM_CHILDREN_KEY = "childrenPopulation"
 REFERENCE_DATE_KEY = "referenceDate"
 
 # 시군구 응답 하나를 보관에 담는 모양. 발화 하나가 sampled 노드 둘에 걸쳐 씀.
@@ -66,6 +82,7 @@ ANSWER_DATE_KEY = "date"
 POPULATION_KEY = "population"
 TOTAL_KEY = "total"
 SENIOR_KEY = "senior"
+CHILDREN_KEY = "children"
 COUNTED_KEY = "counted"
 FOUND_KEY = "found"
 DATE_KEY = "reference_date"
@@ -118,7 +135,8 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
 
     입력  reach_districts.districts_in_order 가 낸 목록 · Gateway 에 보낼 권한 ·
           이 창에 이미 보낸 건수 · 발화 하나 안에서 이어 쓰는 시군구 응답 보관
-    출력  {total, senior, counted, found, reference_date}. 한 곳도 못 세면 None
+    출력  {total, senior, children, counted, found, reference_date}.
+          한 곳도 못 세면 None
     규칙  시군구마다 한 번만 부름. 같은 시군구가 보관에 있으면 안 부름
           보관을 발화 하나가 sampled 노드 둘에 걸쳐 함께 씀. 도달 지역과 음영
           지역이 같은 시군구를 많이 나눠 가짐
@@ -132,6 +150,9 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
           65세 이상을 따로 부르지 않는다.
           searchStatistics 의 seniorPopulation 이 getAgeProfile 의 65세 이상
           합과 같다 (실측)
+          유소년도 따로 부르지 않는다.
+          같은 응답이 childrenPopulation 을 함께 준다. metric 을 바꿔 다시
+          부르면 호출이 갑절이 되고 값은 안 바뀐다 (실측)
     """
     tool = step_service.TOOL_OF.get(POPULATION_NODE)
     if not tool or not isinstance(districts, list):
@@ -155,7 +176,7 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
         sent = 1 if waited else sent + 1
         cache[sigungu_code] = _read(result)
 
-    total = senior = counted = 0
+    total = senior = children = counted = 0
     for sigungu_code, emd_code in pairs:
         row = cache.get(sigungu_code, _empty())[ROWS_KEY].get(emd_code)
         if row is None:
@@ -163,6 +184,7 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
         counted += 1
         total += row[0]
         senior += row[1]
+        children += row[2]
 
     if not counted:
         return None, sent
@@ -170,6 +192,7 @@ async def totals(districts: list, user_context: dict, sent: int, cache: dict) ->
     return {
         TOTAL_KEY: total,
         SENIOR_KEY: senior,
+        CHILDREN_KEY: children,
         COUNTED_KEY: counted,
         FOUND_KEY: len(districts),
         DATE_KEY: _reference_date(cache),
@@ -203,8 +226,8 @@ def wanted(districts: list) -> list:
 def _read(result) -> dict:
     """시군구 응답 하나를 보관 한 칸으로. 못 읽으면 빈 칸.
 
-    출력  {rows: {읍면동 코드: (총인구, 65세 이상)}, date: 기준일}
-    규칙  두 수가 다 정수인 항목만 담음. bool 은 수로 안 봄
+    출력  {rows: {읍면동 코드: (총인구, 65세 이상, 유소년)}, date: 기준일}
+    규칙  세 수가 다 정수인 항목만 담음. bool 은 수로 안 봄
           기준일을 함께 담아 둠. 화면이 언제 기준인지 말해야 함
     """
     if not isinstance(result, dict):
@@ -220,8 +243,12 @@ def _read(result) -> dict:
         code = item.get(ITEM_CODE_KEY)
         total = _number(item.get(ITEM_TOTAL_KEY))
         senior = _number(item.get(ITEM_SENIOR_KEY))
-        if isinstance(code, str) and code and total is not None and senior is not None:
-            rows[code] = (total, senior)
+        children = _number(item.get(ITEM_CHILDREN_KEY))
+        if not isinstance(code, str) or not code:
+            continue
+        if total is None or senior is None or children is None:
+            continue
+        rows[code] = (total, senior, children)
     date = result.get(REFERENCE_DATE_KEY)
     return {ROWS_KEY: rows, ANSWER_DATE_KEY: date if isinstance(date, str) else ""}
 

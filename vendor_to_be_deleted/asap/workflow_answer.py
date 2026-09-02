@@ -64,23 +64,22 @@ from typing import Any, Dict, List, Optional, Tuple
 # 무엇이었는지 아무것도 안 남는다.
 STEP_NAME_KEY = "name"
 
-# 이름과 그 뒤(조건 · 결과)를 가르는 표시.
+# 줄바꿈과 딸린 줄의 들여쓰기. **이 파일의 줄나눔은 전부 이 둘로 만든다.**
 #
-# 예전에는 칸 폭(18)으로 줄을 맞췄다. 이름이 한글이 되면서 그 자가 안 맞는다 —
-# 한글은 한 글자가 두 칸을 차지해 글자 수로 ljust 하면 오히려 어긋난다.
-# 줄맞춤을 걷고 표시 하나로 가른다. 사진에서는 칸이 맞는 것보다 이름과 내용이
-# 갈리는 것이 읽힌다.
-STEP_JOIN = " — "
-
-# 조건과 결과를 벌리는 간격.
-STEP_GAP = 2
-
-# 결과 한 마디를 조건 아래 줄로 내리는 표시.
-#
-# 이 글자로 시작하는 결과는 조건과 한 줄에 안 붙이고 줄을 바꿔 들여 쓴다.
-# 도달권이 그 자리다 — 조건(수단 · 출발 · 자를 겹)과 면적이 한 줄에 다 들어가면
-# 여든 칸이 넘고, 접힌 줄은 사진에서 안 읽힌다.
+# RECORD_INDENT 는 단계 번호 "1. " 의 폭이라 들여 쓴 줄이 그 단계에 딸린 줄로
+# 읽힌다. 아래 「목록의 항목」 절도 같은 것을 쓴다.
 BELOW = "\n"
+RECORD_INDENT = "   "
+
+# 단계 이름과 그 뒤(조건 · 결과)를 가르는 표시. **줄을 바꾼다** (2026-09-02).
+#
+# 예전에는 " — " 로 한 줄에 이었다. 보도자료 그림에서 이름과 값이 한 줄에
+# 이어져 읽기 어려웠다 — 이름이 짧고(「도달 범위」) 값이 여러 줄이라 첫 줄만
+# 들여쓰기가 어긋난다. 제목과 값을 갈라 값을 전부 같은 자리에 들여 쓴다.
+#
+# 그 앞의 이력 — 칸 폭(18)으로 줄을 맞추던 것을 걷은 자리이기도 하다.
+# 한글은 한 글자가 두 칸이라 글자 수로 ljust 하면 오히려 어긋난다.
+STEP_JOIN = BELOW + RECORD_INDENT
 
 # 오류 문구를 잘라내는 길이.
 SUMMARY_LIMIT = 120
@@ -305,16 +304,14 @@ GUIDE_JOIN = " "
 # 아는 것이 cutoffs_minutes 하나였는데 그것도 뺐다 (아래 「자를 겹」).
 # 지금은 예외가 없다.
 #
-# 적는 것이 셋이고 이 차례로 이어 붙는다.
+# **적는 것이 지금은 하나다.** 나머지 셋은 답 첫 줄이 이미 말해서 뺐다.
 #
-#   MODE_KEY       무엇으로 갔는가. 값이 영어 enum 이라 우리말로 바꿔 적는다.
-#                  도구 스키마의 enum 넷이 근거다 (WALK · BICYCLE · CAR ·
-#                  TRANSIT, 2026-09-01 /api/tools 실측). 표에 없는 값은
-#                  안 적는다 — 모르는 낱말을 화면에 옮기지 않는다
-#   DEPARTURE_*    언제 떠났는가. 시간표를 보는 mode 에서 결과를 가르는 값이다
 #   SPOKEN_KEYS    사람이 입으로 말한 낱말이 앉는 칸. 실측 배선에서 @arg 가
 #                  앉는 여섯 칸뿐이다 (execution/wiring.yaml). level="sigungu"
 #                  같은 기계 낱말은 여기 없어 저절로 빠진다
+#   MODE_KEY       무엇으로 갔는가. 뺐다 — 아래 문단
+#   DEPARTURE_*    언제 떠났는가. 뺐다 — 아래 문단
+#   CUTOFFS_KEY    몇 분으로 자르는가. 뺐다 — 아래 문단
 #
 # **발화에서 온 낱말은 0건일 때 특히 있어야 한다.** _empty_headline 이
 # 「무엇으로 찾았는지는 머리말이 되풀이하지 않는다」로 서 있고, 그 근거가
@@ -322,12 +319,17 @@ GUIDE_JOIN = " "
 INPUT_JOIN = " · "
 INPUT_VALUE_LIMIT = 24
 
-# 어미. 표는 enum 을 우리말 낱말로 옮긴 것뿐이라 그대로 두고, 문장이 되는
-# 부분만 여기서 붙인다. **표에 붙이면 안 된다** —
-# execution/execute_service.py 의 첫 줄(REACH_HEADLINE)이 같은 표를 읽어
-# 「대중교통으로 30분 안에」를 짓고, 거기에는 이 어미가 붙으면 안 된다.
+# 무엇으로 갔는가. **단계 줄에는 안 적는다** (2026-09-02 보도자료 검토).
+#
+# 「대중교통 이용 시」로 적던 자리다. 답 첫 줄이 「대중교통으로 30분 안에」로
+# 이미 말해 같은 것이 한 답에 두 번 나왔다. 자를 겹(CUTOFFS_KEY)과 같은
+# 까닭으로 뺐고, 어미(" 이용 시")도 쓰는 곳이 없어져 함께 걷었다.
+#
+# 이름과 표는 남는다. execution/execute_service.py 의 첫 줄(REACH_HEADLINE)이
+# 이 표를 읽어 「대중교통으로 30분 안에」를 짓는다. 값이 영어 enum 이라
+# 우리말로 옮기는 표이고, 도구 스키마의 enum 넷이 근거다 (WALK · BICYCLE ·
+# CAR · TRANSIT, 2026-09-01 /api/tools 실측).
 MODE_KEY = "mode"
-MODE_SUFFIX = " 이용 시"
 MODE_WORDS = {
     "WALK": "도보",
     "BICYCLE": "자전거",
@@ -377,8 +379,6 @@ SPOKEN_KEYS = ("query", "name", "stationName", "sectionName", "railwayName", "fa
 #                   (LIST_KEYS 와 같은 이유)
 # TEXT_LIMIT        본문을 자르는 길이. 자른 것은 _clip 이 "…" 로 밝힌다
 # SHOWN_RECORDS     글 목록에서 늘어놓을 항목 수. 시연 요구가 "조각 두셋" 이다
-# RECORD_INDENT     늘어놓은 항목 줄의 들여쓰기. 단계 번호 "1. " 의 폭이라
-#                   단계 줄에 딸린 줄로 읽힌다
 # SOURCE_CONTAINER  출처가 담긴 중첩 칸. knowledge.query 의 metadata 다
 # SOURCE_KEYS       그 안에서 볼 이름. 실측 : title 은 빈 문자열이고
 #                   source 가 "철도안전법(법률)(제21188호)(20260303).pdf" 다.
@@ -389,7 +389,6 @@ SPOKEN_KEYS = ("query", "name", "stationName", "sectionName", "railwayName", "fa
 TEXT_KEYS = ("content", "text")
 TEXT_LIMIT = 60
 SHOWN_RECORDS = 3
-RECORD_INDENT = "   "
 SOURCE_CONTAINER = "metadata"
 SOURCE_KEYS = ("title", "source")
 SOURCE_FORMAT = "「{name}」"
@@ -498,28 +497,23 @@ def step_line(item: Dict[str, Any], name: str = "", reference: Any = None) -> st
 
     입력  trace 항목 하나 · 부르는 쪽이 실어 보낸 단계 이름(없으면 "") ·
           면적을 견줄 넓이(없으면 None)
-    출력  "이름 — 조건  결과" 한 줄. 결과가 아래로 내려가면 두 줄
+    출력  이름 한 줄과 그 아래 들여 쓴 줄들
     규칙  이름이 없으면 도구 이름으로 되돌아감. 시험이 이름 없이 부름
-          이름과 뒤를 STEP_JOIN 으로 가름. 줄맞춤을 안 함 — 이름이 한글이라
-          글자 수로 ljust 하면 오히려 어긋남
-          조건은 이름과 결과 사이. 적을 것이 없으면 그 자리가 통째로 빠짐
-          결과가 BELOW 로 시작하면 조건과 한 줄에 안 붙이고 줄을 바꿈.
-          도달권의 면적이 그 자리임
+          이름 다음은 늘 줄을 바꿔 들여 씀. 값이 한 줄이든 여럿이든 같음
+          조건은 이름과 결과 사이의 한 줄. 적을 것이 없으면 그 줄이 통째로
+          빠짐
+          결과가 여러 줄이면 그 줄들이 이미 같은 자리에 들여 써져 있음
           결과 줄에 이미 나온 값은 조건으로 다시 안 적음. 무엇을 고를지는
           _input_text 임
     이력  이름 자리가 도구 이름이었음. 보도자료 그림에 실릴 화면이라
           geo.geocode 가 아니라 「장소 좌표 변환」이 보여야 함 (2026-09-01)
+          이름과 값을 " — " 로 한 줄에 이었음 (2026-09-02 걷음. STEP_JOIN)
     """
     head = name.strip() or str(item.get("tool") or "")
     outcome = _outcome(item, reference)
     given = _input_text(item.get("input"), outcome)
 
-    if not given:
-        tail = outcome
-    elif outcome.startswith(BELOW):
-        tail = given + outcome
-    else:
-        tail = f"{given}{' ' * STEP_GAP}{outcome}"
+    tail = STEP_JOIN.join(text for text in (given, outcome) if text)
     return f"{head}{STEP_JOIN}{tail}" if head else tail
 
 
@@ -528,8 +522,7 @@ def _input_text(tool_input: Any, shown: str) -> str:
 
     입력  vendor 가 참조와 어댑터까지 푼 실제 호출 인자 · 같은 줄의 결과 문구
     출력  조건을 INPUT_JOIN 으로 이은 줄
-    규칙  미리 정한 칸만 읽음. 수단과 발화에서 온 낱말 둘이고
-          적히는 차례도 그 순서임
+    규칙  미리 정한 칸만 읽음. 지금은 발화에서 온 낱말 하나임
           dict 가 아니면 ""
           발화에서 온 낱말은 한 칸만. SPOKEN_KEYS 를 순서대로 보고 먼저
           걸리는 것 하나를 씀 — 배선이 그 값을 한 자리에만 앉힘
@@ -547,34 +540,14 @@ def _input_text(tool_input: Any, shown: str) -> str:
           같은 수를 다시 말해 뺐고 (2026-09-01 「일흔여덟째」), 「도달 시간
           30분」으로 되살렸다가 (「일흔아홉째」) 겹이 하나가 되면서 다시
           뺐음 (2026-09-02. CUTOFFS_KEY 문단)
+          수단(「대중교통 이용 시」)을 첫째로 적었음. 답 첫 줄이 이미
+          「대중교통으로 30분 안에」라고 말해 뺐음 (2026-09-02. MODE_KEY 문단)
     """
     if not isinstance(tool_input, dict):
         return ""
 
-    parts = [
-        text
-        for text in (
-            _mode_text(tool_input),
-            _spoken_text(tool_input, shown),
-        )
-        if text
-    ]
+    parts = [text for text in (_spoken_text(tool_input, shown),) if text]
     return INPUT_JOIN.join(parts)
-
-
-def _mode_text(tool_input: Dict[str, Any]) -> str:
-    """무엇으로 갔는지 한 낱말. 모르는 값이면 "".
-
-    규칙  MODE_KEY 하나만 봄. 값이 MODE_WORDS 에 있을 때만 적음
-          찾은 낱말에 MODE_SUFFIX 를 붙임. 못 찾으면 어미도 안 붙음
-    제약  모르는 값을 그대로 옮기지 않는다.
-          영어 enum 이 화면에 나가면 우리말 줄 가운데 낱말 하나만 영어가 된다
-    """
-    value = tool_input.get(MODE_KEY)
-    if not isinstance(value, str):
-        return ""
-    word = MODE_WORDS.get(value, "")
-    return word + MODE_SUFFIX if word else ""
 
 
 def _spoken_text(tool_input: Dict[str, Any], shown: str) -> str:
@@ -962,7 +935,9 @@ def _place_line(tool_input: Any, result: Dict[str, Any]) -> str:
 # REACH_LINE         화면에 나갈 한 줄. 소수 둘째 자리.
 #                    **몇 분짜리 겹인지는 안 적는다** — 답 첫 줄이 이미
 #                    「30분 안에 닿을 수 있는 범위」로 말한다 (2026-09-02).
-#                    잰 겹을 고르는 데에는 여전히 cutoff 를 읽는다
+#                    잰 겹을 고르는 데에는 여전히 cutoff 를 읽는다.
+#                    **「도달」도 안 적는다** — 단계 이름이 이미
+#                    「도달 범위」다 (2026-09-02)
 #
 # **소수 둘째 자리다.** 한 자리로 자르면 29.960 이 30.0 으로 떨어져,
 # 재서 얻은 수가 어림잡아 적은 수처럼 보인다 (2026-09-01 「일흔여덟째」).
@@ -973,7 +948,7 @@ REACH_POLYGON_KEY = "polygons"
 CUTOFF_KEY = "cutoff_min"
 EARTH_RADIUS_M = 6371008.8
 REACH_MIN_RING = 4
-REACH_LINE = "도달 면적 {area:.2f} km²"
+REACH_LINE = "면적 {area:.2f} km²"
 
 # 면적 옆에 붙는 견줌. **값은 부르는 쪽이 준다.**
 #
@@ -986,10 +961,15 @@ REACH_LINE = "도달 면적 {area:.2f} km²"
 # 군포·안양·수원까지 걸친다(실측). 그래서 「의왕시의 55%」가 아니라
 # 「의왕시 전체 면적 …의 55%」로 적는다.
 # 부르는 쪽이 견줌을 실어 보내는 칸. intent 에 얹힌다.
+#
+# **면적 아랫줄로 내렸다** (2026-09-02). 괄호로 면적 옆에 붙이면 줄이 여든
+# 칸을 넘어 사진에서 접힌다. 견줄 넓이(54.02 km²)도 함께 걷었다 — 백분율이
+# 뜻이고, 분모를 함께 적으면 읽는 사람이 나눗셈을 하게 된다. 그 값은 여전히
+# 부르는 쪽이 실어 보내고 백분율을 그것으로 낸다.
 AREA_REFERENCE_INTENT_KEY = "area_reference"
 AREA_REFERENCE_NAME = "name"
 AREA_REFERENCE_AREA = "area_km2"
-AREA_REFERENCE_LINE = "  ({name} 전체 면적 {area:.2f} km² 의 {percent}%{radius})"
+AREA_REFERENCE_LINE = "{name} 전체 면적의 {percent}%{radius}"
 
 # 견줌 둘째 자리. 반경 몇 km 짜리 원과 대는가.
 #
@@ -1005,8 +985,13 @@ AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
 # execution/reach_districts 가 도달권 안에서 점을 뽑아 행정동을 모아 온 것이다.
 # 여기는 그 목록을 줄로 만들기만 한다.
 #
-# **시군구로 묶는다.** 「삼동 · 내손동 · 산본동」만 늘어놓으면 어느 시의 동인지
-# 모르고, 동마다 시를 붙이면 같은 시가 되풀이된다.
+# **시군구로 묶고 묶음마다 줄을 바꾼다** (2026-09-02). 「삼동 · 내손동 ·
+# 산본동」만 늘어놓으면 어느 시의 동인지 모르고, 동마다 시를 붙이면 같은 시가
+# 되풀이된다. 한 줄에 다 이으면 열 곳이 백 칸을 넘어 사진에서 접힌다.
+#
+# **시가 같고 구만 다르면 시 이름을 한 번만 적는다.** 실려 오는 이름이
+# 「수원시 권선구」·「수원시 장안구」라 그대로 묶으면 줄이 둘이 되고 「수원시」가
+# 두 번 나온다. 첫 낱말로 한 번 더 묶어 「수원시 권선구 … · 장안구 …」로 적는다.
 #
 # **열까지 적고 그 뒤는 조용히 자른다.** 앞에 오는 것이 점이 많이 걸린
 # 차례라(reach_districts 가 그 차례로 준다) 넓게 걸치는 곳이 남는다.
@@ -1019,10 +1004,14 @@ AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
 #
 # execution/shadow_districts 가 낸 것이다. 여기는 줄로 만들기만 한다.
 #
-# **뜻을 화면에도 적는다.** 「음영 지역」만 적으면 읽는 사람이 자기 정의로
-# 읽는다 — 대개 「30분에 못 가는 곳 전부」로 읽고, 그러면 부산과 제주가 든
-# 수처럼 보인다. 실제로 잰 것은 도달 범위 조각들의 볼록 껍질에서 도달 범위를
-# 뺀 것, 곧 조각 사이에 남은 틈이다.
+# **뜻을 화면에 안 적는다** (2026-09-02). 「30분 도달 범위에 둘러싸인 접근
+# 취약 구역」을 넓이 앞에 적던 자리다. 한 줄이 여든 칸을 넘어 사진에서 접혔고,
+# 단계 이름이 이미 「음영 지역」이라 같은 자리에서 두 번 말했다.
+#
+# 대신 **넓이 옆에 몫을 적는다.** 「18.42 km²」만으로는 넓은지 좁은지 읽히지
+# 않고, 그 몫이 뜻을 대신 말한다 — 30분 권역(볼록 껍질)의 38%가 둘러싸이고도
+# 안 닿는 자리라는 것이다. 무엇이 분모인지는 재는 쪽이 안다
+# (execution/shadow_districts.SHADOW_HULL_AREA_KEY).
 #
 # **동 이름은 아랫줄로 내린다.** 넓이와 한 줄에 두면 줄이 길어 접힌다.
 # 도달 지역 줄과 같은 들여쓰기를 쓴다.
@@ -1031,24 +1020,24 @@ AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
 # 격자가 정하는 값이라 참이 아니다 (NOTES.md 「여든째」).
 SHADOW_KEY = "shadow"
 SHADOW_AREA_KEY = "area_km2"
+SHADOW_HULL_AREA_KEY = "hull_area_km2"
 SHADOW_DISTRICTS_KEY = "districts"
 SHADOW_CUTOFF_KEY = "cutoff_min"
 
-# 음영 지역 줄의 앞머리. **코드 안의 SHADOW_* 이름은 그대로다. 문구만 바뀌었다**
-# (2026-09-02). 「둘러싸였으나 닿지 않는 곳」이 무엇을 잰 것인지는 말해도 왜
-# 봐야 하는지를 안 말해서, 읽는 사람이 쓸 낱말(「접근 취약 구역」)로 바꿨다.
+# 음영 지역의 넓이 줄. 도달 범위의 면적 줄과 같은 틀이다.
 #
-# 몇 분짜리 범위인지는 응답이 들고 온다. 배선이 겹을 고치면 이 줄이 따라
-# 움직인다 — 30 을 여기 적지 않는다. 못 읽으면 분 없는 틀로 떨어진다.
-SHADOW_LINE = "{minutes}분 도달 범위에 둘러싸인 접근 취약 구역 {area:.2f} km²"
-SHADOW_LINE_NO_CUTOFF = "도달 범위에 둘러싸인 접근 취약 구역 {area:.2f} km²"
+# 몫은 잰 것이 다 있을 때만 뒤에 붙는다. 몇 분짜리 범위인지도 무엇으로 나눌
+# 것인지도 응답이 들고 온다 — 30 도 껍질 넓이도 여기 적지 않는다. 못 읽으면
+# 넓이만 남는다.
+SHADOW_AREA_LINE = "면적 {area:.2f} km²"
+SHADOW_SHARE_PART = " · {minutes}분 권역의 {percent}%"
 
 DISTRICTS_KEY = "districts"
 DISTRICTS_SIGUNGU = "sigungu"
 DISTRICTS_EMD = "emd"
 DISTRICTS_SHOWN = 10
 DISTRICTS_EMD_JOIN = " · "
-DISTRICTS_GROUP_JOIN = ", "
+DISTRICTS_GU_JOIN = " · "
 
 # ── 「(일부)」 ────────────────────────────────────────────────
 #
@@ -1079,10 +1068,26 @@ DISTRICTS_PARTIAL_MARK = "(일부)"
 # **만 명으로 적는다.** 보도자료 그림에서 읽는 사람이 자릿수를 세지 않아도
 # 크기가 읽혀야 한다. 만이 안 되는 수는 만으로 적으면 「0만 명」이 되므로
 # 그때만 낱수로 적는다.
+#
+# ── 교통약자 ─────────────────────────────────────────────────
+#
+# **음영 지역 줄에만 붙인다** (2026-09-02). 도달 지역 줄에서는 총인구만 적는다 —
+# 「가까운데 안 닿는 자리에 누가 사는가」가 물음이라 그 수가 뜻을 갖는 자리가
+# 음영 지역이다.
+#
+# ★ **우리가 셀 수 있는 것은 둘뿐이라 덜 센 값이다.** 교통약자법(교통약자의
+# 이동편의 증진법 제2조)이 정한 교통약자는 장애인 · 고령자 · 임산부 ·
+# 영유아 동반자 · 어린이 다섯이고, 인구 데이터가 주는 것은 고령(65세 이상)과
+# 유소년(0~14세) 둘이다. 그래서 **괄호에 무엇을 셌는지 적는다** — 「교통약자
+# ○○만 명」이라고만 적으면 다섯을 다 센 수로 읽힌다. NOTES.md 「여든다섯째」.
+#
+# 나이 범위는 세는 쪽이 안다 (execution/district_population).
 POPULATION_KEY = "population"
 POPULATION_TOTAL_KEY = "total"
 POPULATION_SENIOR_KEY = "senior"
-POPULATION_LINE = "해당 지역 인구 {total} (65세 이상 {senior}, {rate}%)"
+POPULATION_CHILDREN_KEY = "children"
+POPULATION_LINE = "총 인구 {total}"
+POPULATION_WEAK_PART = " · 교통약자(고령·유소년) {weak}"
 POPULATION_MAN = 10000
 POPULATION_MAN_TEXT = "{value:,}만 명"
 POPULATION_ONE_TEXT = "{value:,}명"
@@ -1092,7 +1097,7 @@ def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
     """도달권 면적 한 줄. 잴 것이 없으면 "".
 
     입력  결과 dict
-    출력  BELOW 로 시작하는 들여 쓴 한 줄. 조건 아래에 딸려 붙음
+    출력  면적 한 줄. 견줄 넓이가 있으면 그 아랫줄에 들여 써 붙음
     규칙  제일 큰 cutoff 하나만 잼. 겹이 누적이라 더하면 두 번 셈
           cutoff 를 못 읽는 feature 는 건너뜀
           잰 넓이가 0이면 "". 0.0 km² 라고 적으면 잰 것처럼 보임
@@ -1111,7 +1116,8 @@ def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
         return ""
 
     line = REACH_LINE.format(area=area)
-    return BELOW + RECORD_INDENT + line + _area_reference_text(area, reference)
+    reference_text = _area_reference_text(area, reference)
+    return line + STEP_JOIN + reference_text if reference_text else line
 
 
 def _area_reference_text(area: float, reference: Any) -> str:
@@ -1119,8 +1125,9 @@ def _area_reference_text(area: float, reference: Any) -> str:
 
     입력  잰 넓이(km²) · 부르는 쪽이 준
           {name, area_km2, radius_km, radius_area_km2}
-    출력  " (의왕시 전체 면적 54.02 km² 의 55% · 반경 5km 권역의 38%)" 꼴
+    출력  "의왕시 전체 면적의 55% · 반경 5km 권역의 38%" 꼴
     규칙  이름과 넓이가 다 있고 넓이가 0보다 클 때만 적음
+          견줄 넓이를 화면에 안 적음. 백분율을 내는 데에만 씀
           반경 권역은 반지름과 그 넓이가 다 있을 때만 뒤에 붙음. 없으면 그
           자리가 통째로 빠짐
           백분율은 반올림해 정수로. 소수를 적으면 잰 값처럼 보임
@@ -1138,7 +1145,6 @@ def _area_reference_text(area: float, reference: Any) -> str:
         return ""
     return AREA_REFERENCE_LINE.format(
         name=name.strip(),
-        area=whole,
         percent=round(area / whole * 100),
         radius=_area_radius_text(area, reference),
     )
@@ -1169,10 +1175,10 @@ def _districts_line(result: Dict[str, Any]) -> str:
     """도달권 안의 행정동. 그런 응답이 아니면 "".
 
     입력  execution/reach_districts 가 만든 결과
-    출력  "의왕시 삼동 · 내손동, 군포시 산본동" 한 줄. 인구를 세었으면
-          아랫줄에 들여 써 붙음
+    출력  시군구 묶음마다 한 줄. 인구를 세었으면 그 아랫줄에 붙음
     규칙  받은 차례를 지킴. 점이 많이 걸린 차례로 와 있음
-          시군구로 묶음. 묶음 안의 차례도 받은 차례임
+          시군구로 묶고 묶음마다 줄을 바꿈. 묶음 안의 차례도 받은 차례임
+          교통약자는 안 적음. 음영 지역 줄만 그것을 적음
           DISTRICTS_SHOWN 개까지만 적고 나머지는 조용히 자름
           시군구와 읍면동이 둘 다 문자열인 항목만 셈
           인구는 찾은 동 전부를 더한 것임. 화면에 보이는 열과 다름
@@ -1188,7 +1194,7 @@ def _districts_line(result: Dict[str, Any]) -> str:
 
     line = _grouped_districts(pairs)
     people = _population_line(result)
-    return line + BELOW + RECORD_INDENT + people if people else line
+    return line + STEP_JOIN + people if people else line
 
 
 def _district_pairs(found: Any) -> List[Tuple[str, str, bool]]:
@@ -1216,36 +1222,46 @@ def _district_pairs(found: Any) -> List[Tuple[str, str, bool]]:
 
 
 def _grouped_districts(pairs: List[Tuple[str, str, bool]]) -> str:
-    """동 이름을 시군구로 묶은 한 마디. 적을 것이 없으면 "".
+    """동 이름을 시군구로 묶은 줄들. 적을 것이 없으면 "".
 
-    출력  "의왕시 삼동 · 내손동(일부), 군포시 산본동" 꼴
+    출력  시군구 묶음마다 한 줄. 둘째 줄부터 STEP_JOIN 으로 들여 씀
+          "군포시 부곡동 · 당정동(일부)"
+          "수원시 권선구 입북동(일부) · 장안구 율전동(일부)"
     규칙  DISTRICTS_SHOWN 개까지만 적고 나머지는 조용히 자름
-          묶음 안의 차례도 받은 차례임
+          시가 같고 구만 다르면 한 줄에 담고 시 이름을 한 번만 적음.
+          시군구 이름의 첫 낱말이 시임
+          구가 없는 시군구는 그 자리가 통째로 빠져 동 이름이 바로 붙음
+          묶음의 차례도 묶음 안의 차례도 받은 차례임
           일부만 걸치는 동은 이름 바로 뒤에 꼬리표를 붙임. 사이를 안 띄움
     제약  몇 곳인지를 적지 않는다.
           센 수가 격자가 찾은 수이지 실제 수가 아니다
     """
-    grouped: Dict[str, List[str]] = {}
+    grouped: Dict[str, Dict[str, List[str]]] = {}
     for sigungu, emd, partial in pairs[:DISTRICTS_SHOWN]:
-        grouped.setdefault(sigungu, []).append(emd + DISTRICTS_PARTIAL_MARK if partial else emd)
+        si, _, gu = sigungu.partition(" ")
+        names = grouped.setdefault(si, {}).setdefault(gu.strip(), [])
+        names.append(emd + DISTRICTS_PARTIAL_MARK if partial else emd)
 
-    groups = [
-        f"{sigungu} {DISTRICTS_EMD_JOIN.join(names)}" for sigungu, names in grouped.items()
-    ]
-    return DISTRICTS_GROUP_JOIN.join(groups)
+    lines = []
+    for si, districts in grouped.items():
+        parts = [
+            f"{gu} {DISTRICTS_EMD_JOIN.join(names)}" if gu else DISTRICTS_EMD_JOIN.join(names)
+            for gu, names in districts.items()
+        ]
+        lines.append(f"{si} {DISTRICTS_GU_JOIN.join(parts)}")
+    return STEP_JOIN.join(lines)
 
 
 def _shadow_line(result: Dict[str, Any]) -> str:
     """음영 지역 한 줄. 그런 응답이 아니면 "".
 
     입력  execution/shadow_districts 가 만든 결과
-    출력  뜻과 넓이 한 줄. 동을 찾았으면 아랫줄에, 인구를 세었으면 그
-          아랫줄에 들여 써 붙임
+    출력  넓이와 몫 한 줄. 동을 찾았으면 그 아래에 줄마다, 인구를 세었으면
+          그 아랫줄에 들여 써 붙임
     규칙  넓이가 0보다 클 때만 적음. 0.00 km² 라고 적으면 잰 것처럼 보임
-          뜻을 넓이와 함께 적음. 「음영 지역」이라는 이름만으로는 무엇을 잰
-          수인지 읽는 사람이 알 수 없음
           동을 못 찾았으면 넓이만. 넓이는 폴리곤에서 잰 것이라 점 뽑기가
           실패해도 참임
+          인구 줄에 교통약자를 함께 적음. 도달 지역 줄과 다른 자리임
     제약  넓이를 여기서 재지 않는다.
           무엇을 어떻게 재는지는 execution/shadow_districts 가 안다
     """
@@ -1259,39 +1275,52 @@ def _shadow_line(result: Dict[str, Any]) -> str:
     if isinstance(area, bool) or not isinstance(area, (int, float)) or area <= 0:
         return ""
 
-    line = _shadow_headline(shadow, float(area))
+    line = _shadow_area_line(shadow, float(area))
     for below in (
         _grouped_districts(_district_pairs(shadow.get(SHADOW_DISTRICTS_KEY))),
-        _population_line(shadow),
+        _population_line(shadow, weak=True),
     ):
         if below:
-            line += BELOW + RECORD_INDENT + below
+            line += STEP_JOIN + below
     return line
 
 
-def _shadow_headline(shadow: Dict[str, Any], area: float) -> str:
-    """음영 지역 줄의 앞머리. 몇 분짜리 범위인지를 응답에서 읽음.
+def _shadow_area_line(shadow: Dict[str, Any], area: float) -> str:
+    """음영 지역의 넓이 줄. 몫은 잰 것이 다 있을 때만 뒤에 붙음.
 
-    규칙  겹을 못 읽으면 분 없는 틀. 반쪽 문장 대신 짧은 문장을 냄
-    제약  분을 코드에 적지 않는다.
-          몇 분으로 자를지는 배선이 정하고 응답이 들고 온다
+    입력  음영 지역 dict · 그 넓이(km²)
+    출력  "면적 18.42 km² · 30분 권역의 38%" 꼴
+    규칙  겹을 못 읽거나 껍질 넓이가 없으면 넓이만. 반쪽 문장을 안 냄
+          백분율은 반올림해 정수로. 소수를 적으면 잰 값처럼 보임
+    제약  분도 껍질 넓이도 코드에 적지 않는다.
+          몇 분으로 자를지는 배선이 정하고 껍질을 재는 것은
+          execution/shadow_districts 다. 둘 다 응답이 들고 온다
     """
+    line = SHADOW_AREA_LINE.format(area=area)
+
     minutes = shadow.get(SHADOW_CUTOFF_KEY)
-    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)):
-        return SHADOW_LINE_NO_CUTOFF.format(area=area)
-    return SHADOW_LINE.format(minutes=int(minutes), area=area)
+    whole = _positive(shadow.get(SHADOW_HULL_AREA_KEY))
+    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or whole is None:
+        return line
+    return line + SHADOW_SHARE_PART.format(
+        minutes=int(minutes), percent=round(area / whole * 100)
+    )
 
 
-def _population_line(holder: Dict[str, Any]) -> str:
+def _population_line(holder: Dict[str, Any], weak: bool = False) -> str:
     """그 동들의 주민등록 인구 한 줄. 센 것이 없으면 "".
 
-    입력  동 목록이 놓인 dict. 인구가 그 옆에 얹혀 있음
-    출력  "해당 지역 인구 32만 명 (65세 이상 6만 명, 19%)" 꼴
+    입력  동 목록이 놓인 dict · 교통약자를 함께 적을 것인가
+    출력  "총 인구 65만 명 · 교통약자(고령·유소년) 22만 명" 꼴
     규칙  총인구가 0보다 클 때만 적음. 0명이라고 적으면 잰 것처럼 보임
-          65세 이상 비율은 반올림해 정수로
           만 명으로 적음. 만이 안 되는 수만 낱수로 적음
+          교통약자는 weak 일 때만. 고령과 유소년을 더한 것임
+          둘 중 하나라도 못 세었으면 교통약자 자리가 통째로 빠짐.
+          한쪽만 더하면 덜 센 값이 온전한 값처럼 보임
     제약  몇 곳을 세었는지 적지 않는다.
           찾은 동의 수가 격자가 정하는 값이라 참이 아니다. 이름과 같은 규칙임
+          교통약자를 다 센 것처럼 적지 않는다.
+          법이 정한 다섯 중 둘만 세고 있고 그 둘을 괄호가 밝힌다
     """
     if not isinstance(holder, dict):
         return ""
@@ -1300,15 +1329,29 @@ def _population_line(holder: Dict[str, Any]) -> str:
         return ""
 
     total = _int_value(counted.get(POPULATION_TOTAL_KEY))
-    senior = _int_value(counted.get(POPULATION_SENIOR_KEY))
-    if not total or total <= 0 or senior is None or senior < 0:
+    if not total or total <= 0:
         return ""
 
-    return POPULATION_LINE.format(
-        total=_people_text(total),
-        senior=_people_text(senior),
-        rate=round(senior / total * 100),
-    )
+    line = POPULATION_LINE.format(total=_people_text(total))
+    return line + _weak_part(counted) if weak else line
+
+
+def _weak_part(counted: Dict[str, Any]) -> str:
+    """인구 줄 뒤에 붙는 교통약자 한 마디. 못 세었으면 "".
+
+    입력  execution/district_population 이 낸 인구 dict
+    출력  " · 교통약자(고령·유소년) 22만 명" 꼴
+    규칙  고령과 유소년이 둘 다 0 이상의 정수일 때만 적음
+          둘을 더한 것이 교통약자임. 두 무리가 안 겹침 (세는 쪽 주석)
+    제약  둘 중 하나만으로 적지 않는다.
+          한쪽만 더한 수를 「교통약자」라고 부르면 덜 센 값이 온전한 값처럼
+          보인다
+    """
+    senior = _int_value(counted.get(POPULATION_SENIOR_KEY))
+    children = _int_value(counted.get(POPULATION_CHILDREN_KEY))
+    if senior is None or senior < 0 or children is None or children < 0:
+        return ""
+    return POPULATION_WEAK_PART.format(weak=_people_text(senior + children))
 
 
 def _people_text(value: int) -> str:

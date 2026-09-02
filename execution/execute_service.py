@@ -276,6 +276,9 @@ ORIGIN_LAT_KEY = "origin_lat"
 #
 # 이름을 붙이는 까닭은 껍질 안쪽 전체가 음영으로 읽히는 것을 막기 위해서다.
 # 실제 음영은 그 안에서 도달권 세 겹을 뺀 나머지다.
+#
+# ★ **지금은 안 내보낸다** (2026-09-02 보도자료 검토. SHADOW_HULL_SHOWN).
+# 아래 문단은 되살릴 때 다시 필요한 실측이라 그대로 둔다.
 SHADOW_HULL_LAYER = "shadow-hull"
 SHADOW_HULL_LABEL = "음영 지역 판정 범위"
 SHADOW_HULL_COLOR = "#6B7280"
@@ -283,6 +286,13 @@ SHADOW_HULL_WIDTH = 2
 # 획과 틈의 길이(m). 껍질 둘레가 28.6km 라 획 29개가 된다 (2026-09-01 실측).
 SHADOW_DASH_M = 600.0
 SHADOW_GAP_M = 400.0
+
+# 껍질 점선을 지도에 내보내는가. **끄개 하나다. 코드를 지우지 않았다.**
+#
+# 보도자료 그림에서 지도에 남길 것을 폴리곤 한 겹과 출발지 점으로 좁혔다
+# (2026-09-02). 점선은 「무엇을 놓고 쟀나」를 말하는 선이라 읽는 사람에게는
+# 겹이 하나 더 있는 것으로 보인다. 되살리려면 이 한 줄만 참으로 바꾼다.
+SHADOW_HULL_SHOWN = False
 
 
 async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
@@ -799,7 +809,8 @@ def _shadow_commands(sampled: list[dict]) -> list[dict]:
 
     입력  _sampled 가 낸 항목들
     출력  map.clear 하나와 map.draw 하나. 그리기 전에 지움
-    규칙  껍질을 실어 온 항목이 있을 때만 냄. 실패한 항목에는 없음
+    규칙  SHADOW_HULL_SHOWN 이 거짓이면 아무것도 안 냄. 지금이 그것임
+          껍질을 실어 온 항목이 있을 때만 냄. 실패한 항목에는 없음
           획을 조각으로 나눠 보냄. 저쪽에 점선 속성이 없음
           이름표는 선을 안 그리는 feature 한 벌이 따로 짐
           지도 명령 뒤에 붙임. 나중에 그린 것이 위에 올라감
@@ -807,6 +818,9 @@ def _shadow_commands(sampled: list[dict]) -> list[dict]:
           색이 넷이 되어 도달권 세 겹이 흐려진다. 그것은 사람이 정한 값이다
     ★ 이 함수는 SHADOW_HULL_LAYER 무리와 함께 걷는다
     """
+    if not SHADOW_HULL_SHOWN:
+        return []
+
     hull = None
     for item in sampled:
         shadow = (item.get("result") or {}).get(SHADOW_KEY)
