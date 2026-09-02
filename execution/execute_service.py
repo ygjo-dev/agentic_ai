@@ -26,23 +26,33 @@ step_service.plan 의 commands 가 그것이다. 저쪽 show-facility plugin 이
 일이 그것이고, 그쪽도 `## Run` 절이 없다.
 """
 
+import math
 from collections import Counter
 
-from execution import reach_districts, shadow_districts, step_service
+from execution import (
+    district_population,
+    reach_districts,
+    shadow_districts,
+    step_service,
+)
 from ontology import graph, store
 from orchestrator import resolve_service
 from vendor_to_be_deleted.asap.command_renderer import build_commands_from_artifacts
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 from vendor_to_be_deleted.asap.workflow_answer import (
     AREA_REFERENCE_INTENT_KEY,
+    AREA_REFERENCE_RADIUS_AREA,
+    AREA_REFERENCE_RADIUS_KM,
     CUTOFFS_KEY,
     DEPARTURE_DATE_KEY,
     DEPARTURE_TIME_KEY,
+    EARTH_RADIUS_M,
     MODE_KEY,
     MODE_WORDS,
     SHADOW_KEY,
     command_answer,
     compose_workflow_answer,
+    geometry_area,
     no_match_answer,
     step_failed,
 )
@@ -127,10 +137,10 @@ UNWIRED_MARK = " (아직 실행할 수 없음)"
 # ── ★ 임시 · 보도자료용 이름표 ──────────────────────────────────
 #
 # **이것은 임시다. 보도자료 이미지를 찍고 나면 걷는다.**
-# 걷는 자리가 이 파일 하나다 — 아래 표 넷(DISPLAY_NAME · RESOLVE_STEP_NAME ·
-# REACH_HEADLINE · AREA_REFERENCE)과 그것을 쓰는 함수 넷(_relabel ·
-# _reach_headline · _area_reference · _shown_name)을 지우고, run 과 chat 에서
-# 부르던 네 줄을 되돌리면 끝난다.
+# 걷는 자리가 이 파일 하나다 — 아래 표 다섯(DISPLAY_NAME · RESOLVE_STEP_NAME ·
+# REACH_HEADLINE · AREA_REFERENCE · RADIUS_KM)과 그것을 쓰는 함수 여섯(_relabel ·
+# _reach_headline · _area_reference · _add_radius · _radius_area_km2 ·
+# _shown_name)을 지우고, run 과 chat 에서 부르던 다섯 줄을 되돌리면 끝난다.
 # (2026-09-01 「일흔여덟째」·「일흔아홉째」. NOTES.md 「열린 과제」 22번.)
 #
 # **원천이 둘이 되는 것을 알고 한다.** 이름의 원천은 온톨로지의 노드 name 이고
@@ -151,18 +161,16 @@ DISPLAY_NAME = {
 
 # 화면에 안 내보낼 노드.
 #
-# **★ 임시 · 보도자료용이다** (2026-09-02). 발화("의왕역에서 30분 안에 갈 수
-# 있는 곳을 보여 줘")가 물은 것은 도달 범위 하나다. 도달 지역(동 목록)과 음영
-# 지역은 사용자가 요청한 것이 아닌데 답의 3 · 4번 줄과 지도의 점선을 차지한다.
+# **★ 임시 · 보도자료용이다** (2026-09-02). 여기 든 노드는 부르지 않는다 —
+# 답의 줄도, 생성과정의 단계도, 그 응답에서 나오는 지도 명령도 함께 사라진다.
+# 여기 들 수 있는 것은 sampled 노드(우리가 부르는 쪽)뿐이다. vendor 가 부르는
+# 단계였다면 이 방법이 안 통한다.
 #
-# **노드도 배선도 안 지운다.** 온톨로지에도 배선에도 그대로 두고 이 표에 든
-# 것만 부르지 않는다. 이 집합을 비우면 넷 다 예전대로 돌아온다 — 되돌리는
-# 자리가 이 한 줄이다.
-#
-# 여기 든 것은 둘 다 sampled 노드(우리가 부르는 쪽)라 부르지 않으면 그것으로
-# 끝난다 — 답의 줄도, 생성과정의 단계도, 음영 껍질 점선도 전부 그 응답에서
-# 나오므로 함께 사라진다. vendor 가 부르는 단계였다면 이 방법이 안 통한다.
-HIDDEN_NODES = {"list_reach_districts", "list_shadow_districts"}
+# **지금은 비어 있다** (2026-09-02 「여든셋째」). 도달 지역 · 음영 지역 둘을
+# 한나절 가렸다가 되살렸다. 접근성만 나와서 심플해 보인다는 의견을 받아,
+# 가린 두 줄에 격자 인구를 얹어 되돌린 것이다. 다시 가리려면 노드 id 를
+# 여기 적으면 된다 — 노드도 배선도 온톨로지도 그대로 서 있다.
+HIDDEN_NODES: set = set()
 
 # 색 판정기에 보일 겹 목록.
 #
@@ -227,6 +235,26 @@ REACH_CONDITION = "({year}년 {month}월 {day}일 {hour:02d}시 {minute:02d}분 
 AREA_REFERENCE = {
     "의왕역": {"name": "의왕시", "area_km2": 54.02},
 }
+
+# 면적을 견줄 둘째 것 — 출발지를 중심으로 한 원의 반지름(km).
+#
+# **사람이 정한 값이다.** 재서 나온 수가 아니다. 시군구 넓이는 장소마다 표가
+# 있어야 하는데 원은 아무 장소에나 서고, 「반경 5km 안에서 얼마나 갈 수 있나」
+# 가 도시계획에서 쓰는 말이라 골랐다 (2026-09-02).
+#
+# **넓이를 여기 안 적는다.** πr² 를 적으면 위도를 안 본 수가 되고, 무엇보다
+# 도달 면적을 잰 자(geometry_area)와 다른 자로 잰 수가 된다. 아래
+# _radius_area_km2 가 그 위도에서 원을 폴리곤으로 그려 같은 자로 잰다.
+RADIUS_KM = 5.0
+
+# 원을 폴리곤으로 그릴 때의 꼭짓점 수. 360이면 한 변이 1도다.
+#
+# 안에 그린 다각형은 원보다 좁다. 360에서 πr² 에 0.005% 모자란다.
+RADIUS_SEGMENTS = 360
+
+# 도달권 계산이 출발지 좌표를 받는 칸. 원의 중심이 그 점이다.
+ORIGIN_LON_KEY = "origin_lon"
+ORIGIN_LAT_KEY = "origin_lat"
 
 # 음영 지역의 볼록 껍질 테두리. **점선 한 겹만 얹는다.**
 #
@@ -339,6 +367,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
     executed = await _execute_generic_mcp_workflow(state, intent)
 
     trace = _trace(executed)
+    stale = _add_radius(intent, trace, plan["nodes"])
     sampled = await _sampled(plan["sampled_nodes"], trace)
     _name_sampled(intent, plan["sampled_nodes"], named)
 
@@ -350,7 +379,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         yield {"type": "step_end", "node": shown, "message": f"{tool} {outcome}"}
 
     yield _result(
-        _answer(intent, executed, sampled),
+        _answer(intent, executed, sampled, stale),
         _repainted_commands(executed) + plan["commands"] + _shadow_commands(sampled),
     )
 
@@ -529,12 +558,86 @@ def _area_reference(argument: str):
     """★ 임시 · 보도자료용. 면적을 견줄 넓이. 그 장소가 표에 없으면 None.
 
     입력  발화에서 뽑은 인자
-    출력  workflow_answer 가 읽는 {name, area_km2}
+    출력  workflow_answer 가 읽는 {name, area_km2}. 반경 권역은 실행이 끝난
+          뒤에 _add_radius 가 얹음
     제약  표에 없는 장소에 아무 넓이나 대지 않는다.
           조용히 틀린 수가 화면에 붙는다. 없으면 괄호가 통째로 안 나온다
     ★ 이 함수는 AREA_REFERENCE 와 함께 걷는다
     """
-    return AREA_REFERENCE.get((argument or "").strip())
+    reference = AREA_REFERENCE.get((argument or "").strip())
+    return dict(reference) if reference else None
+
+
+def _add_radius(intent: dict, trace: list[dict], nodes: list[str]) -> bool:
+    """★ 임시 · 보도자료용. 견줌에 반경 권역을 얹음. 얹었으면 참.
+
+    입력  vendor 에 넘겼던 intent · vendor 가 쌓은 trace · 같은 차례의 노드 id
+    출력  참이면 vendor 가 이미 만든 answer_draft 가 낡음. 답을 다시 지어야 함
+    규칙  견줌이 이미 있을 때만 얹음. 시군구 넓이가 없으면 괄호가 통째로
+          안 나오므로 반경만 붙일 자리가 없음
+          원을 못 재면 아무것도 안 하고 거짓. 견줌은 시군구 하나로 나감
+    제약  vendor 를 부르기 전에 부르지 않는다.
+          출발지 좌표는 배선이 앞 단계를 가리키는 참조라 실행 전에는 값이
+          아니다. vendor 가 참조를 푼 뒤의 trace 에만 실제 좌표가 있다
+    ★ 이 함수는 RADIUS_KM 과 함께 걷는다
+    """
+    reference = intent.get(AREA_REFERENCE_INTENT_KEY)
+    if not isinstance(reference, dict):
+        return False
+
+    circle = _radius_area_km2(trace, nodes)
+    if circle is None:
+        return False
+
+    reference[AREA_REFERENCE_RADIUS_KM] = RADIUS_KM
+    reference[AREA_REFERENCE_RADIUS_AREA] = circle
+    return True
+
+
+def _radius_area_km2(steps: list[dict], nodes: list[str]):
+    """★ 임시 · 보도자료용. 출발지 둘레 반경 RADIUS_KM 원의 넓이(km²). 못 재면 None.
+
+    입력  실제 호출 인자가 든 단계들 · 같은 차례의 노드 id 목록
+    출력  도달 면적을 잰 것과 **같은 자**로 잰 넓이
+    규칙  출발지 좌표를 도달권 계산 단계의 실제 호출 인자에서 읽음
+          경도 한 도의 길이를 그 위도에서 줄임. 위도 보정이 그것임
+          원을 RADIUS_SEGMENTS 각 폴리곤으로 그려 geometry_area 로 잼
+          도 환산에 도달 면적을 재는 자와 **같은 지구 반지름**을 씀. 다른
+          상수를 쓰면 원만 0.4% 어긋나 두 넓이의 비가 자를 두 개 섞은 값이 됨
+    제약  넓이를 코드에 적지 않는다.
+          πr² 를 적으면 위도를 안 본 수가 되고, 도달 면적을 잰 자와 다른
+          자로 잰 수가 되어 두 값을 견줄 수 없다
+    ★ 이 함수는 RADIUS_KM 과 함께 걷는다
+    """
+    tool_input = _input_of(REACH_HEADLINE_NODE, steps, nodes)
+    if tool_input is None:
+        return None
+
+    lon = _number(tool_input.get(ORIGIN_LON_KEY))
+    lat = _number(tool_input.get(ORIGIN_LAT_KEY))
+    if lon is None or lat is None:
+        return None
+
+    # 중심에서 잰 각거리(도). 경도 쪽은 그 위도의 위선이 짧아진 만큼 벌린다.
+    span = math.degrees(RADIUS_KM * 1000 / EARTH_RADIUS_M)
+    delta_lon = span / max(math.cos(math.radians(lat)), 0.01)
+
+    ring = [
+        [
+            lon + delta_lon * math.sin(2 * math.pi * index / RADIUS_SEGMENTS),
+            lat + span * math.cos(2 * math.pi * index / RADIUS_SEGMENTS),
+        ]
+        for index in range(RADIUS_SEGMENTS)
+    ]
+    ring.append(list(ring[0]))
+    return geometry_area({"type": "Polygon", "coordinates": [ring]}) / 1_000_000
+
+
+def _number(value):
+    """실수 값. 수가 아니면 None. bool 은 수로 안 봄."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return float(value)
 
 
 def _shown_name(node_id: str, named: dict) -> str:
@@ -583,17 +686,22 @@ def _result(answer: str, commands: list) -> dict:
     return {"type": "result", "answer": answer, "commands": commands}
 
 
-def _answer(intent: dict, executed: dict, sampled: list | None = None) -> str:
+def _answer(
+    intent: dict, executed: dict, sampled: list | None = None, stale: bool = False
+) -> str:
     """이 실행에 보일 답 한 벌.
 
-    입력  vendor 에 넘긴 intent · vendor 가 돌려준 것 · 우리가 부른 단계들
+    입력  vendor 에 넘긴 intent · vendor 가 돌려준 것 · 우리가 부른 단계들 ·
+          vendor 가 답을 지은 뒤에 intent 가 바뀌었는가
     출력  화면에 그대로 나갈 문자열
     규칙  errors 가 있으면 trace 로 우리가 다시 만듦. 이때 failed 를 넘김.
           vendor 는 중단할 때 대개 trace 에 아무것도 안 남기고, 남은 마지막
           항목은 성공한 앞 단계라 trace 만 보면 성공으로 읽힘
           우리가 부른 단계가 있으면 그것을 trace 뒤에 붙여 다시 만듦.
           vendor 의 answer_draft 는 그 단계를 모름
-          둘 다 없으면 vendor 의 answer_draft. 그 안에서 이미
+          intent 가 뒤에 바뀌었어도 다시 만듦. vendor 의 draft 는 바뀌기 전
+          intent 로 지은 것임 — 반경 권역이 그 자리다
+          셋 다 없으면 vendor 의 answer_draft. 그 안에서 이미
           workflow_answer 가 만든 것임
           trace 가 비면 단계 목록 없이 첫 줄만 나옴
     제약  답을 두 번 짓지 않는다.
@@ -602,8 +710,8 @@ def _answer(intent: dict, executed: dict, sampled: list | None = None) -> str:
     """
     if executed.get("errors"):
         return compose_workflow_answer(intent, _trace(executed), failed=True)
-    if sampled:
-        return compose_workflow_answer(intent, _trace(executed) + sampled)
+    if sampled or stale:
+        return compose_workflow_answer(intent, _trace(executed) + (sampled or []))
     return executed.get("answer_draft") or ""
 
 
@@ -642,9 +750,12 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
           Gateway 창에 보낸 건수를 노드 사이에 이어 셈. 둘이 따로 세면 뒤엣
           노드가 앞 노드의 건수를 모른 채 보내 한도에 걸림
           항목의 id 를 노드 id 로 붙임. 답이 그 id 로 단계 이름을 찾음
+          성공한 항목에는 그 동들의 인구를 얹음. 실패한 항목에는 셀 동이 없음
+          시군구 응답 보관을 노드 사이에 이어 씀. 두 노드가 같은 시군구를
+          많이 나눠 가져 두 번 부를 까닭이 없음
     제약  여기서 도구를 부르지 않는다.
           무엇을 어떻게 부르는지는 execution/reach_districts ·
-          execution/shadow_districts 가 안다
+          execution/shadow_districts · execution/district_population 이 안다
     """
     if not nodes or not trace:
         return []
@@ -654,6 +765,7 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
 
     done = []
     sent = 0
+    held: dict = {}
     for node_id in nodes:
         runner = SAMPLED_RUNNERS.get(node_id)
         if runner is None:
@@ -662,6 +774,10 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
             step_service.TOOL_OF[node_id], last["result"], dict(USER_CONTEXT), sent
         )
         item["id"] = node_id
+        if not step_failed(item):
+            item, sent = await district_population.attach(
+                item, dict(USER_CONTEXT), sent, held
+            )
         done.append(item)
         if step_failed(item):
             break

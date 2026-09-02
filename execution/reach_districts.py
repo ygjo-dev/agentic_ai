@@ -97,6 +97,15 @@ EMD_LAYER = "emd"
 SIGUNGU_KEY = "sigungu"
 EMD_KEY = "emd"
 
+# 이름과 함께 집어 두는 법정동 코드. **인구를 세는 자리가 읽는다**
+# (execution/district_population). 이름으로는 인구 도구를 못 부른다 —
+# 왜 그런지와 두 데이터셋의 코드가 같다는 실측은 NOTES.md 「여든셋째」.
+#
+# 코드가 안 실려 와도 이름은 그대로 낸다. 화면에 나가는 것은 이름이다.
+CODE_KEY = "code"
+SIGUNGU_CODE_KEY = "sigungu_code"
+EMD_CODE_KEY = "emd_code"
+
 
 async def run(tool: dict, previous: dict, user_context: dict, sent: int = 0) -> tuple:
     """도달권 안의 행정동을 모아 trace 항목 하나로. (항목, 창에 보낸 수).
@@ -142,7 +151,8 @@ async def gather(tool: dict, points: list, user_context: dict, sent: int) -> tup
     """점들을 하나씩 물어 동을 셈. (동별 점 수, 실패한 점 수, 창에 보낸 수).
 
     입력  TOOL_OF 한 줄 · (경도, 위도) 목록 · 권한 · 이 창에 이미 보낸 건수
-    출력  {(시군구, 읍면동): 걸린 점 수} · 못 얻은 점 수 · 창에 보낸 건수
+    출력  {(시군구, 읍면동, 시군구코드, 읍면동코드): 걸린 점 수} ·
+          못 얻은 점 수 · 창에 보낸 건수
     규칙  CHUNK 건마다 창이 빌 때까지 쉬고 셈을 0으로 되돌림
           _ask 가 창을 기다렸다고 하면 그때도 셈을 되돌림. 새 창이 열린 것임
           점 하나가 터져도 멈추지 않음. 나머지로 답함
@@ -170,17 +180,33 @@ async def gather(tool: dict, points: list, user_context: dict, sent: int) -> tup
 def districts_in_order(hits: dict) -> list:
     """동별 점 수를 화면이 읽는 목록으로. 점이 많이 걸린 차례.
 
-    출력  [{sigungu, emd}, …]
+    출력  [{sigungu, emd, sigungu_code, emd_code}, …]
+    규칙  코드는 인구를 세는 자리가 읽음. 화면은 이름 둘만 봄
+          코드가 안 실려 온 동은 코드 칸이 "". 이름은 그대로 냄
     제약  점 수를 함께 내보내지 않는다.
           격자 간격이 정하는 값이라 사람이 읽어서 뜻을 알 수 없다
     """
     ordered = sorted(hits.items(), key=lambda pair: -pair[1])
-    return [{SIGUNGU_KEY: sigungu, EMD_KEY: emd} for (sigungu, emd), _ in ordered]
+    return [
+        {
+            SIGUNGU_KEY: sigungu,
+            EMD_KEY: emd,
+            SIGUNGU_CODE_KEY: sigungu_code,
+            EMD_CODE_KEY: emd_code,
+        }
+        for (sigungu, emd, sigungu_code, emd_code), _ in ordered
+    ]
 
 
 async def _ask(tool: dict, lon: float, lat: float, user_context: dict) -> tuple:
-    """점 하나를 물음. (응답, 창을 기다렸는가). 못 얻으면 응답이 None.
+    """점 하나를 물음. (응답, 창을 기다렸는가). 못 얻으면 응답이 None."""
+    return await ask(tool, {"lon": lon, "lat": lat}, user_context)
 
+
+async def ask(tool: dict, args: dict, user_context: dict) -> tuple:
+    """도구 한 번. (응답, 창을 기다렸는가). 못 얻으면 응답이 None.
+
+    입력  TOOL_OF 한 줄 · 그 도구에 보낼 인자 · 권한
     규칙  한도에 걸리면 창이 빌 때까지 쉬고 한 번만 더 부름. 고정창이라
           언제 열리는지 모르고, 앞 발화가 쓴 건수가 창에 남아 있을 수 있음
           두 번째도 터지면 응답이 None. 그 점만 버리고 나머지로 답함
@@ -196,7 +222,7 @@ async def _ask(tool: dict, lon: float, lat: float, user_context: dict) -> tuple:
         try:
             result = mcp_client.execute_tool(
                 tool["tool"],
-                {"lon": lon, "lat": lat},
+                args,
                 user_context=user_context,
                 server_id=tool["server_id"],
             )
@@ -327,10 +353,12 @@ def _in_ring(lon: float, lat: float, ring) -> bool:
 
 
 def _district_of(result) -> tuple:
-    """응답 하나에서 (시군구, 읍면동). 못 읽으면 빈 튜플.
+    """응답 하나에서 (시군구, 읍면동, 시군구코드, 읍면동코드). 못 읽으면 빈 튜플.
 
     규칙  layerId 로 고름. items 의 차례로 안 집음
-          둘 다 있어야 함. 읍면동만 있으면 어느 시의 동인지 못 적음
+          이름 둘이 다 있어야 함. 읍면동만 있으면 어느 시의 동인지 못 적음
+          코드는 있으면 담고 없으면 "". 인구를 세는 자리만 읽으므로 코드가
+          없다고 그 동을 통째로 버리지 않음 — 이름은 화면에 나가야 함
     """
     if not isinstance(result, dict):
         return ()
@@ -341,13 +369,26 @@ def _district_of(result) -> tuple:
     by_layer = {}
     for item in items:
         if isinstance(item, dict):
-            by_layer[item.get(LAYER_KEY)] = item.get(NAME_KEY)
+            by_layer[item.get(LAYER_KEY)] = item
 
-    sigungu = by_layer.get(SIGUNGU_LAYER)
-    emd = by_layer.get(EMD_LAYER)
-    if isinstance(sigungu, str) and isinstance(emd, str) and sigungu and emd:
-        return (sigungu.strip(), emd.strip())
-    return ()
+    sigungu = _text(by_layer.get(SIGUNGU_LAYER), NAME_KEY)
+    emd = _text(by_layer.get(EMD_LAYER), NAME_KEY)
+    if not sigungu or not emd:
+        return ()
+    return (
+        sigungu,
+        emd,
+        _text(by_layer.get(SIGUNGU_LAYER), CODE_KEY),
+        _text(by_layer.get(EMD_LAYER), CODE_KEY),
+    )
+
+
+def _text(item, key: str) -> str:
+    """그 항목의 칸 하나를 다듬은 문자열로. 없으면 ""."""
+    if not isinstance(item, dict):
+        return ""
+    value = item.get(key)
+    return value.strip() if isinstance(value, str) else ""
 
 
 def _failed(tool: dict, message: str) -> dict:

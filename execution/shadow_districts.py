@@ -46,6 +46,7 @@ import math
 from execution import reach_districts
 from vendor_to_be_deleted.asap.workflow_answer import (
     SHADOW_AREA_KEY,
+    SHADOW_CUTOFF_KEY,
     SHADOW_DISTRICTS_KEY,
     SHADOW_KEY,
     geometry_area,
@@ -71,6 +72,9 @@ MIN_STEP_M = 50.0
 
 # 결과에 껍질 도형을 담는 칸.
 #
+# 자를 겹(SHADOW_CUTOFF_KEY)도 함께 담는다. 답 문구가 「30분 도달 범위에
+# 둘러싸인」이라고 말하는데 그 수를 코드에 적지 않으려는 것이다.
+#
 # 화면에 테두리를 그리는 자리가 이것을 읽는다(execute_service._shadow_commands).
 # 답 문장은 이 칸을 안 본다 — workflow_answer 는 넓이와 동 이름만 읽는다.
 HULL_KEY = "hull"
@@ -93,7 +97,7 @@ async def run(tool: dict, previous: dict, user_context: dict, sent: int = 0) -> 
           이 노드가 읽는 것은 도달권 폴리곤이고 도달 지역이 내놓는 것은
           동 이름뿐이다. 부르는 쪽이 도달권 응답을 그대로 넘긴다
     """
-    geometry = _widest(previous)
+    cutoff, geometry = _widest(previous)
     if geometry is None:
         return _failed(tool, "도달권 폴리곤이 없어 음영 지역을 내지 못했습니다."), sent
 
@@ -116,6 +120,7 @@ async def run(tool: dict, previous: dict, user_context: dict, sent: int = 0) -> 
         "result": {
             SHADOW_KEY: {
                 SHADOW_AREA_KEY: area / 1_000_000,
+                SHADOW_CUTOFF_KEY: cutoff,
                 SHADOW_DISTRICTS_KEY: reach_districts.districts_in_order(hits),
                 HULL_KEY: hull,
             }
@@ -288,15 +293,17 @@ def dashes(hull: dict, dash_m: float, gap_m: float) -> list:
     return [segment for segment in segments if len(segment) > 1]
 
 
-def _widest(previous: dict):
-    """제일 큰 겹의 도형. 도달권 응답이 아니면 None.
+def _widest(previous: dict) -> tuple:
+    """제일 큰 겹. (자를 겹의 분, 도형). 도달권 응답이 아니면 (None, None).
 
     규칙  도달 지역 · 면적 줄과 같은 겹을 고름. cutoff 가 제일 큰 것임
+          겹의 분을 함께 냄. 화면 문구가 「30분 도달 범위」라고 말해야 하고
+          그 수는 배선이 정함
     """
     features = reach_features(previous)
     if not features:
-        return None
-    return max(features, key=lambda pair: pair[0])[1]
+        return None, None
+    return max(features, key=lambda pair: pair[0])
 
 
 def _centre_inside(polygon: list, hull: dict) -> bool:

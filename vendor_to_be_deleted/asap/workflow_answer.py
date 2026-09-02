@@ -989,7 +989,16 @@ REACH_LINE = "도달 면적 {area:.2f} km²"
 AREA_REFERENCE_INTENT_KEY = "area_reference"
 AREA_REFERENCE_NAME = "name"
 AREA_REFERENCE_AREA = "area_km2"
-AREA_REFERENCE_LINE = "  ({name} 전체 면적 {area:.2f} km² 의 {percent}%)"
+AREA_REFERENCE_LINE = "  ({name} 전체 면적 {area:.2f} km² 의 {percent}%{radius})"
+
+# 견줌 둘째 자리. 반경 몇 km 짜리 원과 대는가.
+#
+# 시군구 넓이는 장소마다 표를 갖고 있어야 하지만 원은 아무 장소에나 선다.
+# **원의 넓이도 부르는 쪽이 잰다** — 이 파일은 어느 점을 중심으로 잰 것인지
+# 모르고, 위도에 따라 경도 1도의 길이가 달라 값이 조금씩 다르다.
+AREA_REFERENCE_RADIUS_KM = "radius_km"
+AREA_REFERENCE_RADIUS_AREA = "radius_area_km2"
+AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
 
 # ── 도달 지역 ─────────────────────────────────────────────────
 #
@@ -1023,7 +1032,16 @@ AREA_REFERENCE_LINE = "  ({name} 전체 면적 {area:.2f} km² 의 {percent}%)"
 SHADOW_KEY = "shadow"
 SHADOW_AREA_KEY = "area_km2"
 SHADOW_DISTRICTS_KEY = "districts"
-SHADOW_LINE = "도달 범위에 둘러싸였으나 닿지 않는 곳 {area:.2f} km²"
+SHADOW_CUTOFF_KEY = "cutoff_min"
+
+# 음영 지역 줄의 앞머리. **코드 안의 SHADOW_* 이름은 그대로다. 문구만 바뀌었다**
+# (2026-09-02). 「둘러싸였으나 닿지 않는 곳」이 무엇을 잰 것인지는 말해도 왜
+# 봐야 하는지를 안 말해서, 읽는 사람이 쓸 낱말(「접근 취약 구역」)로 바꿨다.
+#
+# 몇 분짜리 범위인지는 응답이 들고 온다. 배선이 겹을 고치면 이 줄이 따라
+# 움직인다 — 30 을 여기 적지 않는다. 못 읽으면 분 없는 틀로 떨어진다.
+SHADOW_LINE = "{minutes}분 도달 범위에 둘러싸인 접근 취약 구역 {area:.2f} km²"
+SHADOW_LINE_NO_CUTOFF = "도달 범위에 둘러싸인 접근 취약 구역 {area:.2f} km²"
 
 DISTRICTS_KEY = "districts"
 DISTRICTS_SIGUNGU = "sigungu"
@@ -1031,6 +1049,28 @@ DISTRICTS_EMD = "emd"
 DISTRICTS_SHOWN = 10
 DISTRICTS_EMD_JOIN = " · "
 DISTRICTS_GROUP_JOIN = ", "
+
+# ── 그 동들의 인구 ────────────────────────────────────────────
+#
+# execution/district_population 이 센 것이다. 여기는 줄로 만들기만 한다.
+#
+# **「해당 지역」은 우리가 찾은 동들이다.** 도달 범위 안의 인구가 아니다 —
+# 행정동 하나가 넓어 일부만 겹치는 곳이 많고, 격자가 빠뜨리는 동도 있다.
+# 그래서 「도달 지역 인구」가 아니라 「해당 지역 인구」로 적는다.
+#
+# **화면에 열만 보이고 인구는 찾은 동 전부를 더한 것이다.** 세는 쪽이
+# 그렇게 센다(district_population 모듈 주석).
+#
+# **만 명으로 적는다.** 보도자료 그림에서 읽는 사람이 자릿수를 세지 않아도
+# 크기가 읽혀야 한다. 만이 안 되는 수는 만으로 적으면 「0만 명」이 되므로
+# 그때만 낱수로 적는다.
+POPULATION_KEY = "population"
+POPULATION_TOTAL_KEY = "total"
+POPULATION_SENIOR_KEY = "senior"
+POPULATION_LINE = "해당 지역 인구 {total} (65세 이상 {senior}, {rate}%)"
+POPULATION_MAN = 10000
+POPULATION_MAN_TEXT = "{value:,}만 명"
+POPULATION_ONE_TEXT = "{value:,}명"
 
 
 def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
@@ -1062,36 +1102,65 @@ def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
 def _area_reference_text(area: float, reference: Any) -> str:
     """면적 옆의 견줌 한 마디. 견줄 것이 없으면 "".
 
-    입력  잰 넓이(km²) · 부르는 쪽이 준 {name, area_km2}
-    출력  " (의왕시 전체 면적 54.02 km² 의 55%)" 꼴
+    입력  잰 넓이(km²) · 부르는 쪽이 준
+          {name, area_km2, radius_km, radius_area_km2}
+    출력  " (의왕시 전체 면적 54.02 km² 의 55% · 반경 5km 권역의 38%)" 꼴
     규칙  이름과 넓이가 다 있고 넓이가 0보다 클 때만 적음
+          반경 권역은 반지름과 그 넓이가 다 있을 때만 뒤에 붙음. 없으면 그
+          자리가 통째로 빠짐
           백분율은 반올림해 정수로. 소수를 적으면 잰 값처럼 보임
     제약  견줄 넓이를 여기서 고르지 않는다.
           이 파일은 어느 장소인지 모른다. 아무 시군구 넓이나 갖다 대면
           조용히 틀린 수가 화면에 붙는다
+          원의 넓이를 여기서 재지 않는다.
+          중심이 어디인지 모르고, 위도에 따라 값이 달라진다
     """
     if not isinstance(reference, dict):
         return ""
     name = reference.get(AREA_REFERENCE_NAME)
-    whole = reference.get(AREA_REFERENCE_AREA)
-    if not isinstance(name, str) or not name.strip():
-        return ""
-    if isinstance(whole, bool) or not isinstance(whole, (int, float)) or whole <= 0:
+    whole = _positive(reference.get(AREA_REFERENCE_AREA))
+    if not isinstance(name, str) or not name.strip() or whole is None:
         return ""
     return AREA_REFERENCE_LINE.format(
-        name=name.strip(), area=float(whole), percent=round(area / float(whole) * 100)
+        name=name.strip(),
+        area=whole,
+        percent=round(area / whole * 100),
+        radius=_area_radius_text(area, reference),
     )
 
 
+def _area_radius_text(area: float, reference: dict) -> str:
+    """견줌 뒤에 붙는 반경 권역 한 마디. 잰 원이 없으면 "".
+
+    입력  잰 넓이(km²) · 부르는 쪽이 준 견줌
+    출력  " · 반경 5km 권역의 38%" 꼴
+    규칙  반지름과 그 넓이가 둘 다 0보다 큰 수일 때만 적음
+    """
+    radius = _positive(reference.get(AREA_REFERENCE_RADIUS_KM))
+    whole = _positive(reference.get(AREA_REFERENCE_RADIUS_AREA))
+    if radius is None or whole is None:
+        return ""
+    return AREA_RADIUS_PART.format(radius=radius, percent=round(area / whole * 100))
+
+
+def _positive(value: Any):
+    """0보다 큰 실수 값. 그런 수가 아니면 None. bool 은 수로 안 봄."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    return float(value)
+
+
 def _districts_line(result: Dict[str, Any]) -> str:
-    """도달권 안의 행정동 한 줄. 그런 응답이 아니면 "".
+    """도달권 안의 행정동. 그런 응답이 아니면 "".
 
     입력  execution/reach_districts 가 만든 결과
-    출력  "의왕시 삼동 · 내손동, 군포시 산본동" 꼴
+    출력  "의왕시 삼동 · 내손동, 군포시 산본동" 한 줄. 인구를 세었으면
+          아랫줄에 들여 써 붙음
     규칙  받은 차례를 지킴. 점이 많이 걸린 차례로 와 있음
           시군구로 묶음. 묶음 안의 차례도 받은 차례임
           DISTRICTS_SHOWN 개까지만 적고 나머지는 조용히 자름
           시군구와 읍면동이 둘 다 문자열인 항목만 셈
+          인구는 찾은 동 전부를 더한 것임. 화면에 보이는 열과 다름
     제약  몇 곳인지를 화면에 안 적는다.
           센 수가 격자가 찾은 수이지 실제 수가 아니다. 이름은 참이고
           수는 참이 아니다
@@ -1102,7 +1171,9 @@ def _districts_line(result: Dict[str, Any]) -> str:
     if not pairs:
         return ""
 
-    return _grouped_districts(pairs)
+    line = _grouped_districts(pairs)
+    people = _population_line(result)
+    return line + BELOW + RECORD_INDENT + people if people else line
 
 
 def _district_pairs(found: Any) -> List[Tuple[str, str]]:
@@ -1148,7 +1219,8 @@ def _shadow_line(result: Dict[str, Any]) -> str:
     """음영 지역 한 줄. 그런 응답이 아니면 "".
 
     입력  execution/shadow_districts 가 만든 결과
-    출력  뜻과 넓이 한 줄. 동을 찾았으면 아랫줄에 들여 써 붙임
+    출력  뜻과 넓이 한 줄. 동을 찾았으면 아랫줄에, 인구를 세었으면 그
+          아랫줄에 들여 써 붙임
     규칙  넓이가 0보다 클 때만 적음. 0.00 km² 라고 적으면 잰 것처럼 보임
           뜻을 넓이와 함께 적음. 「음영 지역」이라는 이름만으로는 무엇을 잰
           수인지 읽는 사람이 알 수 없음
@@ -1167,9 +1239,67 @@ def _shadow_line(result: Dict[str, Any]) -> str:
     if isinstance(area, bool) or not isinstance(area, (int, float)) or area <= 0:
         return ""
 
-    line = SHADOW_LINE.format(area=float(area))
-    names = _grouped_districts(_district_pairs(shadow.get(SHADOW_DISTRICTS_KEY)))
-    return line + BELOW + RECORD_INDENT + names if names else line
+    line = _shadow_headline(shadow, float(area))
+    for below in (
+        _grouped_districts(_district_pairs(shadow.get(SHADOW_DISTRICTS_KEY))),
+        _population_line(shadow),
+    ):
+        if below:
+            line += BELOW + RECORD_INDENT + below
+    return line
+
+
+def _shadow_headline(shadow: Dict[str, Any], area: float) -> str:
+    """음영 지역 줄의 앞머리. 몇 분짜리 범위인지를 응답에서 읽음.
+
+    규칙  겹을 못 읽으면 분 없는 틀. 반쪽 문장 대신 짧은 문장을 냄
+    제약  분을 코드에 적지 않는다.
+          몇 분으로 자를지는 배선이 정하고 응답이 들고 온다
+    """
+    minutes = shadow.get(SHADOW_CUTOFF_KEY)
+    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)):
+        return SHADOW_LINE_NO_CUTOFF.format(area=area)
+    return SHADOW_LINE.format(minutes=int(minutes), area=area)
+
+
+def _population_line(holder: Dict[str, Any]) -> str:
+    """그 동들의 주민등록 인구 한 줄. 센 것이 없으면 "".
+
+    입력  동 목록이 놓인 dict. 인구가 그 옆에 얹혀 있음
+    출력  "해당 지역 인구 32만 명 (65세 이상 6만 명, 19%)" 꼴
+    규칙  총인구가 0보다 클 때만 적음. 0명이라고 적으면 잰 것처럼 보임
+          65세 이상 비율은 반올림해 정수로
+          만 명으로 적음. 만이 안 되는 수만 낱수로 적음
+    제약  몇 곳을 세었는지 적지 않는다.
+          찾은 동의 수가 격자가 정하는 값이라 참이 아니다. 이름과 같은 규칙임
+    """
+    if not isinstance(holder, dict):
+        return ""
+    counted = holder.get(POPULATION_KEY)
+    if not isinstance(counted, dict):
+        return ""
+
+    total = _int_value(counted.get(POPULATION_TOTAL_KEY))
+    senior = _int_value(counted.get(POPULATION_SENIOR_KEY))
+    if not total or total <= 0 or senior is None or senior < 0:
+        return ""
+
+    return POPULATION_LINE.format(
+        total=_people_text(total),
+        senior=_people_text(senior),
+        rate=round(senior / total * 100),
+    )
+
+
+def _people_text(value: int) -> str:
+    """사람 수 한 마디. 만 명 아니면 낱수.
+
+    규칙  만이 넘으면 만으로 반올림해 적음. 자릿수를 안 세도 크기가 읽힘
+          만이 안 되면 낱수로 적음. 만으로 적으면 "0만 명" 이 됨
+    """
+    if value >= POPULATION_MAN:
+        return POPULATION_MAN_TEXT.format(value=round(value / POPULATION_MAN))
+    return POPULATION_ONE_TEXT.format(value=value)
 
 
 def reach_features(result: Any) -> List[Tuple[float, Any]]:
