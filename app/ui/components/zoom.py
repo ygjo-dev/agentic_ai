@@ -16,6 +16,9 @@ SVG 를 다시 그리지 않고 CSS transform 만 건다. 색·굵기·순번을
 따로 스크립트를 두면 scale 사본이 둘이 되어 손으로 굴린 값과 어긋난다.
 고르는 손잡이(강조 엣지 class)는 밖에서 받는다. 이 모듈은 무엇이 강조인지
 정하지 않는다.
+
+맞출 때는 곧장 확대하지 않고 전체 그림을 잠깐 보여준 뒤 그 자리로 좁혀
+들어간다(INTRO_*). 도착점은 그대로라 좁혀진 뒤 화면은 예전과 같다.
 """
 
 # 확대 폭. 근거와 전후 값은 NOTES.md 「쉰두째」 · 「예순다섯째」.
@@ -44,6 +47,25 @@ DRAG_THRESHOLD = 5
 # 여기서 따로 더할 필요가 없다.
 FIT_PAD = 24
 
+# ------------------------------------------------------------ 전체를 먼저 보여주기
+# **여기 셋만 고치면 된다. INTRO 를 False 로 두면 예전처럼 곧장 확대된다.**
+#
+# 확대된 그림이 곧장 나타나면 그것이 전체의 어디쯤인지 사람 눈이 못 잡는다.
+# 그래서 자동 맞춤을 할 때 전체 그림(배율 1)을 한 번 보여주고, 잠깐 머문 뒤
+# 그 자리로 좁혀 들어간다. 좁혀진 뒤 화면은 예전과 완전히 같다 —
+# 도착점은 fit() 이 재던 그 값 그대로이고 여기서는 가는 길만 만든다.
+#
+#   HOLD 0.35초  전체 그림에 머무는 시간. 눈이 한 번 훑기에 이만큼은 필요하다.
+#                더 짧으면 깜빡임으로 보이고, 0.5초를 넘기면 멈춘 것처럼 보인다
+#   MOVE 1.0초   좁혀 들어가는 시간. 합쳐서 1.35초라 영상이 안 늘어진다.
+#                0.6초대는 눈이 못 따라가고 2초를 넘기면 기다리게 된다
+#
+# 움직임을 끈 사람에게는 안 보여준다(prefers-reduced-motion). flow.py 와 같은
+# 규칙이다 — 그 화면은 예전처럼 곧장 확대된 그림이 뜬다.
+INTRO_ENABLED = True
+INTRO_HOLD_MS = 350
+INTRO_MOVE_MS = 1000
+
 # 상단과 하단은 서로 다른 그래프이므로 배율도 따로 기억한다.
 TOP_KEY = "recipe_zoom_top"
 BOTTOM_KEY = "recipe_zoom_bottom"
@@ -53,6 +75,7 @@ _TEMPLATE = """
   var KEY = "__KEY__", SEL = "__SEL__", HL = "__HL__";
   var MIN = __MIN__, MAX = __MAX__, STEP = __STEP__, THRESHOLD = __THRESHOLD__;
   var PAD = __PAD__;
+  var INTRO = __INTRO__, HOLD = __HOLD__, MOVE = __MOVE__;
 
   // ---------------------------------------------------------- 저장소
   var memory = null;
@@ -147,6 +170,55 @@ _TEMPLATE = """
     return picked;
   }
 
+  // ---------------------------------------------------------- 전체 -> 그 자리
+  // 도착점은 fit() 이 정한다. 여기는 가는 길만 만든다 — 끝나면 예전과 같은
+  // 화면이다. 어느 줄에서 걸려도 도착점으로 그냥 건너뛴다.
+  var wait = null, anim = null;
+
+  function halt() {
+    if (wait) { clearTimeout(wait); wait = null; }
+    if (anim) { try { window.cancelAnimationFrame(anim); } catch (e) {} anim = null; }
+  }
+
+  // 움직임을 끈 사람에게는 안 보여준다. flow.py 와 같은 규칙이다.
+  function calm() {
+    try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; }
+    catch (e) { return false; }
+  }
+
+  // 양 끝이 느리고 가운데가 빠르다. 등속이면 출발과 도착이 툭 끊겨 보인다.
+  function ease(t) {
+    return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  }
+
+  function land(to) {
+    scale = to.s; tx = to.x; ty = to.y;
+    commit();
+  }
+
+  function glide(to) {
+    halt();
+    // 전체 그림. SVG 는 칸에 비율대로 맞춰 들어가 있으므로 배율 1 이 전체다.
+    scale = 1; tx = 0; ty = 0;
+    apply();
+    wait = setTimeout(function () {
+      wait = null;
+      var t0 = 0;
+      function step(now) {
+        if (!t0) t0 = now;
+        var k = MOVE > 0 ? Math.min(1, (now - t0) / MOVE) : 1, e = ease(k);
+        scale = 1 + (to.s - 1) * e;
+        tx = to.x * e;
+        ty = to.y * e;
+        apply();
+        if (k < 1) { anim = window.requestAnimationFrame(step); return; }
+        anim = null;
+        commit();   // 저장은 도착해서 한 번만. 중간 값을 남기면 안 된다
+      }
+      try { anim = window.requestAnimationFrame(step); } catch (e) { land(to); }
+    }, HOLD);
+  }
+
   // ---------------------------------------------------------- 자동 맞춤
   // 어느 줄에서 걸려도 아무 일도 안 하고 지금 화면을 그대로 둔다.
   function fit() {
@@ -180,11 +252,16 @@ _TEMPLATE = """
       if (!isFinite(next) || next <= 0) return;
       next = Math.min(MAX, Math.max(MIN, next));
 
-      scale = next;
-      tx = (frame.width - next * w) / 2 - next * x;
-      ty = (frame.height - next * h) / 2 - next * y;
+      var to = {
+        s: next,
+        x: (frame.width - next * w) / 2 - next * x,
+        y: (frame.height - next * h) / 2 - next * y
+      };
+      // 서명을 먼저 남긴다. 미끄러지는 동안 다시 그려도 처음부터 되돌아가지
+      // 않게 하려는 것이다.
       fitted = sig;
-      commit();
+      if (INTRO && !calm()) { glide(to); return; }
+      land(to);
     } catch (e) {}
   }
 
@@ -195,6 +272,7 @@ _TEMPLATE = """
   // ---------------------------------------------------------- 휠
   box.addEventListener("wheel", function (ev) {
     ev.preventDefault();   // 그래프 위에서만 가로챈다. 바깥 스크롤은 그대로다.
+    halt();                // 사람이 손을 대면 미끄러짐은 그 자리에서 끝난다
     var rect = box.getBoundingClientRect();
     var px = ev.clientX - rect.left, py = ev.clientY - rect.top;
     var next = Math.min(MAX, Math.max(MIN, scale * (ev.deltaY < 0 ? STEP : 1 / STEP)));
@@ -211,6 +289,7 @@ _TEMPLATE = """
 
   box.addEventListener("mousedown", function (ev) {
     if (ev.button !== 0) return;
+    halt();
     dragging = true; moved = false;
     startX = ev.clientX; startY = ev.clientY;
     baseX = tx; baseY = ty;
@@ -246,6 +325,7 @@ _TEMPLATE = """
   // 복귀가 한 순간만 살아 있게 된다. 복귀는 사람이 부른 것이므로 이긴다.
   box.addEventListener("dblclick", function (ev) {
     ev.preventDefault();
+    halt();
     scale = 1; tx = 0; ty = 0;
     commit();
   });
@@ -272,6 +352,8 @@ def zoom_script(
           highlight_class  강조 엣지에 붙은 SVG class. 이것으로 고른 경로를
                            찾아 화면을 맞춤. 비우면 자동 맞춤을 아예 안 함
     출력  <script> 태그까지 포함한 문자열
+    규칙  맞출 때 전체 그림을 먼저 보여주고 좁혀 들어감(INTRO_ENABLED).
+          꺼도 · 움직임을 끈 화면에서도 도착점은 같음
     제약  예외를 안 올린다. 강조가 없거나 상자를 못 재면 아무 일도 안 하고
           지금 화면을 그대로 둔다
     """
@@ -284,6 +366,9 @@ def zoom_script(
         .replace("__STEP__", str(ZOOM_STEP))
         .replace("__THRESHOLD__", str(DRAG_THRESHOLD))
         .replace("__PAD__", str(FIT_PAD))
+        .replace("__INTRO__", "true" if INTRO_ENABLED else "false")
+        .replace("__HOLD__", str(INTRO_HOLD_MS))
+        .replace("__MOVE__", str(INTRO_MOVE_MS))
     )
     return f"<script>{body}</script>"
 
