@@ -146,6 +146,28 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
   넷이다(`_relabel` · `_reach_headline` · `_area_reference` · `_shown_name`).
   면적 견줌은 의왕역 하나뿐이라 다른 장소에는 맞는 시군구 넓이가 없다.
 
+  ★ **「여든두째」에서 셋이 더 늘었다** (2026-09-02). 같은 파일이고 전부
+  `★ 임시` 주석을 달아 뒀다. **셋 다 값 하나를 비우면 되돌아간다.**
+
+  ```
+  HIDDEN_NODES         화면에 안 내보낼 노드 둘. 비우면 답의 3·4번 줄 ·
+                       생성과정의 단계 둘 · 지도의 음영 껍질 점선이 함께
+                       돌아온다 (「여든두째」 2절)
+  PALETTE_CUTOFFS      색 판정기에 보일 겹 목록 [10, 20, 30]. 비우면
+                       30분 겹이 하늘색으로 돌아간다 (같은 글 3절)
+  _repainted_commands  위 목록을 화면 조각에 얹고 저쪽 판정기를 한 번 더
+                       부르는 자리. PALETTE_CUTOFFS 와 함께 걷는다
+  ```
+
+  **`_repainted_commands` 때문에 import 가 하나 늘었다** —
+  `vendor_to_be_deleted.asap.command_renderer.build_commands_from_artifacts`.
+  걷을 때 이 줄도 함께 걷는다.
+
+  ★ **제대로 고치는 자리는 저쪽 `_isochrone_color` 다.** 겹이 하나일 때
+  팔레트를 안 보는 것(`command_renderer.py:414-416`)이 원인이고, 우리는 그
+  파일을 안 고치기로 해서 우회했다. `refactor/vendor` 에서 다시 붙일 때
+  이 우회를 그대로 가져가면 안 된다.
+
 - **23 · ★ `recipe_039` 를 손으로 뺐다. `rebuild_init` 이 되살린다**
   (2026-09-01 「일흔아홉째」 8절).
 
@@ -209,6 +231,30 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
   ★ **새 타입으로는 풀지 못한다.** 실제로 `district_list` 를 내서 풀었다가
   발화가 무너져 걷었다 (「여든째」 8절). want 축 선택지가 한 줄 느는 것만으로
   갈린다.
+
+- **26 · ★ `KRRI_ASAP` 에 커밋 안 한 화면 변경이 둘 있다**
+  (2026-09-02 「여든두째」 5절).
+
+  보도자료 그림용으로 저쪽 화면을 고쳤다. **조대표님 레포라 커밋도 push 도
+  안 했다.** 작업본으로만 있어 **여기 안 적으면 잊는다.**
+
+  ```
+  ASAP-web/apps/asap/src/pages/AsapMainPage.tsx     채팅 칸을 5:5 까지
+  ASAP-web/apps/asap/src/app/styles/urbanTheme.css  글씨 15px -> 21px
+  ```
+
+  **되돌릴 태그가 있다 : `before-press-sidebar`.**
+
+  ```
+  cd ~/source/KRRI_ASAP && git checkout before-press-sidebar -- ASAP-web
+  ```
+
+  ★ **이미지까지 되돌려야 한다.** 반영을 `docker compose build web` 뒤
+  `docker cp` 로 했다. 소스만 되돌리면 돌고 있는 컨테이너와 구워 둔 이미지에
+  새 화면이 남는다. 되돌린 뒤 다시 굽고 다시 `docker cp` 한다.
+
+  ★ `ASAP-Gateway/data/servers.json` 에 **우리 것이 아닌 미커밋 변경**이
+  따로 있다(2026-09-01자). 손대지 않았다. 되돌릴 때 함께 쓸어담지 말 것.
 
 - **~~7 · 좁히기 스위치를 걷어낸다~~ — 끝났다** (2026-09-01 「일흔두째」).
   **되찾을 태그 : `had-narrow-path`** (`a996184`).
@@ -2059,6 +2105,187 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-02 (여든두째) · 화면을 줄이고 30분 겹 색을 되돌렸다 — 저쪽 파일은 안 고쳤다
+
+무인 실행. 조건 — `feature/accessibility` · 「여든째」의 커밋(`1ad332a`) 위.
+박사님 피드백으로 **화면에서 덜어내는** 판이다.
+
+**★ 이 가지는 보도자료 이미지용이다. 병합하지 않는다.**
+
+#### 1. 바뀐 답 전문
+
+```
+의왕역에서 대중교통으로 30분 안에 닿을 수 있는 범위를 계산했습니다.
+(2026년 9월 2일 08시 15분 출발 기준)
+
+1. 요청 장소 — 의왕역 → 경기도 의왕시 삼동 473
+2. 도달 범위 — 대중교통 이용 시
+   도달 면적 29.96 km²  (의왕시 전체 면적 54.02 km² 의 55%)
+```
+
+「여든째」의 넷째 줄까지 있던 답이 **두 줄로 줄었다.** 면적 29.96 km² 는 그대로다 —
+잰 겹이 그대로이기 때문이다.
+
+**★ 발화 하나가 85~150초에서 18.6초가 됐다.** 걷어낸 두 줄이 Gateway 창을
+기다리던 자리였다(「여든째」 3절의 62초). 화면을 줄인 것이 곧 시연 시간을
+줄였다. 리허설에서 연달아 쳐도 창을 안 기다린다.
+
+#### 2. 화면에 안 보이게 한 것 — **걷을 때 볼 자리**
+
+노드도 배선도 온톨로지도 **하나도 안 지웠다.** 부르지 않을 뿐이다.
+
+```
+자리 1  execution/execute_service.py 의 HIDDEN_NODES
+        {"list_reach_districts", "list_shadow_districts"}
+        run() 이 plan["sampled_nodes"] 에서 이 둘을 걷는다.
+        **이 한 줄을 비우면 넷이 다 예전대로 돌아온다** —
+        답의 3·4번 줄 · 생성과정의 단계 둘 · 지도의 음영 껍질 점선
+        (r5-isochrone-points) 이 전부 그 두 노드의 응답에서 나온다.
+        둘 다 sampled 노드(우리가 부르는 쪽)라 안 부르면 그것으로 끝난다.
+        vendor 가 부르는 단계였다면 이 방법이 안 통한다
+
+자리 2  execution/wiring.yaml 의 reach_cutoffs
+        [10, 20, 30] -> [30]. 지도에 겹이 하나만 그려진다.
+        되돌리려면 [10, 20, 30] 으로 되돌리면 끝이다
+
+자리 3  execution/execute_service.py 의 PALETTE_CUTOFFS 와
+        _repainted_commands
+        아래 3절. 비우면 하늘색으로 돌아온다
+```
+
+★ **지도는 폴리곤 한 겹 · 테두리 한 겹 · 출발지 점 하나다** (실측 :
+`r5-isochrone-polygons` features 1 · `r5-isochrone-lines` 1 ·
+`r5-isochrone-origin` 1 · `r5-isochrone-points` 는 clear 만 하고 안 그림).
+
+#### 3. 색이 왜 바뀌었나 · 어떻게 되돌렸나
+
+겹을 셋에서 하나로 줄이자 30분 겹이 **진홍(`#B91C1C`)에서 하늘색(`#0EA5E9`)**
+으로 바뀌었다. 아무도 색을 안 건드렸는데 바뀐 것이다.
+
+까닭은 저쪽 판정기에 있다 — `vendor_to_be_deleted/asap/command_renderer.py`
+의 `_isochrone_color` 414~416줄이다.
+
+```python
+if len(cutoffs) == 1:
+    return "#0EA5E9"
+```
+
+**겹이 하나면 팔레트를 아예 안 본다.** 팔레트
+(`_ISOCHRONE_PALETTE = ["#22C55E", "#84CC16", "#EAB308", "#F97316", "#EF4444", "#B91C1C"]`)
+의 마지막 칸이 진홍이고, 겹이 셋일 때 30분은 index 2 라 마지막 칸을 골랐던 것이다.
+
+★ **저쪽 파일은 안 고쳤다.** 대신 판정기에 **보이는 겹 목록**만 갈아 끼웠다.
+
+**두 자리가 다르다는 것이 이 길의 근거다.**
+
+```
+배선의 reach_cutoffs        도구에 보내는 요청의 cutoffs_minutes. [30] 그대로다
+판정기가 보는 겹 목록        화면 조각(display artifact)의 data["cutoffs_minutes"].
+                            저쪽 inspector 가 응답에서 새로 지은 dict 이고
+                            (mcp_result_inspector.py:289 _extract_isochrone_cutoffs)
+                            command_renderer.py:92 가 거기서 읽는다
+```
+
+같은 자리였으면 이 길이 안 됐다 — 요청을 셋으로 늘리면 겹도 셋이 그려진다.
+
+**우리 코드가 낄 자리가 응답과 판정 사이에는 없다.** 응답부터 명령까지 전부
+vendor 안에서 끝난다. 그래서 **vendor 가 다 돌고 난 뒤** 화면 조각의 목록만
+`PALETTE_CUTOFFS = [10, 20, 30]` 으로 갈아 끼우고 **저쪽 판정기를 한 번 더
+부른다**(`_repainted_commands`). 색을 우리 코드에 안 적는 것이 요점이다 —
+팔레트가 마지막 칸을 고르게 두었다.
+
+```
+             전            후
+polygons fill        #0EA5E9    #B91C1C
+polygons outlineColor #0EA5E9   #B91C1C
+lines    color       #0EA5E9    #B91C1C
+polygons features    1          1          (안 늘었다)
+fillOpacity          0.18       0.18
+lines outlineColor   #FFFFFF    #FFFFFF
+출발지 점 color       #2563EB    #2563EB
+```
+
+★ **셋인 것이 중요하지 값이 중요한 것이 아니다.** `_isochrone_color` 는 목록에서
+못 찾은 겹도 `except ValueError` 갈래에서 마지막 자리로 친다. 배선이 30이 아닌
+값으로 바뀌어도 진홍이 그대로 나온다.
+
+★ **답 문구는 안 움직인다.** 화면 조각의 `data` 는 저쪽 inspector 가 새로 지은
+dict 라 도구 응답(trace)과 따로 논다. 답을 짓는 `workflow_answer` 는 trace 를
+읽으므로 겹이 셋으로 보여도 답은 그대로다. 실측으로 확인했다.
+
+#### 4. 답 문구 — 「도달 시간 30분」과 「30분 이내」를 걷었다
+
+겹이 하나가 되자 **같은 30분이 한 답에 세 번** 나왔다.
+
+```
+전   의왕역에서 대중교통으로 30분 안에 닿을 수 있는 범위를 계산했습니다.
+     2. 도달 범위 — 대중교통 · 도달 시간 30분
+        30분 이내 도달 면적 29.96 km² (…)
+
+후   의왕역에서 대중교통으로 30분 안에 닿을 수 있는 범위를 계산했습니다.
+     2. 도달 범위 — 대중교통 이용 시
+        도달 면적 29.96 km² (…)
+```
+
+첫 줄 하나만 남겼다. 고친 자리가 셋이다.
+
+```
+_cutoffs_text 와 CUTOFFS_LEAD · CUTOFFS_JOIN · CUTOFFS_SUFFIX 를 지웠다.
+  「일흔아홉째」가 되살렸던 자리다. 겹이 셋이던 때는 지도의 세 겹을 가리키는
+  말이 답에 하나도 없어 앞머리가 필요했다. 겹이 하나면 그 이유가 없다.
+  ★ CUTOFFS_KEY 는 남겼다 — execute_service 가 답 첫 줄의 「30분」을 그
+  칸에서 읽는다
+
+REACH_LINE 에서 {cutoff} 를 뺐다.
+  "{cutoff}분 이내 도달 면적 {area:.2f} km²" -> "도달 면적 {area:.2f} km²"
+  _reach_line 은 여전히 제일 큰 cutoff 를 고르지만 줄에는 안 적는다
+
+MODE_SUFFIX = " 이용 시" 를 새로 뒀다.
+  ★ MODE_WORDS 표에는 안 붙였다. execute_service 의 REACH_HEADLINE 이 같은
+  표를 읽어 「대중교통으로 30분 안에」를 짓는데 거기에 이 어미가 붙으면 안
+  된다. 표는 enum 을 우리말로 옮긴 것뿐이고 문장이 되는 부분만 따로 붙인다
+```
+
+#### 5. 저쪽 저장소(`KRRI_ASAP`)에서 한 것 — **커밋 안 했다**
+
+보도자료 그림에서 답이 안 읽혀 채팅 칸을 넓히고 글씨를 키웠다. **조대표님
+레포라 커밋도 push 도 안 했다.** 되돌릴 태그 `before-press-sidebar` 가 있다.
+
+```
+ASAP-web/apps/asap/src/pages/AsapMainPage.tsx
+    CHAT_DOCK_MAX_WIDTH = 620 -> CHAT_DOCK_MAX_RATIO = 0.5
+    끌기 상한을 min(작업영역 - 지도최소520, 작업영역 × 0.5) 로.
+    작업 영역이 1040px 이상이면 5:5 까지 끌린다
+
+ASAP-web/apps/asap/src/app/styles/urbanTheme.css  (파일 끝 블록 하나)
+    답 본문·말풍선·목록 번호 15px -> 21px
+    글칸 폭 min(92%, 44rem) -> min(100%, 60rem)
+      ★ 이것이 없으면 답이 세 줄로 늘어난다. 답 둘째 줄이 21px 에서 828px 라
+        704px 칸에 안 들어간다 (폰트 metric 실측)
+    생성과정 14/12/11px -> 19/16/15px · 입력칸 14px -> 20px
+    ★ 공유 패키지(packages/chat)는 안 고쳤다. 고치면 osong-dt·integrated
+      화면까지 함께 커진다. .asap-chat-dock 아래에서 특정도로 눌러 덮었다
+```
+
+반영은 `docker compose build web`(23~25초) 뒤 `docker cp`. **`docker compose up`
+은 안 썼다 — 8000 을 뺏긴다.**
+
+#### 6. 관문
+
+```
+답            두 줄 · 면적 29.96 km² · 문구 목표대로            ✅
+지도          polygons 1겹 · 점선 없음 · 출발지 점             ✅
+색            polygons fill #B91C1C                            ✅
+발화          recipe_063 · SELECT · candidates [recipe_063]     ✅
+시험          21 failed · 378 passed · skipped 0                ✅
+```
+
+시험 실패 21건은 **이번 판이 만든 것이 아니다.** 고치기 전 작업본을 `git stash`
+하고 돌려 같은 21건임을 확인했다. 좌표·`ljust` 를 걷기 전 문구를 그대로 들고
+있는 낡은 시험들이다.
+
+---
 
 ### 2026-09-01 (여든째) · 음영 지역을 붙였다 — menu 문장을 안 늘려 발화를 지켰다
 

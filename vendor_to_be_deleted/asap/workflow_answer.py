@@ -322,7 +322,12 @@ GUIDE_JOIN = " "
 INPUT_JOIN = " · "
 INPUT_VALUE_LIMIT = 24
 
+# 어미. 표는 enum 을 우리말 낱말로 옮긴 것뿐이라 그대로 두고, 문장이 되는
+# 부분만 여기서 붙인다. **표에 붙이면 안 된다** —
+# execution/execute_service.py 의 첫 줄(REACH_HEADLINE)이 같은 표를 읽어
+# 「대중교통으로 30분 안에」를 짓고, 거기에는 이 어미가 붙으면 안 된다.
 MODE_KEY = "mode"
+MODE_SUFFIX = " 이용 시"
 MODE_WORDS = {
     "WALK": "도보",
     "BICYCLE": "자전거",
@@ -337,18 +342,17 @@ MODE_WORDS = {
 DEPARTURE_DATE_KEY = "departure_date"
 DEPARTURE_TIME_KEY = "departure_time"
 
-# 자를 겹. **「일흔여덟째」가 뺐던 것을 이름을 붙여 되살린다**
-# (2026-09-01 「일흔아홉째」). 그때 뺀 까닭은 「10 / 20 / 30분」이 바로 아래
-# 「30분 이내 도달 면적」과 같은 수를 두 번 말한다는 것이었는데, 수가 겹치는
-# 것이 아니라 **그 수가 무엇인지 안 적힌 것**이 문제였다. 지도에 세 겹이
-# 그려지는데 답에는 그 셋을 가리키는 말이 하나도 없었다.
+# 자를 겹. **단계 줄에는 안 적는다** (2026-09-02 보도자료 검토).
 #
-# 앞머리를 붙여 「도달 시간 10 / 20 / 30분」으로 적는다. 배선의 cutoffs 에서
-# 오고 글자로 안 박는다.
+# 「일흔아홉째」가 「도달 시간 30분」으로 되살렸던 자리다. 겹이 셋이던 때는
+# 지도의 세 겹을 가리키는 말이 답에 하나도 없어 그 앞머리가 필요했는데,
+# 배선의 cutoffs 가 [30] 하나가 되면서 같은 30분이 한 답에 세 번 나온다 —
+# 첫 줄의 「30분 안에 닿을 수 있는」, 이 자리, 바로 아래 면적 줄. 셋 중
+# 첫 줄 하나만 남긴다. 아래 면적 줄에서도 「30분 이내」를 뺐다 (REACH_LINE).
+#
+# 이름은 남는다. execution/execute_service.py 가 첫 줄의 「30분」을 이 칸에서
+# 읽는다 — 값을 글자로 박지 않는 것은 그쪽도 같다.
 CUTOFFS_KEY = "cutoffs_minutes"
-CUTOFFS_LEAD = "도달 시간 "
-CUTOFFS_JOIN = " / "
-CUTOFFS_SUFFIX = "분"
 
 SPOKEN_KEYS = ("query", "name", "stationName", "sectionName", "railwayName", "facilityName")
 
@@ -524,7 +528,7 @@ def _input_text(tool_input: Any, shown: str) -> str:
 
     입력  vendor 가 참조와 어댑터까지 푼 실제 호출 인자 · 같은 줄의 결과 문구
     출력  조건을 INPUT_JOIN 으로 이은 줄
-    규칙  미리 정한 칸만 읽음. 수단 · 출발 · 발화에서 온 낱말 셋이고
+    규칙  미리 정한 칸만 읽음. 수단과 발화에서 온 낱말 둘이고
           적히는 차례도 그 순서임
           dict 가 아니면 ""
           발화에서 온 낱말은 한 칸만. SPOKEN_KEYS 를 순서대로 보고 먼저
@@ -540,7 +544,9 @@ def _input_text(tool_input: Any, shown: str) -> str:
           화면이 `origin_lon=126.9482 · origin_lat=37.3201 · mode="TRANSIT" ·
           departure_date="2026-09-01"…` 이었음 (2026-09-01 실측)
           자를 겹(`10 / 20 / 30분`)을 넷째로 적었음. 바로 아래 면적 줄이
-          같은 수를 다시 말해 뺐음 (2026-09-01 「일흔여덟째」)
+          같은 수를 다시 말해 뺐고 (2026-09-01 「일흔여덟째」), 「도달 시간
+          30분」으로 되살렸다가 (「일흔아홉째」) 겹이 하나가 되면서 다시
+          뺐음 (2026-09-02. CUTOFFS_KEY 문단)
     """
     if not isinstance(tool_input, dict):
         return ""
@@ -549,7 +555,6 @@ def _input_text(tool_input: Any, shown: str) -> str:
         text
         for text in (
             _mode_text(tool_input),
-            _cutoffs_text(tool_input),
             _spoken_text(tool_input, shown),
         )
         if text
@@ -561,32 +566,15 @@ def _mode_text(tool_input: Dict[str, Any]) -> str:
     """무엇으로 갔는지 한 낱말. 모르는 값이면 "".
 
     규칙  MODE_KEY 하나만 봄. 값이 MODE_WORDS 에 있을 때만 적음
+          찾은 낱말에 MODE_SUFFIX 를 붙임. 못 찾으면 어미도 안 붙음
     제약  모르는 값을 그대로 옮기지 않는다.
           영어 enum 이 화면에 나가면 우리말 줄 가운데 낱말 하나만 영어가 된다
     """
     value = tool_input.get(MODE_KEY)
-    return MODE_WORDS.get(value, "") if isinstance(value, str) else ""
-
-
-def _cutoffs_text(tool_input: Dict[str, Any]) -> str:
-    """몇 분으로 잘랐는지 한 마디. 셀 것이 없으면 "".
-
-    규칙  CUTOFFS_KEY 하나만 봄. 정수 목록이어야 함
-          정수가 아닌 항목은 건너뜀. 하나도 안 남으면 ""
-          단위는 맨 끝에 한 번만. "10분 / 20분 / 30분" 은 같은 말을 세 번 함
-          앞머리를 붙임. 수만 늘어놓으면 그 수가 무엇인지 알 수 없음
-    제약  값을 코드에 적지 않는다.
-          몇 겹으로 자를지는 배선(execution/wiring.yaml 의 reach_cutoffs)이
-          정하고 응답이 그대로 들고 온다
-    """
-    values = tool_input.get(CUTOFFS_KEY)
-    if not isinstance(values, list):
+    if not isinstance(value, str):
         return ""
-
-    minutes = [str(value) for value in values if _int_value(value) is not None]
-    if not minutes:
-        return ""
-    return CUTOFFS_LEAD + CUTOFFS_JOIN.join(minutes) + CUTOFFS_SUFFIX
+    word = MODE_WORDS.get(value, "")
+    return word + MODE_SUFFIX if word else ""
 
 
 def _spoken_text(tool_input: Dict[str, Any], shown: str) -> str:
@@ -971,7 +959,10 @@ def _place_line(tool_input: Any, result: Dict[str, Any]) -> str:
 # CUTOFF_KEY         그 겹이 몇 분짜리인지 (properties 안)
 # EARTH_RADIUS_M     지구 평균 반지름 (IUGG). 위 검산 참고
 # REACH_MIN_RING     넓이를 잴 수 있는 최소 꼭짓점 수. 닫힌 삼각형이 넷이다
-# REACH_LINE         화면에 나갈 한 줄. 소수 둘째 자리
+# REACH_LINE         화면에 나갈 한 줄. 소수 둘째 자리.
+#                    **몇 분짜리 겹인지는 안 적는다** — 답 첫 줄이 이미
+#                    「30분 안에 닿을 수 있는 범위」로 말한다 (2026-09-02).
+#                    잰 겹을 고르는 데에는 여전히 cutoff 를 읽는다
 #
 # **소수 둘째 자리다.** 한 자리로 자르면 29.960 이 30.0 으로 떨어져,
 # 재서 얻은 수가 어림잡아 적은 수처럼 보인다 (2026-09-01 「일흔여덟째」).
@@ -982,7 +973,7 @@ REACH_POLYGON_KEY = "polygons"
 CUTOFF_KEY = "cutoff_min"
 EARTH_RADIUS_M = 6371008.8
 REACH_MIN_RING = 4
-REACH_LINE = "{cutoff}분 이내 도달 면적 {area:.2f} km²"
+REACH_LINE = "도달 면적 {area:.2f} km²"
 
 # 면적 옆에 붙는 견줌. **값은 부르는 쪽이 준다.**
 #
@@ -1050,21 +1041,21 @@ def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
     규칙  제일 큰 cutoff 하나만 잼. 겹이 누적이라 더하면 두 번 셈
           cutoff 를 못 읽는 feature 는 건너뜀
           잰 넓이가 0이면 "". 0.0 km² 라고 적으면 잰 것처럼 보임
+          고른 cutoff 는 줄에 안 적음. 답 첫 줄이 이미 말함 (REACH_LINE)
     제약  cutoff 값을 코드에 안 적는다.
           몇 분으로 자를지는 배선이 정하고 응답이 들고 온다. 30 을 여기 적으면
-          배선을 고쳤을 때 이 줄만 조용히 사라진다
+          배선을 고쳤을 때 겹을 잘못 고른다
     """
     features = reach_features(result)
     if not features:
         return ""
 
-    cutoff, geometry = max(features, key=lambda pair: pair[0])
+    _cutoff, geometry = max(features, key=lambda pair: pair[0])
     area = geometry_area(geometry) / 1_000_000
     if area <= 0:
         return ""
 
-    number = int(cutoff) if float(cutoff).is_integer() else cutoff
-    line = REACH_LINE.format(cutoff=number, area=area)
+    line = REACH_LINE.format(area=area)
     return BELOW + RECORD_INDENT + line + _area_reference_text(area, reference)
 
 

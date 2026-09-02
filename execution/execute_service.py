@@ -31,6 +31,7 @@ from collections import Counter
 from execution import reach_districts, shadow_districts, step_service
 from ontology import graph, store
 from orchestrator import resolve_service
+from vendor_to_be_deleted.asap.command_renderer import build_commands_from_artifacts
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 from vendor_to_be_deleted.asap.workflow_answer import (
     AREA_REFERENCE_INTENT_KEY,
@@ -148,6 +149,42 @@ DISPLAY_NAME = {
     "compute_reach_area": "도달 범위",
 }
 
+# 화면에 안 내보낼 노드.
+#
+# **★ 임시 · 보도자료용이다** (2026-09-02). 발화("의왕역에서 30분 안에 갈 수
+# 있는 곳을 보여 줘")가 물은 것은 도달 범위 하나다. 도달 지역(동 목록)과 음영
+# 지역은 사용자가 요청한 것이 아닌데 답의 3 · 4번 줄과 지도의 점선을 차지한다.
+#
+# **노드도 배선도 안 지운다.** 온톨로지에도 배선에도 그대로 두고 이 표에 든
+# 것만 부르지 않는다. 이 집합을 비우면 넷 다 예전대로 돌아온다 — 되돌리는
+# 자리가 이 한 줄이다.
+#
+# 여기 든 것은 둘 다 sampled 노드(우리가 부르는 쪽)라 부르지 않으면 그것으로
+# 끝난다 — 답의 줄도, 생성과정의 단계도, 음영 껍질 점선도 전부 그 응답에서
+# 나오므로 함께 사라진다. vendor 가 부르는 단계였다면 이 방법이 안 통한다.
+HIDDEN_NODES = {"list_reach_districts", "list_shadow_districts"}
+
+# 색 판정기에 보일 겹 목록.
+#
+# **★ 임시 · 보도자료용이다** (2026-09-02). 겹을 [10, 20, 30] 셋에서 [30]
+# 하나로 줄이면서 30분 겹의 색이 진홍(#B91C1C)에서 하늘색(#0EA5E9)으로
+# 바뀌었다. 저쪽 판정기가 겹이 하나면 팔레트를 아예 안 보고 하늘색을 낸다
+# (vendor_to_be_deleted/asap/command_renderer.py 의 _isochrone_color,
+# `if len(cutoffs) == 1: return "#0EA5E9"`).
+#
+# **저쪽 파일은 안 고친다.** 판정기가 보는 겹 목록은 도구에 보낸 요청이 아니라
+# **화면 조각(display artifact)의 cutoffs_minutes** 다 — 두 자리가 다르다.
+# 배선(execution/wiring.yaml 의 reach_cutoffs)은 도구에 보내는 쪽이고 [30]
+# 그대로 둔다. 그려지는 겹은 여전히 하나다.
+#
+# 이 목록을 화면 조각에만 얹으면 30분이 index 2 가 되어 팔레트의 마지막
+# #B91C1C 가 나온다. 셋인 것이 중요하지 값이 중요한 것이 아니다 — 판정기는
+# 목록에서 못 찾은 겹도 마지막 자리로 치므로(_isochrone_color 의 ValueError
+# 갈래) 배선이 30이 아닌 값으로 바뀌어도 진홍이 그대로 나온다.
+#
+# 이 목록을 비우면 예전대로 하늘색으로 돌아온다 — 되돌리는 자리가 여기다.
+PALETTE_CUTOFFS = [10, 20, 30]
+
 # 발화를 해석하는 단계의 이름.
 #
 # **이 자리는 노드가 아니다.** 온톨로지에 없고 recipe 를 고르는 우리 단계다.
@@ -252,6 +289,12 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         return
 
     plan = step_service.plan(recipe_id, argument)
+    # ★ 임시 · 보도자료용. 화면에 안 내보낼 노드를 여기서 한 번 걷는다.
+    # 뒤로는 이 목록만 보므로 부르는 것 · 답의 줄 · 생성과정의 단계 ·
+    # 지도 명령이 한 자리에서 함께 줄어든다 (위 HIDDEN_NODES).
+    plan["sampled_nodes"] = [
+        node_id for node_id in plan["sampled_nodes"] if node_id not in HIDDEN_NODES
+    ]
     named = {entry["node_id"]: entry["name"] for entry in graph.path_of(recipe_id)}
     _relabel(plan["steps"], plan["nodes"])
     plan["headline"] = (
@@ -308,7 +351,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
 
     yield _result(
         _answer(intent, executed, sampled),
-        _commands(executed) + plan["commands"] + _shadow_commands(sampled),
+        _repainted_commands(executed) + plan["commands"] + _shadow_commands(sampled),
     )
 
 
@@ -693,6 +736,45 @@ def _trace(executed: dict) -> list[dict]:
     """vendor 가 쌓은 단계 기록. 성공이든 실패든 같은 자리에 있음."""
     artifacts = executed.get("artifacts") or {}
     return artifacts.get("mcp_workflow_trace") or []
+
+
+def _repainted_commands(executed: dict) -> list[dict]:
+    """★ 임시 · 보도자료용. 30분 겹을 진홍으로 되돌린 지도 명령.
+
+    입력  vendor 가 돌려준 것
+    출력  _commands 와 같은 모양. 고칠 것이 없으면 _commands 그대로
+    규칙  화면 조각의 겹 목록이 하나일 때만 PALETTE_CUTOFFS 로 갈아 끼우고
+          저쪽 판정기를 **한 번 더 부른다**. 색을 여기서 적지 않고 팔레트가
+          고르게 두는 것이 요점임
+          갈아 끼운 것이 없으면 vendor 가 이미 만든 명령을 그대로 씀
+    제약  색을 코드에 적지 않는다.
+          #B91C1C 는 저쪽 팔레트의 마지막 칸이고 그 표는 저쪽 것이다.
+          여기에 색을 박으면 표가 바뀌어도 이 줄만 조용히 옛 색으로 남는다
+          그리는 겹을 안 늘린다.
+          갈아 끼우는 것은 색을 고르는 목록뿐이고 폴리곤은 그대로다.
+          화면 조각의 data 는 저쪽 inspector 가 새로 지은 dict 라 도구 응답과
+          따로 논다 — 여기를 고쳐도 trace 도 답 문구도 안 움직인다
+    ★ 이 함수는 PALETTE_CUTOFFS 와 함께 걷는다. 목록이 비면 부를 이유가 없다
+    """
+    if not PALETTE_CUTOFFS:
+        return _commands(executed)
+
+    artifacts = (executed.get("artifacts") or {}).get("display_artifacts") or []
+    repainted = False
+    for artifact in artifacts:
+        if artifact.get("kind") != "isochrone":
+            continue
+        data = artifact.get("data")
+        if not isinstance(data, dict):
+            continue
+        if len(data.get("cutoffs_minutes") or []) != 1:
+            continue
+        data["cutoffs_minutes"] = list(PALETTE_CUTOFFS)
+        repainted = True
+
+    if not repainted:
+        return _commands(executed)
+    return _commands({"commands": build_commands_from_artifacts(artifacts)})
 
 
 def _commands(executed: dict) -> list[dict]:
