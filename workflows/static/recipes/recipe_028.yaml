@@ -1,5 +1,0 @@
-steps:
-
-  - node: visible_extent
-
-  - node: search_assembly_districts

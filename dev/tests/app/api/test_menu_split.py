@@ -174,6 +174,12 @@ def test_all_five_screen_utterances_in_the_answer_key_match_a_screen_word():
     ★ **2026-09-03 「아흔셋째」에 다섯이 열여섯이 됐다. 숫자만 고쳤다.**
     새 정답표는 화면 recipe 열여섯을 다 덮는다 — 찍은 지점 일곱(30~36)과
     보이는 범위 아홉(37~45)이다. 경계는 위 시험과 같은 BASELINE_LAST 를 쓴다.
+    ★ **2026-09-04 「아흔넷째」에 열여섯이 열넷이 됐다. 숫자만 또 고쳤다.**
+    화면 recipe 열여덟 중 넷(023 · 025 · 028 · 030)을 recipe 째로 지웠다 —
+    지방선거 데이터 미적재 둘과 VWorld · hasPledges 둘이다. 남은 열넷을
+    정답표가 그대로 다 덮는다 — 찍은 지점 일곱(26~32)과 보이는 범위
+    일곱(33~39)이다. **덮는 비율은 안 떨어졌다. 덮을 것이 줄었다.**
+    보는 것은 이번에도 그대로다.
     ★ 이 시험이 이번에 실제로 무엇을 잡았는지 적어 둔다. 초안에 있던
     「화면에 보이는 …」·「화면에 걸친 …」·「지금 화면에 보이는 …」 세 말투가
     **한 낱말도 안 걸렸다.** SCREEN_WORDS 는 "지금 보이는" 과 "현재 화면" 을
@@ -184,7 +190,7 @@ def test_all_five_screen_utterances_in_the_answer_key_match_a_screen_word():
 
     화면_열여섯 = [u for n, u, _, _ in UTTERANCES if n > BASELINE_LAST]
 
-    assert len(화면_열여섯) == 16
+    assert len(화면_열여섯) == 14
     assert all(resolve_service._points_at_screen(u) for u in 화면_열여섯)
 
 

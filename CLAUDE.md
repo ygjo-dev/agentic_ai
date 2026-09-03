@@ -57,6 +57,67 @@ recipe 매칭 → 실행 → 검증.
 
 ---
 
+## 지금 없는 recipe — 비어 있는 번호 스물하나
+
+`workflows/static/recipes/` 는 **001~060 중 서른아홉 벌뿐이다.** 번호는 다시 안
+매긴다 — 밀리면 정답표 기대값과 시험이 함께 움직이고, 다른 가지에서 recipe 를
+다시 붙일 때 어긋난다.
+
+```
+비어 있는 번호  006 · 007 · 009 · 011 · 017 · 023 · 025 · 028 · 030 · 035 ·
+                037 · 039 · 041 · 043 · 044 · 047 · 048 · 050 · 051 · 053 · 057
+```
+
+### 2026-09-04 에 지운 열둘 — 태그 `before-recipe-cut`
+
+**필요 없어서가 아니다. 지금 되는 발화부터 확실히 세우려고 미룬 것이다.**
+자에 넣으면 영원히 못 맞히고, menu 에 남아 남의 답까지 뺏어서 지웠다.
+
+| 갈래 | 번호 | 까닭 | 되살릴 조건 |
+| --- | --- | --- | --- |
+| VWorld 경계 | 006 · 025 · 035 | 005 · 024 · 033(adminBoundary)과 갈리는 근거가 「VWorld 라는 출처를 대느냐」뿐인데 사용자는 출처를 모른다 | 부를 발화가 정해지면 |
+| 선거구 집계 | 009 · 028 | `searchAssemblyDistricts` 가 `searchAssemblyPledgeDistricts` 보다 더 가진 칸은 `hasPledges` 하나인데 배선이 `query` 만 보내 채울 자리가 없다. 지금 배선으로는 010 · 029 와 실질이 같다 | 배선이 `hasPledges` 를 보내게 되면 |
+| 좌표 뒤 선거구 집계 | 039 | `geo.geocode` 의 bbox 가 계산이 아니라 상수(0.01°×0.01° ≈ 1.1km)라 040 과 답이 같다. ★ 「답이 같다」는 실측이 아니라 주장이다 | bbox 가 넓어지거나 실측 근거가 생기면 |
+| 웹 | 007 · 051 | `web.search` 가 권한에 막혀 있다 (HTTP 500 · `MCP tool 'web-search/web.search' is not applied for this user.`). 051 은 배선도 없다 | `web.search` 권한이 열리면 |
+| 2026 지방선거 | 011 · 023 · 030 · 043 | 데이터 미적재. `dataset.available false` · `featureCount 0` 이라 부르면 반드시 0건이다 | 지방선거 데이터가 적재되면 |
+
+★ **004 는 지우려다 되살렸다.** 「열린 과제」에 그 까닭이 있다.
+
+### 그 전에 지운 것들
+
+| 번호 | 태그 | 까닭 |
+| --- | --- | --- |
+| 037 | `before-answer-table` | 003 과 도구가 같다. 003 은 이름으로, 037 은 bbox 로 부를 뿐이라 사용자에게 보이는 차이가 없다. **좌표가 들어오는 발화**를 다룰 때 다시 필요하다 |
+| 044 | `before-answer-table` | 043 과 결과가 겹친다. 공약 「요약」만 주는 길이라 지도에 한 줄만 띄우는 화면이 생기면 그때 갈라 쓴다 |
+| 047 | `before-recipe-and-rules` | 철도 구간 형상 뒤에 행정구역 조회. 이어도 딴 답이 나온다 — 경부선 bbox 는 서울~부산이라 그 안의 행정구역이 사실상 전국이다 |
+| 048 | `before-recipe-and-rules` | 위와 같다. VWorld 쪽 |
+| 050 | `before-recipe-and-rules` | 두 절이 같은 대상을 두 번 말한다. 002 · 003 을 넘는 뜻이 없다 |
+| 017 | `before-recipe-and-rules` | 사람이 공약 번호(1204)를 외워 부를 일이 없다 |
+| 053 | `before-recipe-and-rules` | 023 과 사용자에게 같다. 행정구역을 먼저 판별할 뿐이다 |
+| 057 | `before-recipe-and-rules` | 044 와 사용자에게 같다 |
+| 041 | `before-recipe-and-rules` | 검색 쪽이라 009 가 이미 그 일을 한다. 042(그 지점의 선거구 공약)를 남겼다 |
+
+근거 전문은 NOTES.md 「아흔넷째」(열둘) · 「아흔셋째」(037 · 044) ·
+「recipe 60 → 53」(일곱)에 있다.
+
+### 되살리는 법
+
+```
+git show before-recipe-cut:workflows/static/recipes/recipe_006.yaml
+```
+
+★ **파일 하나로 안 끝난다. 넷을 함께 되돌린다** — `workflows/static/recipes/` 와
+`workflows/static/_init/recipes/` 의 recipe 파일, 그리고 두 `menu.yaml` · 두
+`menu.md` 의 해당 줄이다. 번호는 비워 뒀으므로 그대로 돌아온다.
+
+★ **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
+menu 에는 실리는데 자에는 없는, 이번에 지운 바로 그 상태가 된다.
+정답표는 `dev/tools/check_resolve.py` 의 `UTTERANCES` 이고, 발화를 더하면 묶음
+경계(`BASELINE_LAST` · `EXTENSION_LAST`)와
+`dev/tests/app/api/test_menu_split.py` 의 화면 발화 수도 함께 센다.
+
+---
+
 ## 온톨로지 설계
 
 노드에는 `name` 과 `description` 만 있다. `kind` · `inputs` · `outputs` 같은

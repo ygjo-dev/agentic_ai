@@ -1,5 +1,0 @@
-steps:
-
-  - node: picked_point
-
-  - node: find_local_pledge_summary_by_point

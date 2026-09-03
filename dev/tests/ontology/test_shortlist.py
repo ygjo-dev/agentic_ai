@@ -123,11 +123,17 @@ def test_a_general_recipe_survives_only_when_nothing_matches_the_subject():
 
     번호를 2026-08-29 에 옮겼다 — 007~010 -> 008~011 · 006 -> 007. 같은
     사슬이고, 「시설물 표시」 노드가 붙어 004 이상이 하나씩 밀렸다.
+
+    2026-09-04 에 넷이 둘이 됐다. 번호가 밀린 것이 아니라 recipe 를 지웠다 —
+    009(searchAssemblyDistricts)와 011(지방선거 공약)이다. 함께 지운 006 ·
+    007 이 이 시험이 들던 범용 보기 둘이라 보기도 갈았다. 남은 범용
+    spoken_keyword recipe 는 005(행정구역 조회)와 014(문서 검색) 둘이고
+    둘 다 about 이 없어 같은 자리를 지킨다. 보는 것은 그대로다.
     """
-    # 선거에 걸린 recipe 가 있다. 범용(web_search · VWorld 경계)은 빠진다.
+    # 선거에 걸린 recipe 가 있다. 범용(행정구역 조회 · 문서 검색)은 빠진다.
     election = candidates("spoken_keyword", None, "group_election")
-    assert election == ["recipe_008", "recipe_009", "recipe_010", "recipe_011"]
-    assert "recipe_007" not in election, "웹 검색은 선거에 관한 것이 아니다"
+    assert election == ["recipe_008", "recipe_010"]
+    assert "recipe_005" not in election, "행정구역 조회는 선거에 관한 것이 아니다"
 
     # 좌표를 돌려받는 recipe 는 범용 하나뿐이다. 선거에 걸린 것이 하나도
     # 없으므로 그 범용이 남는다. 여기서 빼면 후보가 0개가 된다.

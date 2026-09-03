@@ -1,5 +1,0 @@
-steps:
-
-  - node: visible_extent
-
-  - node: get_vworld_boundaries
