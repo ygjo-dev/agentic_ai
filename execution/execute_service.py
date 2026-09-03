@@ -34,6 +34,7 @@ from execution import (
     radius_circle,
     reach_districts,
     shadow_districts,
+    solo_mode,
     step_service,
 )
 from ontology import graph, store
@@ -305,6 +306,18 @@ RADIUS_CIRCLE_SHOWN = True
 # 점선 원에 이름표를 붙이는가. **사람이 정할 자리다.**
 RADIUS_CIRCLE_LABEL_SHOWN = False
 
+# 독파모 단독 모드 — **★ 임시 · 보도자료용이다** (2026-09-03).
+#
+# 위 임시 자리들과 성격이 같아 여기 적어 두지만 **몸은 execution/solo_mode.py
+# 에 있다.** 저장해 둔 답 둘이 40줄이 넘어 이 파일에 두면 앞뒤가 안 읽힌다.
+#
+# 환경변수 `SOLO_MODE=1` 하나로 켜고 끈다. **기본은 꺼짐이고, 꺼져 있으면
+# 아래 chat() 의 세 줄이 `enabled()` 를 한 번 묻고 끝난다** — 지금 도는 것이
+# 글자 하나 안 바뀐다.
+#
+# 걷을 때 — `execution/solo_mode.py` 를 지우고, 위 import 한 낱말과 chat()
+# 맨 앞의 세 줄을 지운다. 그 셋이 전부다.
+
 
 async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
     """recipe 의 노드 순서대로 도구를 부름. 이벤트를 차례로 냄.
@@ -433,6 +446,13 @@ async def chat(
           2026-09-01 에 세션을 걷었다. 되묻기 뒤에 「1번」으로 고르던 한
           걸음이 그것을 쓰던 유일한 자리였다 — 되묻기 자체는 그대로 난다
     """
+    # ★ 임시 · 보도자료용. 독파모 단독 모드 (위 주석 · execution/solo_mode.py).
+    # **resolve 를 부르기 전이다** — 여기서 가로채야 「요청 이해」 단계 이벤트도
+    # 안 나가고 왼쪽 칸에 생성과정이 하나도 안 보인다.
+    if solo_mode.enabled():
+        yield _result(*solo_mode.reply(text))
+        return
+
     yield {
         "type": "step_start",
         "node": RESOLVE_STEP_NAME,
