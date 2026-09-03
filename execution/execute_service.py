@@ -26,12 +26,12 @@ step_service.plan 의 commands 가 그것이다. 저쪽 show-facility plugin 이
 일이 그것이고, 그쪽도 `## Run` 절이 없다.
 """
 
-import math
 from collections import Counter
 
 from execution import (
     district_overlap,
     district_population,
+    radius_circle,
     reach_districts,
     shadow_districts,
     step_service,
@@ -43,11 +43,11 @@ from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_
 from vendor_to_be_deleted.asap.workflow_answer import (
     AREA_REFERENCE_INTENT_KEY,
     AREA_REFERENCE_RADIUS_AREA,
+    AREA_REFERENCE_RADIUS_INSIDE,
     AREA_REFERENCE_RADIUS_KM,
     CUTOFFS_KEY,
     DEPARTURE_DATE_KEY,
     DEPARTURE_TIME_KEY,
-    EARTH_RADIUS_M,
     MODE_KEY,
     MODE_WORDS,
     SHADOW_KEY,
@@ -55,6 +55,7 @@ from vendor_to_be_deleted.asap.workflow_answer import (
     compose_workflow_answer,
     geometry_area,
     no_match_answer,
+    reach_features,
     step_failed,
 )
 
@@ -138,11 +139,16 @@ UNWIRED_MARK = " (아직 실행할 수 없음)"
 # ── ★ 임시 · 보도자료용 이름표 ──────────────────────────────────
 #
 # **이것은 임시다. 보도자료 이미지를 찍고 나면 걷는다.**
-# 걷는 자리가 이 파일 하나다 — 아래 표 다섯(DISPLAY_NAME · RESOLVE_STEP_NAME ·
-# REACH_HEADLINE · AREA_REFERENCE · RADIUS_KM)과 그것을 쓰는 함수 여섯(_relabel ·
-# _reach_headline · _area_reference · _add_radius · _radius_area_km2 ·
-# _shown_name)을 지우고, run 과 chat 에서 부르던 다섯 줄을 되돌리면 끝난다.
+# 걷는 자리가 이 파일 하나다 — 아래 표 셋(DISPLAY_NAME · RESOLVE_STEP_NAME ·
+# REACH_HEADLINE)과 그것을 쓰는 함수 넷(_relabel · _reach_headline ·
+# _add_radius · _shown_name)을 지우고, run 과 chat 에서 부르던 다섯 줄을
+# 되돌리면 끝난다.
 # (2026-09-01 「일흔여덟째」·「일흔아홉째」. NOTES.md 「열린 과제」 22번.)
+#
+# ★ **AREA_REFERENCE 표가 없어졌다** (2026-09-03 「아흔째」). 의왕역 하나에
+# 시군구 넓이를 매달던 표라 이 자리에 임시로 두었던 것이고, 견줌이 반경 원
+# 하나로 바뀌면서 표 자체가 필요 없어졌다. 반지름은 execution/radius_circle
+# 이 갖는다 — 음영 지역이 같은 원을 보므로 임시 자리에 둘 값이 아니다.
 #
 # **원천이 둘이 되는 것을 알고 한다.** 이름의 원천은 온톨로지의 노드 name 이고
 # step_service 가 그것을 step 에 실어 보낸다. 여기 표는 그 위에 덧씌운다.
@@ -221,78 +227,83 @@ REACH_HEADLINE = "{arg}에서 {mode}{josa} {minutes}분 안에 닿을 수 있는
 # 시·분만 두 자리로 채운다. 「8시 15분」보다 「08시 15분」이 시각으로 읽힌다.
 REACH_CONDITION = "({year}년 {month}월 {day}일 {hour:02d}시 {minute:02d}분 출발 기준)"
 
-# 면적을 견줄 넓이. **의왕역 전용이다.**
+# 면적을 견줄 넓이 — 출발지를 중심으로 한 반경 원.
 #
-# 29.96 km² 가 넓은지 좁은지를 사람이 스스로 답할 수 없어 아는 넓이 하나에
-# 댄다. **다른 장소에는 맞는 시군구 넓이가 없다.** 표에 없는 인자는 괄호가
-# 통째로 안 나온다 — 아무 넓이나 갖다 대면 조용히 틀린 수가 붙는다.
+# **★ 임시 · 보도자료용이다.** 29.96 km² 가 넓은지 좁은지를 사람이 스스로
+# 답할 수 없어 아는 넓이 하나에 댄다.
 #
-# 54.02 km² 는 의왕시청 일반현황의 값이다(2025-12-31 기준).
-# https://www.uiwang.go.kr — 시 소개 > 일반현황 > 면적.
+# ★ **의왕시 표를 걷었다** (2026-09-03 「아흔째」). 「의왕시 전체 면적
+# 54.02 km² 의 55%」를 적던 `AREA_REFERENCE` 한 표와 그것을 읽던
+# `_area_reference` 한 함수다. **의왕역 전용이라** 표에 없는 장소에는 괄호가
+# 통째로 안 나왔고, 아무 시군구 넓이나 갖다 대면 조용히 틀린 수가 붙었다.
+# 원은 아무 장소에나 선다.
 #
-# **넓이를 견준 것이지 도달 범위가 의왕시 안에 있다는 뜻이 아니다.**
-# 실제로는 군포 · 안양 · 수원까지 걸친다(실측, NOTES.md 「일흔아홉째」).
-# 문구를 「의왕시 전체 면적 …의 55%」로 적는 까닭이 그것이다.
-AREA_REFERENCE = {
-    "의왕역": {"name": "의왕시", "area_km2": 54.02},
-}
+# **반지름도 꼭짓점 수도 여기 없다.** execution/radius_circle 이 안다 —
+# 음영 지역이 그 원에서 도달 범위를 빼는 자리라 둘이 같은 원을 봐야 한다.
+#
+# **넓이를 코드에 안 적는다.** πr² 를 적으면 위도를 안 본 수가 되고, 무엇보다
+# 도달 면적을 잰 자(geometry_area)와 다른 자로 잰 수가 된다.
 
-# 면적을 견줄 둘째 것 — 출발지를 중심으로 한 원의 반지름(km).
-#
-# **사람이 정한 값이다.** 재서 나온 수가 아니다. 시군구 넓이는 장소마다 표가
-# 있어야 하는데 원은 아무 장소에나 서고, 「반경 5km 안에서 얼마나 갈 수 있나」
-# 가 도시계획에서 쓰는 말이라 골랐다 (2026-09-02).
-#
-# **넓이를 여기 안 적는다.** πr² 를 적으면 위도를 안 본 수가 되고, 무엇보다
-# 도달 면적을 잰 자(geometry_area)와 다른 자로 잰 수가 된다. 아래
-# _radius_area_km2 가 그 위도에서 원을 폴리곤으로 그려 같은 자로 잰다.
-RADIUS_KM = 5.0
 
-# 원을 폴리곤으로 그릴 때의 꼭짓점 수. 360이면 한 변이 1도다.
+# 반경 5km 원의 테두리. **점선 한 겹만 얹는다.**
 #
-# 안에 그린 다각형은 원보다 좁다. 360에서 πr² 에 0.005% 모자란다.
-RADIUS_SEGMENTS = 360
-
-# 도달권 계산이 출발지 좌표를 받는 칸. 원의 중심이 그 점이다.
-ORIGIN_LON_KEY = "origin_lon"
-ORIGIN_LAT_KEY = "origin_lat"
-
-# 음영 지역의 볼록 껍질 테두리. **점선 한 겹만 얹는다.**
-#
-# 음영 폴리곤을 통째로 칠하지 않은 까닭은 색이 넷이 되어 도달권 세 겹이
-# 흐려지기 때문이다. 테두리는 색을 안 늘리고 「어디를 놓고 잰 것인가」만 말한다.
+# 음영 폴리곤을 통째로 칠하지 않은 까닭은 색이 늘어 도달권 겹이 흐려지기
+# 때문이다. 테두리는 색을 안 늘리고 「어디를 놓고 잰 것인가」만 말한다.
 #
 # ★ **저쪽 화면에 line-dasharray 가 없다** (ASAP-web 의
 # packages/map/src/components/MapLibre2DMap.tsx, managed line 레이어를 읽기만
 # 했다. `dasharray` 검색 0건). 그래서 점선을 **조각으로 나눠** 보낸다 —
-# shadow_districts.dashes 가 그 일을 한다.
+# shadow_districts.dashes 가 그 일을 한다. 볼록 껍질 테두리를 끊으려고 쓴
+# 함수이고 하는 일이 같다 — 고리 하나를 받아 조각으로 낸다.
 #
-# **이름표는 선을 안 그리는 feature 하나가 따로 진다.** 같은 레이어의 label
-# 층은 `$type == LineString` 이고 `showLabel == 1` 인 것을 고르는데(위 파일
-# 1373~1380줄) 선을 그리는 층은 `outline != false` 를 함께 본다. 그래서 고리
-# 전체를 `outline: false` 로 한 벌 더 보내면 선은 안 그려지고 글자만 테두리를
-# 따라 붙는다. **`showLabel` 은 참이 아니라 1 이다** — 저쪽 필터가 수 1 과
-# 견준다.
+# **색은 파랑이다.** 도달권 겹의 진홍(#B91C1C)과 안 겹쳐야 한다 — 점선이
+# 도달권의 한 겹으로 읽히면 「닿는 곳」과 「재는 자」가 화면에서 섞인다.
 #
-# 이름을 붙이는 까닭은 껍질 안쪽 전체가 음영으로 읽히는 것을 막기 위해서다.
-# 실제 음영은 그 안에서 도달권 세 겹을 뺀 나머지다.
+# ★ **회색에서 파랑으로 사람이 바꿨다** (2026-09-03). 처음에 껍질 점선이
+# 쓰던 회색(#6B7280)을 그대로 뒀는데 지도에서 눈에 안 띄었다. 획도 굵기도
+# 함께 손봤다 — 회색 · 2px · 획 600m · 틈 400m 에서 #2563EB · 4px ·
+# 획 140m · 틈 50m 다.
 #
-# ★ **지금은 안 내보낸다** (2026-09-02 보도자료 검토. SHADOW_HULL_SHOWN).
-# 아래 문단은 되살릴 때 다시 필요한 실측이라 그대로 둔다.
-SHADOW_HULL_LAYER = "shadow-hull"
-SHADOW_HULL_LABEL = "음영 지역 판정 범위"
-SHADOW_HULL_COLOR = "#6B7280"
-SHADOW_HULL_WIDTH = 2
-# 획과 틈의 길이(m). 껍질 둘레가 28.6km 라 획 29개가 된다 (2026-09-01 실측).
-SHADOW_DASH_M = 600.0
-SHADOW_GAP_M = 400.0
+# ★ **눈에 안 띈 진짜 까닭은 색이 아니었다.** 원 지름이 10km 라 화면 밖으로
+# 나가 위아래 조각만 보인 것이다. 색과 획을 바꾼 뒤에도 그 자리는 그대로다 —
+# 원 전체를 보려면 저쪽 화면의 카메라가 더 물러서야 한다. 지금 flyTo 는
+# vendor 가 도달권에 맞춰 내는 것이라 우리 쪽에 손댈 자리가 없다.
+#
+# **이름표는 안 붙인다** (2026-09-03 「아흔째」). 붙일지는 사람이 정할 자리라
+# 끄개(RADIUS_CIRCLE_LABEL_SHOWN)로 두고 거짓에 놓았다. 앞서 「음영 지역
+# 판정 범위」 이름표를 걷은 자리이기도 하다 (2026-09-02 「여든다섯째」).
+#
+# 붙일 때를 위해 방법을 적어 둔다 — **이름표는 선을 안 그리는 feature 하나가
+# 따로 진다.** 같은 레이어의 label 층은 `$type == LineString` 이고
+# `showLabel == 1` 인 것을 고르는데(위 파일 1373~1380줄) 선을 그리는 층은
+# `outline != false` 를 함께 본다. 그래서 고리 전체를 `outline: false` 로 한 벌
+# 더 보내면 선은 안 그려지고 글자만 테두리를 따라 붙는다. **`showLabel` 은
+# 참이 아니라 1 이다** — 저쪽 필터가 수 1 과 견준다.
+RADIUS_CIRCLE_LAYER = "radius-circle"
+RADIUS_CIRCLE_LABEL = "반경 5km"
+RADIUS_CIRCLE_COLOR = "#2563EB"
+RADIUS_CIRCLE_WIDTH = 4
+# 획과 틈의 길이(m). 둘레가 31.4km 이고 이 값에서 **조각 165개**가 된다.
+#
+# 실측 (같은 원, `shadow_districts.dashes`).
+#
+#     획/틈        조각
+#     600 / 400      32   <- 처음 값
+#    1400 / 500      17
+#     140 /  50     165   <- 지금
+#  999999 / 500       1   획이 둘레보다 길면 고리 한 벌이 통째로 한 조각
+RADIUS_DASH_M = 140.0
+RADIUS_GAP_M = 50.0
 
-# 껍질 점선을 지도에 내보내는가. **끄개 하나다. 코드를 지우지 않았다.**
+# 점선 원을 지도에 내보내는가. **끄개 하나다.**
 #
-# 보도자료 그림에서 지도에 남길 것을 폴리곤 한 겹과 출발지 점으로 좁혔다
-# (2026-09-02). 점선은 「무엇을 놓고 쟀나」를 말하는 선이라 읽는 사람에게는
-# 겹이 하나 더 있는 것으로 보인다. 되살리려면 이 한 줄만 참으로 바꾼다.
-SHADOW_HULL_SHOWN = False
+# 보도자료 그림에서 지도에 남길 것을 도달권 폴리곤 한 겹과 출발지 점으로
+# 좁혔다가(2026-09-02 「여든다섯째」), 「반경 5km 를 눈으로 보여 달라」는
+# 말을 받아 이 한 줄을 참으로 되돌렸다 (2026-09-03 「아흔째」).
+RADIUS_CIRCLE_SHOWN = True
+
+# 점선 원에 이름표를 붙이는가. **사람이 정할 자리다.**
+RADIUS_CIRCLE_LABEL_SHOWN = False
 
 
 async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
@@ -365,9 +376,6 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         "steps": plan["steps"],
         "answer_instruction": plan["headline"],
     }
-    reference = _area_reference(argument)
-    if reference:
-        intent[AREA_REFERENCE_INTENT_KEY] = reference
     state = {
         "user_text": text,
         "context": context or {},
@@ -391,7 +399,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
 
     yield _result(
         _answer(intent, executed, sampled, stale),
-        _repainted_commands(executed) + plan["commands"] + _shadow_commands(sampled),
+        _repainted_commands(executed) + plan["commands"] + _radius_commands(sampled),
     )
 
 
@@ -516,6 +524,14 @@ def _input_of(node_id: str, steps: list[dict], nodes: list[str]):
     return None
 
 
+def _result_of(node_id: str, steps: list[dict], nodes: list[str]):
+    """그 노드가 받은 응답. 경로에 없거나 실패했으면 None."""
+    for other_id, step in zip(nodes, steps):
+        if other_id == node_id and isinstance(step.get("result"), dict):
+            return step["result"]
+    return None
+
+
 def _largest_cutoff(values):
     """제일 큰 자를 겹. 셀 것이 없으면 None.
 
@@ -565,83 +581,58 @@ def _with_josa(word: str) -> str:
     return "로" if final in (0, 8) else "으로"
 
 
-def _area_reference(argument: str):
-    """★ 임시 · 보도자료용. 면적을 견줄 넓이. 그 장소가 표에 없으면 None.
-
-    입력  발화에서 뽑은 인자
-    출력  workflow_answer 가 읽는 {name, area_km2}. 반경 권역은 실행이 끝난
-          뒤에 _add_radius 가 얹음
-    제약  표에 없는 장소에 아무 넓이나 대지 않는다.
-          조용히 틀린 수가 화면에 붙는다. 없으면 괄호가 통째로 안 나온다
-    ★ 이 함수는 AREA_REFERENCE 와 함께 걷는다
-    """
-    reference = AREA_REFERENCE.get((argument or "").strip())
-    return dict(reference) if reference else None
-
-
 def _add_radius(intent: dict, trace: list[dict], nodes: list[str]) -> bool:
-    """★ 임시 · 보도자료용. 견줌에 반경 권역을 얹음. 얹었으면 참.
+    """★ 임시 · 보도자료용. 면적의 견줌을 intent 에 얹음. 얹었으면 참.
 
     입력  vendor 에 넘겼던 intent · vendor 가 쌓은 trace · 같은 차례의 노드 id
     출력  참이면 vendor 가 이미 만든 answer_draft 가 낡음. 답을 다시 지어야 함
-    규칙  견줌이 이미 있을 때만 얹음. 시군구 넓이가 없으면 괄호가 통째로
-          안 나오므로 반경만 붙일 자리가 없음
-          원을 못 재면 아무것도 안 하고 거짓. 견줌은 시군구 하나로 나감
+    규칙  못 재면 아무것도 안 하고 거짓. 견줌 줄이 통째로 안 나옴
     제약  vendor 를 부르기 전에 부르지 않는다.
-          출발지 좌표는 배선이 앞 단계를 가리키는 참조라 실행 전에는 값이
-          아니다. vendor 가 참조를 푼 뒤의 trace 에만 실제 좌표가 있다
-    ★ 이 함수는 RADIUS_KM 과 함께 걷는다
+          견줄 것이 도달권 응답이라 실행 전에는 값이 없다. 앞서 시군구
+          넓이를 대던 때는 발화 인자만 보면 됐고 그래서 미리 얹었다
+    ★ 이 함수는 위 「면적을 견줄 넓이」 문단과 함께 걷는다
     """
-    reference = intent.get(AREA_REFERENCE_INTENT_KEY)
-    if not isinstance(reference, dict):
+    reference = _radius_reference(trace, nodes)
+    if reference is None:
         return False
 
-    circle = _radius_area_km2(trace, nodes)
-    if circle is None:
-        return False
-
-    reference[AREA_REFERENCE_RADIUS_KM] = RADIUS_KM
-    reference[AREA_REFERENCE_RADIUS_AREA] = circle
+    intent[AREA_REFERENCE_INTENT_KEY] = reference
     return True
 
 
-def _radius_area_km2(steps: list[dict], nodes: list[str]):
-    """★ 임시 · 보도자료용. 출발지 둘레 반경 RADIUS_KM 원의 넓이(km²). 못 재면 None.
+def _radius_reference(steps: list[dict], nodes: list[str]):
+    """★ 임시 · 보도자료용. 반경 원과 견준 값 한 벌. 못 재면 None.
 
-    입력  실제 호출 인자가 든 단계들 · 같은 차례의 노드 id 목록
-    출력  도달 면적을 잰 것과 **같은 자**로 잰 넓이
-    규칙  출발지 좌표를 도달권 계산 단계의 실제 호출 인자에서 읽음
-          경도 한 도의 길이를 그 위도에서 줄임. 위도 보정이 그것임
-          원을 RADIUS_SEGMENTS 각 폴리곤으로 그려 geometry_area 로 잼
-          도 환산에 도달 면적을 재는 자와 **같은 지구 반지름**을 씀. 다른
-          상수를 쓰면 원만 0.4% 어긋나 두 넓이의 비가 자를 두 개 섞은 값이 됨
-    제약  넓이를 코드에 적지 않는다.
-          πr² 를 적으면 위도를 안 본 수가 되고, 도달 면적을 잰 자와 다른
-          자로 잰 수가 되어 두 값을 견줄 수 없다
-    ★ 이 함수는 RADIUS_KM 과 함께 걷는다
+    입력  실제 호출 인자와 응답이 든 단계들 · 같은 차례의 노드 id 목록
+    출력  workflow_answer 가 읽는 {radius_km, radius_area_km2, radius_inside_km2}
+    규칙  원의 중심을 도달권 응답의 origin 에서 읽음. 음영 지역을 재는
+          자리와 같은 한 자리임 (execution/radius_circle.origin_of)
+          **분자가 (원 ∩ 도달) 이다.** 도달 면적 전체가 아님 — 도달 범위가
+          원 밖으로 나가는 자리가 있어 그것까지 세면 몫이 부풀어 오름
+          도달 면적을 잰 것과 **같은 자**(geometry_area)로 셋을 다 잼
+          하나라도 못 재면 None. 반쪽 견줌을 안 냄
+    제약  원을 여기서 그리지 않는다.
+          반지름도 꼭짓점 수도 execution/radius_circle 이 안다. 음영 지역과
+          원이 갈리면 (원 ∩ 도달) + 음영 = 원 검산이 안 선다
+    ★ 이 함수는 위 「면적을 견줄 넓이」 문단과 함께 걷는다
     """
-    tool_input = _input_of(REACH_HEADLINE_NODE, steps, nodes)
-    if tool_input is None:
+    result = _result_of(REACH_HEADLINE_NODE, steps, nodes)
+    origin = radius_circle.origin_of(result)
+    features = reach_features(result)
+    if origin is None or not features:
         return None
 
-    lon = _number(tool_input.get(ORIGIN_LON_KEY))
-    lat = _number(tool_input.get(ORIGIN_LAT_KEY))
-    if lon is None or lat is None:
+    circle = radius_circle.circle(*origin)
+    whole = geometry_area(circle)
+    inside = radius_circle.intersection(max(features, key=lambda pair: pair[0])[1], circle)
+    if whole <= 0 or inside is None:
         return None
 
-    # 중심에서 잰 각거리(도). 경도 쪽은 그 위도의 위선이 짧아진 만큼 벌린다.
-    span = math.degrees(RADIUS_KM * 1000 / EARTH_RADIUS_M)
-    delta_lon = span / max(math.cos(math.radians(lat)), 0.01)
-
-    ring = [
-        [
-            lon + delta_lon * math.sin(2 * math.pi * index / RADIUS_SEGMENTS),
-            lat + span * math.cos(2 * math.pi * index / RADIUS_SEGMENTS),
-        ]
-        for index in range(RADIUS_SEGMENTS)
-    ]
-    ring.append(list(ring[0]))
-    return geometry_area({"type": "Polygon", "coordinates": [ring]}) / 1_000_000
+    return {
+        AREA_REFERENCE_RADIUS_KM: radius_circle.RADIUS_KM,
+        AREA_REFERENCE_RADIUS_AREA: whole / 1_000_000,
+        AREA_REFERENCE_RADIUS_INSIDE: geometry_area(inside) / 1_000_000,
+    }
 
 
 def _number(value):
@@ -804,32 +795,37 @@ async def _sampled(nodes: list[str], trace: list[dict]) -> list[dict]:
     return done
 
 
-def _shadow_commands(sampled: list[dict]) -> list[dict]:
-    """★ 임시 · 보도자료용. 음영 지역의 볼록 껍질 테두리를 그리는 명령. 없으면 빈 목록.
+def _radius_commands(sampled: list[dict]) -> list[dict]:
+    """★ 임시 · 보도자료용. 반경 5km 원을 점선으로 그리는 명령. 없으면 빈 목록.
 
     입력  _sampled 가 낸 항목들
     출력  map.clear 하나와 map.draw 하나. 그리기 전에 지움
-    규칙  SHADOW_HULL_SHOWN 이 거짓이면 아무것도 안 냄. 지금이 그것임
-          껍질을 실어 온 항목이 있을 때만 냄. 실패한 항목에는 없음
+    규칙  RADIUS_CIRCLE_SHOWN 이 거짓이면 아무것도 안 냄
+          원을 실어 온 항목이 있을 때만 냄. 실패한 항목에는 없음
           획을 조각으로 나눠 보냄. 저쪽에 점선 속성이 없음
-          이름표는 선을 안 그리는 feature 한 벌이 따로 짐
+          이름표는 RADIUS_CIRCLE_LABEL_SHOWN 일 때만. 선을 안 그리는 feature
+          한 벌이 따로 짐
           지도 명령 뒤에 붙임. 나중에 그린 것이 위에 올라감
-    제약  음영 폴리곤을 칠하지 않는다.
-          색이 넷이 되어 도달권 세 겹이 흐려진다. 그것은 사람이 정한 값이다
-    ★ 이 함수는 SHADOW_HULL_LAYER 무리와 함께 걷는다
+    제약  원을 여기서 그리지 않는다.
+          반지름도 꼭짓점 수도 execution/radius_circle 이 알고, 음영 지역을
+          재면서 이미 그린 것을 응답에 실어 온다. 여기서 다시 그리면 화면의
+          원과 답의 백분율이 서로 다른 원을 말할 수 있다
+          음영 폴리곤을 칠하지 않는다.
+          색이 늘어 도달권 겹이 흐려진다. 그것은 사람이 정한 값이다
+    ★ 이 함수는 RADIUS_CIRCLE_LAYER 무리와 함께 걷는다
     """
-    if not SHADOW_HULL_SHOWN:
+    if not RADIUS_CIRCLE_SHOWN:
         return []
 
-    hull = None
+    circle = None
     for item in sampled:
         shadow = (item.get("result") or {}).get(SHADOW_KEY)
         if isinstance(shadow, dict):
-            hull = shadow.get(shadow_districts.HULL_KEY)
-    if not isinstance(hull, dict):
+            circle = shadow.get(shadow_districts.CIRCLE_KEY)
+    if not isinstance(circle, dict):
         return []
 
-    segments = shadow_districts.dashes(hull, SHADOW_DASH_M, SHADOW_GAP_M)
+    segments = shadow_districts.dashes(circle, RADIUS_DASH_M, RADIUS_GAP_M)
     if not segments:
         return []
 
@@ -841,34 +837,35 @@ def _shadow_commands(sampled: list[dict]) -> list[dict]:
                 "coordinates": [list(point) for point in segment],
             },
             "properties": {
-                "id": f"{SHADOW_HULL_LAYER}-{index}",
-                "name": SHADOW_HULL_LABEL,
-                "color": SHADOW_HULL_COLOR,
-                "outlineColor": SHADOW_HULL_COLOR,
-                "width": SHADOW_HULL_WIDTH,
+                "id": f"{RADIUS_CIRCLE_LAYER}-{index}",
+                "name": RADIUS_CIRCLE_LABEL,
+                "color": RADIUS_CIRCLE_COLOR,
+                "outlineColor": RADIUS_CIRCLE_COLOR,
+                "width": RADIUS_CIRCLE_WIDTH,
             },
         }
         for index, segment in enumerate(segments)
     ]
-    features.append(
-        {
-            "type": "Feature",
-            "geometry": {
-                "type": "LineString",
-                "coordinates": [list(point) for point in hull["coordinates"][0]],
-            },
-            "properties": {
-                "id": f"{SHADOW_HULL_LAYER}-label",
-                "name": SHADOW_HULL_LABEL,
-                "label": SHADOW_HULL_LABEL,
-                "showLabel": 1,
-                "outline": False,
-            },
-        }
-    )
+    if RADIUS_CIRCLE_LABEL_SHOWN:
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {
+                    "type": "LineString",
+                    "coordinates": [list(point) for point in circle["coordinates"][0]],
+                },
+                "properties": {
+                    "id": f"{RADIUS_CIRCLE_LAYER}-label",
+                    "name": RADIUS_CIRCLE_LABEL,
+                    "label": RADIUS_CIRCLE_LABEL,
+                    "showLabel": 1,
+                    "outline": False,
+                },
+            }
+        )
     return [
-        {"op": "map.clear", "args": {"layerId": SHADOW_HULL_LAYER}},
-        {"op": "map.draw", "args": {"layerId": SHADOW_HULL_LAYER, "features": features}},
+        {"op": "map.clear", "args": {"layerId": RADIUS_CIRCLE_LAYER}},
+        {"op": "map.draw", "args": {"layerId": RADIUS_CIRCLE_LAYER, "features": features}},
     ]
 
 

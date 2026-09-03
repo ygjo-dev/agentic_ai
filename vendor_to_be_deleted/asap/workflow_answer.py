@@ -1093,32 +1093,25 @@ REACH_LINE = "{area:.2f} km²"
 # 면적 옆에 붙는 견줌. **값은 부르는 쪽이 준다.**
 #
 # 「29.96 km² 가 넓은가 좁은가」를 사람이 스스로 답할 수 없다. 아는 넓이 하나에
-# 대면 읽힌다. 그 넓이는 장소마다 다르고 이 파일은 어느 장소인지 모르므로,
-# 값이 있을 때만 괄호가 붙는다 — 없으면 괄호가 통째로 안 나온다. 아무 시군구
-# 면적이나 갖다 대면 조용히 틀린 수가 붙는다.
+# 대면 읽힌다. 그 넓이가 **출발지를 중심으로 한 반경 5km 원**이다.
 #
-# **넓이를 견준 것이지 그 안에 든다는 뜻이 아니다.** 의왕역 30분 겹은
-# 군포·안양·수원까지 걸친다(실측). 그래서 「의왕시의 55%」가 아니라
-# 「의왕시 전체 면적 …의 55%」로 적는다.
-# 부르는 쪽이 견줌을 실어 보내는 칸. intent 에 얹힌다.
+# ★ **시군구 넓이를 걷었다** (2026-09-03 「아흔째」). 「의왕시 전체 면적의
+# 55%」를 적던 자리다. 그 값은 부르는 쪽 표에 의왕역 한 줄로 박혀 있어 다른
+# 장소에는 아예 안 붙었고, 무엇보다 **넓이를 견준 것이지 도달 범위가 의왕시
+# 안에 있다는 뜻이 아니라서** 문장이 길어야 했다. 원은 아무 장소에나 서고
+# 「반경 5km 안에서 얼마나 갈 수 있나」 한 마디로 읽힌다.
 #
-# **면적 아랫줄로 내렸다** (2026-09-02). 괄호로 면적 옆에 붙이면 줄이 여든
-# 칸을 넘어 사진에서 접힌다. 견줄 넓이(54.02 km²)도 함께 걷었다 — 백분율이
-# 뜻이고, 분모를 함께 적으면 읽는 사람이 나눗셈을 하게 된다. 그 값은 여전히
-# 부르는 쪽이 실어 보내고 백분율을 그것으로 낸다.
+# **분자가 도달 면적이 아니라 (원 ∩ 도달) 이다.** 도달 범위가 원 밖으로
+# 나가는 몫이 있어(의왕역 30분 겹에서 2.31 km²) 도달 전체를 원 안이라 치면
+# 몫이 부풀어 오른다 — 그렇게 재던 값이 38% 였고 잘라 재니 35% 다.
+#
+# **셋 다 부르는 쪽이 잰다.** 이 파일은 어느 점을 중심으로 잰 것인지 모르고,
+# 위도에 따라 경도 1도의 길이가 달라 원의 넓이가 자리마다 다르다.
 AREA_REFERENCE_INTENT_KEY = "area_reference"
-AREA_REFERENCE_NAME = "name"
-AREA_REFERENCE_AREA = "area_km2"
-AREA_REFERENCE_LINE = "{name} 전체 면적의 {percent}%{radius}"
-
-# 견줌 둘째 자리. 반경 몇 km 짜리 원과 대는가.
-#
-# 시군구 넓이는 장소마다 표를 갖고 있어야 하지만 원은 아무 장소에나 선다.
-# **원의 넓이도 부르는 쪽이 잰다** — 이 파일은 어느 점을 중심으로 잰 것인지
-# 모르고, 위도에 따라 경도 1도의 길이가 달라 값이 조금씩 다르다.
 AREA_REFERENCE_RADIUS_KM = "radius_km"
 AREA_REFERENCE_RADIUS_AREA = "radius_area_km2"
-AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
+AREA_REFERENCE_RADIUS_INSIDE = "radius_inside_km2"
+AREA_REFERENCE_LINE = "반경 {radius:g}km 권역의 {percent}%"
 
 # ── 도달 지역 ─────────────────────────────────────────────────
 #
@@ -1148,10 +1141,14 @@ AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
 # 취약 구역」을 넓이 앞에 적던 자리다. 한 줄이 여든 칸을 넘어 사진에서 접혔고,
 # 단계 이름이 이미 「음영 지역」이라 같은 자리에서 두 번 말했다.
 #
-# 대신 **넓이 옆에 몫을 적는다.** 「18.42 km²」만으로는 넓은지 좁은지 읽히지
-# 않고, 그 몫이 뜻을 대신 말한다 — 30분 권역(볼록 껍질)의 38%가 둘러싸이고도
-# 안 닿는 자리라는 것이다. 무엇이 분모인지는 재는 쪽이 안다
-# (execution/shadow_districts.SHADOW_HULL_AREA_KEY).
+# 대신 **넓이 옆에 몫을 적는다.** 「50.89 km²」만으로는 넓은지 좁은지 읽히지
+# 않고, 그 몫이 뜻을 대신 말한다 — 반경 5km 권역의 65%가 걸어서도 갈 만한
+# 거리인데 30분에 안 닿는 자리라는 것이다.
+#
+# ★ **분모가 볼록 껍질에서 반경 5km 원으로 바뀌었다** (2026-09-03 「아흔째」).
+# 음영 지역의 뜻 자체가 「껍질 − 도달」에서 「원 − 도달」이 됐고, 그래서
+# 「30분 권역의 38%」가 「반경 5km 권역의 65%」가 됐다. 반지름도 원 넓이도
+# 재는 쪽이 실어 보낸다 (execution/shadow_districts).
 #
 # **동 이름은 아랫줄로 내린다.** 넓이와 한 줄에 두면 줄이 길어 접힌다.
 # 도달 지역 줄과 같은 들여쓰기를 쓴다.
@@ -1160,17 +1157,16 @@ AREA_RADIUS_PART = " · 반경 {radius:g}km 권역의 {percent}%"
 # 격자가 정하는 값이라 참이 아니다 (NOTES.md 「여든째」).
 SHADOW_KEY = "shadow"
 SHADOW_AREA_KEY = "area_km2"
-SHADOW_HULL_AREA_KEY = "hull_area_km2"
+SHADOW_CIRCLE_AREA_KEY = "circle_area_km2"
+SHADOW_RADIUS_KM_KEY = "radius_km"
 SHADOW_DISTRICTS_KEY = "districts"
-SHADOW_CUTOFF_KEY = "cutoff_min"
 
 # 음영 지역의 넓이 줄. 도달 범위의 면적 줄과 같은 틀이다.
 #
-# 몫은 잰 것이 다 있을 때만 뒤에 붙는다. 몇 분짜리 범위인지도 무엇으로 나눌
-# 것인지도 응답이 들고 온다 — 30 도 껍질 넓이도 여기 적지 않는다. 못 읽으면
-# 넓이만 남는다.
+# 몫은 잰 것이 다 있을 때만 뒤에 붙는다. 반지름도 무엇으로 나눌 것인지도
+# 응답이 들고 온다 — 5 도 원 넓이도 여기 적지 않는다. 못 읽으면 넓이만 남는다.
 SHADOW_AREA_LINE = "{area:.2f} km²"
-SHADOW_SHARE_PART = " ({minutes}분 권역의 {percent}%)"
+SHADOW_SHARE_PART = " (반경 {radius:g}km 권역의 {percent}%)"
 
 DISTRICTS_KEY = "districts"
 DISTRICTS_SIGUNGU = "sigungu"
@@ -1256,54 +1252,34 @@ def _reach_line(result: Dict[str, Any], reference: Any = None) -> str:
         return ""
 
     line = _item(LABEL_AREA, _figure(REACH_LINE.format(area=area)))
-    reference_text = _area_reference_text(area, reference)
+    reference_text = _area_reference_text(reference)
     if not reference_text:
         return line
     return line + BELOW + _item(LABEL_AREA_REFERENCE, reference_text)
 
 
-def _area_reference_text(area: float, reference: Any) -> str:
-    """면적 옆의 견줌 한 마디. 견줄 것이 없으면 "".
+def _area_reference_text(reference: Any) -> str:
+    """면적 아랫줄의 견줌 한 마디. 견줄 것이 없으면 "".
 
-    입력  잰 넓이(km²) · 부르는 쪽이 준
-          {name, area_km2, radius_km, radius_area_km2}
-    출력  "의왕시 전체 면적의 55% · 반경 5km 권역의 38%" 꼴
-    규칙  이름과 넓이가 다 있고 넓이가 0보다 클 때만 적음
-          견줄 넓이를 화면에 안 적음. 백분율을 내는 데에만 씀
-          반경 권역은 반지름과 그 넓이가 다 있을 때만 뒤에 붙음. 없으면 그
-          자리가 통째로 빠짐
+    입력  부르는 쪽이 준 {radius_km, radius_area_km2, radius_inside_km2}
+    출력  "반경 5km 권역의 35%" 꼴
+    규칙  셋이 다 있고 다 0보다 클 때만 적음. 하나라도 없으면 줄이 통째로
+          안 나옴 — 반쪽 문장을 안 냄
+          **분자가 원 안에 든 몫이다.** 잰 도달 면적이 아니다. 도달 범위가
+          원 밖으로 나가는 자리가 있어 그것까지 세면 몫이 부풀어 오름
           백분율은 반올림해 정수로. 소수를 적으면 잰 값처럼 보임
-    제약  견줄 넓이를 여기서 고르지 않는다.
-          이 파일은 어느 장소인지 모른다. 아무 시군구 넓이나 갖다 대면
-          조용히 틀린 수가 화면에 붙는다
-          원의 넓이를 여기서 재지 않는다.
-          중심이 어디인지 모르고, 위도에 따라 값이 달라진다
+    제약  원을 여기서 재지 않는다.
+          중심이 어디인지 모르고, 위도에 따라 값이 달라진다. 자르는 일도
+          마찬가지다 — execution/radius_circle 이 그 둘을 한다
     """
     if not isinstance(reference, dict):
         return ""
-    name = reference.get(AREA_REFERENCE_NAME)
-    whole = _positive(reference.get(AREA_REFERENCE_AREA))
-    if not isinstance(name, str) or not name.strip() or whole is None:
-        return ""
-    return AREA_REFERENCE_LINE.format(
-        name=name.strip(),
-        percent=round(area / whole * 100),
-        radius=_area_radius_text(area, reference),
-    )
-
-
-def _area_radius_text(area: float, reference: dict) -> str:
-    """견줌 뒤에 붙는 반경 권역 한 마디. 잰 원이 없으면 "".
-
-    입력  잰 넓이(km²) · 부르는 쪽이 준 견줌
-    출력  " · 반경 5km 권역의 38%" 꼴
-    규칙  반지름과 그 넓이가 둘 다 0보다 큰 수일 때만 적음
-    """
     radius = _positive(reference.get(AREA_REFERENCE_RADIUS_KM))
     whole = _positive(reference.get(AREA_REFERENCE_RADIUS_AREA))
-    if radius is None or whole is None:
+    inside = _positive(reference.get(AREA_REFERENCE_RADIUS_INSIDE))
+    if radius is None or whole is None or inside is None:
         return ""
-    return AREA_RADIUS_PART.format(radius=radius, percent=round(area / whole * 100))
+    return AREA_REFERENCE_LINE.format(radius=radius, percent=round(inside / whole * 100))
 
 
 def _positive(value: Any):
@@ -1434,22 +1410,22 @@ def _shadow_area_line(shadow: Dict[str, Any], area: float) -> str:
     """음영 지역의 넓이 줄. 몫은 잰 것이 다 있을 때만 뒤에 붙음.
 
     입력  음영 지역 dict · 그 넓이(km²)
-    출력  "**면적** : **18.42 km²** (30분 권역의 38%)" 꼴
-    규칙  겹을 못 읽거나 껍질 넓이가 없으면 넓이만. 반쪽 문장을 안 냄
+    출력  "**면적** : **50.89 km²** (반경 5km 권역의 65%)" 꼴
+    규칙  반지름이나 원 넓이가 없으면 넓이만. 반쪽 문장을 안 냄
           백분율은 반올림해 정수로. 소수를 적으면 잰 값처럼 보임
-    제약  분도 껍질 넓이도 코드에 적지 않는다.
-          몇 분으로 자를지는 배선이 정하고 껍질을 재는 것은
-          execution/shadow_districts 다. 둘 다 응답이 들고 온다
+    제약  반지름도 원 넓이도 코드에 적지 않는다.
+          원을 그리고 재는 것은 execution/radius_circle 이고
+          execution/shadow_districts 가 그 둘을 응답에 실어 보낸다
     """
     line = _figure(SHADOW_AREA_LINE.format(area=area))
 
-    minutes = shadow.get(SHADOW_CUTOFF_KEY)
-    whole = _positive(shadow.get(SHADOW_HULL_AREA_KEY))
-    if isinstance(minutes, bool) or not isinstance(minutes, (int, float)) or whole is None:
+    radius = _positive(shadow.get(SHADOW_RADIUS_KM_KEY))
+    whole = _positive(shadow.get(SHADOW_CIRCLE_AREA_KEY))
+    if radius is None or whole is None:
         return _item(LABEL_AREA, line)
     return _item(
         LABEL_AREA,
-        line + SHADOW_SHARE_PART.format(minutes=int(minutes), percent=round(area / whole * 100)),
+        line + SHADOW_SHARE_PART.format(radius=radius, percent=round(area / whole * 100)),
     )
 
 

@@ -10,8 +10,9 @@
     걸침 비율 = (동 경계 ∩ 구역) 의 넓이 / 동 경계의 넓이
 
 구역은 줄마다 다르다. 도달 지역 줄은 **도달권 폴리곤**이고, 음영 지역 줄은
-**볼록 껍질 − 도달권**이다. 넓이 29.96 · 18.42 를 낸 것과 같은 도형을 봐야
-같은 줄의 이름과 수가 같은 것을 말한다.
+**반경 5km 원 − 도달권**이다. 넓이 29.96 · 50.89 를 낸 것과 같은 도형을 봐야
+같은 줄의 이름과 수가 같은 것을 말한다 — 그래서 음영 도형은 여기서 만들지
+않고 재는 쪽(execution/shadow_districts)이 낸 것을 그대로 받는다.
 
 **shapely 로 잰다** (2026-09-02 에 `.venv` 에 넣었다. shapely 2.1.2).
 교집합 넓이를 바로 재므로 격자로 어림하지 않는다 — 어림하면 문턱 언저리의
@@ -53,7 +54,12 @@
 
 import asyncio
 
-from execution import district_population, reach_districts, step_service
+from execution import (
+    district_population,
+    reach_districts,
+    shadow_districts,
+    step_service,
+)
 from vendor_to_be_deleted.asap.workflow_answer import reach_features
 
 # ★ 「일부」를 붙이는 문턱. **사람이 정한 값이다. 재서 나온 수가 아니다.**
@@ -100,8 +106,13 @@ FEATURE_CODE_KEY = "code"
 SHARE_KEY = "share"
 PARTIAL_KEY = "partial"
 
-# 껍질을 담아 둔 칸. shadow_districts 가 넣은 것을 그대로 읽는다.
-HULL_KEY = "hull"
+# 음영 도형을 담아 둔 칸. **shadow_districts 가 넣은 것을 그대로 읽는다.**
+#
+# ★ **껍질을 받아 여기서 빼던 자리다** (2026-09-03 「아흔째」). 그때는
+# `hull` 한 칸만 받아 `껍질 − 도달권` 을 이 파일이 다시 냈다. 음영 지역이
+# 「반경 5km 원 − 도달 범위」가 되면서 재는 쪽이 도형까지 내놓는다 — 다시
+# 빼면 **넓이를 낸 도형과 다른 도형으로 이름을 고를** 자리가 생긴다.
+SHADOW_GEOMETRY_KEY = shadow_districts.SHADOW_GEOMETRY_KEY
 
 
 async def attach(
@@ -140,22 +151,20 @@ async def attach(
 def _region(holder: dict, previous: dict):
     """그 줄이 말하는 구역의 shapely 도형. 못 만들면 None.
 
-    규칙  껍질이 실려 있으면 음영 지역 줄임. 껍질에서 도달권을 뺌
-          없으면 도달 지역 줄임. 도달권 그대로임
+    규칙  음영 도형이 실려 있으면 음영 지역 줄임. 그것을 그대로 씀
+          없으면 도달 지역 줄임. 도달권 폴리곤임
           제일 큰 겹 하나를 봄. 넓이를 낸 자리와 같은 겹이어야 함
+    제약  음영 도형을 여기서 다시 만들지 않는다.
+          넓이 50.89 km² 를 낸 도형과 이름을 고르는 도형이 같아야 한다
     """
+    shadow = _shape(holder.get(SHADOW_GEOMETRY_KEY))
+    if shadow is not None:
+        return shadow
+
     features = reach_features(previous)
     if not features:
         return None
-    reach = _shape(max(features, key=lambda pair: pair[0])[1])
-    if reach is None:
-        return None
-
-    hull = _shape(holder.get(HULL_KEY))
-    if hull is None:
-        return reach
-    shadow = hull.difference(reach)
-    return shadow if not shadow.is_empty else None
+    return _shape(max(features, key=lambda pair: pair[0])[1])
 
 
 async def measure(
