@@ -143,13 +143,21 @@ def test_not_one_screen_word_matches_the_thirty_one_spoken_utterances():
     2026-08-30 에 정답표가 서른여섯이 되면서 이름을 고쳤다. 32~36 번은 화면
     낱말이 걸리라고 넣은 발화라 이 시험이 볼 것이 아니다 — 그 다섯은 아래
     시험이 본다. 보는 것은 그대로다.
+
+    ★ **2026-09-03 「아흔셋째」에 경계를 EXTENSION_LAST 에서 BASELINE_LAST 로
+    옮겼다. 보는 것은 이번에도 그대로다.** 정답표가 마흔다섯이 되면서 묶음의
+    뜻이 갈렸다 — 옛 경계 EXTENSION_LAST(그때 31)는 「화면 발화가 시작되는
+    자리」였는데, 새 표에서 그 자리는 BASELINE_LAST(29)다. 30~36 번은 찍은
+    지점, 37~45 번은 보이는 범위라 **둘 다 화면 낱말이 걸려야 하는 줄**이고
+    아래 시험이 본다. 이 시험이 볼 것은 말로 시작하는 1~29 번뿐이다.
+    ★ 이름이 바뀐 것이 아니라 **경계가 옮겨진 것이다.** 시험은 안 지웠다.
     """
-    from dev.tools.check_resolve import EXTENSION_LAST, UTTERANCES
+    from dev.tools.check_resolve import BASELINE_LAST, UTTERANCES
 
     걸린_것 = [
         u
         for n, u, _, _ in UTTERANCES
-        if n <= EXTENSION_LAST and resolve_service._points_at_screen(u)
+        if n <= BASELINE_LAST and resolve_service._points_at_screen(u)
     ]
 
     assert 걸린_것 == []
@@ -162,13 +170,22 @@ def test_all_five_screen_utterances_in_the_answer_key_match_a_screen_word():
     보게 되어
     기대값에 닿을 길이 없는데, 표에는 그냥 빗나감으로 찍혀 발화가 나쁜 것인지
     낱말이 안 걸린 것인지가 안 갈린다.
+
+    ★ **2026-09-03 「아흔셋째」에 다섯이 열여섯이 됐다. 숫자만 고쳤다.**
+    새 정답표는 화면 recipe 열여섯을 다 덮는다 — 찍은 지점 일곱(30~36)과
+    보이는 범위 아홉(37~45)이다. 경계는 위 시험과 같은 BASELINE_LAST 를 쓴다.
+    ★ 이 시험이 이번에 실제로 무엇을 잡았는지 적어 둔다. 초안에 있던
+    「화면에 보이는 …」·「화면에 걸친 …」·「지금 화면에 보이는 …」 세 말투가
+    **한 낱말도 안 걸렸다.** SCREEN_WORDS 는 "지금 보이는" 과 "현재 화면" 을
+    통째로 찾는데 그 셋은 사이에 다른 글자가 끼어 부분 문자열이 안 된다.
+    그대로 뒀으면 세 줄이 영영 빗나감으로 찍혔을 것이다. **시험이 먼저 잡았다.**
     """
-    from dev.tools.check_resolve import EXTENSION_LAST, UTTERANCES
+    from dev.tools.check_resolve import BASELINE_LAST, UTTERANCES
 
-    화면_다섯 = [u for n, u, _, _ in UTTERANCES if n > EXTENSION_LAST]
+    화면_열여섯 = [u for n, u, _, _ in UTTERANCES if n > BASELINE_LAST]
 
-    assert len(화면_다섯) == 5
-    assert all(resolve_service._points_at_screen(u) for u in 화면_다섯)
+    assert len(화면_열여섯) == 16
+    assert all(resolve_service._points_at_screen(u) for u in 화면_열여섯)
 
 
 def test_all_four_utterances_pointing_at_the_screen_match():
