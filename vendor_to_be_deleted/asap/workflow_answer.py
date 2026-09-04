@@ -300,6 +300,40 @@ SOURCE_LIMIT = 48
 PAGE_KEY = "page"
 PAGE_FORMAT = "{page}쪽"
 
+# ── 충전기 상태 ──────────────────────────────────────────────────
+#
+# 충전소 하나를 조회한 응답은 충전기 목록을 chargers 로 준다. 그 이름이
+# LIST_KEYS 에 없어서 _counted 가 최상위 count 만 읽었고 화면에 "10건" 만
+# 나갔다 — 몇 대가 지금 비어 있는지가 한 글자도 없었다 (2026-09-04 실측,
+# dev/tools/probe_out/ev.getStation.CA000079.json).
+#
+# 상태 낱말을 우리가 짓지 않는다. 응답이 충전기마다 statusLabel 을 함께
+# 준다 ("충전대기" · "충전중" · "점검중"). 그것이 없는 응답이 오면 그때만
+# 코드값(status)을 그대로 적는다 — 코드 뜻을 이 파일에 베껴 두면 저쪽이
+# 코드를 늘렸을 때 조용히 거짓이 된다.
+#
+# CHARGER_KEY         충전기 목록 칸. 이 칸이 있어야 이 길로 온다
+# CHARGER_TOTAL_KEY   대표 건에 실려 오는 전체 대수. 없으면 목록 길이를 셈
+# CHARGER_FREE_KEY    대표 건에 실려 오는 빈 대수. 없으면 available 로 셈
+# CHARGER_STATE_KEY   충전기 한 대의 상태 낱말
+# CHARGER_CODE_KEY    상태 낱말이 없을 때 쓰는 코드값
+# CHARGER_FREE_FLAG   그 한 대를 지금 쓸 수 있는가
+CHARGER_KEY = "chargers"
+CHARGER_TOTAL_KEY = "chargerCount"
+CHARGER_FREE_KEY = "availableCount"
+CHARGER_STATE_KEY = "statusLabel"
+CHARGER_CODE_KEY = "status"
+CHARGER_FREE_FLAG = "available"
+
+CHARGER_TOTAL_FORMAT = "충전기 {total}대"
+CHARGER_FREE_FORMAT = "그중 {free}대 사용 가능"
+CHARGER_STATE_FORMAT = "{state} {count}대"
+CHARGER_STATE_JOIN = " · "
+CHARGER_STATE_WRAP = "({states})"
+
+# 상태 낱말도 코드값도 없는 충전기를 셀 때 쓰는 이름.
+CHARGER_STATE_UNKNOWN = "상태 미상"
+
 
 def compose_workflow_answer(
     intent: Dict[str, Any],
@@ -447,6 +481,8 @@ def summarize(tool_input: Any, result: Any) -> str:
           0건 판정에 안 걸려 칸 이름만 나가던 자리임
           location 이 [lon, lat] 이면 주소와 좌표. 어디를 찍었는지 사람이
           알아볼 수 있어야 함
+          충전기 목록이 있으면 몇 대 중 몇 대가 비었는지. 건수 줄보다
+          앞임 — 건수만 내면 사람이 알고 싶은 것이 안 나감
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
           한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
           그보다 많으면 여럿 중 하나라는 것을 밝힘
@@ -471,6 +507,10 @@ def summarize(tool_input: Any, result: Any) -> str:
         point = _lon_lat(result.get("location"))
         if point:
             return _place_line(tool_input, result, point)
+
+        chargers = _charger_line(result)
+        if chargers:
+            return chargers
 
         counted = _counted(result)
         if counted:
@@ -782,6 +822,111 @@ def _counted_line(result: Dict[str, Any], count: int, total: Optional[int]) -> s
     if total is not None and total > count:
         return record + RECORD_JOIN + ONE_OF_MANY.format(total=total)
     return record + RECORD_JOIN + _count_line(count, total)
+
+
+def _charger_line(result: Dict[str, Any]) -> str:
+    """충전소 한 곳의 충전기가 몇 대이고 그중 몇 대가 비었는지. 아니면 "".
+
+    입력  응답 dict 전체
+    출력  이름 · 전체 대수 · 빈 대수 · 상태별 대수를 이어 붙인 줄
+    규칙  CHARGER_KEY 가 목록이고 비어 있지 않아야 이 길로 옴. 다른 응답은
+          한 칸도 안 건드림
+          한 대라도 상태를 실어 와야 함. 상태가 하나도 없으면 "" 를 내고
+          예전 길(건수 줄)로 보냄 — 몇 대가 비었는지가 이 줄의 까닭인데
+          그것을 말할 값이 없기 때문임
+          이름은 대표 건(ITEM_KEY)에서 _record_line 으로 뽑음. 없으면 뺌
+          전체 대수는 대표 건의 CHARGER_TOTAL_KEY. 없으면 목록 길이
+          빈 대수는 대표 건의 CHARGER_FREE_KEY. 없으면 목록에서
+          CHARGER_FREE_FLAG 가 참인 것을 셈. 둘 다 없으면 그 마디를 뺌
+          상태별 대수는 목록을 상태 낱말로 셈. 나온 차례를 지킴
+    제약  상태 낱말을 지어내지 않는다. 응답의 CHARGER_STATE_KEY 를 쓰고,
+          없으면 코드값을 그대로 적는다
+    """
+    chargers = result.get(CHARGER_KEY)
+    if not isinstance(chargers, list) or not chargers:
+        return ""
+    if not _has_charger_status(chargers):
+        return ""
+
+    item = result.get(ITEM_KEY)
+    item = item if isinstance(item, dict) else {}
+
+    total = _int_value(item.get(CHARGER_TOTAL_KEY))
+    if total is None:
+        total = len(chargers)
+
+    parts = []
+    name = _record_line(item)
+    if name:
+        parts.append(name)
+    parts.append(CHARGER_TOTAL_FORMAT.format(total=total))
+
+    free = _int_value(item.get(CHARGER_FREE_KEY))
+    if free is None:
+        free = _free_count(chargers)
+    if free is not None:
+        parts.append(CHARGER_FREE_FORMAT.format(free=free))
+
+    states = _charger_states(chargers)
+    line = RECORD_JOIN.join(parts)
+    return line + " " + CHARGER_STATE_WRAP.format(states=states) if states else line
+
+
+def _has_charger_status(chargers: List[Any]) -> bool:
+    """충전기 한 대라도 상태를 실어 왔는가.
+
+    출력  참이면 상태별 대수를 셀 수 있음
+    규칙  상태 낱말 · 상태 코드 · 쓸 수 있는가 셋 중 하나라도 있으면 참임
+    """
+    for charger in chargers:
+        if not isinstance(charger, dict):
+            continue
+        for key in (CHARGER_STATE_KEY, CHARGER_CODE_KEY, CHARGER_FREE_FLAG):
+            if charger.get(key) is not None:
+                return True
+    return False
+
+
+def _free_count(chargers: List[Any]) -> Optional[int]:
+    """지금 쓸 수 있는 충전기 대수. 그 칸을 가진 충전기가 하나도 없으면 None.
+
+    규칙  CHARGER_FREE_FLAG 가 bool 인 것만 셈. 없는 칸을 거짓으로 세면
+          다 찼다는 거짓말이 됨
+    """
+    flags = [
+        charger.get(CHARGER_FREE_FLAG)
+        for charger in chargers
+        if isinstance(charger, dict)
+    ]
+    known = [flag for flag in flags if isinstance(flag, bool)]
+    return sum(known) if known else None
+
+
+def _charger_states(chargers: List[Any]) -> str:
+    """상태 낱말별 대수 한 마디. 셀 것이 없으면 "".
+
+    규칙  CHARGER_STATE_KEY 를 먼저 봄. 없으면 CHARGER_CODE_KEY 를 그대로
+          적음. 둘 다 없으면 CHARGER_STATE_UNKNOWN
+          나온 차례를 지킴. 정렬하면 응답과 다른 이야기가 됨
+    제약  코드값에 뜻을 붙이지 않는다. 뜻은 응답이 말한다
+    """
+    counted = {}
+    for charger in chargers:
+        if not isinstance(charger, dict):
+            continue
+        state = charger.get(CHARGER_STATE_KEY)
+        if not isinstance(state, str) or not state.strip():
+            code = charger.get(CHARGER_CODE_KEY)
+            state = str(code) if code is not None else CHARGER_STATE_UNKNOWN
+        state = _clip(state.strip(), TEXT_LIMIT)
+        counted[state] = counted.get(state, 0) + 1
+
+    if not counted:
+        return ""
+    return CHARGER_STATE_JOIN.join(
+        CHARGER_STATE_FORMAT.format(state=state, count=count)
+        for state, count in counted.items()
+    )
 
 
 def _record_line(record: Any) -> str:
