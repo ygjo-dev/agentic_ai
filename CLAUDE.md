@@ -113,8 +113,7 @@ git show before-recipe-cut:workflows/static/recipes/recipe_006.yaml
 ★ **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는, 이번에 지운 바로 그 상태가 된다.
 정답표는 `dev/tools/check_resolve.py` 의 `UTTERANCES` 이고, 발화를 더하면 묶음
-경계(`BASELINE_LAST` · `EXTENSION_LAST`)와
-`dev/tests/app/api/test_menu_split.py` 의 화면 발화 수도 함께 센다.
+경계(`BASELINE_LAST` · `EXTENSION_LAST`)도 함께 센다.
 
 ---
 

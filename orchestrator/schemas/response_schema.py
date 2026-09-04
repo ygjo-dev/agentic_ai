@@ -8,9 +8,6 @@ NO_MATCH = "NO_MATCH"
 
 REQUIRED = [
     "reason",
-    "given",
-    "want",
-    "about",
     "argument",
     "candidate_recipe_ids",
     "status",
@@ -18,39 +15,28 @@ REQUIRED = [
 ]
 
 
-def recipe_selection_schema(
-    reason_max_length: int,
-    given_choices: list[str],
-    want_choices: list[str],
-    about_choices: list[str],
-) -> dict:
+def recipe_selection_schema(reason_max_length: int) -> dict:
     """발화 해석 응답 구조(json).
 
     입력  reason 의 길이 상한. 모델마다 다르므로 models.yaml 에서 옴
-          축 셋(given · want · about)의 선택지. 부르는 쪽이 온톨로지에서 뽑아 넘김
     출력  Ollama 의 format 에 그대로 넣는 JSON schema
     규칙  상한은 Ollama 가 문법으로 강제하므로 모델이 못 넘음
-          properties 순서대로 생성됨. 축 셋을 recipe 보다 앞에 두어
-          무엇을 찾는지 먼저 쓰고 그다음에 고르게 함
-          축은 닫힌 목록(enum)이고 null 을 허용함. 발화에 근거가 없으면
-          null 을 쓰고 그 축으로는 안 거름
-          argument 는 축 셋 바로 뒤. 발화에서 그대로 떼어 온 값이라 닫힌
-          목록이 아니고 enum 이 없음. 무엇을 떼어 올지는 given 이 말함
+          properties 순서대로 생성됨. reason 을 맨 앞에 두어 무엇을 비교했는지
+          먼저 쓰고 그다음에 고르게 함
+          argument 는 발화에서 그대로 떼어 온 값이라 닫힌 목록이 아니고
+          enum 이 없음. 무엇을 떼어 올지는 프롬프트가 말함
     제약  상한을 상수로 되돌리지 않는다.
           모델이 바뀌면 함께 바뀌는 값이라 한 모델만 표현하게 됨
-          선택지를 이 파일에 박지 않는다.
-          여기는 도메인을 모르는 자리임. 값은 ontology/shortlist.py 가 냄
           argument 를 장소 · 키워드 · 식별자 세 칸으로 나누지 않는다.
-          given 이 이미 그 값이 무엇인지 말함. 칸을 나누면 given 과 어긋날
-          수 있고 프롬프트도 그만큼 길어짐
+          칸을 나누면 프롬프트가 그만큼 길어짐
+    이력  2026-09-04 에 축 세 칸(given · want · about)을 뺐다. 축으로 온톨로지를
+          조회해 검산하던 길을 통째로 걷었기 때문임. 까닭과 그때 잃은 여섯은
+          NOTES.md 「아흔여섯째」에 있음
     """
     return {
         "type": "object",
         "properties": {
             "reason": {"type": "string", "maxLength": reason_max_length},
-            "given": _axis(given_choices),
-            "want": _axis(want_choices),
-            "about": _axis(about_choices),
             "argument": {"type": ["string", "null"]},
             "candidate_recipe_ids": {"type": "array", "items": {"type": "string"}},
             "status": {"type": "string", "enum": [SELECT, CLARIFY, NO_MATCH]},
@@ -65,13 +51,16 @@ def _axis(choices: list[str]) -> dict:
     return {"type": ["string", "null"], "enum": [*choices, None]}
 
 
-# ── 좁히기 길(두 번 부르기)의 스키마 둘 ─────────────────────────────
+# ── 좁히기 길(두 번 부르기)의 스키마 둘 — ★ 아무도 안 부른다 ────────
 #
-# 위의 recipe_selection_schema 는 한 번에 축 셋과 recipe 를 함께 받는 지금 길이다.
-# 아래 둘은 그것을 두 번으로 가른 것이다 — 1차는 축만, 2차는 좁힌 후보 중 하나.
-# **지금 길의 스키마는 안 건드린다.** 두 길이 함께 산다.
+# 좁히기 자체는 2026-09-01 에 걷었다(태그 `had-narrow-path`). 그때 스키마 둘만
+# 남았고 지울지는 다음 사람이 정하기로 했다 (NOTES.md 「열린 과제」).
+#
+# ★ 2026-09-04 에 축 한 벌(선택지 · 조회 · 검산)을 걷으면서 위의
+# recipe_selection_schema 에서 축 세 칸이 빠졌다. **아래 둘은 축을 그대로
+# 갖고 있다** — 이제 위와 아래가 같은 축을 말하지 않는다. 되살릴 때 맞대야 한다.
 
-# 1차 응답의 key. recipe_selection 의 REQUIRED 에서 recipe 관련 셋을 뺀 것.
+# 1차 응답의 key. 축 셋과 인자만 받던 자리다.
 REQUIRED_AXES = ["reason", "given", "want", "about", "argument"]
 
 # 2차 응답의 key. 축은 이미 받았으므로 recipe 관련 셋과 reason 뿐.

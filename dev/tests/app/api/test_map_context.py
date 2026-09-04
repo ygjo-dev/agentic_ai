@@ -35,9 +35,6 @@ FULL_CONTEXT = {
 # 우클릭을 아직 안 한 상태. 저쪽은 selectedLocation 을 null 로 보낸다.
 NO_PICK_CONTEXT = {**FULL_CONTEXT, "selectedLocation": None}
 
-# 지금 셋. 발화에서 온 값이다.
-SPOKEN = ["spoken_place", "spoken_keyword", "spoken_identifier"]
-
 
 def recipe_for(chain):
     """그 사슬을 가진 recipe id. 번호를 박지 않으려고 찾아서 쓴다."""
@@ -46,28 +43,6 @@ def recipe_for(chain):
         if nodes == list(chain):
             return recipe_id
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
-
-
-def test_with_no_context_the_given_axis_choices_stay_the_three_from_the_utterance():
-    """Streamlit 은 문맥을 안 보낸다. 그쪽에서 프롬프트가 한 글자도 달라지면 안 된다."""
-    choices = resolve_service._choices_for(None)
-
-    assert choices["given"] == SPOKEN
-    for node_id in step_service.CONTEXT_STARTS:
-        assert node_id not in choices["described"]["given"]
-
-
-def test_an_arriving_context_adds_to_the_choices_only_what_it_can_fill():
-    """우클릭을 안 했으면 찍은 지점은 없다. 값이 안 온 축을 고르게 두지 않는다."""
-    assert resolve_service._choices_for(FULL_CONTEXT)["given"] == [
-        *SPOKEN,
-        "picked_point",
-        "visible_extent",
-    ]
-    assert resolve_service._choices_for(NO_PICK_CONTEXT)["given"] == [
-        *SPOKEN,
-        "visible_extent",
-    ]
 
 
 def test_with_no_context_recipes_starting_from_the_screen_drop_out_of_the_candidates():

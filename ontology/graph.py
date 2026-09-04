@@ -261,31 +261,6 @@ def recipe_nodes(recipe_id: str) -> list[str]:
     return [step["node"] for step in data.get("steps", [])]
 
 
-def recipe_facets(recipe_id: str) -> dict:
-    """recipe 한 벌을 축 셋으로 요약.
-
-    입력  recipe id
-    출력  given  경로의 첫 노드 id. 없는 recipe 면 None
-          want   마지막 노드가 다음에 건네는 타입 id 목록
-          about  경로 노드들의 about 합집합
-    규칙  want 는 handed_over 가 말함. 실행 노드는 hasOutput 이고
-          데이터 노드는 자기 자신임
-          about 은 crosses_groups 가 보는 것과 같은 재료임
-          없는 recipe 는 recipe_nodes 가 빈 목록을 내므로 빈 축을 냄
-    제약  is-a 를 타고 올라가지 않는다.
-          상위 타입 하나가 하위 전부를 끌어와 좁히는 뜻이 없어짐
-    """
-    chain = recipe_nodes(recipe_id)
-    if not chain:
-        return {"given": None, "want": [], "about": set()}
-
-    about: set[str] = set()
-    for node_id in chain:
-        about |= about_of(node_id)
-
-    return {"given": chain[0], "want": handed_over(chain[-1]), "about": about}
-
-
 def recipe_ids() -> list[str]:
     """지금 있는 recipe id 전부. 번호 순."""
     return sorted(path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml"))

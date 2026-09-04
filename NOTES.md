@@ -83,6 +83,67 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 
 ## 열린 과제
 
+### ★ 버팀목 넷을 다 걷었다 (2026-09-04 「아흔여섯째」)
+
+**아래 「아흔다섯째」 항목은 이제 낡았다.** 그날은 시험 열하나가 그 길을 재고 있어
+멈췄는데, **사람이 넷을 다 걷기로 정했다.** 옛 항목은 그날의 판단 기록이라 안 지운다.
+
+```
+걷은 뒤   30/39 · 근접 8 · 빗나감 1 · 못붙음 0 · 실패점수 10 (걷기 전 37/39 · 2)
+          ★ 「아흔다섯째」 판 4 예측과 네 칸이 다 같다
+되돌리기  git reset --hard before-buttress-removed
+지운 줄   더한 269 · 지운 1268 (15개 파일)
+```
+
+무엇을 지웠고 어느 시험을 함께 지웠는지는 측정 기록 「아흔여섯째」 2·3절에 있다.
+
+#### 남은 일 셋
+
+```
+1  걷은 뒤 틀린 아홉을 menu 문장으로 판다 (「아흔여섯째」 5절에 목록)
+   ★ 그중 넷(26 · 27 · 28 · 34)은 발화에 답이 없어 문장으로 못 닿는다
+2  check_resolve 의 죽은 칸 셋을 지울지 정한다 (아래 항목)
+3  정답표 말투를 고칠지 정한다 (아래 항목)
+```
+
+### ★ check_resolve 에 죽은 칸이 셋 남았다 — 일부러 안 지웠다 (2026-09-04 「아흔여섯째」)
+
+```
+축 표                  given · want · about 이 늘 "-"
+후보 표의 「조회 판정」   늘 「조회 없음」
+검산 표                --context both 면 늘 빈 표
+```
+
+★ **걷기 전 판과 걷은 뒤 판을 같은 표로 견주는 중이라 칸 모양을 안 갈랐다.**
+견줄 일이 끝나면 지운다. 주석에는 이미 「이제 안 찬다」고 적어 뒀다.
+
+★ **「LLM 단독」 칸은 지우면 안 된다. 뜻이 갈렸을 뿐이다** — 검산 전후가 아니라
+문맥 거르개(`_without_dropped`) 전후를 잰다. `--context bbox` 로 재면 실제로 값이 갈린다.
+
+### ★ 정답표의 말투 제약이 없어졌다 — 고칠지는 사람이 정한다 (2026-09-04 「아흔여섯째」)
+
+「아흔셋째」가 「화면 열여섯은 말투를 바꿀 수가 없다」고 적었다. **그 제약이
+없어졌다** — `SCREEN_WORDS` 가 사라져 menu 가 늘 전벌이므로 어떤 말투로 써도
+LLM 이 화면 recipe 열넷을 다 본다.
+
+```
+지금       찍은 지점 일곱이 다 「여기」 · 보이는 범위 일곱이 다 「지금 보이는」·「현재 화면」
+왜 그런가  없어진 제약이 시킨 것이다. 지금은 그럴 까닭이 없다
+안 고친 까닭  걷기 전 판과 견주는 자이고, 자를 바꾸는 것은 사람이 정할 일이다
+```
+
+★ **26 · 27 · 28 은 「여기」가 찍은 지점인지 보이는 범위인지 발화에 근거가 없어
+문장으로 못 닿는다.** 「선택한 위치」 같은 말버릇을 제품이 정하면 발화만으로 갈린다.
+★ 그 값은 안 쟀다. 재려면 정답표를 고쳐야 하고 그것이 사람이 정할 자리다.
+
+### ★ 낡은 import 둘 — 이번 변경 전에도 죽어 있었다 (2026-09-04 「아흔여섯째」)
+
+`dev/tools/sweep_utterances.py` · `dev/tools/check_argument.py` 가
+`from tools.check_resolve import …` 로 적혀 있어 import 가 안 된다.
+폴더가 `dev/tools/` 로 옮겨진 뒤의 낡은 경로다.
+★ **걷기 전 커밋에서도 똑같이 죽는 것을 확인했다.** 이번 변경이 낸 것이 아니라
+안 고쳤다. 고치려면 `from dev.tools.check_resolve import …` 다.
+
 ### ★ 버팀목은 넷이 아니라 둘이었다 — 그리고 안 걷었다 (2026-09-04 「아흔다섯째」)
 
 「아흔한째」가 「안 쟀다」로 남긴 자리를 이번에 쟀다. **누적으로 다섯 판.**
@@ -2419,6 +2480,218 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-04 (아흔여섯째) · 버팀목 넷을 다 걷어냈다 · 37/39 → 30/39 (1단계 커밋)
+
+무인 실행. 조건 — `refactor/vendor` (`d6d91db`) · 시작 전 워킹 트리 깨끗함 ·
+recipe 39 · 정답표 39발화 · 되돌리는 태그 **`before-buttress-removed`**.
+모델 qwen3:32b · `--runs 1`.
+
+★ **사람이 정한 것이다.** 「아흔다섯째」의 고르는 법(실패점수 3 이하)으로는 ④ 하나만
+걷을 자리였고, 시험 열하나가 그 길을 재고 있어 거기서 멈췄었다. **이번에 사람이
+넷을 다 걷기로 정했다** — 「menu 문장만으로 돈다」를 코드로 세우는 것이 앞서고,
+잃는 여섯은 문장으로 되찾는다는 판단이다. 숫자를 다시 재서 뒤집지 않았다.
+
+#### 0. 로드 식별자 — 「아흔넷째」·「아흔다섯째」와 같은 로드다
+
+```
+llama-server  pid 4156381 · 뜬 시각 Fri Sep  4 07:57:43 2026
+              qwen3:32b · 28GB · 100% GPU (GPU 1) · num_ctx 32768
+걷은 뒤 판 : 2026-09-04 09:51 ~ 09:52:44. 시작과 끝에 찍은 pid 가 같다.
+```
+
+★ 기준선(「아흔넷째」)도 다섯 판(「아흔다섯째」)도 이 로드에서 잰 것이다. **세 기록이
+한 로드 안에 있다.** 「아흔한째」가 적은 「로드가 갈리면 여덟 발화가 달라진다」를 피했다.
+
+#### 1. 지우기 전에 세어 확인한 셋
+
+지시서가 세라고 한 것이고, 셋 다 맞았다.
+
+```
+SCREEN_WORDS 를 쓰는 실코드      _points_at_screen 하나뿐   ✔
+_points_at_screen 을 부르는 곳   _menu_for 하나뿐           ✔
+_choices_for · _starts_at        발화 낱말을 안 본다 —
+                                 _choices_for 는 context 만, _starts_at 은
+                                 graph.path_of 의 첫 칸만 봄   ✔
+```
+
+#### 2. 표 1 — 걷어낸 것
+
+| 무엇 | 어디 | 지운 것 |
+| --- | --- | --- |
+| ④ menu 가르기 | `orchestrator/resolve_service.py` | `_menu_for` · `_points_at_screen` · `SCREEN_WORDS` 와 그 위 주석 두 덩이 |
+| ① 축 절 셋 | `workflows/static/prompts/recipe_selection.md` | `[given]` · `[want]` · `[about]` 절과 「축 고르는 법」 다섯 줄. 2130자 → **1818자** |
+| ① 스키마 축 세 칸 | `orchestrator/schemas/response_schema.py` | `recipe_selection_schema` 의 인자 셋과 properties 셋, `REQUIRED` 의 셋 |
+| ② 조회 | `ontology/shortlist.py` | **파일째** (104줄). 부르는 제품 코드가 0 이 됐다 |
+| ③ 검산 | `orchestrator/resolve_service.py` | `_verdict` |
+
+**딸려 죽어서 함께 지운 것 셋**
+
+```
+resolve_service._choices_for       축 선택지를 만들던 자리. 축이 없어져 부르는 데가 0
+ontology.graph.recipe_facets       shortlist.candidates 만 쓰던 것. 25줄
+workflows/static/menu/load.py 의 거르기
+                                   load_menu(ids) · _only · _RECIPE_HEAD · import re.
+                                   _menu_for 가 유일한 부름이었다. 이제 늘 원문 전부다
+```
+
+**남긴 것과 까닭 (지시서가 물은 자리)**
+
+```
+_dropped_starts · _without_dropped · _starts_at   ★ 남겼다
+  버팀목이 아니다. 「값이 안 온 시작 데이터에서 출발하는 recipe 를 후보에서 뺀다」는
+  일이고 축과 무관하다. --context bbox 로 재면 찍은 지점 일곱이 이것으로 빠진다
+llm_recipe_id · llm_candidate_recipe_ids          ★ 남겼다. 뜻이 갈렸다
+  검산 전후가 아니라 **문맥 거르개 전후**를 뜻하게 됐다. 응답 key 이름은 그대로 두고
+  주석을 고쳤다 — check_resolve 의 「LLM 단독」 칸이 그것을 읽는다
+shortlist_recipe_ids                              ★ 응답에서 뺐다. 채울 것이 없다
+response_schema 의 axis_selection_schema · recipe_pick_schema · _axis
+  ★ 남겼다. 좁히기 길(2026-09-01 에 걷음)의 잔해이고 이번 범위가 아니다.
+  ★ 다만 위아래가 이제 다른 축을 말하므로 그 사실을 주석에 적었다
+```
+
+#### 3. 함께 지운 시험 — 하나씩 열어 보고 갈랐다
+
+```
+지운 파일 셋
+  dev/tests/app/api/test_menu_split.py   19개  menu 가르기를 재던 파일
+  dev/tests/orchestrator/test_verdict.py  8개  _verdict 의 규칙 다섯을 재던 것
+  dev/tests/ontology/test_shortlist.py    7개  axis_choices · candidates 를 재던 것
+
+지운 시험 둘 (파일은 남김)
+  dev/tests/app/api/test_map_context.py 의
+    test_with_no_context_the_given_axis_choices_stay_the_three_from_the_utterance
+    test_an_arriving_context_adds_to_the_choices_only_what_it_can_fill
+  ★ 같은 파일의 _dropped_starts · _without_dropped 시험 둘은 남겼다. 그 길이 산다
+
+고친 시험 (안 지웠다)
+  dev/tests/orchestrator/test_route_resolution.py
+  ★ 이것이 지키는 것은 「엔진은 도메인을 모른다 · 계약한 key 만 살아남는다」이고
+    그 뜻이 안 사라졌다. 스키마 인자 셋과 답의 축 세 칸만 뺐다
+
+★ 살려서 옮긴 다섯 → 새 파일 dev/tests/app/api/test_resolve_context.py
+  test_the_menu_is_the_menu_yaml_original_verbatim   (옛 이름 test_without_an_argument_…)
+  test_the_resolve_endpoint_takes_the_context_in_the_request_body
+  test_not_sending_a_context_arrives_as_None
+  test_the_three_contexts_of_check_resolve
+  test_the_screen_and_the_tool_use_the_same_bbox
+  ★ 다섯이 보는 것은 menu 가르기가 아니라 **menu 원문**과 **문맥이 오는 길**이다.
+    둘 다 살아 있다
+
+★ 지우면서 버린 것 하나 — test_an_unknown_id_is_treated_as_absent_rather_than_an_error
+  load_menu 의 거르기 자체가 없어져 지킬 것이 사라졌다
+```
+
+★ **뜻이 뒤집혀도 초록불로 남았을 둘을 실제로 지웠다** —
+`test_a_split_menu_is_still_valid_yaml` 과
+`test_the_remaining_lines_differ_from_menu_yaml_by_not_one_character` 다.
+전벌을 넣으면 둘 다 늘 참이 된다. 「아흔다섯째」가 미리 짚어 둔 자리다.
+
+★ **정답표의 말투를 지키던 시험 셋도 지웠다** (`test_all_five_screen_utterances_…` ·
+`test_not_one_screen_word_…` · `test_all_four_utterances_…`). menu 가 늘 전벌이라
+어떤 말투로 써도 LLM 이 열넷을 다 본다 — **제약이 없어진 것이지 느슨해진 것이 아니다.**
+발화 글자는 한 자도 안 고쳤다. 「지킬 대상이 사라졌으면 지우고 적는다」를 따랐다.
+
+#### 4. 통과 수 — 31 이 줄었고 남김없이 셈했다
+
+```
+전  1 failed · 398 passed · skipped 0
+뒤  1 failed · 367 passed · skipped 0     실패는 걷기 전과 같은 그 하나
+    test_dense_graph_would_move_if_overlap_removal_were_used
+
+  test_menu_split.py    -19
+  test_verdict.py        -8
+  test_shortlist.py      -7
+  test_map_context.py    -2
+  test_resolve_context.py +5
+  ─────────────────────────
+  합                    -31   ✔ 398 - 31 = 367
+```
+
+★ `test_route_resolution.py` 는 고쳤을 뿐이라 개수가 안 바뀌었다 (8 통과 그대로).
+
+#### 5. 걷은 뒤 값 — 판 4 예측과 같은가
+
+| 판 | 적중 | 근접 | 빗나감 | 못붙음 | 실패점수 | 평균 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 걷기 전 실코드 (판 0) | 37/39 | 2 | 0 | 0 | 2 | 3.6초 |
+| 「아흔다섯째」 판 4 (예측) | 30/39 | 8 | 1 | 0 | 10 | 2.3초 |
+| **걷은 뒤 실코드** | **30/39** | **8** | **1** | 0 | **10** | **2.1초** |
+
+★ **예측과 네 칸이 다 같다.** 임시로 끈 판과 실제로 지운 판이 같은 값을 낸다 —
+죽은 코드를 지운 것이지 동작을 바꾼 것이 아니라는 뜻이다.
+
+묶음별 : 말한 것 **19/25** · 찍은 지점 **5/7** · 보이는 범위 **6/7**.
+
+##### 걷은 뒤 틀린 아홉 (2단계가 팔 목록)
+
+```
+ 5 세종시 행정경계 보여줘         근접 {005, 033, 034}
+ 8 청주시 인구 몇 명이야          근접 {012, 031, 045, 054, 058}
+ 9 환경부가 운영하는 충전소 목록 줘 근접 {013, 052, 056, 060}
+20 서대전역 근처에 충전소 있나     근접 {013, 032, 046, 060}
+24 군산시 인구 변화 알려줘        ★ 빗나감 {055}
+26 여기 어느 동이야               근접 {018, 034}
+27 여기 CCTV 띄워줘               근접 {019, 026}
+28 여기 선거구 이름 뭐야           근접 {020, 038}
+34 지금 보이는 데 CCTV 다 띄워줘   근접 {019, 026}
+```
+
+#### 6. 관문 — 여덟을 실제로 돌린 것
+
+```
+걷은 뒤 한 판        30/39 — 판 4 예측과 같음                       ✔
+pytest               1 failed · 367 passed · skipped 0             ✔
+check_wiring         recipe 39 · A 0 · B 0 · C 1 (web_fetch×web_address)  ✔
+check_inputs         없는 칸 0 · 안 보낸 required 0 · 스키마 못 받음 0 · 새 오류 없음  ✔
+정답표 diff          발화 39줄, 한 줄도 안 다름                      ✔
+ontology.yaml diff   0                                             ✔
+registration/ diff   0                                             ✔
+계층 시험            test_layout_init_copy.py 10 통과 ·
+                     app/ui/ 에서 ontology·llm_engine·paths import 0건  ✔
+Streamlit            runpy 로 app/ui/main.py 통째로 돌렸다 — 오류 없음  ✔
+git diff --name-only  app/ui/ · vendor_to_be_deleted/ 없음           ✔
+```
+
+지운 줄 수 : **더한 269 · 지운 1268** (15개 파일).
+
+#### 7. ★ 걷고 나서 남은 죽은 계기 — 안 지웠다
+
+`dev/tools/check_resolve.py` 의 칸 셋이 이제 절대 안 찬다.
+
+```
+축 표                   given · want · about 이 늘 "-"
+후보 표의 「조회 판정」    늘 「조회 없음」
+검산 표                 --context both 면 늘 빈 표
+```
+
+★ **일부러 안 지웠다.** 걷기 전 판(「아흔넷째」·「아흔다섯째」)과 걷은 뒤 판을 같은
+표로 견주는 중이라 칸 모양이 갈리면 못 맞댄다. **주석에는 그 사실을 적었다.**
+지울지는 사람이 정한다 — 「열린 과제」에 올렸다.
+
+★ **「LLM 단독」 칸은 뜻이 갈렸다.** 검산 전후가 아니라 문맥 거르개 전후를 잰다.
+`--context both` 면 뺄 것이 없어 최종과 늘 같다.
+
+#### 8. ★ 이번 변경과 무관하게 이미 깨져 있던 것 하나
+
+`dev/tools/sweep_utterances.py` 와 `dev/tools/check_argument.py` 가
+`from tools.check_resolve import …` 로 적혀 있어 **import 가 안 된다**
+(`ModuleNotFoundError: No module named 'tools'`). 폴더가 `dev/tools/` 로 옮겨진
+뒤의 낡은 경로다.
+
+★ **걷기 전 커밋(`d6d91db`)에서도 똑같이 죽는 것을 `git stash` 로 확인했다.**
+이번 변경이 낸 것이 아니다. 안 고쳤다 — 이번 범위가 아니다.
+
+#### 9. 안 한 것
+
+```
+정답표          한 글자도 안 고쳤다 (4단계 몫이다)
+registration/   안 건드렸다. menu 문장을 만드는 규칙은 그대로다
+app/ui/ · vendor_to_be_deleted/ · KRRI_ASAP   안 건드렸다
+sweep_utterances · check_argument 의 낡은 import   안 고쳤다 (8절)
+```
+
+---
 
 ### 2026-09-04 (아흔다섯째) · 버팀목 넷을 하나씩 걷으며 쟀다 · ★ 2단계에서 멈췄다 (걷지 않았다)
 

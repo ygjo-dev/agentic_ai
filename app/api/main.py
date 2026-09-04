@@ -156,10 +156,10 @@ async def resolve_endpoint(
                      안 보내면 이 인자를 만들기 전과 한 글자도 다르지 않음
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
           candidate_recipe_ids · reason · paths
-          LLM 이 쓴 축 셋(given · want · about)과 발화에서 뽑은 argument,
-          그 축으로 뽑은 shortlist_recipe_ids 도 함께 담김. 화면은 안 그림.
-          검산 전에 LLM 이 쓴 날것은 llm_recipe_id · llm_candidate_recipe_ids
-          에 따로 담김. recipe_id 쪽은 검산을 지난 값이라 둘이 다를 수 있음.
+          발화에서 뽑은 argument 도 함께 담김. 화면은 안 그림.
+          문맥 거르개 전에 LLM 이 쓴 날것은 llm_recipe_id ·
+          llm_candidate_recipe_ids 에 따로 담김. candidate_recipe_ids 쪽은
+          값이 안 온 시작 데이터를 뺀 값이라 둘이 다를 수 있음.
           브라우저에서 응답을 열었을 때 왜 그 후보가 남았는지 보이면 됨
           paths 는 후보별 실행 경로. NO_MATCH 면 비어 있음
     규칙  model 은 측정용임. 같은 발화를 모델만 바꿔 재는 데 서버를 다시

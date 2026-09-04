@@ -1,52 +1,43 @@
-"""발화 → Recipe 해석. route_resolver 호출 + 온톨로지 조회로 후보 좁히기.
+"""발화 → Recipe 해석. route_resolver 를 한 번 부른다.
 
-길은 하나다. LLM 을 한 번 부른다. 그 한 번에 축 셋(given · want · about)과
-recipe 를 함께 받아, 축으로 온톨로지에서 후보를 뽑고 LLM 이 고른 목록과
-대조한다(_verdict). 몸통은 _resolve_full 이다.
+길은 하나다. menu 전벌과 발화를 프롬프트에 싣고 LLM 이 recipe 를 고른다.
+고른 것을 그대로 쓴다 — 온톨로지에 다시 물어보지 않는다. 몸통은 _resolve_full 이다.
 
-## 화면에서 온 값 — 문맥이 없으면 그 축 선택지도 후보도 없다 (2026-08-28)
+## 화면에서 온 값 — 값이 안 왔으면 그 시작 데이터는 없는 것으로 (2026-08-28)
 
-시작 데이터 노드가 다섯이 됐다. 뒤의 둘(찍은 지점 · 보이는 범위)은 발화가
-아니라 저쪽 화면이 보내는 지도 문맥에서 값을 받는다. **그 값이 안 왔으면 그
-둘은 아예 없는 것처럼 굴어야 한다** — Streamlit 은 문맥을 안 보내고, 없는
-좌표로 도구를 부르면 전국이 나오거나 null 로 거부당한다.
+시작 데이터 노드가 다섯이다. 뒤의 둘(찍은 지점 · 보이는 범위)은 발화가 아니라
+저쪽 화면이 보내는 지도 문맥에서 값을 받는다. **그 값이 안 왔으면 그 둘은 아예
+없는 것처럼 굴어야 한다** — Streamlit 은 문맥을 안 보내고, 없는 좌표로 도구를
+부르면 전국이 나오거나 null 로 거부당한다.
 
 판단이 서는 자리가 둘이다. 둘을 한 자리에 몰지 않았다.
 
-  값이 있는가   여기(_choices_for · _without_dropped). 기계가 센다. 문맥의 칸을 보고
-                축 선택지와 조회 후보에서 빼 버린다. LLM 은 그 선택지를
-                본 적이 없으므로 고를 수가 없다
+  값이 있는가   여기(_dropped_starts · _without_dropped). 기계가 센다. 문맥의 칸을
+                보고, 값이 안 온 시작 데이터에서 출발하는 recipe 를 후보에서 뺀다
   그것을 쓸까   온톨로지의 노드 description. LLM 이 발화를 보고 고른다.
                 "발화가 장소 이름 대신 여기나 이 위치라고 가리킬 때 쓴다" 가
-                그 문장이다
+                그 문장이고, 그 말은 menu 문장에도 그대로 실린다
 
-**왜 판단을 프롬프트 파일이 아니라 노드 설명에 적었나.** 축 선택지 문장은
-shortlist._describe 가 노드의 name 과 description 으로 만들어 프롬프트에
-그대로 싣는다. 저쪽도 같은 자리에 적어 두었다 —
-KRRI_ASAP/ASAP-orchestrator/app/agents/nodes/parse_intent.py 가 문맥이 있을 때만
-"If the user says here, this place, …" 한 줄을 프롬프트에 덧붙인다. 우리는
-프롬프트 파일을 이번 범위에서 안 건드리므로, 같은 말을 적을 데가 노드
-description 뿐이기도 하다.
+## 걷어낸 버팀목 넷 — 2026-09-04 (태그 `before-buttress-removed`)
 
-## 프롬프트에 넣을 menu 를 요청마다 고른다 — ★ 임시방편 (2026-08-29)
+넷을 하나씩 끄고 재 보니 실제로는 둘이었다. 축 선택지를 빼면 축이 셋 다 null 이
+되어 조회가 안 불리고, 조회 후보가 비면 검산이 LLM 이 쓴 것을 그대로 돌려준다.
 
-시작 데이터가 둘 늘면서 menu 가 3322 -> 4833자가 됐고 문맥 없는 요청의 판정이
-16 내렸다. 그래서 **발화가 화면을 가리키느냐로 menu 를 가른다** — 가리키고 그
-값이 와 있으면 화면 recipe 만, 아니면 기존 마흔만 프롬프트에 실린다.
-가르는 것은 낱말이고 LLM 을 더 부르지 않는다. `_menu_for` · `SCREEN_WORDS` 를
-본다. **월요일 시연을 위한 임시방편이다** — 까닭과 한계는 그 자리에 적었다.
+  ④ 화면 문맥으로 menu 가르기   _menu_for · _points_at_screen · SCREEN_WORDS
+  ① 프롬프트의 축 절 셋         recipe_selection.md 의 given/want/about + 스키마 세 칸
+  ② 축으로 온톨로지 조회        shortlist.candidates
+  ③ 검산                        _verdict
+
+**여섯 발화를 잃는 것을 알고 걷었다** (37/39 → 30/39). 사람이 정했다.
+지금 남은 실패와 그 갈래, 걷기 전 다섯 판의 표는 NOTES.md 「아흔여섯째」에 있다.
+되살리려면 `git show before-buttress-removed:orchestrator/resolve_service.py`.
 """
 
 import paths
 from execution import step_service
-from ontology import graph, shortlist
+from ontology import graph
 from orchestrator.route_resolver import resolve_route
-from orchestrator.schemas.response_schema import (
-    CLARIFY,
-    NO_MATCH,
-    SELECT,
-    recipe_selection_schema,
-)
+from orchestrator.schemas.response_schema import recipe_selection_schema
 from workflows.static.menu.load import load_menu
 
 
@@ -68,39 +59,6 @@ def resolve(
     return _resolve_full(utterance, llm_client, reason_max_length, context)
 
 
-def _choices_for(context: dict | None) -> dict:
-    """축 선택지에서 문맥이 못 채우는 시작 데이터를 뺀 것.
-
-    입력  저쪽 화면이 보낸 지도 문맥. 없으면 None
-    출력  shortlist.axis_choices() 와 같은 모양
-    규칙  뺄 것이 없으면 받은 것을 그대로 돌려줌. 문맥을 안 보내는 쪽에서
-          한 글자도 달라지지 않아야 함
-          given 목록과 described.given 에서 함께 뺌. 둘 중 하나만 빼면
-          프롬프트에는 보이는데 스키마가 막는 선택지가 생김
-          described 의 줄은 shortlist._describe 가 "- <id>  (" 로 시작하게
-          만듦. 그 앞머리로 고름
-    제약  shortlist 를 안 고친다.
-          거기는 온톨로지가 무엇을 낼 수 있는지 말하는 자리이고, 이번 요청에
-          무엇이 왔는지는 요청을 받는 이 자리가 안다
-    """
-    choices = shortlist.axis_choices()
-    dropped = _dropped_starts(context)
-    if not dropped:
-        return choices
-
-    given = [node_id for node_id in choices["given"] if node_id not in dropped]
-    lines = [
-        line
-        for line in choices["described"]["given"].split("\n")
-        if not any(line.startswith(f"- {node_id}  (") for node_id in dropped)
-    ]
-    return {
-        **choices,
-        "given": given,
-        "described": {**choices["described"], "given": "\n".join(lines)},
-    }
-
-
 def _dropped_starts(context: dict | None) -> set[str]:
     """이번 요청에서 값을 못 받는 화면 시작 데이터 노드.
 
@@ -118,16 +76,12 @@ def _without_dropped(recipe_ids: list[str], dropped: set[str]) -> list[str]:
     출력  차례를 지킨 목록. 뺄 것이 없으면 받은 것 그대로
     규칙  경로의 첫 칸이 곧 시작 데이터임. 그것을 보고 가름
           타입 판정은 ontology.graph 가 함. 여기서 recipe 파일을 열지 않음
-    제약  shortlist.candidates 로 막을 목록을 만들지 않는다.
-          그것은 축 셋으로 후보를 뽑는 자리이고, 여기서 또 부르면 요청마다
-          전체 recipe 를 두 번 더 훑게 됨
-          menu 에서 그 문장을 지우지 않는다.
+    제약  menu 에서 그 문장을 지우지 않는다.
           menu 는 온톨로지가 만드는 것이고 요청마다 다를 수 없음. 지울 수
           없으니 LLM 이 그것을 골라도 여기서 뺀다
-    이력  2026-08-29 에 그 제약을 깼다. _menu_for 가 요청마다 menu 를 가른다.
-          까닭과 임시방편이라는 것은 SCREEN_WORDS 위 주석에 있다.
-          이 자리는 그대로 둔다. 축 조회는 menu 를 안 보고 뽑으므로 menu 에서
-          뺀 뒤에도 여기서 한 번 더 걸러야 한다
+    이력  2026-08-29 에 그 제약을 깼다 — _menu_for 가 요청마다 menu 를 갈랐다.
+          2026-09-04 에 그 갈래를 걷어 제약이 다시 참이 됐다. 프롬프트에는 늘
+          menu 전벌이 실리고, 값이 없는 것을 LLM 이 고르면 여기서 뺀다
     """
     if not dropped:
         return recipe_ids
@@ -143,101 +97,22 @@ def _starts_at(recipe_id: str) -> str | None:
     return path[0]["node_id"] if path else None
 
 
-# ── 프롬프트에 넣을 menu 를 요청마다 고른다 ────────────────────────
-#
-# 발화가 화면을 가리키느냐로 menu 를 가른다. 가리키고 그 값이 와 있으면 화면
-# recipe 만, 아니면 기존 recipe 마흔만 프롬프트에 실린다. 어느 쪽이든 짧다.
-#
-#   화면 recipe   경로 첫 칸이 picked_point 또는 visible_extent 인 것
-#                 둘 다 오면 열아홉 1535자. 우클릭 전이면 열 809자
-#   기존 마흔     그 밖. 3322자. 화면 노드가 붙기 전 menu 와 본문이 같다
-#
-# 화면·도구마다 다르게 하지 않는다. Streamlit 도 저쪽도 같은 발화에 같은 menu
-# 를 본다. 가르는 것은 발화와 문맥이지 부르는 쪽이 아니다.
-#
-# 이것은 월요일 시연을 위한 임시방편이다. 아래 목록에 없는 말투는 화면 recipe
-# 를 아예 못 본다 ("내가 보고 있는 데 CCTV" · 장소 없는 "CCTV 보여줘").
-# 후보에서 빼는 것이 아니라 보여주지도 않는 것이라 LLM 이 고칠 길이 없다.
-# 왜 이 방향인지와 무엇이 진짜 문제인지는 NOTES.md 「마흔여덟째」에 있다.
-
-# 발화가 화면을 가리키는지 가르는 낱말. 한 곳에 모은다.
-#
-# 앞의 일곱은 사람이 정했다(2026-08-29). 관심 지점 하나는 저쪽 프롬프트에서
-# 맞춰 넣었다 — KRRI_ASAP 의 parse_intent 가 문맥이 있을 때 덧붙이는 한 줄이
-# "here, this place, selected location, 관심 지점, 선택한 위치, 이 위치" 이고,
-# 그 한국어 셋 중 둘은 이미 사람 목록에 있었다. 저쪽 파일은 읽기만 했다.
-#
-# 부분 문자열로 찾는다. "오송역 근처" 는 "이 근처" 가 아니고 "오송역 위치" 도
-# "이 위치" 가 아니라서 안 걸린다. 정답표 서른한 발화에 하나도 안 걸리는 것을
-# dev/tests/app/api/test_menu_split.py 가 지킨다.
-SCREEN_WORDS = (
-    "여기",
-    "이 위치",
-    "선택한 위치",
-    "지금 보이는",
-    "현재 화면",
-    "이 근처",
-    "이 지역",
-    "관심 지점",
-)
-
-
-def _points_at_screen(utterance: str) -> bool:
-    """발화가 화면을 가리키는가.
-
-    출력  참이면 화면을 가리킴
-    규칙  낱말로만 가름. 부분 문자열이 걸리면 참
-    제약  가르자고 LLM 을 부르지 않는다.
-          요청 한 번에 한 번만 부르는 것이 지금 길의 값임
-    """
-    return any(word in utterance for word in SCREEN_WORDS)
-
-
-def _menu_for(utterance: str, context: dict | None) -> str:
-    """이번 요청의 프롬프트에 실을 menu.
-
-    입력  발화 · 저쪽 화면이 보낸 지도 문맥(없으면 없는 것으로)
-    출력  menu.yaml 에서 recipe 몇 벌만 남긴 문자열
-    규칙  발화가 화면을 가리키고 그 값이 실제로 와 있을 때만 화면 recipe.
-          낱말이 걸렸는데 문맥에 값이 없으면 기존 마흔으로 감. 없는 것을
-          제안하면 LLM 이 고르고 나서 _without_dropped 에 지워짐
-          어느 recipe 가 화면 것인지는 경로 첫 칸으로 봄. _starts_at 이 이미
-          그 판단을 하므로 새 기준을 만들지 않음
-          값이 온 노드만 남김. 우클릭 전이면 보이는 범위 열 벌뿐임.
-          찍은 지점 아홉 벌은 그때 골라도 못 쓰므로 안 보여줌
-          남길 것이 없으면 원문 전부를 냄. 머리말만 실리는 것보다 나음
-    제약  menu.yaml 을 안 고친다.
-          읽은 문자열에서 블록을 뺄 뿐임
-    """
-    starts = {recipe_id: _starts_at(recipe_id) for recipe_id in graph.recipe_ids()}
-
-    available = set(step_service.context_starts(context))
-    if available and _points_at_screen(utterance):
-        keep = [rid for rid, start in starts.items() if start in available]
-    else:
-        keep = [rid for rid, start in starts.items() if start not in step_service.CONTEXT_STARTS]
-
-    return load_menu(keep) if keep else load_menu()
-
-
 def _resolve_full(
     utterance: str, llm_client, reason_max_length: int, context: dict | None = None
 ) -> dict:
-    """지금 길. LLM 이 쓴 축으로 후보를 뽑고, 고른 결과와 대조해 최종 status 를 정함.
+    """지금 길. menu 전벌을 싣고 LLM 이 고른 것을 그대로 쓴다.
 
     입력  발화 · LLM 클라이언트 · reason 길이 상한(모델마다 다름) ·
           저쪽 화면이 보낸 지도 문맥(없으면 없는 것으로)
-    출력  LLM 응답(reason · given · want · about 포함) +
-          status · recipe_id · candidate_recipe_ids · shortlist_recipe_ids ·
+    출력  LLM 응답(reason · argument 포함) +
+          status · recipe_id · candidate_recipe_ids ·
           llm_recipe_id · llm_candidate_recipe_ids · paths
-    규칙  축 선택지도 조회 후보도 온톨로지에서 옴. 노드를 등록하면 함께 늘어남
-          문맥이 못 채우는 시작 데이터는 선택지에서도 후보에서도 빠짐.
-          LLM 이 그것으로 시작하는 recipe 를 골라도 뺌
-          menu 도 요청마다 갈림(_menu_for). 발화가 화면을 가리키고 그 값이
-          와 있으면 화면 recipe 만, 아니면 기존 마흔만 실림
-          recipe_id 와 candidate_recipe_ids 는 _verdict 를 지난 값임.
-          검산 전에 LLM 이 쓴 날것은 llm_ 이 붙은 두 key 에 따로 실림 —
-          검산이 답을 바꾼 자리를 세려면 둘이 다 있어야 함
+    규칙  프롬프트에 실리는 menu 는 menu.yaml 원문 전부임. 요청마다 안 갈림
+          문맥이 못 채우는 시작 데이터에서 출발하는 recipe 는 LLM 이 골라도 뺌
+          status 는 LLM 이 쓴 것을 그대로 씀. 온톨로지에 다시 안 물어봄
+          candidate_recipe_ids 는 문맥 거르개를 지난 값임. 거르기 전에 LLM 이
+          쓴 날것은 llm_ 이 붙은 두 key 에 따로 실림 — 문맥이 무엇을 뺐는지
+          세려면 둘이 다 있어야 함
           paths 는 LLM 이 만드는 게 아님. 최종 후보로 다시 계산해 덧붙임.
           프론트엔드가 recipe 파일을 직접 읽지 않게 하려는 것
     제약  여기서 LLM 클라이언트를 만들지 않는다.
@@ -246,33 +121,13 @@ def _resolve_full(
           Streamlit 과 dev/tools/check_resolve.py 가 그것을 읽음
     """
     dropped = _dropped_starts(context)
-    choices = _choices_for(context)
-    described = choices["described"]
 
     result = resolve_route(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
-        variables={
-            "menu": _menu_for(utterance, context),
-            "utterance": utterance,
-            "given_choices": described["given"],
-            "want_choices": described["want"],
-            "about_choices": described["about"],
-        },
-        response_schema=recipe_selection_schema(
-            reason_max_length,
-            given_choices=choices["given"],
-            want_choices=choices["want"],
-            about_choices=choices["about"],
-        ),
+        variables={"menu": load_menu(), "utterance": utterance},
+        response_schema=recipe_selection_schema(reason_max_length),
         llm_client=llm_client,
     )
-
-    # 축이 셋 다 null 이면 조회하지 않는다. candidates() 는 그때 전체를 내는데,
-    # 그것을 후보로 삼으면 발화가 영역 밖일 때 NO_MATCH 가 48개 CLARIFY 가 된다.
-    # 고를 근거가 하나도 없다는 뜻이므로 LLM 이 쓴 것을 그대로 둔다.
-    axes = [result.get("given"), result.get("want"), result.get("about")]
-    looked_up = shortlist.candidates(*axes) if any(axes) else []
-    looked_up = _without_dropped(looked_up, dropped)
 
     # recipe_id 가 있으면 그것부터, 그다음 후보 전부.
     spoken = _without_dropped(
@@ -289,68 +144,19 @@ def _resolve_full(
         dropped,
     )
 
-    verdict = _verdict(result, spoken, looked_up)
-    wanted = [rid for rid in [verdict["recipe_id"], *verdict["candidate_recipe_ids"]] if rid]
-
     return {
         **result,
-        **verdict,
-        "shortlist_recipe_ids": looked_up,
-        # 검산을 거치기 전에 LLM 이 쓴 것. **날것이다.**
+        "candidate_recipe_ids": spoken,
+        # 문맥 거르개를 지나기 전에 LLM 이 쓴 것. **날것이다.**
         #
-        # 위의 **verdict 가 recipe_id 와 candidate_recipe_ids 를 덮는다. 그래서
-        # 응답에 실리는 그 두 key 는 조회 후보와 대조한 뒤의 값이지 LLM 이 쓴
-        # 값이 아니다. 검산이 얼마나 값을 하는지 재려면 날것이 있어야 한다.
+        # 위의 candidate_recipe_ids 는 값이 안 온 시작 데이터를 뺀 뒤의 값이다.
+        # 문맥이 무엇을 뺐는지 세려면 날것이 있어야 한다.
         #
         # **덮어쓰는 쪽은 그대로 둔다.** 기존 key 의 뜻을 바꾸면 화면과
         # dev/tools/check_resolve.py 가 함께 흔들린다. key 를 둘 더할 뿐이다.
         "llm_recipe_id": result.get("recipe_id"),
         "llm_candidate_recipe_ids": list(result.get("candidate_recipe_ids") or []),
-        # 날것은 뺀 것까지 그대로 둔다. LLM 이 무엇을 골랐는지가 이 두 칸의
-        # 뜻이고, 문맥이 없어 뺀 자리를 세려면 뺀 것이 보여야 한다.
-        "paths": graph.paths_for(wanted),
+        "paths": graph.paths_for(
+            [rid for rid in [result.get("recipe_id"), *spoken] if rid]
+        ),
     }
-
-
-def _verdict(result: dict, spoken: list[str], looked_up: list[str]) -> dict:
-    """최종 status 와 후보.
-
-    입력  LLM 응답 · LLM 이 고른 목록 · 축으로 뽑은 후보
-    출력  status · recipe_id · candidate_recipe_ids
-    규칙  겹치는 것 1개    SELECT
-          겹치는 것 여럿   CLARIFY. 겹치는 것만 후보로. 순서는 뽑힌 후보를 따름
-          겹치는 것 0개    축과 LLM 이 어긋난 것임. 둘을 합쳐 CLARIFY.
-                           LLM 이 쓴 것이 앞, 뽑힌 후보가 뒤
-          뽑힌 후보 0개    LLM 이 쓴 것을 그대로 둠. 축이 틀린 것이므로
-                           조회 결과를 믿지 않음
-          둘 다 0개        NO_MATCH
-    이력  2026-08-26 에 「겹치는 것 0개」 규칙을 바꿈. 안 셋을 재고 고른 것이고
-          표와 고른 까닭은 NOTES.md 「서른셋째」에 있음
-    """
-    if not looked_up:
-        if not spoken:
-            return {"status": NO_MATCH, "recipe_id": None, "candidate_recipe_ids": []}
-        return {
-            "status": result["status"],
-            "recipe_id": result["recipe_id"],
-            "candidate_recipe_ids": spoken,
-        }
-
-    overlap = [recipe_id for recipe_id in looked_up if recipe_id in set(spoken)]
-
-    # 겹치는 것이 0개면 축과 LLM 이 어긋난 것이다. 어느 쪽이 맞는지 이 자리에서는
-    # 가릴 근거가 없으므로 둘을 합쳐 사람에게 되묻는다.
-    #
-    # **2026-08-26 이전에는 뽑힌 후보만 썼다** ("LLM 이 헛짚은 것으로 봄").
-    # 바로 위의 「뽑힌 후보 0개」 규칙은 같은 어긋남에서 정반대로 LLM 을 믿는데,
-    # 두 규칙이 한 상황을 다르게 처신하고 있었다. 그 탓에 발화 셋(28 · 29 · 30)
-    # 에서 LLM 이 기대값과 똑같이 고른 답을 아홉 번 덮었다 (「서른두째」 실측).
-    #
-    # LLM 을 믿는 안(나)도 함께 쟀다. 적중은 그쪽이 아홉 높지만(62/93 → 71/93)
-    # 확신하고 틀리는 자리가 넷에서 여섯으로 늘어 1순위 기준에서 밀렸다.
-    # 되물음이 늘어나는 것이 이 안의 대가다.
-    final = overlap or list(dict.fromkeys([*spoken, *looked_up]))
-
-    if len(final) == 1:
-        return {"status": SELECT, "recipe_id": final[0], "candidate_recipe_ids": final}
-    return {"status": CLARIFY, "recipe_id": None, "candidate_recipe_ids": final}
