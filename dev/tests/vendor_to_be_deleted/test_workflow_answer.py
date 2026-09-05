@@ -1177,3 +1177,96 @@ def test_a_non_zero_hit_answer_keeps_its_preamble_one_line_verbatim():
     assert failure.splitlines()[0] == "조회하지 못했습니다."
     assert "말씀해 주세요" not in failure
     assert "찾아본 곳은" not in failure
+
+
+# adminBoundary.findBoundaryByPoint(lon=127.5719, lat=36.3539) 실물에서 답에 쓰는
+# 칸만 남긴 것 (2026-09-05 실측 ·
+# dev/tools/probe_out/adminBoundary.findBoundaryByPoint.옥천군좌표-2026-09-05.json).
+# 한 지점에 시도 · 시군구 · 읍면동 세 건이 이 순서로 온다.
+POINT_HIERARCHY = {
+    "type": "FeatureCollection",
+    "features": [],
+    "items": [
+        {"id": "43", "name": "충청북도", "code": "43", "layerId": "sido",
+         "hierarchy": [{"layerId": "sido", "code": "43", "name": "충청북도"}]},
+        {"id": "43730", "name": "옥천군", "code": "43730", "layerId": "sigungu",
+         "hierarchy": [{"layerId": "sido", "code": "43", "name": "충청북도"},
+                       {"layerId": "sigungu", "code": "43730", "name": "옥천군"}]},
+        {"id": "43730380", "name": "군북면", "code": "43730380", "layerId": "emd",
+         "hierarchy": [{"layerId": "sido", "code": "43", "name": "충청북도"},
+                       {"layerId": "sigungu", "code": "43730", "name": "옥천군"},
+                       {"layerId": "emd", "code": "43730380", "name": "군북면"}]},
+    ],
+    "count": 3,
+    "totalMatches": 3,
+}
+
+# adminBoundary.searchBoundaries(bbox=화면) 실물에서 같은 칸만 남긴 것
+# (2026-09-05 실측 · probe_out/adminBoundary.searchBoundaries.화면bbox-2026-09-05.json).
+# 사슬 칸은 있지만 서로 다른 시군구 아홉이다. 계층이 아니다.
+NEIGHBOURS = {
+    "type": "FeatureCollection",
+    "features": [],
+    "items": [
+        {"id": "30200", "name": "유성구", "code": "30200", "layerId": "sigungu",
+         "hierarchy": [{"layerId": "sido", "code": "30", "name": "대전광역시"},
+                       {"layerId": "sigungu", "code": "30200", "name": "유성구"}]},
+        {"id": "43111", "name": "청주시 상당구", "code": "43111", "layerId": "sigungu",
+         "hierarchy": [{"layerId": "sido", "code": "43", "name": "충청북도"},
+                       {"layerId": "sigungu", "code": "43111", "name": "청주시 상당구"}]},
+    ],
+    "count": 2,
+    "totalMatches": 2,
+}
+
+
+def test_one_points_hierarchy_is_answered_with_the_narrowest_level():
+    """한 지점에 계층 셋이 오면 도가 아니라 읍면동을 보여줘야 함.
+
+    실측 2026-09-05 : 사람이 저쪽 UI 에서 여덟 자리를 눌렀는데 "여기 어느 동이야"
+    에 예외 없이 "충청남도" · "전북특별자치도" 같은 시도가 나갔음. 3건 중 첫째가
+    시도라서임. 뒤 단계(getAgeProfile)는 옥천군 · 전주시 완산구로 맞게 갔으므로
+    틀린 것은 답 문구뿐이었음.
+    """
+    answer = compose_workflow_answer(
+        {"answer_instruction": "여기가 어느 동인지 조회했습니다."},
+        [{"id": "s1", "tool": "adminBoundary.findBoundaryByPoint",
+          "input": {"lon": 127.5719, "lat": 36.3539}, "result": POINT_HIERARCHY}],
+    )
+
+    assert "군북면" in answer
+    assert "충청북도" not in answer
+
+
+def test_neighbouring_areas_are_not_reordered():
+    """서로 다른 지역이 오는 목록은 첫째를 그대로 씀.
+
+    bbox 조회는 사슬 길이가 다 같은 이웃들이라 "제일 좁은 것" 이 뜻이 없음.
+    계층 규칙이 여기까지 번지면 도구가 정해 보낸 차례(인구순 등)가 뒤집힘.
+    """
+    answer = compose_workflow_answer(
+        {"answer_instruction": "화면 안 행정경계를 조회했습니다."},
+        [{"id": "s1", "tool": "adminBoundary.searchBoundaries",
+          "input": {"bbox": [127.1598, 36.4853, 127.4956, 36.7547]},
+          "result": NEIGHBOURS}],
+    )
+
+    assert "유성구" in answer
+    assert "청주시 상당구" not in answer
+
+
+def test_the_hierarchy_rule_reads_a_field_never_a_name():
+    """사슬 칸이 없으면 계층으로 안 봄 — 이름으로 "도" 를 맞대지 않는다는 계약."""
+    without_chain = {
+        "features": [],
+        "items": [{"name": "충청북도", "code": "43"}, {"name": "옥천군", "code": "43730"}],
+        "count": 2,
+        "totalMatches": 2,
+    }
+    answer = compose_workflow_answer(
+        {"answer_instruction": "조회했습니다."},
+        [{"id": "s1", "tool": "t", "input": {"lon": 127.5, "lat": 36.3},
+          "result": without_chain}],
+    )
+
+    assert "충청북도" in answer

@@ -76,6 +76,20 @@ LIST_KEYS = ("features", "items", "results", "data")
 COUNT_KEY = "count"
 TOTAL_KEY = "totalMatches"
 
+# 한 건이 제 행정 계층을 적어 보내는 칸. _hierarchy_pick 이 이 둘만 읽는다.
+#
+# hierarchy  [{layerId, code, name}, …] 로 시도부터 제 자신까지. 길이가 곧 깊이다
+# code       그 한 건의 코드. 사슬 안의 code 와 같은 값이라 맞대 볼 수 있다
+#
+# 실측 2026-09-05 · adminBoundary.findBoundaryByPoint(lon=127.5719, lat=36.3539)
+#   items 3건 = 충청북도(43, 사슬 1) · 옥천군(43730, 사슬 2) · 군북면(43730380, 사슬 3)
+#   probe_out/adminBoundary.findBoundaryByPoint.옥천군좌표-2026-09-05.json
+# 같은 칸을 adminBoundary.searchBoundaries 도 싣는데 bbox 조회는 사슬 길이가
+# 다 같은 이웃 아홉이라 계층이 아니다 (probe_out 의 …searchBoundaries.화면bbox).
+# population.searchStatistics 는 이 칸이 아예 없고 level 만 있다.
+HIERARCHY_KEY = "hierarchy"
+HIERARCHY_CODE_KEY = "code"
+
 # 0건일 때 그 이유가 실려 오는 최상위 칸. 실측으로 본 이름만 둔다.
 #
 # warning   adminBoundary.searchBoundaries · adminBoundary.findBoundaryByPoint
@@ -1173,7 +1187,7 @@ def _first_list_length(result: Dict[str, Any]) -> Optional[int]:
 
 
 def _first_record(result: Dict[str, Any]) -> str:
-    """센 목록의 첫 항목 한 마디. 고를 것이 없으면 "".
+    """센 목록의 대표 한 마디. 고를 것이 없으면 "".
 
     규칙  LIST_KEYS 를 순서대로 보고 고를 것이 나오는 첫 목록을 씀.
           _first_list_length 와 달리 먼저 걸리는 목록에서 멈추지 않음
@@ -1181,6 +1195,8 @@ def _first_record(result: Dict[str, Any]) -> str:
           adminBoundary.findBoundaryByPoint 가 features 0건 · items 3건,
           election.searchDistricts 가 features 0건 · items 254건).
           features 에서 멈추면 이름이 있는 items 를 못 봄
+          목록이 한 지점의 행정 계층이면 첫째가 아니라 ★ 제일 좁은 것을 씀.
+          어느 것인지는 _hierarchy_pick 이 응답의 칸으로 가름
     제약  최상위만 본다.
           geojson.features 처럼 중첩된 목록은 안 들어간다. 그 안은 좌표
           덩어리이고 화면에 낼 것이 아니다
@@ -1189,10 +1205,59 @@ def _first_record(result: Dict[str, Any]) -> str:
         value = result.get(key)
         if not isinstance(value, list) or not value:
             continue
-        record = _record_line(value[0])
+        record = _record_line(value[_hierarchy_pick(value)])
         if record:
             return record
     return ""
+
+
+def _hierarchy_pick(items: List[Any]) -> int:
+    """한 지점의 행정 계층이면 제일 좁은 것의 자리. 아니면 0.
+
+    입력  최상위 목록 하나
+    출력  items 의 자리 번호
+    규칙  ★ 이름을 문자열로 맞대지 않는다. 응답의 HIERARCHY_KEY 칸만 읽는다.
+          "충청남도" 같은 이름 규칙은 데이터가 바뀌면 깨지고, 이 칸은 도구가
+          스스로 적어 보내는 것임
+          목록의 모든 건이 계층 사슬(HIERARCHY_KEY)을 갖고, ★ 모든 건의 코드가
+          제일 깊은 건의 사슬 안에 들어 있을 때만 "한 지점의 계층" 으로 봄.
+          그때 제일 깊은 것을 씀
+          하나라도 그 사슬 밖이면 서로 다른 지역들이므로 0 을 돌려주고
+          예전대로 첫째를 씀
+    제약  응답에 없는 값을 만들지 않는다. 칸이 없으면 0 이다
+    이력  adminBoundary.findBoundaryByPoint 가 한 지점에 [시도 · 시군구 ·
+          읍면동] 세 건을 순서대로 돌려주는데(2026-09-05 실측, probe_out 의
+          옥천군좌표 · 천안좌표 · 경기좌표 · 부산역좌표 넷) 첫째를 쓰면
+          "여기 어느 동이야" 에 "충청북도" 가 나갔음.
+          ★ 순서에 기대지 않는다 — 순서도 [시도→읍면동] 이 맞았지만 사슬
+          칸이 있으므로 그것을 읽는다.
+          같은 도구의 bbox 조회(adminBoundary.searchBoundaries ·
+          population.searchStatistics)는 사슬 길이가 다 같은 이웃들이라
+          여기서 0 이 나가고 예전 그대로 첫째를 씀 (같은 날 실측)
+    """
+    deepest = 0
+    chains: List[Any] = []
+    codes: List[Any] = []
+    for item in items:
+        if not isinstance(item, dict):
+            return 0
+        chain = item.get(HIERARCHY_KEY)
+        code = item.get(HIERARCHY_CODE_KEY)
+        if not isinstance(chain, list) or not chain or not isinstance(code, str):
+            return 0
+        chains.append(chain)
+        codes.append(code)
+        if len(chain) > len(chains[deepest]):
+            deepest = len(chains) - 1
+
+    inside = {
+        step.get(HIERARCHY_CODE_KEY)
+        for step in chains[deepest]
+        if isinstance(step, dict)
+    }
+    if any(code not in inside for code in codes):
+        return 0
+    return deepest
 
 
 def _int_value(value: Any) -> Optional[int]:
