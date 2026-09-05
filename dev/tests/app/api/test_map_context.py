@@ -77,8 +77,15 @@ def test_starting_from_the_visible_extent_the_first_step_takes_the_context_bbox(
 def test_charging_stations_starting_from_the_visible_extent_also_take_the_flat_four():
     """2026-08-30 「예순째」. ev.searchStations 에는 bbox 라는 칸이 없다 —
     없는 칸이라 버려져서 지도를 아무리 좁혀도 전국에서 상한 500건이 왔다.
-    CCTV 줄과 같은 꼴이어야 한다."""
-    plan = step_service.plan(recipe_for(["visible_extent", "search_ev_stations"]), "")
+    CCTV 줄과 같은 꼴이어야 한다.
+
+    2026-09-05 에 사슬이 길어졌다. 두 칸짜리(옛 recipe_032)를 지웠고 같은 첫
+    두 칸을 가진 세 칸짜리(recipe_056)가 남았다. 보는 것은 첫 단계뿐이라 뜻이
+    그대로다 — 지운 recipe 를 사슬로 찾던 자리라 문자열 검색에 안 걸렸다.
+    """
+    plan = step_service.plan(
+        recipe_for(["visible_extent", "search_ev_stations", "get_ev_station"]), ""
+    )
 
     assert plan["steps"][0]["tool"] == "ev.searchStations"
     assert plan["steps"][0]["input"] == {
