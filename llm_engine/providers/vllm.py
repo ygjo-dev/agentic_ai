@@ -1,7 +1,8 @@
 """vLLM (OpenAI 호환) 구현체.
 
 Solar Open2 250B 가 이 길로 간다. 요청 모양은 지어낸 것이 아니라
-/data1/solar-open2-vllm/eval_solar.py 가 35/36 을 낸 그 요청을 옮긴 것이다.
+35/36 을 낸 그 요청이다 — 근거는 NOTES 의 Solar 측정 기록(「백열한째」)이고
+지금 그 요청을 내는 것은 `dev/tools/check_llm.py` 다.
 
 **Ollama 와 다른 세 가지는 전부 이 파일 안에만 있다.**
 

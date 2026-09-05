@@ -9,8 +9,9 @@
 **정답표를 다시 적지 않는다.** 발화도 기대값도 판정 자도 전부 `check_resolve` ·
 `check_demo` 에서 가져온다. 자가 둘이 되면 두 성적표가 서로를 못 견준다.
 
-2026-09-06 이전에는 이 일을 저장소 밖 `/data1/solar-open2-vllm/eval_solar.py` 가
-했다. 저장소가 바뀌면 함께 바뀌어야 하는 코드라 안으로 들여왔다.
+2026-09-06 이전에는 이 일을 저장소 밖 실험 환경의 driver 가 했다. 저장소가
+바뀌면 함께 고쳐야 하는 코드라 안으로 들여왔고, 밖의 것은 그때의 증거로만 남겼다.
+★ 밖에 평가 driver 를 다시 만들지 않는다 — 만들면 두 벌을 손으로 맞추게 된다.
 
     python dev/tools/check_llm.py                              기본 모델 한 판
     python dev/tools/check_llm.py --model qwen3:32b --runs 3   모델을 골라 세 판
