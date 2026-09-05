@@ -3075,6 +3075,164 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-06 (백열두째) · Solar 를 기본 모델로 올리고 평가를 저장소로 들였다 · ★ r5 가 살아 있다는 것을 알아냈다
+
+★ **밤새 판이다.** 커밋 넷으로 닫았다. 측정은 Solar 세 판 하나뿐이고
+나머지는 구조 · 시험 · 죽은 것 정리다.
+
+```
+날짜   2026-09-06
+서버   Solar vLLM pid 1944191 · TP4 · ctx 32768 · gpu util 0.55 · max-num-seqs 64
+       ★ --no-enable-flashinfer-autotune  (전날 세운 LOAD_B 를 그대로 씀. 재시작 안 함)
+상세   /data1/solar-open2-vllm/runs/20260906_011850_overnight
+```
+
+#### 1. 기본 모델이 Solar 가 됐다
+
+```
+models.yaml  default: "qwen3:32b" → "solar-open2-250b"
+```
+
+근거는 앞 판들의 실측이다. Solar 35/36 · 실패 1 대 qwen 34/36 · 실패 2 이고,
+같은 로드에서도 새 로드에서도 세 판이 한 칸도 안 달랐다.
+
+★ `defaults.provider` 는 `ollama` 그대로 뒀다. 그것은 「목록에 없는 모델」의
+뜻이고 그 자리는 여전히 Ollama 다 — `--model qwen2.5:7b` 가 그대로 돈다.
+
+★ 모델 고르는 차례에 `LLM_MODEL` 을 공식 이름으로 더했다.
+**인자 > LLM_MODEL > OLLAMA_MODEL > models.yaml default.**
+`OLLAMA_MODEL` 을 안 지웠다 — 그것만 적어 둔 기계가 조용히 기본 모델로
+돌아가면 어느 모델로 잰 성적인지 모르게 된다.
+
+#### 2. 평가 코드를 저장소로 들였다
+
+`dev/tools/check_llm.py` 를 만들었다. 저장소 밖
+`/data1/solar-open2-vllm/eval_solar.py` 가 하던 일이다. **저장소가 바뀌면 함께
+바뀌어야 하는 코드**라 안에 있어야 한다.
+
+★ 정답표를 다시 적지 않는다. `check_resolve` · `check_demo` 에서 가져온다.
+`check_resolve` 와 다른 점은 FastAPI 를 안 지난다는 것이고, 그래서 provider 를
+갈아끼워 모델끼리 맞댈 수 있다.
+
+**새 도구로 잰 Solar 세 판** (autotune OFF · pid 1944191)
+
+```
+35/36 · 근접 1 · 빗나감 0 · 못 붙음 0 · 실패점수 1 · 시연 9/9   (세 판 다 같음)
+세 판 내부   후보 36/36 · 전체 36/36 · 시연 9/9 동일
+★ 저장소 밖 driver 가 낸 옛 baseline 둘과도 전체 36/36 · 9/9 동일
+유일한 근접  u24 「여기 어느 동이야」 {recipe_018, recipe_034}
+```
+
+★ 저장소 밖 파일은 안 지웠다. 과거 실험 증거다. 다만 `eval_solar.py` 의
+import 한 줄은 고쳤다 — 저장소가 `llm_engine.profiles` 를 지워 깨졌기 때문이다.
+**SolarClient(요청 본문)는 안 건드렸다.**
+
+#### 3. 새 FastAPI 로 E2E 를 확인했다
+
+기존 8000 은 안 건드리고 18080 에 현재 소스로 하나 더 띄웠다.
+
+```
+model 인자 없음 → recipe_001 · recipe_019 · ★ recipe_052 SELECT
+                  (052 는 Solar 만 내는 답이다. qwen 은 {052, 060} 근접)
+model=solar-open2-250b  → 같음
+model=qwen3:32b         → ★ CLARIFY {052, 060}   qwen 이 늘 내던 그 모양
+```
+
+★ **두 provider 가 실제 API 를 지나 제 갈래로 갔다는 뜻이다.** 띄운 것만 껐다.
+
+#### 4. ★ r5-server 가 살아 있다 — NOTES 를 고쳐 적는다
+
+옛 기록 여러 곳이 「r5-server 가 없다」 · 「월요일 회의 뒤 재가동」으로 적고 있다.
+★ **지금은 아니다.**
+
+```
+GET :3000/api/tools
+  serverId : asap-mcp-core · otp-router · r5-server · web-search
+  r5-server : health_check · compute_isochrone · compute_od_matrix
+```
+
+★ **막고 있던 것은 서버가 아니라 우리 권한이다.**
+
+```
+execution/execute_service.py:46
+  USER_CONTEXT selected_mcp_tool_refs = ["asap-mcp-core/*"]
+  → r5-server/health_check 호출 시
+    HTTP 500 "MCP tool 'r5-server/health_check' is not applied for this user."
+
+refs 를 ["asap-mcp-core/*", "r5-server/*"] 로 넓히면
+  → ★ HTTP 200 {"server":"ok","base_network_loaded":true,...}
+```
+
+**compute_isochrone 실측** (오송역 실측 좌표 · WALK 30분 · HTTP 200 · 0.74초)
+
+```
+required   origin_lon · origin_lat 둘뿐
+기본값     max_minutes 30 · mode WALK · departure 2026-03-23 08:00
+출력       status · origin · max_minutes · cutoffs_minutes · mode · smoothing ·
+           reachable_cell_count 97 · elapsed_ms 262 ·
+           feature_collections {polygons: MultiPolygon, lines: MultiLineString}
+```
+
+★ **붙지 않았다.** 셋이 사람이 정할 자리라 무인으로 안 했다 —
+권한 범위를 넓히는 것이 정책이고, recipe 를 더하면 계기판 36 이 37 이 되며,
+「r5 를 부르는 실제 발화」가 무엇인지가 아직 안 정해졌다.
+설계와 붙일 자리 목록은 `/data1/solar-open2-vllm/runs/20260906_011850_overnight/r5_design.md` 에 있다.
+★ feature/press(= feature/accessibility) 의 옛 구현은 열지도 않았다.
+
+#### 5. 그래프는 이미 움직이고 있었다
+
+「SVG 정지 이미지를 drag/zoom 되게」라는 요청을 받고 읽어 보니
+`app/ui/components/zoom.py` 가 휠 확대 · 끌기 · 더블클릭 복귀 · 자동 맞춤을
+이미 갖고 있고 상단 · 하단 둘 다 붙여 쓴다. ★ **새로 만들지 않았다.**
+
+대신 시험을 더했다 — 그때까지 zoom.py 에 시험이 하나도 없어서 「지금 정지
+이미지인가」를 코드를 읽지 않고는 답할 수 없었다.
+
+★ **남은 구멍 하나** : `touchstart`/`touchmove` 가 없어 태블릿 · 터치스크린에서는
+끌기와 핀치가 안 된다. 마우스와 트랙패드는 된다. 브라우저 없이 검증할 수 없는
+JS 라 이번 밤에 손대지 않았다.
+
+#### 6. 죽은 넷을 지웠다
+
+「열린 과제」가 두 판째 들고 있던 것이다. 지우기 전에 호출처 0 을 다시 셌다
+(시험 · 문서까지 grep · `paths.py` 에 상수도 없음).
+
+```
+axis_selection_schema · recipe_pick_schema · recipe_axes.md · recipe_pick.md
++ 그 둘만 쓰던 _axis · REQUIRED_AXES · REQUIRED_PICK
+```
+
+★ **왜 지금인가.** 2026-09-04 에 축 한 벌을 걷으며 `recipe_selection_schema` 에서
+축 세 칸이 빠졌는데 죽은 둘은 축을 그대로 갖고 있었다. 살아 있는 것과 죽은 것이
+서로 다른 축을 말하는 상태라 리뷰에서 어느 쪽이 지금인지 알 수 없다.
+
+#### 7. 관문
+
+```
+pytest        1 failed(알려진 음성 대조군) · 386 passed · skipped 0
+check_wiring  recipe 36 · A 0 · B 0 · C 1 (web_fetch × web_address)
+check_inputs  없는 칸 0 · 안 보낸 required 0 · 새 오류 없음
+Streamlit     runpy exit 0
+구조          recipe 36 · menu 36 · 정답표 36 · 시연 9 · menu 4,060자 · example 25
+```
+
+★ 계기판 숫자가 하나도 안 움직였다. 이번 판이 recipe · menu · 정답표를
+안 건드렸다는 뜻이다.
+
+#### 8. 안 한 것
+
+```
+r5 구현            ★ 안 함 (설계만). 권한 · 계기판 · 발화 셋이 사람 자리다
+Solar 전용 prompt  안 함. 공용 한 벌로 35/36 이라 필요가 안 보인다
+u24 손             안 함
+lifecycle 구현     ★ 안 함. Solar 는 지금 사람의 tmux 라 주인이 둘이 되면 안 된다
+qwen 재측정        ★ 이번 밤에 안 잼 (E2E 한 번은 불렀다. 그것은 성적이 아니다)
+OTP                ★ 시작도 안 함
+git push           안 함
+```
+
+---
+
 ### 2026-09-06 (백열한째) · Solar 를 정식 provider 로 붙였다 · llm_engine 을 2-provider 구조로 갈았다 · ★ 35/36 이 그대로 재현됐다
 
 ★ **Solar 가 이제 저장소의 정식 길로 간다.** 임시 HTTP client 가 아니라
