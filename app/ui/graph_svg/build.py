@@ -256,6 +256,86 @@ def variant_svgs(
     }
 
 
+def network_payload(
+    *,
+    nodes: dict,
+    solid: list,
+    dotted: dict,
+    positions: dict,
+    paths: dict,
+    recipe_ids: list[str],
+    mark: dict,
+) -> dict:
+    """interactive graph library 가 받는 노드 · 엣지 모형.
+
+    입력  노드 · 실선 · 점선 · 좌표 · 경로 · recipe id 목록 · 강조 원본
+    출력  positions · nodes · dotted · solid · variants · registering
+    규칙  위 variant_svgs 와 **같은 규칙을 같은 함수로** 계산함.
+          강조 · 짙은 주황 · 옅은 주황 · 새 노드 · 새 점선이 SVG 와 한 벌임
+          변형 키도 focus.focus_variants 그대로임. 그림과 데이터가 같은
+          자리에서 갈려야 하나만 고쳤을 때 조용히 어긋나지 않음
+          경로가 정확히 하나면 순번을 함께 냄. build_dot 이 xlabel 로 하는 것과
+          같은 값이고, 그리는 쪽이 그것을 엣지 라벨로 쓸지는 화면이 정함
+    제약  색을 여기서 정하지 않는다.
+          팔레트의 주인은 dot.COLORS 이고 화면은 그것을 /screen 으로 이미 받음.
+          여기서 색을 실으면 출처가 둘이 됨
+          좌표에 배율을 곱하지 않는다.
+          for_drawing 은 SVG 를 그릴 때의 일이고, library 는 제 화면 좌표계로
+          다시 맞춤
+    """
+    wrapped = wrap_node_labels(nodes)
+    registering = "accepted" in mark
+    all_ids = list(recipe_ids)
+    새_노드 = set(mark.get("nodes") or ())
+    새_점선 = {tuple(edge) for edge in (mark.get("dotted") or ())}
+
+    def path_edges(ids):
+        """recipe 들이 지나는 엣지를 한 줄로. 중복은 접음. 위 variant_svgs 와 같음."""
+        return list(dict.fromkeys(
+            edge for path in focus.edges_of(paths, ids) for edge in path
+        ))
+
+    def variant(ids):
+        고른_경로 = focus.edges_of(paths, ids)
+        나머지 = [recipe_id for recipe_id in all_ids if recipe_id not in set(ids)]
+        칸 = {
+            "highlight": [] if registering else [list(e) for e in path_edges(ids)],
+            "nodes": [] if registering else sorted(focus.nodes_of(paths, ids)),
+            "mark": [list(e) for e in path_edges(ids)] if registering else [],
+            "dim": [list(e) for e in path_edges(나머지)] if registering else [],
+        }
+        # 경로가 정확히 하나일 때만 순번을 붙인다. build_dot 의 규칙과 같다 —
+        # 여럿이면 같은 엣지에 서로 다른 순번이 붙어 읽을 수가 없다.
+        if not registering and len(고른_경로) == 1:
+            칸["order"] = {
+                f"{a}>{b}": index
+                for index, (a, b) in enumerate(고른_경로[0], start=1)
+            }
+        return 칸
+
+    return {
+        "positions": {node_id: list(xy) for node_id, xy in positions.items()},
+        "nodes": {
+            node_id: {
+                "label": node["name"],
+                "title": nodes[node_id]["description"],
+                "new": node_id in 새_노드,
+            }
+            for node_id, node in wrapped.items()
+        },
+        "dotted": [
+            {"edge": [a, b], "new": (a, b) in 새_점선}
+            for (a, b) in dotted
+        ],
+        "solid": [list(edge) for edge in solid],
+        "variants": {
+            key: variant(ids)
+            for key, ids in focus.focus_variants(paths, recipe_ids).items()
+        },
+        "registering": registering,
+    }
+
+
 def render_payload(
     *,
     nodes: dict,
@@ -293,6 +373,17 @@ def render_payload(
             "recipes_by_last_node": focus.recipes_by_last_node(paths, recipe_ids),
         },
         "chips": focus.chips_by_variant(paths, recipe_ids),
+        # ★ 그림 말고 모형. interactive graph library 가 이것을 받는다.
+        # SVG 를 지우지 않았다 — dev/tools/export_graph.py 가 정지 그림을 쓴다.
+        "network": network_payload(
+            nodes=nodes,
+            solid=solid,
+            dotted=dotted,
+            positions=positions,
+            paths=paths,
+            recipe_ids=recipe_ids,
+            mark=marks,
+        ),
     }
 
     _CACHE[key] = payload

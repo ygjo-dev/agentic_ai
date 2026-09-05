@@ -47,3 +47,14 @@ def new() -> str:
 def plain() -> str:
     """그 밖의 모든 것."""
     return get("plain")
+
+
+def colors() -> dict[str, str]:
+    """지금까지 받아 둔 팔레트 전부.
+
+    출력  {이름: #RRGGBB}. 아직 못 받았으면 빈 dict
+    규칙  낱개로 열 번 묻지 않고 한 벌로 넘길 자리에서 씀 —
+          interactive graph library 가 노드 · 엣지마다 색을 받음
+    제약  사본을 준다. 받은 쪽이 고쳐도 여기 값이 안 바뀌어야 함
+    """
+    return dict(_COLORS)

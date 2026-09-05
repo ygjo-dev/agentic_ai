@@ -1,72 +1,72 @@
 """상단 온톨로지 그래프. **표시만 한다.**
 
-SVG 는 백엔드가 완성해서 보낸다. 여기서는 iframe 문서로 감싸고 줌을 붙일 뿐이다.
-예전에는 이 파일이 프로세스를 띄워 Graphviz 를 돌리고 좌표 파일까지 썼는데,
-브라우저 없이 도는 일이라 서버(`app/ui/graph_svg/`)로 옮겼다.
+노드 · 엣지 · 좌표는 백엔드가 보낸다(POST /render 의 network). 여기서는
+interactive graph library 에 넘겨 iframe 으로 띄울 뿐이다.
+
+★ **2026-09-06 에 Graphviz SVG 에서 vis-network(pyvis)로 갈았다.** 예전에는
+서버가 완성한 SVG 를 받아 `zoom.py` 의 자체 JS 로 확대 · 끌기를 흉내 냈다.
+그림 자체는 정지 이미지라 노드를 집어 옮길 수 없었다. 지금은 그 셋이 전부
+라이브러리 것이다. SVG 를 만드는 `app/ui/graph_svg/` 는 안 지웠다 —
+`dev/tools/export_graph.py` 가 정지 그림을 쓴다.
 
 그래서 이 모듈에는 Graphviz 도, 파일 입출력도, 캐시도 없다. 화면을 갈아끼울 때
 버릴 수 있는 것만 남았다.
 """
 
+import re
+
 import streamlit as st
 
 from app.ui import config, styles, theme
-from app.ui.components import flow, zoom
+from app.ui.components import network
 
 # 새로 생긴 것이 잠깐 두근거린다. 짧게 두 번만 — 계속 깜빡이면 시선을 뺏는다.
+# 새로 생긴 것이 잠깐 두근거린다. 짧게 두 번만 — 계속 깜빡이면 시선을 뺏는다.
+#
+# ★ 라이브러리는 <canvas> 로 그리므로 SVG 시절처럼 노드 하나를 CSS 로 집을 수
+# 없다. 그래서 캔버스 전체를 한 번 어루만진다. 「무엇이 새로 생겼는가」는 그
+# 노드의 분홍 테두리가 이미 말하고, 이 애니메이션은 「방금 무슨 일이 있었다」만
+# 말한다. 색으로 뜻을 나르는 규칙은 그대로다.
 _PULSE_CSS = """
 @keyframes markpulse {
   0%   { opacity: 1; }
-  50%  { opacity: 0.35; }
+  50%  { opacity: 0.55; }
   100% { opacity: 1; }
 }
-g.node [stroke="MARK"], g.edge [stroke="MARK"] {
-  animation: markpulse 0.6s ease-in-out 2;
-}
+#mynetwork { animation: markpulse 0.6s ease-in-out 2; }
 """
 
 
-def graph_fill_html(svg: str, pulse: bool = False) -> str:
+def graph_fill_html(model: dict, colors: dict, height: int, pulse: bool = False) -> str:
     """고정 높이 패널을 꽉 채우는 iframe 문서.
 
-    입력  SVG 문자열 · 방금 등록했는지
+    입력  network 모형 · 색 · 픽셀 높이 · 방금 등록했는지
     출력  iframe 에 넣을 HTML 문서
-    규칙  iframe 배경은 기본 흰색이라 다크 테마에서 흰 카드로 뜸.
-          DOT 의 bgcolor="transparent" 는 SVG 안쪽만 투명하게 하므로 여기서
-          한 번 더 덮음
-          SVG 는 비율을 유지한 채 상자에 맞춤. 크기 속성은 서버가 이미 뺐음
+    규칙  라이브러리가 만든 문서에 두근거림 CSS 한 벌만 얹음.
+          확대 · 끌기는 라이브러리 것이라 우리 JS 가 없음
           pulse 는 방금 등록된 것에만 줌. CSS 애니메이션이라 JS 가 없음
+    제약  캔버스를 우리가 다시 그리지 않는다.
+          라이브러리가 <canvas> 로 그리므로 SVG 시절처럼 DOM 을 만지면
+          다음 판에서 지워짐
     """
-    extra = _PULSE_CSS.replace("MARK", theme.new().lower()) if pulse else ""
-
-    return (
-        "<style>"
-        "html, body { background: transparent; margin: 0; padding: 0;"
-        " height: 100%; overflow: hidden; }"
-        "#graph { width: 100%; height: 100%; overflow: hidden; }"
-        "svg { width: 100%; height: 100%; display: block; }"
-        f"{zoom.ZOOM_CSS}"
-        f"{extra}"
-        "</style>"
-        f'<div id="graph">{svg}</div>'
-        f"{zoom.zoom_script(zoom.TOP_KEY, highlight_class=flow.FLOW_CLASS)}"
-        # 상단은 실선을 안 그리므로 걸리는 엣지가 없다. 그래도 같은 한 벌을
-        # 붙인다 — 한쪽만 붙이면 언젠가 위아래가 다르게 움직인다.
-        # 자동 맞춤도 같은 이유로 같이 붙인다. 상단에는 class="flow" 엣지가
-        # 하나도 없어(draw_solid=False) 서명이 비고, 아무 일도 안 일어난다.
-        f"{flow.flow_script()}"
-    )
+    html = network.network_html(model, colors, top=True, height=height)
+    if not pulse:
+        return html
+    css = "<style>" + _PULSE_CSS.replace("MARK", theme.new().lower()) + "</style>"
+    return re.sub(r"</head>", css + "</head>", html, count=1)
 
 
-def show_graph(svg: str, height: int, pulse: bool = False):
-    """SVG 를 iframe 으로 띄움.
+def show_network(model: dict, height: int, pulse: bool = False, colors: dict | None = None):
+    """모형을 라이브러리로 그려 iframe 에 띄움.
 
-    입력  SVG 문자열 · 픽셀 높이 · 방금 등록했는지
+    입력  network 모형 · 픽셀 높이 · 방금 등록했는지 · 색
     제약  높이를 CSS 로 주지 않는다.
           iframe 은 height 속성으로 고정되므로 CSS 로 덮을 수 없음.
           예전에 그래프가 420px 에 갇혀 폭까지 눌렸던 원인
     """
-    st.components.v1.html(graph_fill_html(svg, pulse), height=height)
+    st.components.v1.html(
+        graph_fill_html(model, colors or theme.colors(), height, pulse), height=height
+    )
 
 
 def render_graph_section(
@@ -83,7 +83,7 @@ def render_graph_section(
           노드를 등록했을 때만 새로 생긴 것을 강조함. 그때가 "어디에
           들어갔는지" 를 보여줄 장면임
     """
-    if not rendered or not rendered.get("top"):
+    if not rendered or not rendered.get("network"):
         st.markdown(
             styles.note_markup("그래프를 불러올 수 없습니다. Backend 가 실행 중인지 확인하세요."),
             unsafe_allow_html=True,
@@ -91,4 +91,4 @@ def render_graph_section(
         return
 
     height = styles.panel_heights(ratios or config.LAYOUT)["top"]
-    show_graph(rendered["top"], height, pulse=pulse)
+    show_network(rendered["network"], height, pulse=pulse)
