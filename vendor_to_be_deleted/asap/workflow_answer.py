@@ -108,6 +108,28 @@ NOTICE_KEYS = ("warning", "message")
 # 건수와 안내 문장 사이 표시.
 NOTICE_JOIN = " · "
 
+# 도달권 결과를 알아보는 칸과 그 문장 재료.
+#
+# 이 응답은 목록도 건수도 좌표도 아니라 위 규칙 어디에도 안 걸리고 칸 이름만
+# 나가던 자리다(2026-09-06 실측 — "칸: status · scenario_id · origin · …").
+# 도형은 지도가 그리므로 말로 낼 것은 **어떻게 · 몇 분 · 얼마나 넓은가** 셋이다.
+#
+# 이동 수단은 도구가 영어 enum 으로 돌려준다(WALK · BICYCLE · CAR · TRANSIT).
+# 그대로 내면 답에 영어가 섞이므로 여기서 우리말로 바꾼다. 모르는 값이 오면
+# 수단을 빼고 나머지만 낸다 — 영어를 그대로 내보내지 않는다.
+REACH_KEY = "feature_collections"
+REACH_MODE_KEY = "mode"
+REACH_MINUTES_KEY = "max_minutes"
+REACH_CELLS_KEY = "reachable_cell_count"
+REACH_MODE_WORDS = {
+    "WALK": "걸어서",
+    "BICYCLE": "자전거로",
+    "CAR": "차로",
+    "TRANSIT": "대중교통으로",
+}
+REACH_RANGE = "{minutes}분 안에 닿는 범위"
+REACH_CELLS = "격자 {cells}칸"
+
 # 도구 호출이 터진 사유를 가르는 유일한 영어 조각.
 #
 # 실측 : web-search/web.search 를 부르면 Gateway 가 500 과 함께
@@ -497,6 +519,8 @@ def summarize(tool_input: Any, result: Any) -> str:
           알아볼 수 있어야 함
           충전기 목록이 있으면 몇 대 중 몇 대가 비었는지. 건수 줄보다
           앞임 — 건수만 내면 사람이 알고 싶은 것이 안 나감
+          도달권이면 이동 수단 · 분 · 격자 칸 수. 도형은 지도가 그리므로
+          말로는 안 냄
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
           한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
           그보다 많으면 여럿 중 하나라는 것을 밝힘
@@ -525,6 +549,10 @@ def summarize(tool_input: Any, result: Any) -> str:
         chargers = _charger_line(result)
         if chargers:
             return chargers
+
+        reach = _reach_line(result)
+        if reach:
+            return reach
 
         counted = _counted(result)
         if counted:
@@ -1106,6 +1134,36 @@ def _notice(result: Dict[str, Any]) -> str:
         if isinstance(value, str) and value.strip():
             return _clip(value)
     return ""
+
+
+def _reach_line(result: Dict[str, Any]) -> str:
+    """도달권 결과. 어떻게 · 몇 분 · 얼마나 넓은가. 아니면 "".
+
+    출력  "걸어서 30분 안에 닿는 범위 · 격자 140칸". 도달권이 아니면 빈 문자열
+    규칙  feature_collections 가 있어야 도달권임. 그 칸이 이 응답을 가름
+          이동 수단은 REACH_MODE_WORDS 에 있는 값만 우리말로 냄.
+          모르는 값이면 수단을 빼고 나머지만 냄
+          분 · 격자 칸 수는 정수일 때만 냄. 하나도 못 읽으면 빈 문자열이라
+          아래 칸 이름 줄로 떨어짐
+    제약  도형을 문자열에 담지 않는다.
+          features 를 그대로 실으면 raw JSON 이 화면에 샌다 — summarize 의
+          제약 절과 같은 자리다. 여기서 읽는 것은 미리 정한 칸 넷뿐이다
+    """
+    if not isinstance(result.get(REACH_KEY), dict):
+        return ""
+
+    parts = []
+    minutes = _int_value(result.get(REACH_MINUTES_KEY))
+    if minutes is not None:
+        said = REACH_RANGE.format(minutes=minutes)
+        word = REACH_MODE_WORDS.get(result.get(REACH_MODE_KEY))
+        parts.append(f"{word} {said}" if word else said)
+
+    cells = _int_value(result.get(REACH_CELLS_KEY))
+    if cells is not None:
+        parts.append(REACH_CELLS.format(cells=cells))
+
+    return NOTICE_JOIN.join(parts)
 
 
 def _keys_line(result: Dict[str, Any]) -> str:

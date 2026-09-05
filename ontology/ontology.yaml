@@ -214,6 +214,16 @@ nodes:
     name: 통계
     description: 집계한 수치와 변화 추이.
 
+  # 받는 노드가 하나도 없는 타입이다. 경계 도형 · 통계와 같은 자리다 —
+  # 이것을 내놓는 노드 뒤에는 아무도 못 선다(can_connect).
+  #
+  # **경계 도형으로 안 묶었다.** 경계 도형은 행정구역의 경계이고 이것은 한
+  # 지점에서 시간을 들여 닿는 범위다. 둘을 한 타입으로 묶으면 (도달권 계산 ->
+  # 행정구역 경계를 받는 노드) 가 타입상 이어져 버리는데 그런 경로는 없다.
+  reachable_area:
+    name: 도달권
+    description: 한 지점에서 정해진 시간 안에 닿을 수 있는 범위.
+
   # 받는 노드가 하나도 없는 타입이다. 그래서 이것을 내놓는 노드 뒤에는 아무도
   # 못 선다(can_connect). 경계 도형 · 통계와 같은 자리이고, 다른 점은 조회해서
   # 받는 자료가 아니라 화면이 바뀌는 것이라는 것뿐이다.
@@ -287,6 +297,17 @@ nodes:
   geocode_place:
     name: 장소 좌표 변환
     description: 좌표를 찾는다.
+
+  # **about 을 안 붙였다.** 지금 대상 넷은 교통(도로·철도·현장 영상) · 선거 ·
+  # 인구 · 전기차 충전인데, 한 지점에서 걷거나 차로 닿는 범위는 그 넷 중
+  # 어느 것에 관한 것도 아니다. 걸어서든 대중교통으로든 같은 계산이라
+  # 교통에 넣으면 「도로와 철도」라고 적힌 그 대상의 뜻이 흐려진다.
+  # 좌표를 받아 도형을 내놓는 범용 계산이라 장소 좌표 변환과 같은 자리에 둔다.
+  # 대상을 새로 만들지도 않았다 — 대상 하나에 기능 하나면 그 대상이 하는 일이
+  # 「후보를 가른다」가 아니라 「기능 하나를 가리킨다」가 된다.
+  compute_isochrone:
+    name: 도달권 계산
+    description: 한 지점에서 걸어서나 자전거·차·대중교통으로 몇 분 안에 어디까지 갈 수 있는지 그 범위를 계산한다.
 
   admin_boundary_dataset_info:
     name: 행정경계 데이터 정보
@@ -488,6 +509,12 @@ edges:
   - { from: geocode_place, to: place_name, predicate: hasInput }
   - { from: geocode_place, to: point,      predicate: hasOutput }
   - { from: geocode_place, to: map_extent, predicate: hasOutput }
+
+  # 좌표 하나만 받는다. 분 · 이동수단은 도구의 기본값이 있어 안 보낸다
+  # (max_minutes 30 · mode WALK). required 는 origin_lon · origin_lat 둘뿐이다
+  # (실측 2026-09-06 · Gateway /api/tools 의 inputSchema).
+  - { from: compute_isochrone, to: point,          predicate: hasInput }
+  - { from: compute_isochrone, to: reachable_area, predicate: hasOutput }
 
   - { from: admin_boundary_dataset_info, to: dataset_info, predicate: hasOutput }
 

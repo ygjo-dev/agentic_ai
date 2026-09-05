@@ -41,6 +41,11 @@ anchors:
   # 마흔은 여기, web.search 하나만 다른 서버다. tools.json 의 serverId 가 근거다.
   server_id: &server_id "asap-mcp-core"
 
+  # 도달권 계산 하나만 여기다. 다른 MCP 서버이고, 그 서버를 부르려면
+  # execute_service 의 selected_mcp_tool_refs 에도 "r5-server/*" 가 있어야 한다
+  # — 배선만 맞으면 되는 것이 아니다(실측 2026-09-06 · HTTP 500 "not applied").
+  r5_server_id: &r5_server_id "r5-server"
+
   # 발화에서 온 값을 가리키는 표시. 장소인지 키워드인지 식별자인지는 안 가른다.
   spoken_value: &arg "@arg"
 
@@ -77,6 +82,12 @@ anchors:
     lon: "$context.selectedLocation.lon"
     lat: "$context.selectedLocation.lat"
 
+  # 같은 좌표인데 칸 이름이 lon · lat 이 아니라 origin_lon · origin_lat 이다.
+  # 앵커를 따로 둔 까닭이 그것이다 — 위 point_from_previous 를 못 쓴다.
+  origin_from_previous: &origin_from_previous
+    origin_lon: "$prev.lon"
+    origin_lat: "$prev.lat"
+
 
 # 노드 -> 도구. **온톨로지 밖이다.**
 #
@@ -96,6 +107,14 @@ tool_of:
     server_id: *server_id
     tool: geo.geocode
     headline: "{arg} 좌표를 조회했습니다."
+
+  # 유일하게 asap-mcp-core 가 아닌 도구 셋 중 하나다(나머지 둘은 web.search ·
+  # web.fetch). 도구 이름에 서버 접두어를 안 붙인다 — server_id 칸이 따로 있고
+  # vendor 가 그 둘을 합쳐 "r5-server/compute_isochrone" 으로 부른다.
+  compute_isochrone:
+    server_id: *r5_server_id
+    tool: compute_isochrone
+    headline: "{arg} 도달권을 계산했습니다."
 
   find_cctv:
     server_id: *server_id
@@ -322,6 +341,14 @@ step_of:
     map_extent:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
+
+  # **input_first 가 없다.** 지금 이 노드를 쓰는 recipe 는 장소 좌표 변환 뒤에만
+  # 세우고, 찍은 지점에서 곧장 오는 경로는 아직 recipe 가 없다. 쓰는 데가 없는
+  # 줄을 미리 적으면 check_inputs 가 그것을 「맞다」로 세는데 실제로는 한 번도
+  # 안 불린 줄이 된다. 그 경로를 만들 때 origin_from_context 앵커와 함께 넣는다.
+  compute_isochrone:
+    point:
+      input: *origin_from_previous
 
   # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
   # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.

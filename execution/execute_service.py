@@ -43,9 +43,20 @@ from vendor_to_be_deleted.asap.workflow_answer import (
 #
 # 빠뜨리면 요청마다 새 guest 가 만들어지고 adminBoundary 셋 말고는 전부
 # 거부된다(실측).
+#
+# **서버를 하나씩 적는다. 전부 열지 않는다.** Gateway 에는 넷이 있는데
+# (asap-mcp-core · web-search · otp-router · r5-server) 여기 적힌 것만 부를 수
+# 있다. 안 적은 서버는 HTTP 500 "MCP tool '<서버>/<도구>' is not applied for
+# this user." 로 막힌다 — 배선이 가리켜도 못 부른다(실측 2026-09-06).
+#
+# r5-server 를 2026-09-06 에 더했다. 도달권 계산이 그 서버에만 있고, 그 전에는
+# 같은 오류로 막혀 있었다. **넓힌 것은 그 서버 하나뿐이다** —
+# web-search 는 Gateway 쪽 권한이 따로 안 열려 있고(NOTES 「아흔셋째」),
+# otp-router 는 아직 부를 배선도 recipe 도 없다. 부를 것이 없는 서버를 미리
+# 열면 「무엇을 왜 열었나」를 나중에 되짚을 수 없다.
 USER_CONTEXT = {
     "user_id": "asap-ontology-orchestrator",
-    "selected_mcp_tool_refs": ["asap-mcp-core/*"],
+    "selected_mcp_tool_refs": ["asap-mcp-core/*", "r5-server/*"],
 }
 
 # vendor 가 steps 를 workflow 로 알아보게 하는 이름.
