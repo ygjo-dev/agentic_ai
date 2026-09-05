@@ -24,15 +24,15 @@ class OllamaConfig:
     host: str = OLLAMA_HOST
 
 
-def config_for(model: str | None = None) -> OllamaConfig:
+def config_for(model: str | None = None, *, found=None) -> OllamaConfig:
     """모델 설정을 Ollama 호출 설정으로.
 
-    입력  모델 이름. None 이면 기본 모델
+    입력  모델 이름(None 이면 기본 모델) · 이미 읽어 둔 ModelConfig
     출력  OllamaConfig
     규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴.
           어디에 붙는가는 기계마다 다르고, 어떻게 부르는가는 모델마다 다름
     """
-    found = get_model_config(model)
+    found = found or get_model_config(model)
     return OllamaConfig(
         model=found.model, num_ctx=found.num_ctx, timeout=found.timeout
     )

@@ -10,7 +10,10 @@
 # --model qwen2.5:7b 처럼 목록에 없는 Ollama 모델을 그대로 부를 수 있다.
 # ★ 어디에 붙는가(OLLAMA_HOST · VLLM_HOST)는 기계마다 다르므로 .env 에 있다.
 
-default: "qwen3:32b"
+# 기본 모델. 환경변수 LLM_MODEL 이 있으면 그것이 이긴다.
+# ★ 2026-09-06 에 qwen3:32b 에서 옮겼다 — Solar 가 35/36 · 실패 1 로 qwen(34/36 ·
+#   실패 2)보다 낫고, 같은 로드에서도 새 로드에서도 세 판이 한 칸도 안 달랐다.
+default: "solar-open2-250b"
 
 defaults:
   provider: ollama

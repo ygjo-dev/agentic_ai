@@ -39,6 +39,7 @@ def models_file(monkeypatch, tmp_path):
     path.write_text(DOCUMENT, encoding="utf-8", newline="\n")
     monkeypatch.setattr(paths, "MODELS_PATH", path)
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     return path
 
 
@@ -100,3 +101,20 @@ def test_both_providers_answer_to_the_same_call(models_file):
         return inspect.signature(instance.generate)
 
     assert signature(get_llm("기본모델")) == signature(get_llm("저쪽서버모델"))
+
+
+def test_the_file_is_read_once_per_call(models_file, monkeypatch):
+    """get_llm 한 번에 models.yaml 을 한 번만 읽음.
+
+    읽은 ModelConfig 를 provider 설정으로 넘김. 두 번 읽으면 재는 중에 파일을
+    고쳤을 때 한 호출 안에서 앞뒤가 다른 값으로 도는 자리가 생김.
+    """
+    from llm_engine import model_config
+
+    reads = []
+    real = model_config._document
+    monkeypatch.setattr(model_config, "_document",
+                        lambda: (reads.append(1), real())[1])
+
+    get_llm("저쪽서버모델")
+    assert len(reads) == 1, f"models.yaml 을 {len(reads)}번 읽었다"

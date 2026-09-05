@@ -29,6 +29,7 @@ def get_llm(model: str | None = None):
           따르므로 지금은 Ollama 로 감
           모델이 다른 객체가 한 프로세스에 여럿 살 수 있음. 같은 발화를
           모델만 바꿔 재는 데 프로세스를 다시 안 띄우려는 것
+          models.yaml 을 한 번만 읽음. 읽은 ModelConfig 를 provider 에 넘김
     제약  모르는 provider 를 Ollama 로 떨어뜨리지 않는다.
           오타 하나가 조용히 딴 모델을 부르는 것이 제일 나쁨.
           측정이 어느 길로 갔는지 모르게 됨
@@ -36,9 +37,9 @@ def get_llm(model: str | None = None):
     config = get_model_config(model)
 
     if config.provider == OLLAMA:
-        return ollama.OllamaProvider(ollama.config_for(model))
+        return ollama.OllamaProvider(ollama.config_for(found=config))
     if config.provider == VLLM:
-        return vllm.VllmProvider(vllm.config_for(model))
+        return vllm.VllmProvider(vllm.config_for(found=config))
 
     raise UnknownProvider(
         f"models.yaml 의 provider 를 모른다: {config.provider!r} "

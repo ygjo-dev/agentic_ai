@@ -36,6 +36,7 @@ def models_file(monkeypatch, tmp_path):
     path.write_text(DOCUMENT, encoding="utf-8", newline="\n")
     monkeypatch.setattr(paths, "MODELS_PATH", path)
     monkeypatch.delenv("OLLAMA_MODEL", raising=False)
+    monkeypatch.delenv("LLM_MODEL", raising=False)
     return path
 
 
@@ -73,6 +74,27 @@ def test_the_default_model_comes_from_the_file_and_the_environment_wins(
     monkeypatch.setenv("OLLAMA_MODEL", "환경모델")
     assert get_model_config().model == "환경모델"
     assert get_model_config("인자모델").model == "인자모델", "인자가 환경변수보다 앞선다"
+
+
+def test_llm_model_is_the_official_name_and_ollama_model_still_works(
+    models_file, monkeypatch
+):
+    """차례가 인자 > LLM_MODEL > OLLAMA_MODEL > 파일.
+
+    OLLAMA_MODEL 은 Ollama 만 있던 시절 이름이라 provider 중립적이지 않음.
+    그래도 안 지움 — 그것만 적어 둔 기계가 조용히 기본 모델로 돌아가면
+    어느 모델로 잰 성적인지 모르게 됨.
+    """
+    monkeypatch.setenv("OLLAMA_MODEL", "옛이름모델")
+    assert get_model_config().model == "옛이름모델", "옛 이름만 있으면 그것을 씀"
+
+    monkeypatch.setenv("LLM_MODEL", "새이름모델")
+    assert get_model_config().model == "새이름모델", "둘 다 있으면 LLM_MODEL 이 이긴다"
+    assert get_model_config("인자모델").model == "인자모델", "인자가 제일 앞선다"
+
+    monkeypatch.delenv("LLM_MODEL")
+    monkeypatch.delenv("OLLAMA_MODEL")
+    assert get_model_config().model == "기본모델", "둘 다 없으면 파일의 default"
 
 
 def test_the_provider_says_which_server_the_model_lives_on(models_file):

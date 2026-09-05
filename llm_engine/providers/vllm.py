@@ -43,14 +43,14 @@ class VllmConfig:
     host: str = VLLM_HOST
 
 
-def config_for(model: str | None = None) -> VllmConfig:
+def config_for(model: str | None = None, *, found=None) -> VllmConfig:
     """모델 설정을 vLLM 호출 설정으로.
 
-    입력  모델 이름. None 이면 기본 모델
+    입력  모델 이름(None 이면 기본 모델) · 이미 읽어 둔 ModelConfig
     출력  VllmConfig
     규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴
     """
-    found = get_model_config(model)
+    found = found or get_model_config(model)
     return VllmConfig(model=found.model, timeout=found.timeout)
 
 

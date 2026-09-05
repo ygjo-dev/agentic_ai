@@ -30,6 +30,10 @@ from llm_engine.providers.ollama import (
     ping,
 )
 
+# ★ 기본 모델은 2026-09-06 부터 Solar(vLLM)다. Ollama 시험이 기본 모델을 타면
+# vLLM 쪽으로 새므로 여기서는 Ollama 모델을 이름으로 못박는다.
+OLLAMA_MODEL = "qwen3:32b"
+
 RESPONSE_SCHEMA = {
     "type": "object",
     "properties": {"status": {"type": "string"}},
@@ -78,7 +82,7 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     num_ctx 는 menu 전체가 들어갈 만큼이어야 함. 넘치면 응답이 잘려
     타임아웃처럼 보임.
     """
-    call_ollama("발화", RESPONSE_SCHEMA)
+    call_ollama("발화", RESPONSE_SCHEMA, config=config_for(OLLAMA_MODEL))
 
     request = sent_request["request"]
     body = json.loads(request.data.decode("utf-8"))
@@ -87,14 +91,14 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     assert request.full_url == f"{OLLAMA_HOST}/api/generate"
     assert headers["content-type"] == "application/json"
 
-    assert body["model"] == config_for().model
+    assert body["model"] == OLLAMA_MODEL
     assert body["prompt"] == "발화"
     assert body["stream"] is False
     assert body["format"] == RESPONSE_SCHEMA
     assert body["think"] is False
     assert body["options"]["temperature"] == 0
     assert body["options"]["seed"] == 0
-    assert body["options"]["num_ctx"] == config_for().num_ctx
+    assert body["options"]["num_ctx"] == config_for(OLLAMA_MODEL).num_ctx
 
     # 시연 중 LLM 이 멎어도 화면이 영영 기다리면 안 된다.
     assert sent_request["kwargs"].get("timeout"), "타임아웃이 없다"
@@ -109,8 +113,9 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
     기준이 실물임. 예전에는 별도 Protocol 파일이 기준이었는데, 프로덕션
     어디서도 import 되지 않아 강제되는 것이 없었음. 지우고 실물에 맞춤.
     """
-    assert call_ollama("발화", RESPONSE_SCHEMA) == ANSWER
-    assert OllamaProvider().generate("발화", RESPONSE_SCHEMA) == ANSWER
+    설정 = config_for(OLLAMA_MODEL)
+    assert call_ollama("발화", RESPONSE_SCHEMA, config=설정) == ANSWER
+    assert OllamaProvider(설정).generate("발화", RESPONSE_SCHEMA) == ANSWER
     assert json.loads(sent_request["request"].data.decode("utf-8"))["prompt"] == "발화"
 
     def parameters(instance):
@@ -121,7 +126,7 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
             (p.name, p.annotation) for p in signature.parameters.values()
         ], signature.return_annotation
 
-    assert parameters(StubLLMClient(ANSWER)) == parameters(OllamaProvider()), \
+    assert parameters(StubLLMClient(ANSWER)) == parameters(OllamaProvider(설정)), \
         "StubLLMClient.generate() 가 실물과 다르다"
 
 
@@ -134,16 +139,17 @@ def test_the_model_can_be_swapped_without_restarting(sent_request):
     측정은 같은 발화를 모델만 바꿔 돌리는 일이라, 모델이 다른 클라이언트가
     한 프로세스에 동시에 살아 있어야 함. 전역 상수를 읽으면 그게 안 됨.
 
-    인자를 안 주면 기본 모델. 지금 동작이 그대로여야 함.
+    ★ 기본 모델은 이제 Solar 라 여기서 안 씀. 「인자를 안 주면 기본 모델」은
+    test_llm_selector 가 봄.
     """
     def sent_body():
         return json.loads(sent_request["request"].data.decode("utf-8"))
 
     get_llm("qwen2.5:7b").generate("발화", RESPONSE_SCHEMA)
-    assert sent_body()["model"] == "qwen2.5:7b"
+    assert sent_body()["model"] == "qwen2.5:7b", "목록에 없어도 defaults 로 Ollama 다"
 
-    get_llm().generate("발화", RESPONSE_SCHEMA)
-    assert sent_body()["model"] == config_for().model
+    get_llm(OLLAMA_MODEL).generate("발화", RESPONSE_SCHEMA)
+    assert sent_body()["model"] == OLLAMA_MODEL
 
     # 모델과 함께 움직이는 값도 호출마다 갈아끼울 수 있어야 한다 —
     # 큰 모델은 기본 타임아웃(180초)을 넘긴다.

@@ -42,19 +42,25 @@ def get_model_config(model: str | None = None) -> ModelConfig:
 
     입력  모델 이름. None 이면 기본 모델
     출력  ModelConfig
-    규칙  기본 모델은 환경변수 OLLAMA_MODEL 이 있으면 그것, 없으면
-          models.yaml 의 default
+    규칙  고르는 차례는 인자 > LLM_MODEL > OLLAMA_MODEL > models.yaml 의 default.
+          LLM_MODEL 이 공식 이름이고 OLLAMA_MODEL 은 옛 이름임 —
+          Ollama 만 있던 시절 이름이라 이제 provider 중립적이지 않음
           defaults 위에 그 모델 항목을 덮어씀. provider 도 그렇게 갈림
           목록에 없는 모델은 defaults 를 그대로 씀. 새 모델을 한 번 재보는 데
           파일을 안 고쳐도 됨
           호출할 때마다 파일을 읽음. 서버를 띄운 채 값을 고쳐 다시 잴 수 있음
     제약  값을 캐시하지 않는다.
           측정 중에 값을 고치고 다시 재는 것이 이 파일의 용도임
-          OLLAMA_MODEL 이라는 이름을 이번에 안 바꾼다.
-          이름이 provider 중립적이지 않지만 갈아끼우는 것은 별개 과제이고,
-          지금 바꾸면 이 환경변수를 쓰는 기계가 조용히 기본 모델로 돌아감
+          OLLAMA_MODEL 을 지우지 않는다.
+          그것만 적어 둔 기계가 조용히 기본 모델로 돌아가면 안 됨.
+          둘 다 있으면 LLM_MODEL 이 이김
     """
     document = _document()
-    name = model or os.environ.get("OLLAMA_MODEL") or document["default"]
+    name = (
+        model
+        or os.environ.get("LLM_MODEL")
+        or os.environ.get("OLLAMA_MODEL")   # 옛 이름. 호환으로 남겨 둔다
+        or document["default"]
+    )
     overrides = (document.get("models") or {}).get(name) or {}
     return ModelConfig(model=name, **{**document["defaults"], **overrides})
