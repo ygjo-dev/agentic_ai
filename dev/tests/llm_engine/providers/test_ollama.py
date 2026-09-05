@@ -1,4 +1,4 @@
-"""대상 : llm_engine/ — LLM 호출을 한 곳에 가둔다
+"""대상 : llm_engine/providers/ollama.py — qwen 이 가는 길
 
 해석 엔진(orchestrator)은 어떤 LLM 을 쓰는지 모른다. `generate(prompt, schema)`
 하나만 아는 객체로 이야기하고, 그 구현이 여기 있다. 모델을 바꾸려면
@@ -20,13 +20,13 @@ import urllib.request
 import pytest
 
 from conftest import StubLLMClient
-from llm_engine.ollama import (
+from llm_engine.llm_selector import get_llm
+from llm_engine.providers.ollama import (
     OLLAMA_HOST,
-    OllamaClient,
     OllamaConfig,
+    OllamaProvider,
     call_ollama,
     config_for,
-    make_client,
     ping,
 )
 
@@ -110,7 +110,7 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
     어디서도 import 되지 않아 강제되는 것이 없었음. 지우고 실물에 맞춤.
     """
     assert call_ollama("발화", RESPONSE_SCHEMA) == ANSWER
-    assert OllamaClient().generate("발화", RESPONSE_SCHEMA) == ANSWER
+    assert OllamaProvider().generate("발화", RESPONSE_SCHEMA) == ANSWER
     assert json.loads(sent_request["request"].data.decode("utf-8"))["prompt"] == "발화"
 
     def parameters(instance):
@@ -121,12 +121,15 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
             (p.name, p.annotation) for p in signature.parameters.values()
         ], signature.return_annotation
 
-    assert parameters(StubLLMClient(ANSWER)) == parameters(OllamaClient()), \
+    assert parameters(StubLLMClient(ANSWER)) == parameters(OllamaProvider()), \
         "StubLLMClient.generate() 가 실물과 다르다"
 
 
 def test_the_model_can_be_swapped_without_restarting(sent_request):
     """모델을 바꾸는 데 프로세스를 다시 띄우지 않음.
+
+    ★ get_llm 을 지나 온다. 목록에 없는 Ollama 모델도 defaults 의
+    provider=ollama 를 따라 OllamaProvider 가 되어야 함.
 
     측정은 같은 발화를 모델만 바꿔 돌리는 일이라, 모델이 다른 클라이언트가
     한 프로세스에 동시에 살아 있어야 함. 전역 상수를 읽으면 그게 안 됨.
@@ -136,10 +139,10 @@ def test_the_model_can_be_swapped_without_restarting(sent_request):
     def sent_body():
         return json.loads(sent_request["request"].data.decode("utf-8"))
 
-    make_client("qwen2.5:7b").generate("발화", RESPONSE_SCHEMA)
+    get_llm("qwen2.5:7b").generate("발화", RESPONSE_SCHEMA)
     assert sent_body()["model"] == "qwen2.5:7b"
 
-    make_client().generate("발화", RESPONSE_SCHEMA)
+    get_llm().generate("발화", RESPONSE_SCHEMA)
     assert sent_body()["model"] == config_for().model
 
     # 모델과 함께 움직이는 값도 호출마다 갈아끼울 수 있어야 한다 —

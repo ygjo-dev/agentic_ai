@@ -3075,6 +3075,399 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-06 (백열한째) · Solar 를 정식 provider 로 붙였다 · llm_engine 을 2-provider 구조로 갈았다 · ★ 35/36 이 그대로 재현됐다
+
+★ **Solar 가 이제 저장소의 정식 길로 간다.** 임시 HTTP client 가 아니라
+`get_llm("solar-open2-250b")` → `VllmProvider` 를 지나서 같은 성적이 나왔다.
+★ **prompt · menu · schema · 정답표는 한 글자도 안 고쳤다.**
+
+```
+날짜   2026-09-06
+모델   nota-ai/Solar-Open2-250B-Nota-NVFP4 (NVFP4) · served name solar-open2-250b
+서버   vLLM · port 18000 · pid 1944191 (전날 세운 LOAD_B 그대로 · 재시작 안 함)
+       TP4 · ctx 32768 · gpu util 0.55 · max-num-seqs 64
+       ★ --no-enable-flashinfer-autotune
+상세   /data1/solar-open2-vllm/runs/20260906_000220
+```
+
+#### 1. 재현성 — 앞 판들이 세운 것을 그대로 잇는다
+
+```
+FlashInfer autotune ON    같은 HTTP bytes 인데 후보가 갈렸다 (P×10 에 3가지)
+--no-enable-flashinfer-autotune
+                          ★ P×15 가 한 바이트도 같다
+                          ★ 36+9 세 판이 전부 같다
+                          ★ 서버를 새로 띄운 로드에서도 전부 같다
+```
+
+★ **이 조건이 없으면 아래 숫자를 못 믿는다.** 서버 기동 옵션이므로
+models.yaml 이 아니라 serve script 에 있다.
+
+#### 2. 확정 baseline (임시 client 로 세운 것)
+
+```
+Solar   35/36 · 근접 1 · 빗나감 0 · 못 붙음 0 · 실패점수 1 · 시연 9/9
+        유일한 근접 : u24 「여기 어느 동이야」 {recipe_018, recipe_034}
+qwen3:32b (저장 기준)
+        34/36 · 근접 2 · 빗나감 0 · 실패점수 2 · 시연 9/9
+```
+
+#### 3. ★ 새 llm_engine 구조
+
+```
+llm_engine/
+  llm_selector.py        get_llm(model). 프로덕션이 부르는 유일한 자리
+  model_config.py        get_model_config(model) -> ModelConfig. models.yaml 을 읽는 유일한 파일
+  providers/
+    ollama.py            OllamaProvider  (qwen)
+    vllm.py              VllmProvider    (Solar)
+
+지운 것  llm_engine/ollama.py · llm_engine/profiles.py
+```
+
+★ **Protocol/base/ABC 를 다시 만들지 않았다.** 옛날에 별도 Protocol 파일이
+프로덕션에서 아무도 import 하지 않아 아무것도 강제하지 못하고 지워진 이력이 있다.
+공통 계약은 `generate(prompt, response_schema) -> str` 하나뿐이라 두 구현이
+같은 signature 를 내면 된다. 그 계약은 시험이 붙든다.
+
+★ **모르는 provider 를 Ollama 로 안 떨어뜨린다.** 오타 하나가 조용히 딴 서버를
+부르면 측정이 어느 길로 갔는지 모르게 된다. `UnknownProvider` 로 죽는다.
+
+#### 4. Solar production 계약 — 지어내지 않고 옮겼다
+
+```
+POST /v1/chat/completions
+  model             solar-open2-250b
+  messages          [{"role":"user","content": 프롬프트 전문}]   ★ user 한 통
+  temperature       0
+  seed              0
+  reasoning_effort  "none"            ← Ollama 의 think=False 자리
+  response_format   json_schema 봉투 · strict true · 저장소 schema 그대로
+  max_tokens        1024
+읽는 곳  choices[0].message.content 원문. 파싱은 route_resolver 몫
+```
+
+★ **검증된 `eval_solar.py` 의 본문과 field 단위로 맞대 봤고 전부 같았다**
+(`/data1/solar-open2-vllm/runs/20260906_000220/body_compare.txt`). endpoint · 7개 field · schema 전부 일치.
+
+★ **`/v1/completions` 는 안 만들었다.** 2026-09-05 실측에서 맨 prompt 로는
+같은 response_format 을 보내도 JSON 강제가 안 걸렸다.
+
+★ **vLLM 에는 num_ctx · keep_alive 를 안 보낸다.** 컨텍스트는 서버가
+`--max-model-len` 으로 정하고, 모델은 이미 올라가 있다. 시험이 그 부재를 지킨다.
+
+#### 5. 정식 provider 실측 — HARD GATE 통과
+
+한 파이썬 프로세스 · 같은 로드 · 저장소 원본 prompt(1,818자) · menu 4,060자.
+
+| 판 | 적중 | 근접 | 빗나감 | 못붙음 | 실패 | 시연 |
+| --- | --- | --- | --- | --- | --- | --- |
+| RUN1 | 35/36 | 1 | 0 | 0 | 1 | 9/9 |
+| RUN2 | 35/36 | 1 | 0 | 0 | 1 | 9/9 |
+| RUN3 | 35/36 | 1 | 0 | 0 | 1 | 9/9 |
+
+```
+세 판 내부      candidate 36/36 · 전체 JSON 36/36 · 시연 9/9 전부 동일
+★ 임시 client baseline 과 맞대기
+   20260905_193209 (LOAD_A)  candidate 36/36 · 전체 JSON 36/36 · 시연 9/9
+   20260905_212301 (LOAD_B)  candidate 36/36 · 전체 JSON 36/36 · 시연 9/9
+유일한 비적중   u24 「여기 어느 동이야」 근접 — 세 판 다 같다
+오류            0
+```
+
+★ **provider 를 갈아 끼웠는데 reason 문장까지 한 글자도 안 달라졌다.**
+
+#### 6. qwen regression — 계약은 그대로다
+
+새 `OllamaProvider` 로 실제 Ollama 를 불러 한 판 쟀다.
+
+```
+34/36 · 근접 2 · 빗나감 0 · 못 붙음 0 · 실패점수 2 · 시연 9/9
+★ 저장 기준과 같은 모양이다
+로드   qwen3:32b · ID 030ee887880f · 28GB · 100% GPU · CONTEXT 32768
+       ★ keep_alive 만료로 스스로 내려갔다가 요청이 스스로 다시 올린 로드다
+       (수동 ollama run/restart/stop 을 하지 않았다)
+```
+
+★ **근접 둘의 자리는 이번에 u20 · u28 이었다.** 저장 기준(2026-09-05 `--runs 5`
+180회)에서는 1번 · 28번이었다. **28번은 같고 다른 하나가 갈렸다.**
+★ **이것을 코드 회귀로 읽지 않는다** — 로드가 다르고(「아흔한째」),
+1번은 그 180회 판에서 적중 1/5 로 이미 흔들리던 자리다. 요청 본문 · schema ·
+provider 선택 · 호출 성공은 전부 그대로다. **관찰값으로 적어 둔다.**
+
+★ **Ollama 요청 본문은 조립부 diff 가 0 이다** — model · prompt · stream=false ·
+format=schema · think=false · keep_alive=2h · temperature 0 · seed 0 · num_ctx.
+
+#### 7. 관문
+
+```
+pytest            1 failed · 380 passed · skipped 0
+                  실패는 알려진 음성 대조군 하나
+                  (test_dense_graph_would_move_if_overlap_removal_were_used)
+                  ★ 새 시험 열이 늘어 370 → 380
+check_wiring      recipe 36 · A 0 · B 0 · C 1 (web_fetch×web_address)
+check_inputs      없는 칸 0 · 안 보낸 required 0 · 새 오류 없음
+Streamlit         runpy 로 app/ui/main.py 통째로 → exit 0
+구조              recipe 36 · menu 36 · 정답표 36 · 시연 9 · menu 4,060자 · example 25
+```
+
+#### 8. 안 한 것
+
+```
+Solar 를 기본 모델로            ★ 안 함. default 는 여전히 qwen3:32b
+Solar 전용 prompt               안 함 (menu 는 한 벌 · prompt 도 공용 그대로)
+u24 를 고치는 prompt/menu 손    안 함
+LLM_MODEL 환경변수 migration    안 함 — OLLAMA_MODEL 이름을 그대로 뒀다.
+                                지금 갈면 그 변수를 쓰는 기계가 조용히 기본 모델로 감
+cold-start 정책                 안 함. provider 는 서버를 띄우지도 내리지도 않는다
+0.55 를 운영값으로 확정          안 함. qwen 공존 측정용 임시값이다
+git commit                      안 함
+```
+
+★ **옛 NOTES 의 `llm_engine/ollama.py` 경로 기록은 안 고쳤다.** 그때의 사실이다.
+
+---
+
+### 2026-09-05 (백열째) · Solar 에 모델별 prompt 손 둘을 대 봤다 · ★ 둘 다 기각 · 그리고 ★ 자가 흔들린다는 것을 알았다
+
+★ **채택한 것이 없다. 저장소 prompt 와 menu 를 한 글자도 안 고쳤다.**
+★ **이 판의 값진 것은 손이 아니라 자다** — 한 글자도 다르지 않은 prompt 를
+일곱 번 재서 **적중이 32~35 로 갈렸다.**
+
+```
+모델    nota-ai/Solar-Open2-250B-Nota-NVFP4 (NVFP4)
+서버    vLLM · port 18000 · ★ 같은 로드 (worker pid 1541647~50 · 재시작 안 함)
+        TP4 · ctx 32768 · gpu util 0.55 · max_num_seqs 64
+길      /v1/chat/completions · reasoning_effort "none" · temperature 0 · seed 0 ·
+        strict json_schema (저장소 recipe_selection_schema 그대로)
+자      recipe 36 · menu 4,060자 · UTTERANCES 36 · DEMO 9 · 지도 문맥 both
+재는 법 ★ 대조 · 손 · 대조. 판 셋을 한 파이썬 프로세스에서 이어 돌렸다.
+        판마다 차례가 같다 (정답표 1→36 → 시연 1→9)
+상세    /data1/solar-open2-vllm/runs/20260905_163553
+```
+
+#### 1. ★ 먼저 — 지난 판 summary 의 전제 하나가 틀렸다
+
+「백아홉째」 다음 판(2026-09-05 오후)의 summary 가 **「아홉 자리 중 여덟이 시작
+데이터만 다른 짝」**이라고 적었다. ★ **틀렸다. 다섯이다.** recipe 파일의 첫 칸으로
+다시 셌다.
+
+```
+u20 · u24 · u29 · d3 · d7   시작이 다르고 끝점이 같다   ← 다섯. 이 손이 겨냥한 갈래
+u22                          시작도 끝점도 다르다
+u17 · u19 · u28            ★ 시작이 애초에 같다 — 끝점이 갈리는 자리다
+```
+
+★ **u17 · u19 · u28 은 시작 데이터 손으로 고쳐질 자리가 아니었다.**
+옛 기록은 안 지운다. 여기에 정정을 붙인다.
+
+#### 2. 손 V1 · start-source — 기각
+
+「발화는 무엇으로 시작하는지를 언제나 스스로 밝힌다. 시작은 방식이 아니다」와
+네 갈래(찍은 지점 · 보이는 범위 · 말한 장소 · 말한 키워드)를 [규칙] 에 넣었다.
+**「방식만 서로 다른 Recipe 를 모두 넣는다」 바로 앞**에 놓았다 — 그 규칙이
+「얹기」를 시키는 자리로 보였기 때문이다. **1,818자 → 2,113자 (+295)**
+
+| 판 | 적중 | 근접 | 빗나감 | 못붙음 | 실패 | 시연 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 대조 앞 | 35/36 | 0 | 1 | 0 | 2 | 9/9 |
+| **손** | **32/36** | **3** | **1** | **0** | **5** | **7/9** |
+| 대조 뒤 | 35/36 | 1 | 0 | 0 | 1 | 8/9 |
+
+```
+새로 맞은 것   ★ 0건
+새로 깨진 것   5건 — 적중→근접 : demo3 · demo7 · u8 · u17 · u28
+★ 겨냥한 다섯   하나도 못 고쳤고 그중 둘(demo3 · demo7)을 오히려 깨뜨렸다
+★ u20          노린 바로 그것이 안 움직였다 (세 판 다 빗나감)
+```
+
+#### 3. 손 V2 · reason-short — 기각
+
+reason 규칙 한 줄을 「한두 문장」 → 「한 문장으로 짧게」로 바꾸고 「발화를 다시
+옮겨 적지 않고, 넣지 않은 Recipe 를 하나씩 따져 적지 않는다」를 붙였다.
+**1,818자 → 1,869자 (+51)** · ★ V1 문구와 안 섞었다.
+
+| 판 | 적중 | 근접 | 빗나감 | 못붙음 | 실패 | 시연 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 대조 앞 | 33/36 | 2 | 1 | 0 | 4 | 9/9 |
+| **손** | **30/36** | **5** | **1** | **0** | **7** | **9/9** |
+| 대조 뒤 | 34/36 | 2 | 0 | 0 | 2 | 9/9 |
+
+★ **문안이 하려던 일 자체는 됐다.**
+
+```
+                reason 평균   200자 도달   completion_tokens 평균
+대조 앞          144.4자        9/45            97.0
+★ 손             88.0자      ★ 3/45          ★ 74.7
+대조 뒤          145.8자        9/45            97.9
+```
+
+**reason 이 39% 짧아졌는데 판정이 나빠졌다.** 새로 맞은 것 1건(u17) ·
+새로 깨진 것 5건(u5 · u7 · u11 · u12 · demo4).
+★ **짧은 reason 이 왜 나쁜지는 확인 못 했다.**
+
+#### 4. ★ 이 판의 실측 — 같은 prompt 를 일곱 번 재니 32~35 였다
+
+```
+어제 run1              32/36 · 근접3 · 빗나감1 · 실패5 · 시연 7/9
+어제 run2              33/36 · 근접2 · 빗나감1 · 실패4 · 시연 9/9
+어제 run3              33/36 · 근접2 · 빗나감1 · 실패4 · 시연 8/9
+오늘 대조 앞           35/36 · 근접0 · 빗나감1 · 실패2 · 시연 9/9
+오늘 대조 뒤           35/36 · 근접1 · 빗나감0 · 실패1 · 시연 8/9
+오늘 대조 앞 2         33/36 · 근접2 · 빗나감1 · 실패4 · 시연 9/9
+오늘 대조 뒤 2         34/36 · 근접2 · 빗나감0 · 실패2 · 시연 9/9
+
+★ 적중 32~35 (폭 3) · 실패 1~5 (폭 4) · 시연 7/9~9/9 · 빗나감 0~1
+```
+
+같은 prompt 바이트 · 같은 menu · 같은 vLLM 로드 · temperature 0 · seed 0 이다.
+**앞뒤 대조도 두 번 다 3/45 자리에서 갈렸고 둘 다 u20 과 u28 이 끼어 있었다.**
+
+★ **그래서 두 손을 점수 차이로 기각한 것이 아니다.** -3 은 폭과 같은 크기다.
+**방향이 한쪽으로만 몰려서** 기각했다 — V1 은 좋아진 자리가 0건, V2 는 1 대 5 다.
+★ 지시서 11절대로 읽으면 두 손 다 「판정 불가」이고, 채택 후보가 아니라는 결론은 같다.
+
+★ **qwen 과 성격이 다르다.** 「백다섯째」는 **안 고친 menu 를 열여섯 판 재서
+열여섯 번 다 같은 값**이었다고 적었다. **Solar 는 일곱 판이 다 다르다.**
+★ **까닭은 못 밝혔다.** 짐작을 적지 않는다.
+
+★ **u20 에 대한 지난 판의 읽음도 고쳐 적는다.** 「세 판 다 확신하고 틀렸다」고
+적었는데 일곱 판에서는 **빗나감 5 · 적중 2** 다. 세 판만 봐서 그렇게 보였다.
+
+#### 5. 곁들여 — qwen 을 한 판 쟀다 (지시서 19절)
+
+Solar 판이 다 끝난 뒤 `check_resolve.py` 를 인자 없이 **한 번** 돌렸다
+(`--runs 5` · 180회). 목적은 **저장된 기준의 근접 둘이 어느 발화인지** 확인하는 것 하나다.
+
+```
+적중 171/180 (95%) · 근접 9 · 빗나감 0 · 못 붙음 0
+★ 완전 적중이 아닌 발화 : 1 · 28  — 딱 둘이다
+
+ 1  익산역 위치 보여줘      적중 1/5 · 근접 4회   후보 001 · 034
+28  여기 의원 공약 보여줘   적중 0/5 · 근접 5회   후보 021 · 022 · 029 · 042
+```
+
+★ **저장된 기준(34/36 · 근접2 · 빗나감0 · 실패2)과 어긋나지 않는다** — 완전 적중이
+아닌 발화가 정확히 둘이고 빗나감·못 붙음이 0 이다. **최신 근접 둘은 1번과 28번이다.**
+
+★ **다만 로드가 다르다.** qwen 이 keep-alive 로 스스로 내려간 뒤 이 판에서 새로
+떴다. 「아흔한째」가 「재현의 단위는 로드다」라고 적었으므로 **저장된 기준을 잰
+로드와 같은 로드가 아니다.** 그래서 이 값으로 기준을 다시 세우지 않는다.
+★ **28번은 「문장으로 못 닿는 자리」 그대로다** (「백다섯째」의 옛 30번). 5/5 근접이다.
+★ **1번이 새로 흔들린다** — 옛 기록에 없던 자리다. 001 과 034 로 갈린다.
+
+#### 6. 안 한 것
+
+```
+provider 통합         안 함
+저장소 prompt 수정    안 함 — trial 은 /data1/solar-open2-vllm/prompt_trials/ 에 있다
+menu 수정             안 함 (공용 한 벌 그대로 · 4,060자)
+정답표 수정           안 함
+모델별 prompt 분리    ★ 도입 안 함 — 도입할 근거가 안 나왔다
+두 손 합치기          안 함 (「백다섯째」의 「겹치기가 더하기가 아니다」)
+Solar 재시작          안 함
+qwen stop/restart     안 함 — 스스로 내려갔고, 19절 판에서 스스로 다시 떴다
+```
+
+---
+
+### 2026-09-05 (백아홉째) · Solar-Open2-250B NVFP4 첫 기동을 qwen 공존 조건에서 시도했다 · ★ 기동 실패 · 성적은 한 칸도 못 쟀다
+
+★ **판정 SOLAR_NOT_READY. 36발화도 시연도 안 쟀고 provider 도 안 붙였다.**
+저장소는 한 파일도 안 고쳤다 (이 NOTES 항목만 더한다).
+
+```
+모델        nota-ai/Solar-Open2-250B-Nota-NVFP4
+HF revision 3cc673335f4c2f41181e05a98fc2b8324d586a64 · safetensors 29/29
+vLLM        Upstage fork v0.22.0-solar-open2 · 0.1.dev16959+g00907fc9b.precompiled
+장비        RTX PRO 6000 Blackwell x4 (각 97,887 MiB) · torch 2.11.0+cu129
+조건        tensor-parallel 4 · max-model-len 32768 · gpu-memory-utilization 0.55
+qwen        qwen3:32b 를 GPU1 에 켠 채로 공존시켰다. ★ 한 번도 안 건드렸다
+로그        /data1/solar-open2-vllm/runs/20260905_130329/
+```
+
+**공존 관문은 통과했다.** 기동 직전 4장의 free 가 각 97,219 · 69,073 · 97,090 ·
+97,235 MiB 라 요구량 53,838 MiB(= 97,887 x 0.55) 를 다 넘었다. 실제로 4장에 각
+37~38 GiB 를 잡고 weight 29벌을 1분 3초에 다 올렸고 torch.compile 도 48초에
+끝나 AOT 캐시까지 저장됐다.
+
+**깨진 것은 마지막 한 칸이다.**
+
+```
+ValueError: max_num_seqs (1024) exceeds available Mamba cache blocks (970).
+Each decode sequence requires one Mamba cache block, so CUDA graph capture
+cannot proceed. Please lower max_num_seqs to at most 970 or increase
+gpu_memory_utilization.
+```
+
+Solar-Open2 는 hybrid(Mamba) 라 **decode sequence 하나가 Mamba cache block
+하나를 먹는다.** 0.55 로 잘라낸 자리에서 잡힌 block 이 970개인데 vLLM 의
+`max_num_seqs` 기본값이 1024 다. **54개가 모자라 CUDA graph capture 가
+시작도 못 하고 engine core 가 죽었다** (11분 21초).
+
+★ **메모리가 모자라서 죽은 것이 아니다.** KV cache 는 11.91 GiB · 934,851
+tokens 로 이미 잡혀 있었다. 잡은 것으로 기본 동시성 1024 를 못 댄다는 판정이다.
+
+**vLLM 이 스스로 알려준 값이 하나 더 있다.**
+
+```
+CUDA graph memory profiling 이 켜져 있어(v0.21.0 부터 기본)
+--gpu-memory-utilization=0.55 는 실질 0.5361 이다.
+프로파일링 이전과 같은 KV 크기를 쓰려면 0.5639 가 필요하다.
+```
+
+**아무것도 안 고치고 멈췄다.** 로그가 제시하는 길이 둘인데 둘 다 이번 판에서
+금지된 손이다 — `gpu-memory-utilization` 은 고정된 실험 조건이고,
+`--max-num-seqs` 는 검증된 원본에 없는 옵션이다. qwen 을 내리는 길도 금지다.
+**값을 바꿔 관문을 통과시키지 않는 것이 이 판의 규칙이었다.**
+
+**확인 못 한 것.** 기동을 못 했으므로 아래는 전부 미측정이다.
+
+```
+smoke C 한국어 sanity        확인 못 함
+smoke B structured output    확인 못 함   ← 핵심 관문이었다
+smoke A raw completion       확인 못 함
+36발화 CHAT / RAW            확인 못 함
+시연 9                       확인 못 함
+NVFP4 정답성                 확인 못 함 — 커널은 로드됐지만 출력을 한 토큰도 안 봤다
+```
+
+★ **「NVFP4 가 SM120 에서 도는가」는 여전히 미해결이다.** 「Solar-Open2 NVFP4 /
+SM120 판정」에 적어 둔 wheel 안의 sm_120a cubin 실재 · `supports_fp4(120)=True`
+는 그대로지만, **이번에도 정답성은 못 봤다.** 커널 로드까지만 확인됐다.
+
+**남긴 것 둘.**
+
+```
+serve_solar_open2_coexist.sh   원본과 diff 가 0.55 한 줄뿐이다. 원본은 안 고쳤다
+eval_solar.py                  36발화+시연9 driver. ★ 한 번도 못 돌렸다.
+                               저장소 밖에 있고 UTTERANCES · DEMO · _grade ·
+                               _context_payload 를 dev/tools 에서 import 한다 —
+                               발화도 기대값도 다시 안 적었다.
+                               resolve_service.resolve() 를 직접 불러
+                               FastAPI(8000)/Ollama 를 안 지난다. CHAT/RAW 두 mode.
+                               openai SDK 대신 urllib — 저장소 venv 에 새 의존을
+                               안 들이려는 것이고 나중에 provider 를 붙일 때
+                               측정과 제품의 요청 본문을 같게 두려는 것이다
+```
+
+**다음 판에서 사람이 고를 것.** 셋 다 이번 판의 조건을 바꾸는 손이라 무인으로
+못 골랐다.
+
+| 길 | 무엇을 바꾸나 | 아직 모르는 것 |
+| --- | --- | --- |
+| `--max-num-seqs` 를 970 이하로 (0.55 유지) | 동시 처리 sequence 상한만 내린다 | 우리 쓰임은 1건씩 순차라 영향이 없어 **보인다**. ★ 잰 것이 아니다 |
+| `--gpu-memory-utilization` 을 0.5639 이상으로 | KV/Mamba 몫이 는다 | block 이 몇 개로 느는지는 재봐야 안다. qwen 과의 공존 여유도 다시 봐야 한다 |
+| qwen 을 내리고 단독 기동 | 공존을 포기한다 | 사용자가 금지한 길이다. 선택지를 빠뜨리지 않으려고만 적는다 |
+
+★ **시작 관문(36 · 36 · 36 · 9 · 4,060자 · example 25 · wiring C1)은 기동 전에
+전부 실측으로 통과했다.** 옛 docstring 의 39 · 45 는 안 믿고 실제 Python 객체를
+셌다. `check_resolve.py` 의 docstring 이 아직 「발화가 마흔다섯이다 / 1~29 ·
+30~36 · 37~45」로 적혀 있는데 **실제는 36발화 · 경계 23/30 이다.** 문서가 코드보다
+뒤처진 자리이고 이번 판에서는 안 고쳤다.
+
+---
+
 ### 2026-09-05 (백여덟째) · 시연 4번을 052 → 060 으로 옮겨 판을 닫았다 · 시연 8/9 → 9/9
 
 ★ **「백일곱째」가 열어 둔 자리 하나를 닫은 판이다.** 013 · 032 · 046 을 지우면서

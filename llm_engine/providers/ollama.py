@@ -1,11 +1,15 @@
-"""Ollama 구현체."""
+"""Ollama 구현체.
+
+qwen 이 이 길로 간다. 요청 한 건에 model · prompt · schema 를 실어 보내고
+응답 봉투에서 원문만 꺼낸다. 파싱은 route_resolver 의 몫이다.
+"""
 
 import json
 import os
 import urllib.request
 from dataclasses import dataclass
 
-from llm_engine.profiles import profile
+from llm_engine.model_config import get_model_config
 
 OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
@@ -21,37 +25,25 @@ class OllamaConfig:
 
 
 def config_for(model: str | None = None) -> OllamaConfig:
-    """모델 프로파일을 호출 설정으로.
+    """모델 설정을 Ollama 호출 설정으로.
 
     입력  모델 이름. None 이면 기본 모델
     출력  OllamaConfig
     규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴.
           어디에 붙는가는 기계마다 다르고, 어떻게 부르는가는 모델마다 다름
     """
-    found = profile(model)
+    found = get_model_config(model)
     return OllamaConfig(
         model=found.model, num_ctx=found.num_ctx, timeout=found.timeout
     )
 
 
-class OllamaClient:
+class OllamaProvider:
     def __init__(self, config: OllamaConfig | None = None):
         self.config = config or config_for()
 
     def generate(self, prompt: str, response_schema: dict) -> str:
         return call_ollama(prompt, response_schema, config=self.config)
-
-
-def make_client(model: str | None = None) -> OllamaClient:
-    """모델만 갈아끼운 클라이언트.
-
-    입력  모델 이름. None 이면 기본 모델
-    출력  generate(prompt, response_schema) 를 가진 클라이언트
-    규칙  어떤 LLM 을 쓸지 고르는 유일한 자리. 다른 provider 가 붙으면 여기서 갈라짐
-          모델이 다른 클라이언트가 한 프로세스에 여럿 살 수 있음.
-          같은 발화를 모델만 바꿔 재는 데 프로세스를 다시 띄우지 않으려는 것
-    """
-    return OllamaClient(config_for(model))
 
 
 def ping(timeout: float = 3) -> bool:

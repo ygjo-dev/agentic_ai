@@ -34,8 +34,8 @@ from app.api.schemas.requests import (
 from app.api.services.bridge import recent_service
 from app.api.services.streamlit import node_service, screen_service
 from app.api.services.streamlit.screen_service import UnknownRenderMode
-from llm_engine.ollama import make_client
-from llm_engine.profiles import profile
+from llm_engine.llm_selector import get_llm
+from llm_engine.model_config import get_model_config
 from registration.registry import (
     DuplicateNode,
     InvalidInference,
@@ -167,8 +167,8 @@ async def resolve_endpoint(
     """
     return resolve_service.resolve(
         utterance,
-        llm_client=make_client(model),
-        reason_max_length=profile(model).reason_max_length,
+        llm_client=get_llm(model),
+        reason_max_length=get_model_config(model).reason_max_length,
         context=context,
     )
 
@@ -190,7 +190,7 @@ async def register_node_endpoint(
           버린 경로를 응답에 담지 않는다.
           화면이 쓰지 않는 키를 만들지 않음
     """
-    return node_service.register(form.model_dump(), llm_client=make_client(model))
+    return node_service.register(form.model_dump(), llm_client=get_llm(model))
 
 
 def _chat_events(form: ChatRequest, model: str | None = None):
@@ -211,8 +211,8 @@ def _chat_events(form: ChatRequest, model: str | None = None):
         form.text,
         execute_service.chat(
             form.text,
-            llm_client=make_client(model),
-            reason_max_length=profile(model).reason_max_length,
+            llm_client=get_llm(model),
+            reason_max_length=get_model_config(model).reason_max_length,
             context=form.context,
         ),
     )

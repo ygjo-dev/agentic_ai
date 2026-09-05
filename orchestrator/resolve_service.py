@@ -116,7 +116,7 @@ def _resolve_full(
           paths 는 LLM 이 만드는 게 아님. 최종 후보로 다시 계산해 덧붙임.
           프론트엔드가 recipe 파일을 직접 읽지 않게 하려는 것
     제약  여기서 LLM 클라이언트를 만들지 않는다.
-          app.api.main 의 make_client 를 갈아끼우는 테스트가 죽음
+          app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
           기존 key 의 이름과 뜻을 바꾸지 않는다.
           Streamlit 과 dev/tools/check_resolve.py 가 그것을 읽음
     """

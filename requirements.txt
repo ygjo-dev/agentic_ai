@@ -1,6 +1,6 @@
 # Python 3.12 기준
 #
-# LLM 호출(llm_engine/ollama.py)
+# LLM 호출(llm_engine/providers/ollama.py · Ollama 쪽)
 #   ollama serve
 #   ollama pull qwen3:14b
 #
