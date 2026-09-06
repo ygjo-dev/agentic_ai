@@ -9,6 +9,7 @@ web.search · web.fetch 는 권한이 없어 못 부른다. 그래서 「서버�
     권한      execute_service 의 refs 에 그 서버가 있어야 부를 수 있다
     배선      노드가 그 서버 · 그 도구로 간다
     좌표 칸    앞 단계의 lon · lat 이 origin_lon · origin_lat 으로 들어간다
+    실행값     분과 이동수단을 명시로 보낸다. 도구 기본값에 기대지 않는다
     오류 전달  권한이 없을 때의 Gateway 문구가 사용자에게 사유로 나간다
 
 LLM 도 Gateway 도 부르지 않는다. 온톨로지 · 배선표 · 상수만 읽는다.
@@ -148,6 +149,8 @@ def test_the_previous_coordinates_land_in_the_origin_fields():
     assert 좌표_단계["input"] == {
         "origin_lon": "$s1.lon",
         "origin_lat": "$s1.lat",
+        "max_minutes": 30,
+        "mode": "TRANSIT",
     }
 
 
@@ -160,15 +163,19 @@ def test_the_place_from_the_utterance_reaches_the_geocode_step():
     assert "의왕역" in plan["headline"]
 
 
-def test_the_minutes_and_the_mode_are_left_to_the_tool():
-    """required 는 좌표 둘뿐임. 안 보낸 것은 도구 기본값(30분 · WALK)으로 감.
+def test_the_minutes_and_the_mode_are_sent_and_never_left_to_the_tool():
+    """도구 기본값에 기대지 않음. 무엇으로 계산한 답인지가 배선에 적혀 있어야 함.
 
-    재보지 않은 숫자를 배선에 새로 들이지 않는다는 것과 같은 자리임.
+    required 는 좌표 둘뿐이라 안 보내도 돌긴 한다. 그러면 저쪽 서버의
+    기본값(30분 · WALK)으로 도는데, 그 값은 우리가 모르는 새 바뀔 수 있고
+    바뀌어도 우리 쪽에는 아무 신호가 없다.
+    ★ mode 가 도구 기본값(WALK)과 다르므로 안 보내면 답이 실제로 달라짐.
     """
-    recipe_id = recipe_of(ISOCHRONE_CHAIN)
-    보내는_칸 = set(step_service.plan(recipe_id, "의왕역")["steps"][-1]["input"])
+    보낸_것 = step_service.plan(recipe_of(ISOCHRONE_CHAIN), "의왕역")["steps"][-1]["input"]
 
-    assert 보내는_칸 == {"origin_lon", "origin_lat"}
+    assert set(보낸_것) == {"origin_lon", "origin_lat", "max_minutes", "mode"}
+    assert 보낸_것["max_minutes"] == 30
+    assert 보낸_것["mode"] == "TRANSIT"
 
 
 # ── 오류 전달 ────────────────────────────────────────────────────────

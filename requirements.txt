@@ -12,7 +12,7 @@ PyYAML>=6.0.3          # 온톨로지 / Recipe / Policy YAML 파싱
 fastapi>=0.100.0       # Backend API (backend/main.py)
 uvicorn>=0.24.0        # FastAPI 서버 실행
 streamlit>=1.60.0      # 데모 UI (frontend/main.py)
-pyvis>=0.3.2           # 온톨로지 그래프를 그리는 interactive graph library (vis-network).
+pyvis==0.3.2           # 온톨로지 그래프를 그리는 interactive graph library (vis-network).
                        # 제 패키지 안에 JS 를 들고 있어 cdn_resources="in_line" 이면
                        # 인터넷 없이 뜬다. Graphviz(dot/neato)는 여전히 필요하다 —
                        # 좌표를 잡는 것과 dev/tools/export_graph.py 의 정지 그림이 그것이다

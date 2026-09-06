@@ -82,12 +82,6 @@ anchors:
     lon: "$context.selectedLocation.lon"
     lat: "$context.selectedLocation.lat"
 
-  # 같은 좌표인데 칸 이름이 lon · lat 이 아니라 origin_lon · origin_lat 이다.
-  # 앵커를 따로 둔 까닭이 그것이다 — 위 point_from_previous 를 못 쓴다.
-  origin_from_previous: &origin_from_previous
-    origin_lon: "$prev.lon"
-    origin_lat: "$prev.lat"
-
 
 # 노드 -> 도구. **온톨로지 밖이다.**
 #
@@ -342,13 +336,19 @@ step_of:
       input: {bbox: *bbox_from_previous}
       input_first: {bbox: *bbox_from_context}
 
-  # **input_first 가 없다.** 지금 이 노드를 쓰는 recipe 는 장소 좌표 변환 뒤에만
-  # 세우고, 찍은 지점에서 곧장 오는 경로는 아직 recipe 가 없다. 쓰는 데가 없는
-  # 줄을 미리 적으면 check_inputs 가 그것을 「맞다」로 세는데 실제로는 한 번도
-  # 안 불린 줄이 된다. 그 경로를 만들 때 origin_from_context 앵커와 함께 넣는다.
+  # 좌표 칸 이름이 origin_lon · origin_lat 이라 위 point_from_previous 를 못 쓴다.
+  # 실행값은 30분 · TRANSIT 고정이다 — 도구 기본값(30분 · WALK)에 기대지 않는다.
+  # 발화에서 분 · 이동수단을 받는 기능은 아직 없다.
+  #
+  # input_first 가 없다. 찍은 지점에서 곧장 오는 recipe 가 아직 없고, 쓰는 데가
+  # 없는 줄은 check_inputs 가 「맞다」로 세는데 실제로는 한 번도 안 불린다.
   compute_isochrone:
     point:
-      input: *origin_from_previous
+      input:
+        origin_lon: "$prev.lon"
+        origin_lat: "$prev.lat"
+        max_minutes: 30
+        mode: "TRANSIT"
 
   # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
   # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.
