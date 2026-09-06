@@ -30,10 +30,12 @@ def resolve(utterance: str, llm_client, reason_max_length: int) -> dict:
     출력  LLM 응답(reason · argument 포함) +
           status · recipe_id · candidate_recipe_ids · paths
     규칙  프롬프트에 실리는 menu 는 menu.yaml 원문 전부임. 요청마다 안 갈림
-          status 와 후보는 LLM 이 쓴 것을 그대로 씀
-          candidate_recipe_ids 는 recipe_id 를 앞에 두고 중복을 접은 목록임
-          paths 는 후보로 다시 계산해 덧붙임. 프론트엔드가 recipe 파일을
-          직접 읽지 않게 하려는 것
+          status 와 recipe_id 는 LLM 이 고른 것임. 후처리 규칙으로 바꾸지 않음
+          candidate_recipe_ids 응답은 그 선택을 부르는 쪽이 읽기 좋게 편 것임 —
+          고른 recipe 를 앞에 두고 중복을 지운 목록이라 LLM 이 쓴 배열과 차례가
+          다를 수 있음. **무엇이 후보인가는 안 바뀜. 순서와 중복만 다듬음**
+          paths 는 그 정돈된 후보 목록으로 계산해 덧붙임. 프론트엔드가 recipe
+          파일을 직접 읽지 않게 하려는 것
     제약  고른 것을 여기서 다시 거르지 않는다.
           실행할 수 있는지는 실행 직전에 봄. 두 판단을 한 값에 섞으면 어느
           쪽이 후보를 없앴는지 알 수 없음

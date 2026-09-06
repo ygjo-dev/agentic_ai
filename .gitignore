@@ -23,7 +23,7 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 
-# --- 환경변수 (OLLAMA_HOST, OLLAMA_MODEL 등) ---
+# --- 환경변수 (이 기계가 무엇에 붙나. 목록은 .env.example) ---
 .env
 .env.*
 !.env.example

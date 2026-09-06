@@ -4,12 +4,16 @@
 
   1. LLM 이 노드 id 와 무엇에 관한 것인지를 정한다
   2. 온톨로지에 노드를 넣고 관계(hasInput · hasOutput · about)를 붙인다
-  3. 새 노드를 지나는 실행 경로를 만든다. **대상이 어긋나는 것은 버린다**
-       철도 구간의 지도 범위로 충전 대기열을 예측하는 경로 같은 것들이다
+  3. 새 노드를 지나는 실행 경로를 만든다
   4. 남은 경로를 recipe 파일로 쓰고 menu 에 기능 문장을 더한다
 
 **앞이 실패하면 뒤는 돌지 않는다.** 온톨로지에 못 넣은 노드로 recipe 를 만들면
 존재하지 않는 노드를 가리키게 된다.
+
+★ **about 을 registration 이 어떻게 쓸지는 아직 확정되지 않았다.** 지금
+register_node 구현은 crosses_groups 가 참인 후보를 recipe 로 쓰지 않는데
+(철도 구간의 지도 범위로 충전 대기열을 예측하는 경로 같은 것들이다),
+아래 시험은 그 **현재 동작을 지킬 뿐 최종 정책을 확정하지 않는다.**
 
 등록은 실제 저장소 파일을 바꾼다. 모든 테스트가 임시 디렉터리로 격리한다 —
 리허설로 만들어둔 시연 상태가 pytest 한 번에 날아가면 시연 당일 사고가 된다.
@@ -435,14 +439,15 @@ def chains_in_recipe_files() -> set[tuple[str, ...]]:
     }
 
 
-def test_paths_that_cross_subjects_are_never_registered():
-    """★ 대상이 어긋나는 경로는 파일이 되지 않음. 응답에도 안 담김.
+def test_current_registration_filters_paths_that_cross_subjects():
+    """지금 register_node 는 crosses_groups 가 참인 후보를 recipe 파일과 응답에서 뺌.
 
     타입만 보면 이어지지만 실행할 수 없는 경로. 그것이 menu 에 실리면 LLM 이
     후보로 보게 되고, 사람이 그걸 고르는 순간 시연이 멈춤.
 
-    차단이지 표시가 아님. 버린 경로를 돌려주지도 않음. 화면이 안 쓰는
-    키를 만들지 않음. 몇 개를 버렸는지는 이 테스트가 재서 보여줌.
+    ★ 이 시험은 **현재 구현 동작을 지킨다.** about 을 recipe 생성에서 최종적으로
+    어떻게 쓸지(차단 · 분류 · 순위 · 미사용)는 아직 확정되지 않았고 여기서
+    정하지 않는다.
     """
     from ontology.graph import crosses_groups
 
@@ -463,12 +468,12 @@ def test_paths_that_cross_subjects_are_never_registered():
         assert tuple(chain) in written, chain
         assert not crosses_groups(chain), chain
     for chain in dropped:
-        assert tuple(chain) not in written, f"어긋나는 경로가 파일이 됐다: {chain}"
+        assert tuple(chain) not in written, f"지금 구현이 안 거른 경로다: {chain}"
 
     assert recipes_now() - before_files == set(result["recipe_ids"])
     assert set(menu_now()) - before_menu == set(result["recipe_ids"])
 
-    # 승인 관문의 흔적이 없다. 버린 경로도 돌려주지 않는다.
+    # 응답에 승인 관문의 흔적이 없다. 화면이 안 쓰는 키를 만들지 않는다.
     assert "pending" not in result and "dropped" not in result
 
 

@@ -522,15 +522,16 @@ def register_node(form: dict, llm_client) -> dict:
           recipe 를 만들면 존재하지 않는 노드를 가리킴
           관계는 노드를 쓴 뒤에 이음. 순서가 바뀌면 아직 없는 노드를 가리키는
           edge 가 파일에 남음
-          crosses_groups 가 참인 경로는 파일이 되지 않고 응답에도 안 담김.
+          지금 구현은 crosses_groups 가 참인 경로를 파일로도 응답으로도 안 냄.
           예 : 궤도 검측차 영상으로 승강장 승객의 위험 행동을 찾는 경로.
                화각이 안 맞아 실행할 수 없음
+          ★ about 을 recipe 생성에서 최종적으로 어떻게 쓸지는 아직 확정되지
+            않았음. 차단 · 분류 · 순위 · 미사용 중 무엇인지 정해지면 이 줄이
+            바뀜. 관계를 읽는 계산 자체는 graph.crosses_groups 가 가짐
     제약  버린 경로를 돌려주지 않는다. 화면이 안 쓰는 키를 만들지 않음
     이력  f9bbda1 이전 그런 경로를 화면에 올려 사람이 승인하게 했음
           (propose/approve). 관문이 시연 화면의 절반을 먹었고, 걸러지는 것이
           전부 진짜 쓰레기라 사람이 건질 조합이 하나도 없었음
-          사람이 검토하는 절차는 이 화면이 아닌 곳에 제대로 들어감.
-          그때 crosses_groups 가 차단에서 분류로 돌아감
     """
     inferred = infer_node(form, llm_client=llm_client)
     node_id = inferred["node_id"]

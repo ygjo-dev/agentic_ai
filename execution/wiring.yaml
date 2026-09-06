@@ -37,20 +37,20 @@
 # 낱개를 안 묶으면 같은 문자열을 두 번 적게 된다.
 anchors:
 
-  # 대부분 여기다. 아래 셋(r5-server · otp-router · web.search)만 다른 서버다.
-  # tools.json 의 serverId 가 근거다.
+  # 기본 서버다. 대부분의 노드가 여기를 부른다.
+  # 다른 서버를 쓰는 노드는 제 tool_of 줄에 server_id 를 따로 적는다.
+  # 근거는 tools.json 의 serverId 다.
   server_id: &server_id "asap-mcp-core"
 
-  # 도달권 계산 하나만 여기다. 다른 MCP 서버이고, 그 서버를 부르려면
-  # execute_service 의 selected_mcp_tool_refs 에도 "r5-server/*" 가 있어야 한다
-  # — 배선만 맞으면 되는 것이 아니다(실측 2026-09-06 · HTTP 500 "not applied").
+  # 도달권 계산이 부르는 서버다. 그 서버를 부르려면 execute_service 의
+  # selected_mcp_tool_refs 에도 "r5-server/*" 가 있어야 한다 — 배선만 맞으면
+  # 되는 것이 아니다(실측 · 없으면 HTTP 500 "not applied").
   r5_server_id: &r5_server_id "r5-server"
 
-  # 경로 탐색 하나만 여기다. r5-server 와 같은 자리 — 다른 MCP 서버이고,
-  # 그 서버를 부르려면 execute_service 의 selected_mcp_tool_refs 에도
-  # "otp-router/*" 가 있어야 한다 (실측 2026-09-06 · 없으면 HTTP 500
-  # "MCP tool 'otp-router/otp_health_check' is not applied for this user.",
-  # 넣으면 HTTP 200 {"ok": true}).
+  # 경로 탐색이 부르는 서버다. r5-server 와 같은 자리 — selected_mcp_tool_refs
+  # 에도 "otp-router/*" 가 있어야 한다 (실측 · 없으면 HTTP 500 "MCP tool
+  # 'otp-router/otp_health_check' is not applied for this user.", 넣으면
+  # HTTP 200 {"ok": true}).
   otp_server_id: &otp_server_id "otp-router"
 
   # 발화에서 온 값을 가리키는 표시. 장소인지 키워드인지 식별자인지는 안 가른다.
@@ -109,16 +109,16 @@ tool_of:
     tool: geo.geocode
     headline: "{arg} 좌표를 조회했습니다."
 
-  # 유일하게 asap-mcp-core 가 아닌 도구 셋 중 하나다(나머지 둘은 web.search ·
-  # web.fetch). 도구 이름에 서버 접두어를 안 붙인다 — server_id 칸이 따로 있고
-  # vendor 가 그 둘을 합쳐 "r5-server/compute_isochrone" 으로 부른다.
+  # 기본 서버가 아니라 r5-server 를 부르는 노드다.
+  # 도구 이름에 서버 접두어를 안 붙인다 — server_id 칸이 따로 있고 vendor 가
+  # 그 둘을 합쳐 "r5-server/compute_isochrone" 으로 부른다.
   compute_isochrone:
     server_id: *r5_server_id
     tool: compute_isochrone
     headline: "{arg} 도달권을 계산했습니다."
 
-  # asap-mcp-core 가 아닌 넷째 도구다. headline 의 {arg} 는 도착지(말한 장소)다
-  # — 출발지는 사람이 화면에서 찍은 자리라 발화에 이름이 없다.
+  # 기본 서버가 아니라 otp-router 를 부르는 노드다. headline 의 {arg} 는
+  # 도착지(말한 장소)다 — 출발지는 화면에서 찍은 자리라 발화에 이름이 없다.
   plan_trip:
     server_id: *otp_server_id
     tool: otp_plan_trip
@@ -245,7 +245,8 @@ tool_of:
     tool: knowledge.query
     headline: "{arg} 문서를 조회했습니다."
 
-  # web.search 만 다른 서버다. 한 줄뿐이라 앵커로 묶지 않는다.
+  # 기본 서버가 아니라 web-search 서버의 web.search 도구를 부른다.
+  # 이 서버를 쓰는 줄이 여기뿐이라 server_id 를 앵커로 묶지 않았다.
   web_search:
     server_id: "web-search"
     tool: web.search
@@ -265,10 +266,11 @@ tool_of:
 #
 #   input        그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
 #   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀.
-#                **KRRI_ASAP 화면의 지도 문맥이 들어오는 자리다** (2026-08-28) —
-#                지도 범위와 지점 좌표를 받는 열다섯 줄이 이것을 적었다.
-#                그 자리에 오는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이고,
-#                문맥이 없으면 resolve 가 그 후보를 아예 안 내놓는다
+#                **KRRI_ASAP 화면의 지도 문맥이 들어오는 자리다.** 그 자리에
+#                오는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이다.
+#                ★ $context 를 쓰는 줄이라고 해서 resolve 가 그 recipe 를
+#                  후보에서 빼지 않는다. 고르는 것은 menu 와 발화를 본 LLM 이고,
+#                  문맥이 실제로 왔는지는 execute_service 가 실행 직전에 본다
 #   adapter      vendor 입력 어댑터 이름. 저절로 안 걸리는 도구에만 적는다
 #   arg_field    (어미, 칸 이름). 발화에서 온 값이 그 어미로 끝나면 @arg 가
 #                든 칸의 이름을 그것으로 바꾼다. **값 판단이 배선표에 들어오는
