@@ -62,22 +62,21 @@ from app.core.logging import get_logger      → from logging import getLogger a
 
 ### 2. `from google import genai` 삭제 — `generic_mcp_executor.py`
 
-우리는 Gemini 키를 쓰지 않기로 했다. 지운 대신 `config.py` 가
-`GEMINI_API_KEY = None` 으로 고정한다.
-
-genai 를 부르는 곳은 둘이고 **둘 다 그 앞줄에서 돌아간다.**
+우리는 Gemini 키를 쓰지 않기로 했다. genai 를 부르는 곳은 둘이었다.
 
 ```
-_compose_answer           if not settings.GEMINI_API_KEY: return _fallback_answer(…)
+_compose_answer           도구를 하나만 부르는 경로(execute_generic_mcp)의 것
 _compose_workflow_answer  아래 3번으로 통째로 대체됨
 ```
 
-`_compose_answer` 는 도구를 하나만 부르는 경로(`execute_generic_mcp`)의 것이고
-우리는 그 경로를 쓰지 않는다. 코드는 원본 그대로 두었다 — 저쪽이 갱신될 때
-병합할 것이 없어야 한다.
+★ **2026-09-06 에 앞엣것을 통째로 지웠다.** 한동안은 원본을 그대로 두고
+`config.py` 가 `GEMINI_API_KEY = None` 으로 고정해 그 코드에 안 닿게 했는데,
+직접 도구 호출 길 자체를 안 쓰기로 정하면서 그 길의 함수 열다섯을 걷었다.
+`_compose_answer` 가 그중 하나다. `config.py` 의 `GEMINI_API_KEY` ·
+`GEMINI_MODEL` 두 칸도 읽는 데가 없어져 함께 사라졌다.
 
-**`GEMINI_API_KEY` 를 켜지 마라.** 켜면 `_compose_answer` 가 없는 이름을
-부른다.
+**저쪽이 갱신되면 그 열다섯이 병합 충돌로 돌아온다.** 그때 다시 지운다 —
+무엇을 왜 지웠는지가 이 절이다.
 
 ### 3. `_compose_workflow_answer` 대체 — `generic_mcp_executor.py`
 

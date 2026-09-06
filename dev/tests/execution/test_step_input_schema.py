@@ -111,6 +111,23 @@ def test_the_previous_step_slot_for_ev_stations_is_unchanged():
     assert wiring["adapter"] == step_service.POINT_RADIUS_TO_BBOX
 
 
+# 지도 범위를 받는 두 모양. **wiring.yaml 의 anchor 가 원천이고 여기는 기대값이다.**
+# 예전에는 step_service 에 같은 값의 파이썬 상수가 있어 그것과 맞댔는데,
+# 배선표가 원천이 된 뒤로 그 상수를 부르는 데가 이 시험뿐이었다 (2026-09-06 에 지웠다).
+BBOX_FROM_PREVIOUS = [
+    "$prev.minLon",
+    "$prev.minLat",
+    "$prev.maxLon",
+    "$prev.maxLat",
+]
+BBOX_FROM_CONTEXT = [
+    "$context.view.minLon",
+    "$context.view.minLat",
+    "$context.view.maxLon",
+    "$context.view.maxLat",
+]
+
+
 # 이 넷은 스키마가 **진짜로** bbox 배열을 받는다. ev 를 고치면서 같이 고치면
 # 오히려 깨진다 — 2026-08-30 에 확인하고 안 고쳤다. 그 확인을 여기 박아 둔다.
 @pytest.mark.parametrize(
@@ -126,13 +143,17 @@ def test_the_four_taking_a_bbox_array_still_send_one_bbox_field(node, tool):
     wiring = step_service.STEP_OF[(node, "map_extent")]
 
     assert "bbox" in _props(tool)
-    assert wiring["input_first"] == {"bbox": step_service.BBOX_FROM_CONTEXT}
-    assert wiring["input"] == {"bbox": step_service.BBOX_FROM_PREVIOUS}
+    assert wiring["input_first"] == {"bbox": BBOX_FROM_CONTEXT}
+    assert wiring["input"] == {"bbox": BBOX_FROM_PREVIOUS}
 
 
 def test_the_visible_extent_four_are_ordered_minLon_minLat_maxLon_maxLat():
-    """평평한 넷으로 풀어 적을 때 이 순서를 믿는다."""
-    assert step_service.BBOX_FROM_CONTEXT == [
+    """평평한 넷으로 풀어 적을 때 이 순서를 믿는다.
+
+    ★ 값을 여기 박아 둔다. 원천은 wiring.yaml 의 anchor 이고 그것과 같은지는
+    위 시험이 본다 — 파이썬 상수와 맞대면 배선표를 안 지나는 대조가 된다.
+    """
+    assert BBOX_FROM_CONTEXT == [
         "$context.view.minLon",
         "$context.view.minLat",
         "$context.view.maxLon",

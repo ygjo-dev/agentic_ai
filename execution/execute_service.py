@@ -69,9 +69,9 @@ USER_CONTEXT = {
 # vendor 가 steps 를 workflow 로 알아보게 하는 이름.
 WORKFLOW_ACTION = "call_mcp_workflow"
 
-# 부를 인자를 못 뽑았을 때의 안내. given 이 무엇이냐에 따라 무엇을 더 말해
-# 달라고 할지가 다르다. 장소 문구 하나로 두면 "국회의원 선거구 찾아줘" 에
-# 장소를 대라고 답하게 된다.
+# 부를 인자를 못 뽑았을 때의 안내. 그 recipe 가 무엇으로 시작하느냐에 따라
+# 무엇을 더 말해 달라고 할지가 다르다. 장소 문구 하나로 두면 "국회의원
+# 선거구 찾아줘" 에 장소를 대라고 답하게 된다.
 NO_PLACE_ANSWER = (
     "어느 장소인지 알 수 없습니다. '오송역' 처럼 장소를 함께 말씀해 주세요."
 )
@@ -82,12 +82,12 @@ NO_IDENTIFIER_ANSWER = (
     "어느 것인지 알 수 없습니다. '충북 제1선거구' 처럼 이름이나 코드를 함께 말씀해 주세요."
 )
 
-# given -> 안내 문구. key 는 온톨로지의 데이터 노드 id 이고 축 선택지와 같은 값이다.
-# given 이 null 이거나 여기 없는 값이면 장소 문구로 떨어진다.
+# 경로의 시작 데이터 노드 -> 안내 문구. key 는 온톨로지의 데이터 노드 id 다.
+# 여기 없는 노드로 시작하는 경로는 장소 문구로 떨어진다.
 #
-# **화면에서 온 둘(찍은 지점 · 보이는 범위)은 여기 없다.** 그 둘은 사람이 더
-# 말해 줄 것이 없다 — 값은 이미 화면이 보냈고, 안 보냈으면 resolve 가 그
-# 후보를 아예 안 내놓아 이 문구까지 오지 않는다.
+# **화면에서 온 둘(찍은 지점 · 보이는 범위)은 여기 없다.** 그 둘로 시작하는
+# 경로에서 사람이 더 말해 줄 것은 뒤 단계의 @arg 뿐이고, 그것은 대개 장소다
+# (경로 탐색의 도착지가 그 자리다).
 NO_ARGUMENT_ANSWER = {
     "spoken_place": NO_PLACE_ANSWER,
     "spoken_keyword": NO_KEYWORD_ANSWER,
@@ -213,9 +213,10 @@ async def chat(
           place_in 이 장소를 뽑음. 정규식은 장소 어절 하나밖에 못 봄
           인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
-          화면에서 온 값으로 시작하는 recipe 는 인자가 없어도 부름.
+          배선이 발화에서 온 값을 안 쓰는 recipe 는 인자가 없어도 부름.
           "지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없고, 조회할 곳은
-          이미 문맥이 말했음
+          이미 문맥이 말했음. 무엇이 그런 recipe 인지는
+          step_service.spoken_needed 가 배선을 보고 셈
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
           상태를 두지 않는다.
@@ -241,33 +242,27 @@ async def chat(
         return
 
     argument = resolved.get("argument") or step_service.place_in(text)
-    if not argument and not _from_screen(resolved.get("given")):
-        yield _result(_no_argument_answer(resolved.get("given")), [])
+    if not argument and step_service.spoken_needed(recipe_id):
+        yield _result(_no_argument_answer(recipe_id), [])
         return
 
     async for payload in run(recipe_id, argument, text=text, context=context):
         yield payload
 
 
-def _from_screen(given: str | None) -> bool:
-    """그 시작 데이터가 화면에서 값을 받는 것인가.
-
-    입력  발화 해석이 쓴 given. 없으면 None
-    출력  참이면 발화에서 뽑을 인자가 없어도 부를 수 있음
-    규칙  어느 것이 화면에서 오는지는 step_service.CONTEXT_STARTS 가 앎
-    """
-    return given in step_service.CONTEXT_STARTS
-
-
-def _no_argument_answer(given: str | None) -> str:
+def _no_argument_answer(recipe_id: str) -> str:
     """부를 인자를 못 뽑았을 때의 답.
 
-    입력  발화 해석이 쓴 given. 없으면 None
+    입력  고른 recipe id
     출력  무엇을 더 말해 달라는 한 문장
-    규칙  given 으로 가름. 그 값이 이미 장소인지 키워드인지 식별자인지 말함
-          모르는 given 과 None 은 장소 문구. 지금까지의 문구가 그것임
+    규칙  경로의 첫 노드로 가름. 그 노드가 이미 장소인지 키워드인지 식별자인지 말함
+          모르는 노드와 빈 경로는 장소 문구. 지금까지의 문구가 그것임
+    이력  예전에는 발화 해석 응답의 given 으로 갈랐음. 2026-09-04 에 축 세 칸을
+          빼면서 그 값이 안 실려 늘 장소 문구로 떨어졌음
     """
-    return NO_ARGUMENT_ANSWER.get(given, NO_PLACE_ANSWER)
+    path = graph.path_of(recipe_id)
+    start = path[0]["node_id"] if path else None
+    return NO_ARGUMENT_ANSWER.get(start, NO_PLACE_ANSWER)
 
 
 def _result(answer: str, commands: list) -> dict:

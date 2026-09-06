@@ -149,7 +149,7 @@ def isolated_workspace(monkeypatch, tmp_path):
     ):
         monkeypatch.setattr(paths, name, value)
 
-    from app.ui.graph_svg import layout_store
+    from app.ui.graph import layout_store
 
     shutil.copy2(layout_store.INIT_LAYOUT_PATH, init / "layout.json")
     shutil.copy2(layout_store.INIT_LAYOUT_PATH, work / "layout.json")

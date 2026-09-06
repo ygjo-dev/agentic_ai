@@ -1,4 +1,4 @@
-"""대상 : app/ui/graph_svg/ · registration/registry.py — 좌표의 _init 사본
+"""대상 : app/ui/graph/ · registration/registry.py — 좌표의 _init 사본
 
 **눈이 못 보는 것을 본다.** 초기화가 좌표를 안 되돌리면 화면은 멀쩡하다 —
 첫 시연에서는 아무 일도 없고, **두 번째 시연에서 지도가 첫 배치가 아니다.**
@@ -17,7 +17,7 @@ import json
 
 import pytest
 
-from app.ui.graph_svg import layout_store
+from app.ui.graph import layout_store
 
 SAMPLE = {"n0": [10.0, 20.0], "n1": [30.0, 40.0]}
 CHANGED = {"n0": [10.0, 20.0], "n1": [30.0, 40.0], "n2": [99.0, 99.0]}

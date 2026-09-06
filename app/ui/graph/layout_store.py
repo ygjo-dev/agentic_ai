@@ -19,7 +19,6 @@
 않는다 — 시연 중에 좌표 파일 때문에 화면이 죽는 것이 가장 나쁘다.
 """
 
-import hashlib
 import json
 import math
 import os
@@ -27,13 +26,13 @@ import shutil
 import tempfile
 from pathlib import Path
 
-from app.ui.graph_svg.dot import (
+from app.ui.graph.dot import (
     GROUP_ATTRS,
     NODE_ATTRS,
     build_dot,
     wrap_node_labels,
 )
-from app.ui.graph_svg.graphviz import layout_positions, node_boxes
+from app.ui.graph.graphviz import layout_positions, node_boxes
 
 # 이 패키지 안에 둔다. 좌표는 그리기의 소유다 — 만드는 것도 쓰는 것도 여기뿐이고,
 # 나중에 JS 렌더러로 갈아끼우면 좌표 파일도 함께 사라진다.
@@ -140,7 +139,7 @@ def transpose(
     규칙  model=subset 은 교차가 압도적으로 적은 대신 세로로 김(H/W 1.38).
           좌표를 파일로 들고 있으므로 축만 바꿔치면 가로로 누움
           교차 · 간격 · 겹침은 좌표 교환으로 그대로 보존되고, 노드 글씨는
-          SVG 텍스트라 가로로 유지됨
+          그리는 쪽이 늘 가로로 씀
           회전이 아니라 축 교환이라 거울상이 되지만 방향이 없는 그래프라
           읽는 데 차이가 없음
     """
@@ -172,7 +171,7 @@ def is_tall(positions: dict[str, tuple[float, float]]) -> bool:
     """세로가 가로보다 긴 배치인가.
 
     출력  참이면 눕힐 것. 노드가 하나 이하면 거짓
-    규칙  좌표의 퍼진 범위로 잼. 렌더링한 SVG 크기가 아니라 좌표라서 노드
+    규칙  좌표의 퍼진 범위로 잼. 그려진 캔버스가 아니라 좌표라서 노드
           크기와 여백은 안 들어가지만 눕힐지 말지를 가르는 데는 충분함
           노드가 하나거나 없으면 눕힐 것이 없어 거짓. 0 으로 나누지도 않음
     """
@@ -355,7 +354,7 @@ def spread(
 #
 # **여유 0 이 아니다.** 0 으로 두면 이름 한 글자가 길어진 다음 등록에서 바로
 # 붙는다. 0.64 배 시절 실측이 10.7pt 였고 8 을 요구한다 —
-# dev/tests/app/ui/graph_svg/test_nodes_do_not_overlap.py 가 같은 값을 쓴다.
+# dev/tests/app/ui/graph/test_nodes_do_not_overlap.py 가 같은 값을 쓴다.
 MIN_GAP = 8.0
 
 # 겹친 새 노드를 밖으로 밀 때의 한 걸음(pt · 저장 좌표계)과 걸음 상한.
@@ -596,17 +595,3 @@ def _kept(stored: dict, placed: dict, missing: list) -> dict:
                 placed[node_id][1] - shift_y,
             )
     return kept
-
-
-def layout_hash(positions: dict) -> str:
-    """좌표 해시. 캐시 키에 넣음.
-
-    출력  12자 해시
-    제약  캐시 키를 온톨로지 version 만으로 만들지 않는다.
-          좌표는 version 과 따로 놂. layout.json 을 지우고 다시 켜면 version 은
-          그대로인데 좌표만 새로 잡힐 수 있고, 그때 캐시가 안 비면 옛 그림이
-          그대로 나옴
-    """
-    return hashlib.sha1(
-        json.dumps(positions, sort_keys=True).encode("utf-8")
-    ).hexdigest()[:12]

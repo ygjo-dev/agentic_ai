@@ -19,10 +19,6 @@ WIRING_PATH = REPO_ROOT / "execution" / "wiring.yaml"
 # 노드 등록. 온톨로지와 배선을 자동으로 만든다.
 REGISTRATION_DIR = REPO_ROOT / "registration"
 
-# 실행 경로(Route) 결정 엔진.
-ORCHESTRATOR_DIR = REPO_ROOT / "orchestrator"
-SCHEMAS_DIR = ORCHESTRATOR_DIR / "schemas"
-
 # static workflow 자산.
 STATIC_DIR = REPO_ROOT / "workflows" / "static"
 

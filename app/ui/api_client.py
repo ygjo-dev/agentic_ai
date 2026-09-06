@@ -16,7 +16,7 @@ BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
 
 # 타임아웃은 하는 일에 맞춘다. LLM 이 끼는 호출만 길다.
 SCREEN_TIMEOUT = 10
-RENDER_TIMEOUT = 30  # Graphviz 를 여러 벌 돌린다. 캐시 적중이면 즉시 온다.
+RENDER_TIMEOUT = 30  # 좌표가 이미 있으면 사전 몇 벌을 만들 뿐이라 즉시 온다.
 RESOLVE_TIMEOUT = 180
 NODES_TIMEOUT = 180
 # 주기 갱신이라 오래 매달리면 안 된다. LLM 이 안 끼는 메모리 조회다.
@@ -81,7 +81,7 @@ def get_screen() -> tuple[dict, bool]:
 
 
 def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> dict:
-    """화면 한 장에 필요한 SVG 와 칩 데이터.
+    """화면 한 장에 필요한 그래프 모형과 칩 데이터.
 
     입력  모드 · 강조할 recipe · mark(POST /nodes 응답 그대로)
     출력  POST /render 응답

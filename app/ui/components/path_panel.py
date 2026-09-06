@@ -6,7 +6,7 @@ Graphviz 를 쓰지 않는다 — 1/3 높이에 9노드 그래프를 또 그리�
 경로는 본질적으로 선형 사슬이라 칩+화살표가 훨씬 잘 읽히고, dot 왕복이 없어
 즉각적이며 애니메이션을 붙이기 쉽다.
 
-경로를 무엇으로 채울지는 백엔드가 정한다(graph_svg/focus.py). 여기는 이름
+경로를 무엇으로 채울지는 백엔드가 정한다(그리기 패키지의 focus.py). 여기는 이름
 사슬을 받아 칩으로 그리기만 한다 — 순서 계산이 두 곳에 있으면 그래프와 목록이
 서로 다른 순서를 말하게 된다.
 
@@ -17,7 +17,7 @@ import html
 
 import streamlit as st
 
-from app.ui import config, styles, theme
+from app.ui import config, styles
 
 # 안내 문구를 두지 않는다. 실행 전에는 하단 지도가 그대로 떠 있고, NO_MATCH 면
 # 지도는 있는데 켜지는 길이 없다 — 문구 없이 그림으로 읽힌다.
@@ -93,13 +93,23 @@ def utterance_markup(utterance: str | None) -> str:
 
 
 def registration_header(result: dict) -> str:
-    """등록 결과의 머리말. 새 노드 이름과 스탯."""
+    """등록 결과의 머리말. 새로 생긴 노드의 이름.
+
+    입력  POST /nodes 응답
+    출력  .utterance div 마크업. 이름도 id 도 없으면 빈 문자열
+    규칙  발화 자리에 이름이 들어감. 등록 장면의 주인공이 그것임
+    이력  한동안 이름을 뽑아 놓고 안 쓴 채 여는 태그만 돌려줬음
+          (`<div class="utterance">` 하나). 닫히지 않은 태그라 화면에
+          아무것도 안 뜨고 뒤 마크업까지 그 안에 빨려 들어갔음.
+          2026-09-06 에 고쳤다 — 새 디자인이 아니라 utterance_markup 과
+          같은 틀이다
+    """
     node = result.get("node") or {}
     name = node.get("name") or result.get("node_id", "")
+    if not name:
+        return ""
 
-    return (
-        f'<div class="utterance">'
-    )
+    return f'<div class="utterance">{html.escape(str(name))}</div>'
 
 
 def skeleton_markup() -> str:

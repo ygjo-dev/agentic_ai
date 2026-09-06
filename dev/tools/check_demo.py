@@ -148,7 +148,7 @@ def main() -> int:
     for number, utterance, expected in entries:
         for _ in range(args.runs):
             try:
-                found, status, _axes, _tally, _alone, _times = _call_resolve(
+                found, status, _argument, _tally, _alone, _times = _call_resolve(
                     utterance, args.model or None
                 )
             except ServerDown as exc:

@@ -173,21 +173,15 @@ def _one_run(utterance: str, model: str | None) -> dict:
     for attempt in range(2):
         try:
             started = time.monotonic()
-            final, status, axes, tally, alone = _call_resolve(utterance, model)
-            given, want, about, argument = axes
-            llm_count, lookup_count, _status, shortlist = tally
+            final, status, argument, tally, alone = _call_resolve(utterance, model)
+            llm_count, _status = tally
             return {
                 "ok": True,
                 "status": status,
                 "llm_candidates": sorted(alone) if alone else [],
-                "shortlist": sorted(shortlist) if shortlist else [],
                 "final": sorted(final),
-                "given": given,
-                "want": want,
-                "about": about,
                 "argument": argument,
                 "llm_count": llm_count,
-                "lookup_count": lookup_count,
                 "seconds": round(time.monotonic() - started, 2),
             }
         except ServerDown as exc:
@@ -210,8 +204,7 @@ def _summarise(runs: list) -> dict:
             run["status"],
             _short(run["final"]),
             _short(run["llm_candidates"]),
-            _short(run["shortlist"]),
-            run["given"], run["want"], run["about"], run["argument"],
+            run["argument"],
         )
 
     shapes = Counter(key(r) for r in good)
@@ -234,29 +227,26 @@ def _summarise(runs: list) -> dict:
 # ── 표 ──────────────────────────────────────────────────────────────
 
 NO_W, PLACE_W, UTT_W = 4, 12, 28
-STATUS_W, SET_W, SHORT_W, AXIS_W, ARG_W = 10, 26, 40, 18, 14
+STATUS_W, SET_W, ARG_W = 10, 26, 14
 
 
 def _header() -> list:
     row = (
         _cell("번호", NO_W) + "  " + _cell("자리", PLACE_W) + "  " + _cell("발화", UTT_W) + "  "
         + _cell("회", 5) + "  " + _cell("status", STATUS_W) + "  "
-        + _cell("LLM 후보", SET_W) + "  " + _cell("조회 후보", SHORT_W) + "  "
-        + _cell("최종 후보", SET_W) + "  "
-        + _cell("given", AXIS_W) + "  " + _cell("want", AXIS_W) + "  "
-        + _cell("about", AXIS_W) + "  " + _cell("인자", ARG_W)
+        + _cell("LLM 후보", SET_W) + "  " + _cell("최종 후보", SET_W) + "  "
+        + _cell("인자", ARG_W)
     )
     return [row, "─" * _width(row)]
 
 
 def _shape_row(no, place, utt, count, total, shape) -> str:
-    status, final, llm, shortlist, given, want, about, argument = shape
+    status, final, llm, argument = shape
     return (
         _cell(str(no), NO_W) + "  " + _cell(place, PLACE_W) + "  " + _cell(utt, UTT_W) + "  "
         + _cell(f"{count}/{total}", 5) + "  " + _cell(status, STATUS_W) + "  "
-        + _cell(llm, SET_W) + "  " + _cell(shortlist, SHORT_W) + "  " + _cell(final, SET_W) + "  "
-        + _cell(given, AXIS_W) + "  " + _cell(want, AXIS_W) + "  "
-        + _cell(about, AXIS_W) + "  " + _cell(argument, ARG_W)
+        + _cell(llm, SET_W) + "  " + _cell(final, SET_W) + "  "
+        + _cell(argument, ARG_W)
     )
 
 
@@ -329,14 +319,14 @@ def _render(model_label: str, runs: int, records: list, started_at: str, elapsed
             continue
 
         # 「갈린다」를 둘로 가른다. status·최종 후보가 갈리는 것과, 그 둘은 같은데
-        # 축·인자만 갈리는 것은 사람이 볼 때 전혀 다른 일이다.
+        # LLM 후보나 인자만 갈리는 것은 사람이 볼 때 전혀 다른 일이다.
         verdicts = {(sh["shape"][0], sh["shape"][1]) for sh in s["shapes"]}
         if len(verdicts) > 1:
             shapes = " / ".join(f"{sh['shape'][0]} {sh['shape'][1]} ×{sh['count']}"
                                 for sh in s["shapes"])
             wobbly.append(line + f"   {shapes}")
         elif s["shape_count"] > 1:
-            names = ("status", "최종", "LLM 후보", "조회 후보", "given", "want", "about", "인자")
+            names = ("status", "최종", "LLM 후보", "인자")
             differing = [
                 names[i] for i in range(len(names))
                 if len({sh["shape"][i] for sh in s["shapes"]}) > 1
@@ -356,7 +346,7 @@ def _render(model_label: str, runs: int, records: list, started_at: str, elapsed
     lines += [f"★ 하나로 가는 발화 (SELECT {runs}/{runs})   {len(single)}개"] + (single or ["  (없음)"])
     lines += ["", f"★ 되묻는 발화 (CLARIFY 가 가장 많이 나옴)   {len(clarify)}개"] + (clarify or ["  (없음)"])
     lines += ["", f"★ 회차마다 갈리는 발화 — status 나 최종 후보가 갈린다   {len(wobbly)}개"] + (wobbly or ["  (없음)"])
-    lines += ["", f"판정은 같은데 축·인자만 갈리는 발화   {len(axis_only)}개"] + (axis_only or ["  (없음)"])
+    lines += ["", f"판정은 같은데 LLM 후보·인자만 갈리는 발화   {len(axis_only)}개"] + (axis_only or ["  (없음)"])
     lines += ["", f"오류만 난 발화   {len(failed)}개"] + (failed or ["  (없음)"])
     lines.append("")
     return "\n".join(lines)

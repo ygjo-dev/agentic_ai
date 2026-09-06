@@ -6,8 +6,8 @@ interactive graph library 에 넘겨 iframe 으로 띄울 뿐이다.
 ★ **2026-09-06 에 Graphviz SVG 에서 vis-network(pyvis)로 갈았다.** 예전에는
 서버가 완성한 SVG 를 받아 `zoom.py` 의 자체 JS 로 확대 · 끌기를 흉내 냈다.
 그림 자체는 정지 이미지라 노드를 집어 옮길 수 없었다. 지금은 그 셋이 전부
-라이브러리 것이다. SVG 를 만드는 `app/ui/graph_svg/` 는 안 지웠다 —
-`dev/tools/export_graph.py` 가 정지 그림을 쓴다.
+라이브러리 것이다. **같은 날 SVG 를 만들던 자리도 통째로 걷었다** —
+Graphviz 는 좌표 계산에만 남는다.
 
 그래서 이 모듈에는 Graphviz 도, 파일 입출력도, 캐시도 없다. 화면을 갈아끼울 때
 버릴 수 있는 것만 남았다.
@@ -51,7 +51,7 @@ def render_graph_section(
 ):
     """온톨로지 그래프. 무엇을 골랐는지는 하단 경로 패널이 보여줌.
 
-    입력  rendered  POST /render 응답. top 에 상단 SVG 가 들어 있음
+    입력  rendered  POST /render 응답. network 에 그래프 모형이 들어 있음
           pulse     방금 등록했는가. 두근거림은 그때만 줌
           ratios    config.layout_ratios() 결과
     제약  발화 해석으로 이 그래프를 강조하지 않는다.

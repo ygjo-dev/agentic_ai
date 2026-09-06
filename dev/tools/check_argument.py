@@ -27,8 +27,9 @@
     3  @arg 자리에 뽑힌 인자를 넣고 Gateway 를 직접 부른다
     4  건수를 적는다
 
-표에는 그 회차의 축 셋(given · want · about)도 함께 찍는다. 어미만 바꾼
-변주(VARIATIONS, 2026-08-25)에서 어미가 인자를 흔드는지 축을 흔드는지가
+★ **축 셋(given · want · about)을 함께 찍던 칸이 2026-09-06 에 사라졌다.**
+2026-09-04 에 그 셋이 `/resolve` 응답에서 없어져 늘 "-" 였다. 어미만 바꾼
+변주(VARIATIONS, 2026-08-25)에서 어미가 무엇을 흔드는지는 이제 recipe 와 인자로
 여기서 갈린다.
 
 **첫 단계만 잰다.** `@arg` 를 쓰는 배선만 본다. `$prev` 만 쓰는 자리는 앞 단계가
@@ -51,15 +52,19 @@ LLM 이 뽑은 값만 재면 0건이 나왔을 때 **인자 탓인지 데이터�
 ## 이 파일이 안 하는 것
 
 표를 옮겨 적지 않는다. 발화 목록은 check_resolve 에서, 배선은 step_service 에서,
-user_context 는 execute_service 에서, Gateway 주소는 gateway_client 에서 그대로
-가져온다. 여기에 베껴 적으면 저쪽을 고쳤을 때 이 도구가 세는 숫자를 믿을 수
-없게 된다.
+user_context 는 execute_service 에서 그대로 가져온다. 여기에 베껴 적으면
+저쪽을 고쳤을 때 이 도구가 세는 숫자를 믿을 수 없게 된다.
+
+Gateway 주소만은 여기서 직접 환경변수를 읽는다. 제품 코드에 그것만 하는
+모듈(execution/gateway_client)이 있었는데 제품에서 부르는 데가 0 이 되어
+2026-09-06 에 지웠다. 한 줄을 위해 모듈을 남겨 두지 않는다.
 
 **테스트를 두지 않는다.** tools/ 는 재는 도구이고 제품 경로가 아니다.
 """
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -68,7 +73,7 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from execution import gateway_client, step_service  # noqa: E402
+from execution import step_service  # noqa: E402
 from execution.execute_service import USER_CONTEXT  # noqa: E402
 # check_resolve 의 밑줄 이름을 그대로 가져온다. 발화 목록과 /resolve 부르는
 # 자리를 여기 베껴 적으면 "같은 경로" 가 아니게 되고, 그러면 이 표의 인자가
@@ -86,7 +91,7 @@ from tools.check_resolve import (  # noqa: E402
 
 # 어미만 바꾼 변주 (2026-08-25 더함). 낱말은 같고 말투만 다르다.
 # 2026-08-25 화면 실측에서 "…데이터 검색해줘" 는 SELECT 인데 "…데이터 줘" 는
-# CLARIFY 로 갈렸다. 어미가 축(given)을 흔드는지 인자를 흔드는지를 가르려고
+# CLARIFY 로 갈렸다. 어미가 고른 recipe 를 흔드는지 인자를 흔드는지를 가르려고
 # 잰다.
 #
 # **check_resolve.UTTERANCES 의 아홉은 한 글자도 안 건드린다** — 스물일곱
@@ -201,6 +206,16 @@ LIST_KEYS = ("items", "features", "results", "documents", "rows", "data", "hits"
 
 GATEWAY_TIMEOUT = 120
 
+# Gateway 주소. **부를 때마다 환경변수를 읽는다** — import 시점에 굳히면
+# .env 를 고치고 이 도구를 다시 띄워야 한다.
+DEFAULT_GATEWAY_URL = "http://localhost:3000"
+
+
+def _gateway_url() -> str:
+    """Gateway 주소. 끝의 / 를 뗀다."""
+    return os.environ.get("GATEWAY_URL", DEFAULT_GATEWAY_URL).rstrip("/")
+
+
 # 표 칸 폭.
 UTTERANCE_WIDTH = 26
 RECIPE_WIDTH = 8
@@ -208,7 +223,6 @@ TOOL_WIDTH = 30
 PICKER_WIDTH = 10
 ARGUMENT_WIDTH = 22
 COUNT_WIDTH = 8
-RUNS_WIDTH = 6
 
 LLM_PICKER = "LLM"
 HUMAN_PICKER = "사람추측"
@@ -302,7 +316,7 @@ def _execute(step: dict, argument: str) -> tuple:
     }
     try:
         response = requests.post(
-            f"{gateway_client.base_url()}/api/tools/execute",
+            f"{_gateway_url()}/api/tools/execute",
             json=payload,
             timeout=GATEWAY_TIMEOUT,
         )
@@ -347,11 +361,9 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
                 # _call_resolve 는 다섯을 돌려준다. LLM 단독 칸을 더한 뒤
                 # (4dd552a) 여기 언팩이 넷이라 매 호출이 ValueError 로 떨어져
                 # 전부 "!" 가 됐다. 뒤에 무엇이 더 붙어도 안 깨지게 받는다.
-                found, status, axes, *_rest = _call_resolve(utterance, model)
+                found, status, argument, *_rest = _call_resolve(utterance, model)
                 recipe_id = sorted(found)[0] if found else None
-                given_want_about = axes[:3]  # (given, want, about, argument)
-                argument = axes[3]
-                key = (recipe_id, argument, status, given_want_about)
+                key = (recipe_id, argument, status)
                 picked[key] = picked.get(key, 0) + 1
                 sys.stdout.write(".")
             except ServerDown:
@@ -364,13 +376,11 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
 
         calls = []
         seen_recipes = set()
-        for (recipe_id, argument, status, given_want_about), count in sorted(
+        for (recipe_id, argument, status), count in sorted(
             picked.items(), key=lambda item: -item[1]
         ):
             step = _first_step(recipe_id) if recipe_id else None
-            call = _one_call(LLM_PICKER, recipe_id, status, step, argument, count)
-            call["axes"] = " · ".join(given_want_about)
-            calls.append(call)
+            calls.append(_one_call(LLM_PICKER, recipe_id, status, step, argument, count))
             seen_recipes.add(recipe_id)
 
         # 사람이 골랐을 값과 확인용 값. LLM 이 고른 recipe 위에서 인자만 갈아
@@ -418,9 +428,6 @@ def _one_call(picker, recipe_id, status, step, argument, count) -> dict:
         "fields": [],
         "hits": "-",
         "body": None,
-        # LLM 줄만 /resolve 가 쓴 축 셋(given · want · about)으로 채워진다.
-        # 사람추측 · 확인용 줄은 축이 없다 — 인자만 갈아 끼운 호출이다.
-        "axes": "-",
     }
     if step is None:
         # 배선이 안 붙은 노드가 있으면 execute_service.run 이 하나도 안 부른다.
@@ -454,8 +461,7 @@ def _print_table(rows) -> None:
         + _pad("뽑은 이", PICKER_WIDTH)
         + _pad("인자", ARGUMENT_WIDTH)
         + _pad("건수", COUNT_WIDTH)
-        + _pad("횟수", RUNS_WIDTH)
-        + "given · want · about"
+        + "횟수"
     )
 
     for row in rows:
@@ -492,8 +498,7 @@ def _print_table(rows) -> None:
                 + _pad(call["picker"], PICKER_WIDTH)
                 + _pad(_clip(str(call["argument"]), ARGUMENT_WIDTH - 2), ARGUMENT_WIDTH)
                 + _pad(str(call["hits"]), max(COUNT_WIDTH, _width(str(call["hits"])) + 2))
-                + _pad(runs, RUNS_WIDTH)
-                + call["axes"]
+                + runs
             )
         if row["errors"]:
             print(" " * _width(head) + f"/resolve 오류 {row['errors']}회")
@@ -594,7 +599,7 @@ def main() -> int:
 
     print(
         f"발화 {len(entries)}개 × {args.runs}회 · 모델 {args.model or '서버 기본'}"
-        f" · Gateway {gateway_client.base_url()}"
+        f" · Gateway {_gateway_url()}"
     )
     print("첫 실행 단계만 잰다. 사슬 끝의 답이 아니다.")
     print()

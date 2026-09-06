@@ -1,7 +1,7 @@
 """온톨로지를 화면이 쓰는 모양으로 바꾼다.
 
     GET  /screen  고를 수 있는 타입과 색 (screen_payload)
-    POST /render  SVG 한 벌 (render)
+    POST /render  그래프 모형 한 벌 (render)
 
 둘이 하는 일은 하나다. 출력이 목록이냐 그림이냐만 다르다. 예전에는
 ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣것을
@@ -10,11 +10,11 @@ ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣
 **app/ 안에서 온톨로지를 읽는 유일한 지점이다.** 다른 서비스는 여기를 거친다 —
 그래프DB 로 바뀔 때 고칠 곳이 하나여야 하기 때문이다.
 
-이름에 graph 를 안 쓴다. 이 파일은 원래 graph_service 였는데 graph_svg 와
+이름에 graph 를 안 쓴다. 이 파일은 원래 graph_service 였는데 그리기 패키지와
 "graph" 의 뜻이 달라 헷갈렸고, 그 혼동 때문에 두 모듈이 비슷한 계층인 줄 알고
 역방향 import 가 생겼었다. 여기가 다루는 것은 화면이 받을 모양이다.
 
-색만은 graph_svg 에게 묻는다. 그리는 쪽이 팔레트의 주인이고, 화면은 그래프 SVG 와
+색만은 그리기 쪽에 묻는다. 팔레트의 주인이 거기이고, 화면은 그래프와
 같은 색으로 칩과 배지를 칠해야 한다 — 출처가 둘이면 조용히 어긋난다.
 
 도메인 코드를 옮기거나 고치지 않는다 — 호출만 한다.
@@ -23,16 +23,14 @@ ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣
 import hashlib
 
 import paths
-from app.ui.graph_svg import build, layout_store
-from app.ui.graph_svg.dot import COLORS
+from app.ui.graph import build, layout_store
+from app.ui.graph.dot import COLORS
 from ontology import graph, store
 from ontology.graph import (
     dotted_edges,
     group_ids,
-    inputs_of,
     is_executable,
     load_ontology,
-    outputs_of,
     solid_edges,
     type_ids,
 )
@@ -46,7 +44,7 @@ def ontology_version() -> str:
           경우를 내용만으로는 구분할 수 없음
     제약  mtime 으로 계산하지 않는다.
           reset_to_init 은 파일을 복사하므로 내용이 같아도 mtime 이 바뀜.
-          프론트엔드 SVG 캐시가 헛돌고 그래프가 깜빡임
+          화면이 「같은 해석인가」를 이 값으로 세므로 헛돌면 그래프가 깜빡임
     """
     digest = hashlib.sha1()
     digest.update(store.raw_bytes())
@@ -118,7 +116,7 @@ def domain_graph() -> tuple[dict, dict, dict]:
     """그리기가 쓰는 도메인 형태 그대로.
 
     출력  (nodes, solid, dotted). solid / dotted 는 튜플 키 dict
-    규칙  온톨로지를 읽는 곳은 이 모듈 하나. graph_svg 는 여기서 받아 쓰기만 함
+    규칙  온톨로지를 읽는 곳은 이 모듈 하나. 그리기 패키지는 여기서 받아 쓰기만 함
     이력  JSON 은 튜플 키를 못 담아 screen_payload 는 리스트로 펴지만, 서버
           안에서 그릴 때는 펼 이유가 없음. 예전에는 프론트엔드가 받아서 다시
           튜플로 되돌렸음(to_build_dot_args). 그 왕복이 사라졌음
@@ -127,19 +125,22 @@ def domain_graph() -> tuple[dict, dict, dict]:
 
 
 def screen_payload() -> dict:
-    """그래프 한 벌 전체. 프론트엔드가 그리는 데 필요한 것만 담음.
+    """화면이 그리기 전에 받아 두는 것. **화면이 실제로 읽는 것만 담는다.**
 
-    출력  version · colors · types · nodes · solid_edges · dotted_edges
-    제약  엣지를 객체(dict)로 담지 않는다.
-          JSON 이 튜플 키를 못 담기도 하지만 그보다 순서가 중요함. 노드와
-          엣지가 나오는 순서가 Graphviz 레이아웃을 정하므로 왕복에서 순서가
-          흔들리면 좌표가 바뀜
+    출력  colors  칩 테두리 · 배지 · 그래프 색. 팔레트의 주인은 dot.COLORS 하나
+          types   등록 폼의 입출력 선택지
+    이력  2026-09-06 까지는 version · nodes · solid_edges · dotted_edges 도
+          함께 담았음. 서버가 그리게 된 뒤로 그 넷을 읽는 화면 코드가 0 이었음 —
+          노드 · 엣지 모형은 POST /render 의 network 가 좌표까지 함께 들고
+          가고, 화면 캐시 키로 쓰던 version 도 그쪽에 있음
+    제약  화면이 안 읽는 키를 만들지 않는다.
+          창구에 있는 키는 「누군가 이것을 읽는다」는 뜻이고, 안 읽히는 키는
+          도메인이 바뀔 때 함께 고쳐야 하는지를 아무도 판단할 수 없음
     """
     all_nodes = load_ontology()["nodes"]
 
     return {
-        "version": ontology_version(),
-        # 색은 graph_svg 가 정한다. UI 가 자기 팔레트를 따로 들면 두 곳이
+        # 색은 app/ui/graph/dot.py 가 정한다. UI 가 자기 팔레트를 따로 들면 두 곳이
         # 조용히 어긋나고, 그때 사람은 화면을 보고 코드를 의심한다.
         "colors": dict(COLORS),
         # 등록 폼의 입출력 선택지. **이름이 아니라 id 를 고르게 한다** —
@@ -148,25 +149,6 @@ def screen_payload() -> dict:
         "types": [
             {"id": type_id, "name": all_nodes[type_id]["name"]}
             for type_id in type_ids()
-        ],
-        # 그리는 노드만 담는다. 무엇을 받고 내놓는지는 관계에서 뽑아 넣는다 —
-        # 노드에는 안 적혀 있고, 화면은 칩에 그것을 보여준다.
-        "nodes": {
-            node_id: {
-                "kind": node["kind"],
-                "name": node["name"],
-                "description": node["description"],
-                "inputs": inputs_of(node_id),
-                "outputs": outputs_of(node_id),
-                "executable": is_executable(node_id),
-            }
-            for node_id, node in drawn_nodes().items()
-        },
-        # 실선에는 라벨이 없다. 무엇이 오가는지는 경로 안에 노드로 들어 있다.
-        "solid_edges": [{"from": frm, "to": to} for frm, to in solid_edges()],
-        "dotted_edges": [
-            {"a": a, "b": b, "labels": labels}
-            for (a, b), labels in dotted_edges().items()
         ],
     }
 
@@ -184,13 +166,14 @@ def render(
     recipe_ids: list[str] | None = None,
     mark: dict | None = None,
 ) -> dict:
-    """화면 한 장에 필요한 SVG 와 칩 데이터.
+    """화면 한 장에 필요한 그래프 모형과 칩 데이터.
 
     입력  mode        "plain" 실행 전 · "resolve" 발화 해석 결과 ·
                       "register" 노드 등록 직후
-                      캐시 키에만 쓰임. 그림을 다르게 만드는 것은 recipe_ids 와
-                      mark 이고, 모드는 같은 후보라도 장면이 다르면 다른 칸에
-                      담기게 함
+                      **register 만 실제로 갈림** — 그때만 mark 를 줄여 넘김.
+                      나머지 둘은 지금 같은 응답을 냄. 장면 이름을 남겨 두는
+                      것은 화면이 무엇을 보여주는 중인지가 창구에 적혀야 하기
+                      때문임
           recipe_ids  강조할 recipe. plain 이면 비어 있음
           mark        POST /nodes 응답(또는 이미 줄어든
                       {nodes, solid, dotted}). register 가 아니면 None
@@ -217,6 +200,5 @@ def render(
         recipe_ids=ids,
         mark=reduced,
         version=ontology_version(),
-        layout=layout_store.layout_hash(positions),
-        mode=mode,
+        registering=mode == "register",
     )

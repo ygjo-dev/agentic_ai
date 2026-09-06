@@ -1,4 +1,4 @@
-"""대상 : app/ui/graph_svg/layout.json — 그리는 노드마다 좌표가 있는가
+"""대상 : app/ui/graph/layout.json — 그리는 노드마다 좌표가 있는가
 
 **관문이다.** 온톨로지에 노드를 더하면 `layout.json` 에 좌표가 없어 그래프가
 통째로 안 그려진다 — `neato -n` 이 `node ... has no position as required by the
@@ -15,7 +15,7 @@ graphviz 를 안 부른다. 파일과 온톨로지만 읽는다.
 """
 
 from app.api.services.streamlit.screen_service import drawn_nodes
-from app.ui.graph_svg import layout_store
+from app.ui.graph import layout_store
 
 
 def test_every_drawn_node_has_coordinates():
@@ -23,7 +23,7 @@ def test_every_drawn_node_has_coordinates():
     positions, missing = layout_store.resolve(drawn_nodes())
 
     assert missing == [], (
-        f"좌표 없는 노드 {missing} — app/ui/graph_svg/layout_store.ensure_positions 를 "
+        f"좌표 없는 노드 {missing} — app/ui/graph/layout_store.ensure_positions 를 "
         "한 번 돌리거나 화면에서 노드를 등록한다"
     )
     assert positions

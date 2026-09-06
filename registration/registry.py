@@ -309,7 +309,7 @@ def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list
     출력  만들어진 recipe id 목록
     규칙  가장 큰 번호 다음부터 이어 붙임
     제약  기존 번호를 건드리지 않는다.
-          menu 와 frontend 의 SAMPLES 가 그 번호를 가리키고 있음
+          menu 와 정답표(dev/tools/check_resolve.py)가 그 번호를 가리키고 있음
     """
     directory = directory or paths.RECIPES_DIR
 
@@ -554,7 +554,7 @@ def reset_to_init() -> None:
     shutil.copytree(paths.INIT_RECIPES_DIR, paths.RECIPES_DIR)
 
     try:
-        from app.ui.graph_svg import layout_store
+        from app.ui.graph import layout_store
     except ImportError:  # 시연 계층이 없는 설치
         return
     layout_store.restore_from_init()

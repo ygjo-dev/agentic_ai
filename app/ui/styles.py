@@ -12,7 +12,7 @@ st.container(key="x") 는 DOM 에 .st-key-x 클래스를 남긴다. 그것을 �
 
 import html
 
-from app.ui import config, theme
+from app.ui import theme
 
 
 def note_markup(message: str) -> str:

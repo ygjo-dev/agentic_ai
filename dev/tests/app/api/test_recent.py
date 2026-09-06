@@ -110,9 +110,6 @@ def resolved(**overrides):
         "status": "SELECT",
         "recipe_id": "recipe_002",
         "candidate_recipe_ids": ["recipe_002"],
-        "given": "spoken_place",
-        "want": "cctv",
-        "about": "road",
         "argument": "오송역",
     }
     answer.update(overrides)
@@ -214,13 +211,12 @@ def test_without_since_only_the_last_few_turns_come():
 
 
 # ================================================================ 무엇이 남는가
-def test_the_three_axes_and_the_candidates_come_verbatim_from_the_resolve():
+def test_the_candidates_and_the_argument_come_verbatim_from_the_resolve():
     turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
 
     turn = recent_service.since()["turns"][-1]
 
     assert turn["status"] == "SELECT"
-    assert (turn["given"], turn["want"], turn["about"]) == ("spoken_place", "cctv", "road")
     assert turn["recipe_id"] == "recipe_002"
     assert turn["candidate_recipe_ids"] == ["recipe_002"]
     assert turn["argument"] == "오송역"

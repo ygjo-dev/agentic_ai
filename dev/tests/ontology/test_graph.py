@@ -33,7 +33,6 @@ from ontology.graph import (
     crosses_groups,
     dotted_edges,
     group_ids,
-    highlight_edges,
     inputs_of,
     is_executable,
     load_ontology,
@@ -236,18 +235,21 @@ def test_only_about_relations_become_dotted_edges():
 def test_a_recipe_becomes_an_ordered_path():
     """실행 경로는 집합이 아니라 리스트.
 
-    순번 라벨(1, 2, 3)을 붙이려면 순서가 남아야 하고, recipe 에 루프가 생겨
-    같은 엣지를 두 번 지날 때 집합은 그것을 하나로 뭉개버림.
+    부르는 순서가 남아야 하고, recipe 에 루프가 생겨 같은 엣지를 두 번 지날
+    때 집합은 그것을 하나로 뭉개버림.
+
+    ★ 2026-09-06 까지는 `graph.highlight_edges` 가 이 인접 쌍을 만들어 줬다.
+    그것을 부르는 제품 코드가 0 이 되어 지웠다 — 그리는 쪽은
+    `app/ui/graph/focus.path_edges` 가 같은 일을 하고, 그쪽은 recipe 파일이
+    아니라 이미 펼친 경로(steps)를 받는다.
     """
     groups = set(group_ids())
     assert groups, "그룹이 없으면 아래 검사가 무력하다"
 
     for recipe_id in recipe_ids():
         chain = recipe_nodes(recipe_id)
-        edges = highlight_edges(recipe_id)
+        edges = list(zip(chain, chain[1:]))
 
-        assert isinstance(edges, list)
-        assert edges == list(zip(chain, chain[1:]))
         assert len(edges) == max(len(chain) - 1, 0)
 
         # 그룹은 실행할 수 없다. 섞이면 아무것도 내놓지 않아 경로가 끊긴다.
@@ -297,4 +299,3 @@ def test_a_path_that_crosses_subjects_is_blocked():
 def test_an_unknown_recipe_is_empty_not_an_error():
     """파일이 없으면 예외 대신 빈 결과. 화면이 죽는 것보다 나음."""
     assert recipe_nodes("recipe_999") == []
-    assert highlight_edges("recipe_999") == []

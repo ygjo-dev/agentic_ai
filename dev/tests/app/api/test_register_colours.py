@@ -1,15 +1,18 @@
-"""대상 : app/api/main.py — POST /render 의 등록 장면 색
+"""대상 : POST /render 의 등록 장면 색
 
-**★ 완성된 SVG 를 본다.** build_dot 에 인자를 더할 때 단위 테스트만 두면
-조립부가 그 인자를 안 넘겨도 전부 통과한다 — group_attrs · review_edges 에서
-두 번 당했다. 여기서는 /render 응답의 SVG 문자열을 직접 읽는다.
+**★ 화면에 실제로 실리는 스타일 표를 본다.** 서버 payload 만 보면 조립부가
+그 칸을 안 읽어도 전부 통과한다 — group_attrs · review_edges 에서 두 번 당했다.
+그래서 /render 응답을 `network.node_styles` · `network.solid_styles` 에 그대로
+넣어 나온 색을 읽는다. 그 둘이 vis-network 에 넘어가는 바로 그 표다.
 
 색 하나가 뜻 하나다.
 
-    분홍  새 노드 테두리       (NEW_COLOR)
-    보라  새로 생긴 관계(점선)  (NEW_DOTTED_COLOR)
+    분홍  새 노드 테두리 · 새로 생긴 관계(점선)  (NEW_COLOR)
     주황  새 실행 경로 — 고른 것(PATH_NEW) · 빠진 것(PATH_NEW_DIM)
-    teal  발화 해석 결과       (HIGHLIGHT_COLOR) — **등록 장면에는 없다**
+    teal  발화 해석 결과                        (HIGHLIGHT_COLOR) — **등록 장면에는 없다**
+
+★ **2026-09-06 에 SVG 문자열을 읽던 것을 이 표로 옮겼다.** 지키는 뜻은 그대로다.
+그 전에는 완성된 SVG 에서 `<g class="edge">` 의 stroke 색을 정규식으로 긁었다.
 
 등록을 실제로 하지는 않는다. 노드를 진짜 등록하면 layout.json 에 좌표가
 쓰여 저장소 파일이 바뀐다. 대신 실제 온톨로지의 노드 · 점선 · recipe 로
@@ -18,36 +21,27 @@
 """
 
 import re
-import shutil
 
 import pytest
-from fastapi.testclient import TestClient
 
-import app.api.main as backend_main
-from app.ui.graph_svg import build
-from app.ui.graph_svg.dot import (
+from app.api.services.streamlit import screen_service
+from app.api.services.streamlit.screen_service import recipe_ids
+from app.ui.components import network
+from app.ui.graph.dot import (
     HIGHLIGHT_COLOR,
     NEW_COLOR,
-    NEW_DOTTED_COLOR,
     PATH_NEW,
     PATH_NEW_DIM,
 )
-from app.api.services.streamlit.screen_service import recipe_ids
 from ontology.graph import recipe_nodes
 
-pytestmark = pytest.mark.skipif(
-    shutil.which("neato") is None, reason="graphviz 가 설치되어 있지 않다"
-)
 
-
-# 끝노드가 갈리는 조합을 고른다. 다 같은 곳에서 끝나면 변형이 한 벌뿐이라
-# "좁히면 나머지가 옅어진다" 를 검사할 수 없다.
+# 끝노드가 갈리는 조합을 고른다. 다 같은 곳에서 끝나면 좁혀도 짙은 엣지가
+# 안 줄어 "좁히면 나머지가 옅어진다" 를 검사할 수 없다.
 #
-# 몇 개를 고르는지는 온톨로지가 정한다. 지금 recipe 는 둘이고 끝노드도 둘이다.
-#
-# **번호를 적지 않는다.** 여기 필요한 성질은 "끝나는 곳이 서로 다른 recipe 셋"
+# **번호를 적지 않는다.** 여기 필요한 성질은 "끝나는 곳이 서로 다른 recipe 둘"
 # 하나뿐인데, 번호는 온톨로지가 바뀌면 통째로 밀린다. 밀린 번호를 그대로 두면
-# 끝노드가 겹쳐 변형이 줄고 검사가 조용히 무력해진다.
+# 끝노드가 겹쳐 검사가 조용히 무력해진다.
 #
 # 이 값들은 진짜로 등록한 결과가 아니라 /render 에 넘길 mark 를 짓는 재료다.
 # 다만 recipe 자체는 실재해야 한다 — recipe_nodes 와 /render 가 파일을 읽는다.
@@ -66,152 +60,138 @@ def _by_endpoint(count: int) -> dict[str, str]:
 BY_ENDPOINT = _by_endpoint(2)
 REGISTERED = list(BY_ENDPOINT.values())
 
-# 좁힐 때 누를 끝노드. 가장 짧은 경로의 끝을 고른다 — 좁히면 짙은 엣지가
-# 반드시 줄어드는 것이 보장된다.
-NARROW_TO = min(BY_ENDPOINT, key=lambda node: len(recipe_nodes(BY_ENDPOINT[node])))
+# 좁힐 때 누를 후보. 가장 짧은 경로를 고른다 — 좁히면 짙은 엣지가 반드시 준다.
+NARROW_TO = min(REGISTERED, key=lambda recipe_id: len(recipe_nodes(recipe_id)))
 
 # 등록 응답에서 그리기가 쓰는 것만 줄인 형태. screen_service 가 그대로 받는다.
+#
+# ★ **등록 장면인지는 여기 안 적는다.** 2026-09-06 까지는 "accepted" 키의
+# 유무가 그 표시였는데, 지금은 mode="register" 가 그것을 명시한다.
 MARK = {
     "nodes": ["find_cctv"],
     "solid": [],
     "dotted": [("find_cctv", "group_transport")],
-    "accepted": build.chain_edges([recipe_nodes(r) for r in REGISTERED]),
 }
 
 
-@pytest.fixture
-def client():
-    build.clear_cache()
-    return TestClient(backend_main.app)
+@pytest.fixture(scope="module")
+def colors():
+    return screen_service.screen_payload()["colors"]
 
 
-@pytest.fixture
-def registered(client):
+@pytest.fixture(scope="module")
+def registered():
     """노드를 등록한 직후의 화면 한 벌."""
-    response = client.post(
-        "/render",
-        json={"mode": "register", "recipe_ids": REGISTERED, "mark": MARK},
-    )
-    assert response.status_code == 200
-    return response.json()
+    return screen_service.render("register", REGISTERED, MARK)["network"]
 
 
-@pytest.fixture
-def resolved(client):
+@pytest.fixture(scope="module")
+def resolved():
     """발화를 해석한 직후의 화면 한 벌. 같은 후보, 다른 장면."""
-    response = client.post(
-        "/render",
-        json={"mode": "resolve", "recipe_ids": REGISTERED, "mark": None},
-    )
-    assert response.status_code == 200
-    return response.json()
+    return screen_service.render("resolve", REGISTERED)["network"]
 
 
-# Graphviz 는 색을 소문자로 낸다. 상수는 대문자라 비교 전에 맞춘다.
-def used(colour: str, svg: str) -> bool:
-    return colour.lower() in svg.lower()
+def edges_of_colour(model, colors, variant, colour) -> set[str]:
+    """그 색으로 칠해진 엣지 (from, to) 들."""
+    return {
+        (style["from"], style["to"])
+        for style in network.solid_styles(model, colors, variant)
+        if style["color"] == colour
+    }
 
 
-def edges_of_colour(svg: str, colour: str) -> set[str]:
-    """그 색으로 칠해진 엣지 이름들. 화살표 폴리곤은 같은 이름이라 접힘."""
-    found = set()
-    for block in re.findall(r'<g id="edge\d+" class="edge">(.*?)</g>', svg, re.S):
-        title = re.search(r"<title>(.*?)</title>", block, re.S)
-        if title and colour.lower() in block.lower():
-            found.add(title.group(1))
-    return found
+def nodes_of_colour(model, colors, variant, colour) -> set[str]:
+    """그 색 테두리를 가진 노드 id 들. 하단 기준."""
+    return {
+        style["id"]
+        for style in network.node_styles(model, colors, variant, top=False)
+        if style["color"]["border"] == colour
+    }
 
 
-def nodes_of_colour(svg: str, colour: str) -> set[str]:
-    found = set()
-    for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
-        title = re.search(r"<title>(.*?)</title>", block, re.S)
-        if title and colour.lower() in block.lower():
-            found.add(title.group(1))
-    return found
-
-
-def coordinates(svg: str) -> dict[str, tuple[float, float]]:
-    coords = {}
-    for block in re.findall(r'<g id="node\d+" class="node">(.*?)</g>', svg, re.S):
-        title = re.search(r"<title>([a-z_]+)</title>", block)
-        pos = re.search(r'text-anchor="middle" x="([-\d.]+)" y="([-\d.]+)"', block)
-        if title and pos:
-            coords[title.group(1)] = (float(pos.group(1)), float(pos.group(2)))
-    return coords
-
-
-def canvas(svg: str) -> str:
-    return re.search(r'viewBox="([^"]+)"', svg).group(1)
+def dotted_of_colour(model, colors, colour) -> set[tuple]:
+    """그 색 점선. 새 점선은 build_network 와 같은 규칙으로 고른다."""
+    return {
+        tuple(entry["edge"])
+        for entry in model.get("dotted") or ()
+        if (colors["new"] if entry.get("new") else colors["dotted_bottom"]) == colour
+    }
 
 
 # ------------------------------------------------------------ 검사가 무력하지 않은지
-def test_the_registration_actually_draws_paths(registered):
+def test_the_registration_actually_draws_paths(registered, colors):
     """변형이 여러 벌이고 경로가 실제로 칠해져야 아래 검사들이 뜻을 가짐."""
-    variants = registered["variants"]
-
     assert len(BY_ENDPOINT) == 2, f"끝노드가 갈리는 recipe 가 둘이 안 된다: {BY_ENDPOINT}"
-    assert set(variants) >= {"", *BY_ENDPOINT}
-    assert edges_of_colour(variants[""], PATH_NEW)
+    assert set(registered["variants"]) == {"", *REGISTERED}
+    assert registered["registering"] is True
+    assert edges_of_colour(registered, colors, "", PATH_NEW)
 
 
 # ------------------------------------------------------------ 등록 직후
-def test_every_new_path_starts_bright(registered):
+def test_every_new_path_starts_bright(registered, colors):
     """아무것도 안 누른 상태. 전부 짙은 주황이어야 함."""
-    whole = registered["variants"][""]
-
-    assert used(PATH_NEW, whole)
-    assert not used(PATH_NEW_DIM, whole)
+    assert edges_of_colour(registered, colors, "", PATH_NEW)
+    assert edges_of_colour(registered, colors, "", PATH_NEW_DIM) == set()
 
 
-def test_narrowing_dims_the_other_recipes(registered):
-    """끝노드를 누르면 그것으로 끝나는 경로만 짙게 남음."""
-    variants = registered["variants"]
-    narrowed = variants[NARROW_TO]
-
-    assert used(PATH_NEW, narrowed)
-    assert used(PATH_NEW_DIM, narrowed)
-    assert len(edges_of_colour(narrowed, PATH_NEW)) < len(
-        edges_of_colour(variants[""], PATH_NEW)
+def test_narrowing_dims_the_other_recipes(registered, colors):
+    """후보를 누르면 그것의 경로만 짙게 남음."""
+    assert edges_of_colour(registered, colors, NARROW_TO, PATH_NEW)
+    assert edges_of_colour(registered, colors, NARROW_TO, PATH_NEW_DIM)
+    assert len(edges_of_colour(registered, colors, NARROW_TO, PATH_NEW)) < len(
+        edges_of_colour(registered, colors, "", PATH_NEW)
     )
 
 
-def test_what_is_new_never_changes_between_variants(registered):
+def test_what_is_new_never_changes_between_variants(registered, colors):
     """"무엇이 새로 생겼는가" 는 어느 후보를 보든 같은 사실."""
-    variants = list(registered["variants"].values())
+    변형들 = list(registered["variants"])
+    새_노드 = [nodes_of_colour(registered, colors, key, NEW_COLOR) for key in 변형들]
 
-    marked_nodes = [nodes_of_colour(svg, NEW_COLOR) for svg in variants]
-    marked_dotted = [edges_of_colour(svg, NEW_DOTTED_COLOR) for svg in variants]
+    assert 새_노드[0], "새 노드 테두리가 하나도 없다 — 검사가 무력하다"
+    assert all(found == 새_노드[0] for found in 새_노드)
 
-    assert marked_nodes[0], "새 노드 테두리가 하나도 없다 — 검사가 무력하다"
-    assert marked_dotted[0], "새 점선이 하나도 없다 — 검사가 무력하다"
-    assert all(found == marked_nodes[0] for found in marked_nodes)
-    assert all(found == marked_dotted[0] for found in marked_dotted)
+    # 새 점선은 변형별 표가 아니라 모형 한 곳에 있다 — 구조상 안 갈린다.
+    assert dotted_of_colour(registered, colors, NEW_COLOR), "새 점선이 하나도 없다"
 
 
-def test_the_register_scene_has_no_teal(registered):
+def test_the_register_scene_has_no_teal(registered, colors):
     """teal 은 발화 해석 결과의 색. 등록 화면에 섞이면 뜻이 흐려짐."""
-    for name, svg in [("top", registered["top"]), *registered["variants"].items()]:
-        assert not used(HIGHLIGHT_COLOR, svg), f"{name or '전체'} 변형에 teal 이 있다"
+    for key in registered["variants"]:
+        assert edges_of_colour(registered, colors, key, HIGHLIGHT_COLOR) == set()
+        assert nodes_of_colour(registered, colors, key, HIGHLIGHT_COLOR) == set()
+
+    # 상단은 어느 장면에서도 해석 결과를 안 보여준다.
+    assert colors["highlight"] not in network.top_html(registered, colors, height=400)
 
 
 # ------------------------------------------------------------ 해석 장면은 그대로
-def test_the_resolve_scene_still_uses_teal(resolved):
+def test_the_resolve_scene_still_uses_teal(resolved, colors):
     """장면이 갈렸을 뿐 발화 해석은 예전과 똑같이 그림."""
-    whole = resolved["variants"][""]
-
-    assert used(HIGHLIGHT_COLOR, whole)
-    assert not used(PATH_NEW, whole)
-    assert not used(PATH_NEW_DIM, whole)
+    assert resolved["registering"] is False
+    assert edges_of_colour(resolved, colors, "", HIGHLIGHT_COLOR)
+    assert edges_of_colour(resolved, colors, "", PATH_NEW) == set()
+    assert edges_of_colour(resolved, colors, "", PATH_NEW_DIM) == set()
 
 
 # ------------------------------------------------------------ 배치
-def test_all_variants_share_the_layout(registered):
-    """좁혀도 노드가 움직이거나 캔버스가 달라지면 안 됨."""
-    variants = list(registered["variants"].values())
-    base = coordinates(variants[0])
+def test_all_variants_share_the_layout(registered, colors):
+    """좁혀도 노드가 움직이면 안 됨.
 
-    assert base, "노드 좌표를 하나도 못 읽었다 — 검사가 무력하다"
-    for svg in variants[1:]:
-        assert coordinates(svg) == base
-        assert canvas(svg) == canvas(variants[0])
+    ★ 좌표는 변형과 무관하게 모형 한 곳(positions)에서 온다. 그래도 화면에
+    실리는 문서까지 따라가 본다 — 옛 SVG 판이 캔버스와 좌표를 맞대던 자리다.
+    """
+    assert registered["positions"], "좌표를 하나도 못 읽었다 — 검사가 무력하다"
+
+    def 박힌_좌표(key):
+        html = network.network_html(
+            registered, colors, top=False, variant=key, height=400
+        )
+        return sorted(re.findall(r'"x": (-?[\d.]+), "y": (-?[\d.]+)', html))
+
+    변형들 = list(registered["variants"])
+    기준 = 박힌_좌표(변형들[0])
+
+    assert len(기준) == len(registered["nodes"]), "좌표를 문서에서 못 읽었다"
+    for key in 변형들[1:]:
+        assert 박힌_좌표(key) == 기준

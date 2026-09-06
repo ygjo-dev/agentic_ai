@@ -23,19 +23,21 @@ def register(form: dict, llm_client) -> dict:
     """노드를 등록하고 그로 인해 무엇이 늘었는지까지.
 
     입력  노드 폼 · LLM 클라이언트
-    출력  node_id · node · groups · reason · recipe_ids · paths · accepted ·
-          new_solid_edges · new_dotted_edges · counts · version
+    출력  node_id · node · groups · reason · recipe_ids ·
+          new_solid_edges · new_dotted_edges
     규칙  new_solid_edges / new_dotted_edges 는 등록 직전과 직후의 차집합.
           registry 가 알려주지 않으므로 앞뒤로 한 번씩 조회해 직접 계산함
     제약  llm_client 를 여기서 import 하지 않는다. 이유는 resolve_service 와 같음
+          화면이 안 읽는 키를 만들지 않는다.
+          2026-09-06 에 넷(paths · accepted · counts · version)을 뺐음.
+          경로는 화면이 /render 로 다시 받고, 등록 장면인지는 화면이 이미
+          알고 넘김(mode="register"), 개수와 version 은 읽는 데가 0 이었음
     """
     before_solid, before_dotted = _edges()
-    before_nodes = len(screen_service.domain_graph()[0])
-    before_recipes = len(screen_service.recipe_ids())
 
     result = registry.register_node(form, llm_client=llm_client)
 
-    nodes, after_solid, after_dotted = screen_service.domain_graph()
+    _, after_solid, after_dotted = screen_service.domain_graph()
 
     return {
         "node_id": result["node_id"],
@@ -45,15 +47,8 @@ def register(form: dict, llm_client) -> dict:
         "groups": result["groups"],
         "reason": result["reason"],
         # 등록으로 만들어진 recipe. 대상이 어긋나 버려진 경로는 여기 없다.
+        # 화면은 이것을 그대로 /render 의 recipe_ids 로 넘겨 경로를 받아 온다.
         "recipe_ids": result["recipe_ids"],
-        # registry 의 chains 도 같은 내용이지만 모양이 다르다. /screen · /resolve 와
-        # 원소 모양을 맞춰 프론트엔드 어댑터가 하나로 끝나게 한다.
-        "paths": screen_service.paths_for(result["recipe_ids"], nodes),
-        # 경로 전체를 분홍으로 칠하는 데 쓴다. recipe_ids 와 겹쳐 보이지만 용도가
-        # 다르다 — recipe_ids 는 칩과 강조 후보를 정하고, chains 는 지나는 엣지를
-        # 정한다. 새로 생긴 연결(new_solid_edges)만으로는 이미 있던 연결을 지나는
-        # 구간이 빠져 길이 끊겨 보인다.
-        "accepted": {"recipe_ids": result["recipe_ids"], "chains": result["chains"]},
         # 실선에 라벨이 없다. 무엇이 오가는지는 경로 안에 노드로 들어 있다.
         "new_solid_edges": [
             {"from": frm, "to": to}
@@ -65,11 +60,6 @@ def register(form: dict, llm_client) -> dict:
             for (a, b), labels in after_dotted.items()
             if (a, b) not in before_dotted
         ],
-        "counts": {
-            "nodes": [before_nodes, len(nodes)],
-            "recipes": [before_recipes, len(screen_service.recipe_ids())],
-        },
-        "version": screen_service.ontology_version(),
     }
 
 

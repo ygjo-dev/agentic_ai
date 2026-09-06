@@ -42,23 +42,6 @@ class MCPClient:
             logger.error(f"Failed to fetch tools from Gateway: {e}")
             return []
     
-    async def get_tools_async(self, refresh: bool = False) -> List[Dict[str, Any]]:
-        """Gateway에 등록된 모든 Tool 목록 조회 (비동기)"""
-        if self._tools_cache and not refresh and not self._is_tools_cache_expired():
-            return self._tools_cache
-            
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.get(f"{self.base_url}/api/tools")
-                resp.raise_for_status()
-                self._tools_cache = resp.json()
-                self._tools_cache_loaded_at = time.time()
-                logger.info(f"Loaded {len(self._tools_cache)} tools from Gateway")
-                return self._tools_cache
-        except Exception as e:
-            logger.error(f"Failed to fetch tools from Gateway: {e}")
-            return []
-    
     # === 범용 Tool 실행 ===
     
     def execute_tool(
@@ -90,24 +73,6 @@ class MCPClient:
             logger.error(f"Tool execution failed ({tool_name}): {e}")
             raise
     
-    async def execute_tool_async(self, tool_name: str, args: Dict[str, Any], server_id: Optional[str] = None) -> Any:
-        """범용 Tool 실행 (비동기)"""
-        payload = {"tool": tool_name, "input": args}
-        if server_id:
-            payload["server_id"] = server_id
-        
-        try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                resp = await client.post(
-                    f"{self.base_url}/api/tools/execute",
-                    json=payload
-                )
-                _raise_for_status_with_body(resp)
-                return resp.json()
-        except Exception as e:
-            logger.error(f"Tool async execution failed ({tool_name}): {e}")
-            raise
-
     def _is_tools_cache_expired(self) -> bool:
         """Return True when the cached Gateway tool list should be refreshed."""
         ttl = max(float(settings.MCP_TOOLS_CACHE_TTL or 0), 0.0)

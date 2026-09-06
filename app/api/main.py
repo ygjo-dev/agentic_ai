@@ -54,7 +54,7 @@ app = FastAPI(
 
 # 지나간 회차를 기억하려고 두 자리를 감싼다. **값을 안 바꾸는 껍데기다.**
 #
-# 저쪽 화면이 넣은 발화의 축 셋과 후보는 resolve 안에만 있고, 되묻기 뒤에
+# 저쪽 화면이 넣은 발화의 후보와 인자는 resolve 안에만 있고, 되묻기 뒤에
 # 고른 회차의 recipe 는 run 안에만 있다. 둘 다 이벤트로는 안 나온다.
 # 씌우는 자리를 여기 한 곳에 둔다 — 감싸는 쪽이 여럿이면 두 번 씌워진다.
 #
@@ -113,29 +113,27 @@ async def errors_to_json(request: Request, call_next):
 async def screen_endpoint() -> dict:
     """화면이 그리기 전에 받아 두는 것. 고를 수 있는 타입과 색.
 
-    출력  version · colors · types · nodes · solid_edges · dotted_edges
-    규칙  version 은 내용 해시라 프론트엔드 캐시 키가 됨
-          colors 는 화면이 칩 · 배지 · 안내 문구에 쓸 색.
-          색의 출처는 graph_svg 한 곳뿐임
-          지금 화면이 실제로 읽는 것은 types 와 colors 둘뿐임.
-          나머지 셋은 서버가 그리게 된 뒤로 아무도 안 읽음
+    출력  colors · types
+    규칙  colors 는 화면이 칩 · 배지 · 안내 문구 · 그래프에 쓸 색.
+          색의 출처는 app/ui/graph/dot.py 한 곳뿐임
+          types 는 등록 폼의 입출력 선택지
+    이력  2026-09-06 에 version · nodes · solid_edges · dotted_edges 를 뺐음.
+          서버가 그리게 된 뒤로 읽는 데가 0 이었고, 노드 · 엣지 모형은
+          POST /render 의 network 가 좌표까지 함께 들고 감
     """
     return screen_service.screen_payload()
 
 
 @app.post("/render")
 async def render_endpoint(form: RenderRequest) -> dict:
-    """화면 한 장에 필요한 SVG 와 칩 데이터.
+    """화면 한 장에 필요한 그래프 모형과 칩 데이터.
 
-    출력  top      상단 그래프
-          variants 하단 변형들
-          focus    클릭 가능한 끝노드
-          chips    칩에 적을 이름 사슬
-    규칙  variants 의 모든 SVG 는 노드 좌표와 캔버스 크기가 같음.
-          좌표를 전부 고정하고 neato -n 으로 그리기 때문. 그래야 노드를 눌러
-          좁혀도 화면이 안 흔들림
-          같은 요청은 서버가 캐시함. 키에 온톨로지 version 과 좌표 해시가
-          들어가 노드를 등록하면 저절로 빗나감
+    출력  version  온톨로지 내용 해시
+          chips    칩에 적을 이름 사슬. 후보 차례 그대로
+          network  vis-network 가 받는 노드 · 엣지 · 좌표 · 변형별 스타일
+    규칙  모든 변형이 같은 좌표를 씀. 좌표는 layout.json 에 고정돼 있어
+          어느 후보를 강조하든 안 흔들림
+          그림을 만들지 않음. 그리는 것은 화면의 라이브러리임
     """
     return screen_service.render(form.mode, form.recipe_ids, form.mark)
 
@@ -151,7 +149,7 @@ async def resolve_endpoint(
     입력  utterance  사용자 자연어 입력
           model      쓸 LLM 모델 이름. 없으면 기본 모델
           context    화면의 지도 문맥. **요청 본문이다** (나머지 둘은 query).
-                     /chat 의 ChatRequest.context 와 같은 모양이고 같은 자리로
+                     /chat/stream 의 ChatRequest.context 와 같은 모양이고 같은 자리로
                      흐름 — view.bbox · selectedLocation. **없으면 없는 것으로.**
                      안 보내면 이 인자를 만들기 전과 한 글자도 다르지 않음
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
@@ -181,9 +179,8 @@ async def register_node_endpoint(
 
     입력  form   노드 폼
           model  쓸 LLM 모델 이름. 없으면 기본 모델. /resolve 와 같은 뜻
-    출력  새로 생긴 것(node_id · node · recipe_ids · paths · accepted ·
-          new_solid_edges · new_dotted_edges) · 등록 전후 개수(counts) ·
-          갱신된 version
+    출력  새로 생긴 것 — node_id · node · groups · reason · recipe_ids ·
+          new_solid_edges · new_dotted_edges
     제약  대상이 어긋나는 경로를 등록하지 않는다.
           화각이 안 맞는 것(궤도 검측차 영상으로 승강장 승객을 보는 식)은
           recipe 가 되지 않고 응답에도 안 담김
@@ -194,12 +191,11 @@ async def register_node_endpoint(
 
 
 def _chat_events(form: ChatRequest, model: str | None = None):
-    """발화 한 건의 이벤트 흐름. /chat 과 /chat/stream 이 같은 것을 씀.
+    """발화 한 건의 이벤트 흐름. /chat/stream 이 이것을 씀.
 
     입력  요청 본문 · 쓸 LLM 모델 이름(없으면 기본 모델)
     출력  비동기 이벤트 흐름. 마지막은 반드시 type=result
-    규칙  두 경로가 다른 답을 하면 화면과 curl 중 무엇을 믿을지가 갈림
-          흐름이 끝나면 그 회차를 recent_service 가 기억함. GET /recent 로
+    규칙  흐름이 끝나면 그 회차를 recent_service 가 기억함. GET /recent 로
           Streamlit 이 물어가 따라 그림
     제약  동기 for 로 돌지 않는다.
           vendor 실행기가 코루틴이라 흐름 전체가 async generator 임
@@ -218,37 +214,14 @@ def _chat_events(form: ChatRequest, model: str | None = None):
     )
 
 
-@app.post("/chat")
-async def chat_endpoint(form: ChatRequest) -> dict:
-    """KRRI_ASAP 이 부르는 ASAP-orchestrator 자리를 대신 받음.
-
-    입력  form  text · context (sessionId · target_documents 는 안 읽음)
-    출력  answer 와 commands. commands 는 vendor 가 결과에서 만든 지도 명령임
-    규칙  발화를 해석해 recipe 를 고르고 그 노드 순서를 steps 로 바꿔
-          vendor 실행기에 넘김. 부른 순서가 answer 에 그대로 적힘
-          /chat/stream 과 같은 흐름을 씀. 중간 이벤트를 버리고 마지막
-          result 만 돌려줄 뿐임
-    제약  form 의 target_documents 를 해석하지 않는다. 아직 쓰는 곳이 없다.
-          context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 함
-          sessionId 는 받기만 하고 안 읽는다. 2026-09-01 에 세션을 걷었다
-    """
-    last = {"answer": "", "commands": []}
-    async for payload in _chat_events(form):
-        if payload["type"] == "result":
-            last = {"answer": payload["answer"], "commands": payload["commands"]}
-    return last
-
-
 @app.post("/chat/stream")
 async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
-    """/chat 과 같은 답을 SSE 로 흘려보냄. 저쪽 화면이 부르는 것은 이쪽임.
+    """발화 한 건의 답을 SSE 로 흘려보냄. **저쪽 화면이 부르는 유일한 창구다.**
 
-    입력  form  /chat 과 같은 ChatRequest
+    입력  form  ChatRequest. text 와 context 를 읽음
     출력  text/event-stream. step_start · step_end · result · [DONE] 순서
     규칙  step_start 와 step_end 가 recipe 의 실행 단계마다 한 쌍씩 나감.
           해석(resolve)도 한 단계로 나감. 저쪽 화면이 진행 상황을 그림
-          answer 는 /chat 과 같음. 두 경로가 다른 답을 하면 화면과 curl 중
-          무엇을 믿을지가 갈림
           이벤트마다 빈 줄을 하나 붙임. SSE 는 빈 줄이 있어야 한 건이 끝남
     제약  ensure_ascii 를 켜지 않는다. 켜면 한글이 유니코드 이스케이프로
           나가 저쪽 화면에서 읽히지 않는다
@@ -271,7 +244,7 @@ async def recent_endpoint(since: int | None = None) -> dict:
 
     입력  since  마지막으로 본 회차 번호. 없으면 마지막 몇 회차
     출력  seq(지금 번호) · turns(그 번호보다 큰 회차들)
-          회차 한 건에 언제 · 발화 · status · 축 셋 · 인자 · 고른 recipe 와
+          회차 한 건에 언제 · 발화 · status · 인자 · 고른 recipe 와
           후보들 · 단계 줄 · 답 문구가 담김
     규칙  번호가 그대로면 turns 가 빈 목록임. 화면은 그때 아무것도 다시 안 그림
           저쪽 화면이 `POST /chat/stream` 으로 넣은 회차가 여기 그대로 나옴.

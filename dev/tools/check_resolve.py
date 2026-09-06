@@ -105,11 +105,9 @@ resolve_service 가 후보에서 뺀다(`_without_dropped`). 정답표의 찍은
 **여기와 NOTES.md 에 적힌 알아낸 것은 예전 온톨로지(철도 CCTV 14노드)와 예전
 모델(qwen2.5:7b) 기준이다.** 지금 기본 모델은 `models.yaml` 의 qwen3:32b 다.
 
-표를 네 장 찍는다. 적중 표 · 축 표 · 후보 표 · 검산 표다. `--execute` 를 붙이면
-실행 칸 표가 한 장 더 나온다. 후보가 안 맞을 때 LLM 이
-recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 갈린다. 축 표에는
-발화에서 뽑은 인자(argument)도 함께 찍는다 — 축이 맞아도 인자가 흔들리면
-실행이 엉뚱한 것을 조회한다.
+표를 네 장 찍는다. 적중 표 · 인자 표 · 후보 표 · 검산 표다. `--execute` 를 붙이면
+실행 칸 표가 한 장 더 나온다. recipe 가 맞았는데 실행이 엉뚱한 것을 조회하면
+인자 표에서 갈린다 — 발화에서 뽑은 인자(argument)가 흔들린 것이다.
 
 ## 적중 표의 네 칸 — 「빗나감」을 지우지 말 것
 
@@ -146,22 +144,28 @@ recipe 를 잘못 고른 것인지 축을 잘못 쓴 것인지는 축 표에서 
 노드를 뺐다**(저쪽이 폐기 예정이라 적어 둔 `ev.searchChargers`). 이제 그
 자리의 조회 후보는 하나다. 축 셋이 같은 짝이 또 생기면 여기에 다시 적는다.
 
-## ★ 축 · 조회 · 검산이 없어졌다 (2026-09-04) — 칸 셋이 이제 안 찬다
+## ★ 축 · 조회 · 검산이 없어졌다 (2026-09-04) — 그 칸들을 2026-09-06 에 지웠다
 
 2026-09-04 에 축 한 벌(프롬프트의 축 절 · 온톨로지 조회 · 검산)을 걷었다.
 `/resolve` 응답에 `given` · `want` · `about` · `shortlist_recipe_ids` 가 이제
-안 실린다. 그래서 아래 셋은 **늘 빈 값을 찍는다.**
+안 실린다. 그래서 아래 셋이 **늘 빈 값을 찍고 있었다.**
 
-    축 표              축 셋이 늘 "-" 다. argument 만 값이 있다
-    후보 표의 「조회 판정」  늘 「조회 없음」 이다
+    축 표              축 셋이 늘 "-" 였다. argument 만 값이 있었다
+    후보 표의 「조회 판정」  늘 「조회 없음」 이었다
     검산 표            검산이 없으므로 바꾸는 자리가 없다
+
+★ **2026-09-06 에 앞의 둘을 지웠다.** 걷기 전 판과 걷은 뒤 판을 같은 표로
+견주려고 남겨 뒀던 것인데, 그 대조가 끝났고 늘 빈 값인 칸은 읽는 사람에게
+「여기는 아직 안 재고 있다」로 읽힌다.
+
+    축 표 → **인자 표**   argument 한 칸만 남았다
+    후보 표             「조회 후보 수」 · 「조회 판정」 두 칸이 빠졌다
+    검산 표             그대로 둔다. LLM 단독과 최종이 갈리는 자리를 여전히 본다
 
 「LLM 단독」 칸은 남지만 **재는 것이 갈렸다.** 검산 전후가 아니라 **문맥
 거르개 전후**다 — LLM 이 고른 것에서 값이 안 온 시작 데이터를 뺀 것이 최종이다.
 `--context both` 로 재면 뺄 것이 없어 둘이 늘 같다.
 
-**표를 지금 안 지웠다.** 걷기 전 판과 걷은 뒤 판을 같은 표로 견주는 중이라
-칸 모양이 갈리면 못 맞댄다. 지울지는 사람이 정한다 (NOTES.md 「열린 과제」).
 왜 걷었고 그때 무엇을 잃었는지는 NOTES.md 「아흔여섯째」에 있다.
 
 **이 칸들은 적중 판정을 안 건드린다.** 적중 · 근접 · 빗나감 · 못 붙음 네 칸과
@@ -865,33 +869,28 @@ def _short(recipe_ids) -> str:
     return "{" + ", ".join(trimmed) + "}"
 
 
-def _axes(result: dict) -> tuple:
-    """응답의 축 셋과 인자. 표에 한 줄로 찍을 형태.
+def _argument_of(result: dict) -> str:
+    """응답이 발화에서 뽑은 인자. 못 뽑았으면 "-".
 
-    출력  (given, want, about, argument). 안 쓴 축과 못 뽑은 인자는 "-"
-    규칙  Counter 의 key 라 튜플로 둠. 리스트는 해시가 안 됨
-          argument 는 축과 같은 국면에서 나오므로 같은 표에 둠. 축이 맞는데
-          인자만 흔들리는지가 여기서 갈림
+    규칙  Counter 의 key 라 문자열로 둠
+    이력  2026-09-04 까지는 축 셋(given · want · about)과 한 튜플이었음.
+          그 셋을 걷어 응답에서 없어졌고, 2026-09-06 에 늘 "-" 만 찍던 세 칸을
+          지웠음. 남은 것이 인자다 — recipe 가 맞는데 인자만 흔들리는 자리를
+          여기서 본다
     """
-    return tuple(
-        result.get(axis) or "-"
-        for axis in ("given", "want", "about", "argument")
-    )
+    return result.get("argument") or "-"
 
 
 def _tally(result: dict) -> tuple:
-    """응답의 후보 수 셋과 조회 후보 집합. 후보 표에 한 줄로 찍을 형태.
+    """응답의 후보 수와 status. 후보 표에 한 줄로 찍을 형태.
 
-    출력  (LLM 후보 수, 조회 후보 수, 최종 status, 조회 후보 집합).
-          없는 key 는 "-", 조회 후보가 안 실렸으면 집합 자리가 None
+    출력  (LLM 후보 수, 최종 status). 없는 key 는 "-"
     규칙  LLM 후보 수는 candidate_recipe_ids 의 길이.
           recipe_id 가 있고 그 목록에 없으면 하나 더 셈
-          조회 후보 수는 shortlist_recipe_ids 의 길이
-          Counter 의 key 라 문자열 튜플로 둠. 리스트는 해시가 안 됨.
-          조회 후보 집합은 같은 이유로 frozenset 으로 둠
-    이력  2026-09-04 에 축 조회와 검산을 걷어 shortlist_recipe_ids 가 응답에서
-          없어짐. 그래서 조회 후보 수가 늘 "-" 이고 집합 자리가 늘 None 임.
-          칸을 지우지 않은 것은 걷기 전 판과 같은 표로 견주려는 것임
+          Counter 의 key 라 문자열 튜플로 둠. 리스트는 해시가 안 됨
+    이력  2026-09-04 에 축 조회를 걷어 shortlist_recipe_ids 가 응답에서
+          없어짐. 그래서 「조회 후보 수」와 「조회 판정」 두 칸이 늘 빈 값이었고
+          2026-09-06 에 지웠음
     """
     spoken = result.get("candidate_recipe_ids")
     if spoken is None:
@@ -900,11 +899,7 @@ def _tally(result: dict) -> tuple:
         chosen = result.get("recipe_id")
         llm_count = str(len(spoken) + (1 if chosen and chosen not in spoken else 0))
 
-    looked_up = result.get("shortlist_recipe_ids")
-    lookup_count = "-" if looked_up is None else str(len(looked_up))
-    shortlist = None if looked_up is None else frozenset(looked_up)
-
-    return llm_count, lookup_count, result.get("status") or "-", shortlist
+    return llm_count, result.get("status") or "-"
 
 
 def _alone(result: dict):
@@ -963,7 +958,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     return (
         frozenset(rid for rid in found if rid),
         result.get("status") or "-",
-        _axes(result),
+        _argument_of(result),
         _tally(result),
         _alone(result),
         {"elapsed": elapsed},
@@ -983,16 +978,15 @@ def _measure(
     규칙  outcomes[번호] 에 나온 (후보 집합, status) 조합의 Counter 를 쌓음.
           status 를 함께 묶는 것은 적중 표가 근접·빗나감을 가르기 위함임.
           적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
-          axes[번호] 에 나온 (given, want, about, argument) 조합의 Counter 를 쌓음
-          tallies[번호] 에 나온 (LLM 후보 수, 조회 후보 수, status, 조회 후보 집합)
-          의 Counter 를 쌓음. 조회 후보 집합은 후보 표의 「조회 판정」 칸이 씀
+          axes[번호] 에 나온 argument 의 Counter 를 쌓음
+          tallies[번호] 에 나온 (LLM 후보 수, status) 의 Counter 를 쌓음
           alones[번호] 에 나온 (LLM 단독 후보, 최종 후보, status) 의 Counter 를 쌓음.
           **outcomes 와 따로 둠.** 한 Counter 에 합치면 적중 표의 "틀렸을 때
           나온 것" 줄이 LLM 단독 값에 따라 더 쪼개져 표 모양이 바뀜.
           숫자는 안 바뀌지만 예전 표와 눈으로 못 맞대게 됨
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
-          오류도 결과의 하나로 Counter 에 남김. 그때 축과 후보 수와 LLM 단독은
+          오류도 결과의 하나로 Counter 에 남김. 그때 인자와 후보 수와 LLM 단독은
           안 쌓음. 응답이 없음
           times[번호] 에 회차마다 시간 칸(dict)을 목록으로 쌓음. 시간 줄이 씀
     제약  결과를 돌려주지 않는다.
@@ -1050,8 +1044,7 @@ def _measure(
 #
 # ## 무엇을 부르나 — 저쪽 화면과 같은 길
 #
-# POST /chat 이다. 저쪽 화면이 부르는 것과 같은 길이고(정확히는 /chat/stream
-# 이지만 둘은 같은 흐름을 쓴다 — app/api/main._chat_events), 해석부터 도구
+# POST /chat/stream 이다. **저쪽 화면이 부르는 바로 그 길이다.** 해석부터 도구
 # 호출까지 한 번에 지난다. 그다음 GET /recent 로 그 회차를 읽는다. 회차에
 # status · recipe_id · candidate_recipe_ids · 단계 줄 · 답 문구가 다 들어 있어
 # 무엇이 불렸고 무엇이 돌아왔는지를 응답 본문을 다시 파싱하지 않고 읽는다.
@@ -1143,24 +1136,33 @@ def _recent_seq() -> int:
 
 
 def _chat_turn(text: str, since: int) -> tuple:
-    """POST /chat 한 번과 그것이 남긴 회차.
+    """POST /chat/stream 한 번과 그것이 남긴 회차.
 
     입력  보낼 말 · 부르기 전의 회차 번호
     출력  (회차 dict, 새 회차 번호). 회차가 안 남았으면 (None, 그대로)
-    규칙  회차는 GET /recent 로 읽음. /chat 응답에는 status 도 후보도 없고
-          답 문구뿐임
+    규칙  흐름을 끝까지 받고 버림. **SSE 를 파싱하지 않음** — 읽을 것은 전부
+          GET /recent 의 회차에 있고(status · 후보 · 단계 줄 · 답), 여기서
+          이벤트를 다시 해석하면 저쪽 화면과 다른 자를 갖게 됨.
+          끝까지 받는 것은 필요함 — 흐름이 끝나야 회차가 남는다
+          (recent_service.watched 의 finally)
     제약  서버에 못 닿으면 ServerDown 을 올린다.
           측정과 같은 처신임. 재시도하지 않음
+    이력  2026-09-06 까지는 평범한 POST /chat 을 썼음. 그 창구를 지우면서
+          저쪽 화면과 같은 길로 옮겼음 — 그 전에도 같은 흐름이었지만
+          「같은 흐름을 쓴다」는 것을 사람이 알고 있어야 성립하던 자리였다
     """
     try:
-        response = requests.post(
-            f"{BASE_URL}/chat",
+        with requests.post(
+            f"{BASE_URL}/chat/stream",
             json={"text": text, "context": _context_payload()},
             timeout=TIMEOUT,
-        )
+            stream=True,
+        ) as response:
+            response.raise_for_status()
+            for _line in response.iter_lines():
+                pass
     except requests.exceptions.ConnectionError as exc:
         raise ServerDown(str(exc)) from exc
-    response.raise_for_status()
 
     recent = requests.get(
         f"{BASE_URL}/recent", params={"since": since}, timeout=TIMEOUT
@@ -1531,27 +1533,26 @@ def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
             )
 
 
-AXIS_WIDTH = 46  # 축 표에서 (given, want, about) 칸의 폭.
-
-# 인자 칸의 폭. 축 셋과 한 칸에 담으면 표가 너무 넓어져 따로 둔다.
+# 인자 칸의 폭.
 ARGUMENT_WIDTH = 22
 
 
-def _print_axes(entries, axes: dict) -> None:
-    """발화마다 어떤 축과 인자가 나왔는지.
+def _print_arguments(entries, axes: dict) -> None:
+    """발화마다 어떤 인자가 나왔는지.
 
-    입력  발화 목록 · {번호: 축 조합 Counter}
-    규칙  많이 나온 것부터. 조합이 하나면 한 줄, 갈리면 여러 줄
-          적중 표가 안 맞을 때 무엇이 틀렸는지 여기서 갈림.
-          축이 흔들렸는지, 축은 같은데 LLM 이 recipe 를 다르게 골랐는지
-          인자는 축 셋과 따로 묶어 찍음. 세는 것은 넷을 함께 묶은 조합임
+    입력  발화 목록 · {번호: 인자 Counter}
+    규칙  많이 나온 것부터. 값이 하나면 한 줄, 갈리면 여러 줄
+          적중 표가 맞는데 실행이 엉뚱한 것을 조회하면 여기서 갈림 —
+          recipe 는 맞았고 인자가 흔들린 것임
+    이력  2026-09-06 까지는 축 셋(given · want · about)을 함께 찍었음.
+          2026-09-04 에 그 셋이 응답에서 없어져 늘 "-" 였고, 걷기 전 판과
+          표를 맞대려고 한동안 남겨 뒀다가 지웠음
     """
     print()
     print(
         "  "
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 4)
-        + _pad("given · want · about", AXIS_WIDTH)
         + _pad("argument", ARGUMENT_WIDTH)
         + "횟수"
     )
@@ -1567,13 +1568,10 @@ def _print_axes(entries, axes: dict) -> None:
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
         )
         rows = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
-        for index, (axis, count) in enumerate(rows):
+        for index, (argument, count) in enumerate(rows):
             prefix = head if index == 0 else " " * _width(head)
-            *three, argument = axis
-            shown = _clip(" · ".join(three), AXIS_WIDTH - 2)
             print(
                 prefix
-                + _pad(shown, AXIS_WIDTH)
                 + _pad(_clip(argument, ARGUMENT_WIDTH - 2), ARGUMENT_WIDTH)
                 + f"{count}회"
             )
@@ -1581,56 +1579,21 @@ def _print_axes(entries, axes: dict) -> None:
 
 # 후보 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
 LLM_COUNT_WIDTH = 15
-LOOKUP_COUNT_WIDTH = 16
 STATUS_WIDTH = 12
-
-# 후보 표의 「조회 판정」 네 갈래. 뜻은 파일 맨 위 주석에 있다.
-# ★ 축 조회를 2026-09-04 에 걷어 이제 늘 「조회 없음」 이다.
-LOOKUP_HIT, LOOKUP_NEAR = "조회 적중", "조회 근접"
-LOOKUP_MISS, LOOKUP_NONE = "★ 조회 빠짐", "조회 없음"
-
-# 칸 폭. 머리글보다 좁으면 표가 어긋난다 ("★ 조회 빠짐" 이 폭 11).
-LOOKUP_GRADE_WIDTH = 14
-
-
-def _grade_lookup(shortlist, expected: set) -> str:
-    """조회 후보만으로 정답에 닿는지를 네 갈래 중 하나로 가름.
-
-    입력  조회 후보 집합(응답에 안 실렸으면 None) · 기대 recipe 집합
-    출력  LOOKUP_HIT · LOOKUP_NEAR · LOOKUP_MISS · LOOKUP_NONE 중 하나
-    규칙  넷이 서로 안 겹치고 빠짐이 없음. 그래야 넷의 합이 시행 횟수가 됨
-          빈 목록과 응답에 안 실린 것을 함께 LOOKUP_NONE 으로 셈.
-          둘 다 조회로는 아무 데도 못 닿는 자리임
-          기대값과 같으면 적중, 기대값을 품고 더 많으면 근접,
-          기대값을 못 품으면 빠짐
-    제약  최종 후보를 보지 않는다. shortlist_recipe_ids 그대로를 봄.
-          좁히기를 먼저 했을 때 무엇이 남는지가 이 칸이 재려던 것임
-    이력  「LLM 이 고를 범위를 온톨로지가 먼저 좁히는 안」의 전제를 재려고
-          더함 (2026-08-25). 적중 표의 네 칸은 안 건드림.
-          ★ 2026-09-04 에 축 조회를 걷어 늘 LOOKUP_NONE 을 냄
-    """
-    if not shortlist:
-        return LOOKUP_NONE
-    if set(shortlist) == expected:
-        return LOOKUP_HIT
-    if expected <= set(shortlist):
-        return LOOKUP_NEAR
-    return LOOKUP_MISS
 
 
 def _print_candidates(entries, tallies: dict) -> None:
-    """발화마다 후보가 몇 개까지 좁혀졌는지, 조회 후보에 정답이 남는지.
+    """발화마다 후보가 몇 개까지 좁혀졌는지.
 
     입력  발화 목록 · {번호: 후보 수 조합 Counter}
     규칙  많이 나온 것부터. 조합이 하나면 한 줄, 갈리면 여러 줄
-          축 표와 같은 모양. 나란히 놓고 읽음
+          인자 표와 같은 모양. 나란히 놓고 읽음
           모델을 바꿔 잰 두 표를 견주는 것이 이 표의 쓸모.
-          조회 후보 수는 그대로인데 LLM 후보 수만 줄면 모델이 문장을 읽어
-          가른 것이고, 둘 다 그대로면 문장으로는 못 가르는 것
-          「조회 판정」 칸은 조회 후보 수와 같은 줄에서 갈림. 개수가 같아도
-          정답이 안 들어 있으면 좁히기로 손해를 보는 자리임
-          표 아래에 네 갈래의 합계를 **묶음마다 한 줄씩** 적음. 적중 표와
-          같은 이유로 기준선 아홉의 값이 따로 보여야 함
+          후보 수가 줄면 모델이 문장을 읽어 가른 것이고, 그대로면 문장으로는
+          못 가르는 것 — 그때 손볼 곳은 모델이 아니라 menu 문장이다
+    이력  2026-09-06 까지는 「조회 후보 수」와 「조회 판정」 두 칸이 더 있었음.
+          2026-09-04 에 축 조회를 걷어 늘 빈 값이었고, 걷기 전 판과 표를
+          맞대려고 한동안 남겨 뒀다가 지웠음
     """
     print()
     print(
@@ -1638,72 +1601,30 @@ def _print_candidates(entries, tallies: dict) -> None:
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 4)
         + _pad("LLM 후보 수", LLM_COUNT_WIDTH)
-        + _pad("조회 후보 수", LOOKUP_COUNT_WIDTH)
-        + _pad("조회 판정", LOOKUP_GRADE_WIDTH)
         + _pad("status", STATUS_WIDTH)
         + "횟수"
     )
 
-    totals = {label: Counter() for label, _group in _groups(entries)}
-    for number, utterance, expected, _default in entries:
+    for number, utterance, _expected, _default in entries:
         counter = tallies.get(number)
         if not counter:
             continue
-        total = totals[_group_label(number)]
 
         head = (
             "  "
             + _pad(str(number), 3)
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
         )
-        rows = sorted(counter.items(), key=lambda item: (-item[1], item[0][:3]))
+        rows = sorted(counter.items(), key=lambda item: (-item[1], item[0]))
         for index, (tally, count) in enumerate(rows):
-            llm_count, lookup_count, status, shortlist = tally
-            grade = _grade_lookup(shortlist, expected)
-            total[grade] += count
+            llm_count, status = tally
             prefix = head if index == 0 else " " * _width(head)
             print(
                 prefix
                 + _pad(llm_count, LLM_COUNT_WIDTH)
-                + _pad(lookup_count, LOOKUP_COUNT_WIDTH)
-                + _pad(grade, LOOKUP_GRADE_WIDTH)
                 + _pad(status, STATUS_WIDTH)
                 + f"{count}회"
             )
-
-    measured = [(label, total) for label, total in totals.items() if total]
-    if not measured:
-        return
-    # 묶음 이름의 폭이 서로 달라 그냥 이으면 숫자 칸이 세로로 안 맞는다.
-    label_width = max(_width(label) for label, _total in measured)
-
-    def _line(label: str, total) -> None:
-        print(
-            "  조회 판정 · "
-            + _pad(label, label_width)
-            + "  "
-            + " · ".join(
-                f"{grade} {total[grade]}회"
-                for grade in (LOOKUP_HIT, LOOKUP_NEAR, LOOKUP_MISS, LOOKUP_NONE)
-            )
-            + f"  (합 {sum(total.values())}회)"
-        )
-
-    print()
-    for label, group_total in measured:
-        _line(label, group_total)
-    total = Counter()
-    for _label, group_total in measured:
-        total.update(group_total)
-    if len(measured) > 1:
-        _line("합계", total)
-    if total[LOOKUP_MISS]:
-        print(
-            "  ★ 조회 후보에 정답이 없는 자리가 있다 — 지금 축으로 먼저 좁히면"
-            " 그 발화는 정답에 못 닿는다"
-        )
-    else:
-        print("  조회 빠짐 0 — 지금 축으로 먼저 좁혀도 정답이 후보에 남는다")
 
 
 # 검산 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
@@ -1928,7 +1849,7 @@ def _selfcheck() -> None:
             assert _group_label(number) == label, (number, label, _group_label(number))
 
     picked = "recipe_019"
-    axis = ("picked_point", "item_list", "group_transport", "-")
+    argument = "오송역"
     time_row = {"elapsed": 1.0}
 
     def _fake(entries):
@@ -1936,9 +1857,9 @@ def _selfcheck() -> None:
         for number, _u, expected, _d in entries:
             found = frozenset(expected)
             outcomes[number] = Counter({(found, "OK"): 1})
-            axes[number] = Counter({axis: 1})
-            # LLM · 조회 후보 수는 실제로 문자열이다 ("-" 또는 str(n))
-            tallies[number] = Counter({("1", "1", "OK", tuple(sorted(expected))): 1})
+            axes[number] = Counter({argument: 1})
+            # LLM 후보 수는 실제로 문자열이다 ("-" 또는 str(n))
+            tallies[number] = Counter({("1", "OK"): 1})
             # LLM 이 쓴 것과 최종이 갈린 회차 — _print_verdict_changes 가 볼 줄
             alones[number] = Counter({(None, found, "OK"): 1})
             times[number] = [dict(time_row)]
@@ -1955,7 +1876,7 @@ def _selfcheck() -> None:
         outcomes, axes, tallies, alones, times, executions = _fake(entries)
         with contextlib.redirect_stdout(io.StringIO()):
             _print_table(entries, outcomes, alones, 1)
-            _print_axes(entries, axes)
+            _print_arguments(entries, axes)
             _print_candidates(entries, tallies)
             _print_verdict_changes(entries, alones)
             _print_times(entries, times)
@@ -2023,7 +1944,7 @@ def main() -> int:
     if any(outcomes.values()):
         _print_table(entries, outcomes, alones, args.runs)
     if any(axes.values()):
-        _print_axes(entries, axes)
+        _print_arguments(entries, axes)
     if any(tallies.values()):
         _print_candidates(entries, tallies)
     if any(alones.values()):

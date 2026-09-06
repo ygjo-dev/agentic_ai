@@ -139,12 +139,6 @@ def validate_and_repair_isochrone_polygons(
     return fallback, diagnostics
 
 
-def geojson_contains_point(value: Any, coordinate: Coordinate) -> bool:
-    """Return whether any Polygon/MultiPolygon in GeoJSON contains a point."""
-
-    return _geometries_contain_point(_extract_polygon_geometries(value), coordinate)
-
-
 def _build_fallback_feature_collection(
     *,
     point_samples: List[PointSample],

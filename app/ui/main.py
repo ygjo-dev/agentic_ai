@@ -33,7 +33,6 @@ from app.ui.components.graph_section import render_graph_section
 from app.ui.components.input_section import render_input_section
 from app.ui.components.node_form import render_node_form
 from app.ui.components.path_panel import render_band, skeleton_markup
-from app.ui.components.sample_picker import render_sample_picker
 
 ASK, REGISTER = "사용자 질문", "노드 등록"
 
@@ -143,7 +142,6 @@ with top:
                 follow_slot = None
             else:
                 _, run_clicked = render_input_section()
-                render_sample_picker()
                 # 자리만 잡아 둔다. 채우는 것은 화면 맨 끝이다 — 따라 보기
                 # 조각이 새 회차를 보면 전체 rerun 을 걸기 때문에, 여기서
                 # 채우면 Run 클릭이 그 rerun 에 삼켜진다.

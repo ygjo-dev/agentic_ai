@@ -300,7 +300,7 @@ def no_execution(monkeypatch):
 
 
 def resolved(monkeypatch, **result):
-    """resolve 결과를 가짜로 줌. LLM 도 온톨로지도 안 부름."""
+    """resolve 결과를 가짜로 줌. LLM 은 안 부름. recipe 는 진짜 것을 씀."""
     answer = {"status": "SELECT", "recipe_id": "recipe_001", **result}
     monkeypatch.setattr(
         execute_service.resolve_service,
@@ -311,7 +311,7 @@ def resolved(monkeypatch, **result):
 
 def test_the_argument_the_LLM_gave_is_used_first(monkeypatch, no_execution):
     """정규식이 못 잡는 발화도 이것으로 돎. "충북대" 는 끝 글자가 안 맞음."""
-    resolved(monkeypatch, given="spoken_place", argument="충북대")
+    resolved(monkeypatch, argument="충북대")
 
     collect(execute_service.chat("충북대 근처 CCTV 보여줘", None, 200))
 
@@ -320,7 +320,7 @@ def test_the_argument_the_LLM_gave_is_used_first(monkeypatch, no_execution):
 
 def test_place_in_runs_instead_when_argument_is_absent(monkeypatch, no_execution):
     """대비책. LLM 이 인자를 빠뜨려도 장소 발화만은 여전히 돌아야 함."""
-    resolved(monkeypatch, given="spoken_place", argument=None)
+    resolved(monkeypatch, argument=None)
 
     collect(execute_service.chat("오송역 위치 보여줘", None, 200))
 
@@ -328,28 +328,39 @@ def test_place_in_runs_instead_when_argument_is_absent(monkeypatch, no_execution
 
 
 @pytest.mark.parametrize(
-    "given, fragment",
+    "recipe_id, fragment",
     [
-        ("spoken_place", "장소를 함께"),
-        ("spoken_keyword", "찾을 것을 함께"),
-        ("spoken_identifier", "이름이나 코드를 함께"),
-        (None, "장소를 함께"),
+        ("recipe_001", "장소를 함께"),      # 말한 장소로 시작
+        ("recipe_005", "찾을 것을 함께"),    # 말한 키워드로 시작
+        ("recipe_015", "이름이나 코드를 함께"),  # 말한 식별자로 시작
     ],
-    ids=["place", "keyword", "identifier", "given_없음"],
+    ids=["place", "keyword", "identifier"],
 )
-def test_with_neither_the_guidance_matching_given_goes_out(
-    monkeypatch, no_execution, given, fragment
+def test_with_neither_the_guidance_matching_the_start_node_goes_out(
+    monkeypatch, no_execution, recipe_id, fragment
 ):
     """장소 문구 하나로 두면 "선거구 찾아줘" 에 장소를 대라고 답하게 됨.
 
-    given 이 없거나 모르는 값이면 예전 문구 그대로다.
+    무엇으로 시작하는 경로인지는 온톨로지가 말한다 — 여기서 다시 안 적는다.
     """
-    resolved(monkeypatch, given=given, argument=None)
+    resolved(monkeypatch, recipe_id=recipe_id, argument=None)
 
     events = collect(execute_service.chat("찾아줘", None, 200))
 
     assert fragment in events[-1]["answer"]
     assert not no_execution, "인자가 없는데 도구를 불렀다"
+
+
+def test_an_unknown_start_node_falls_back_to_the_place_wording(monkeypatch, no_execution):
+    """모르는 경로면 예전 문구 그대로다. 줄이 사라지는 것보다 낫다."""
+    resolved(monkeypatch, recipe_id="recipe_없음", argument=None)
+    monkeypatch.setattr(
+        execute_service.step_service, "spoken_needed", lambda recipe_id: True
+    )
+
+    events = collect(execute_service.chat("찾아줘", None, 200))
+
+    assert "장소를 함께" in events[-1]["answer"]
 
 
 # ── 앞 단계가 없을 때 ───────────────────────────────────────────────

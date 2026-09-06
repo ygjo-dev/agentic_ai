@@ -1,4 +1,4 @@
-"""대상 : app/ui/graph_svg/ — 노드가 안 겹친다. **눈이 못 보는 것을 본다**
+"""대상 : app/ui/graph/ — 노드가 안 겹친다. **눈이 못 보는 것을 본다**
 
 `test_layout_invariants.py` 옆에 나란히 두는 두 번째 안전줄이다.
 
@@ -10,32 +10,25 @@
 당기면 노드가 가까워져 붙는다. 다음에 어느 한쪽을 또 건드리는 사람이 있을 때
 **어디까지 갈 수 있는지를 말해주는 것이 이 파일이다.**
 
-겹침은 `neato -n -Tdot` 이 내주는 노드 상자로 잰다. SVG 로 재지 않는 이유 :
-`style="rounded,filled"` 라 노드가 <path> 로 나오고 거기서 사각형을 되찾으려면
-경로 문자열을 파싱해야 한다. 같은 DOT · 같은 엔진이고 출력 형식만 다르다.
+겹침은 `neato -n -Tdot` 이 내주는 노드 상자로 잰다 — 프로덕션이 새 노드를
+놓을 자리를 고를 때 쓰는 것과 **같은 함수**(graphviz.node_boxes)다. 그리는
+그림에서 재지 않는 이유는 그 함수의 제약 절에 있다.
 
 **여유 0 이 아니라 MIN_GAP 을 요구한다.** 0 으로 두면 이름 한 글자가 길어진
 다음 등록에서 바로 붙는다. 여유가 있어야 시험이 미리 운다.
 """
 
 import itertools
-import re
 import shutil
 
 import pytest
 
 from app.api.services.streamlit.screen_service import domain_graph
-from app.ui.graph_svg.build import wrap_node_labels
-from app.ui.graph_svg.dot import (
-    GROUP_ATTRS,
-    GROUP_ATTRS_TOP,
-    NODE_ATTRS,
-    NODE_ATTRS_TOP,
-    build_dot,
-)
-from app.ui.graph_svg import layout_store
-from app.ui.graph_svg.graphviz import _run_graphviz
-from app.ui.graph_svg.layout_store import (
+from app.ui.graph.build import wrap_node_labels
+from app.ui.graph.dot import GROUP_ATTRS, NODE_ATTRS, build_dot
+from app.ui.graph import layout_store
+from app.ui.graph.graphviz import node_boxes
+from app.ui.graph.layout_store import (
     DRAW_SCALE,
     for_drawing,
     load,
@@ -49,35 +42,6 @@ pytestmark = pytest.mark.skipif(
 # 10 을 요구한다 — 지금 값이 아슬아슬하게 통과하는 것이 아니라 여유가 있다는
 # 뜻이고, 배율을 0.63 으로 내리면 이 시험이 운다.
 MIN_GAP = 8.0
-
-# 엣지에도 pos(스플라인)가 붙는다. 노드만 골라내려면 엣지 문장을 먼저 지운다.
-_EDGE_STATEMENT = re.compile(r'"?[\w]+"?\s*->\s*"?[\w]+"?\s*\[[^\]]*\];')
-_NODE_STATEMENT = re.compile(r'"?([A-Za-z_]\w*)"?\s*\[([^\]]*)\]\s*;')
-_POS_ATTR = re.compile(r'pos="([-\d.e+]+),([-\d.e+]+)')
-_WIDTH_ATTR = re.compile(r'width="?([\d.]+)')
-_HEIGHT_ATTR = re.compile(r'height="?([\d.]+)')
-
-
-def node_boxes(dot: str) -> dict[str, tuple[float, float, float, float]]:
-    """그려질 노드 사각형. {node_id: (중심x, 중심y, 폭, 높이)} 단위 pt."""
-    out = _run_graphviz(dot, "neato", ["-n", "-Tdot"])
-    flat = _EDGE_STATEMENT.sub(" ", re.sub(r"\s+", " ", out))
-
-    boxes = {}
-    for match in _NODE_STATEMENT.finditer(flat):
-        body = match.group(2)
-        pos = _POS_ATTR.search(body)
-        width = _WIDTH_ATTR.search(body)
-        height = _HEIGHT_ATTR.search(body)
-        if pos and width and height:
-            boxes[match.group(1)] = (
-                float(pos.group(1)),
-                float(pos.group(2)),
-                float(width.group(1)) * 72,   # 인치로 나온다
-                float(height.group(1)) * 72,
-            )
-    return boxes
-
 
 def touching_pairs(boxes: dict, gap: float = MIN_GAP) -> list[tuple[str, str]]:
     """gap 만큼 떨어져 있지 않은 노드 쌍. 비어 있어야 한다."""
@@ -93,8 +57,13 @@ def touching_pairs(boxes: dict, gap: float = MIN_GAP) -> list[tuple[str, str]]:
     return pairs
 
 
-def drawn_dot(top: bool = False, positions=None, nodes=None, solid=None, dotted=None):
-    """화면에 나가는 것과 같은 DOT. build.py 의 두 갈래를 그대로 흉내낸다."""
+def drawn_dot(positions=None, nodes=None, solid=None, dotted=None):
+    """배치를 재는 것과 같은 DOT. layout_store._drawn_boxes 를 그대로 흉내낸다.
+
+    ★ **한 벌뿐이다.** 2026-09-06 까지는 상단 · 하단이 서로 다른 속성 벌로
+    그려져 둘을 따로 쟀는데, 그림 만들기를 걷으면서 그 두 벌이 없어졌다 —
+    좌표를 재는 스타일은 이제 하나다.
+    """
     if nodes is None:
         nodes, solid, dotted = domain_graph()
     if positions is None:
@@ -106,16 +75,14 @@ def drawn_dot(top: bool = False, positions=None, nodes=None, solid=None, dotted=
         positions=for_drawing(positions),
         spring=True,
         dotted_labels=False,
-        draw_solid=not top,
-        node_attrs=NODE_ATTRS_TOP if top else NODE_ATTRS,
-        group_attrs=GROUP_ATTRS_TOP if top else GROUP_ATTRS,
+        node_attrs=NODE_ATTRS,
+        group_attrs=GROUP_ATTRS,
     )
 
 
-@pytest.mark.parametrize("top", [False, True], ids=["하단", "상단"])
-def test_no_two_nodes_touch(top):
+def test_no_two_nodes_touch():
     """실제 온톨로지 · 저장된 좌표 · 지금 글씨 크기에서 겹치는 쌍이 없어야 함."""
-    boxes = node_boxes(drawn_dot(top=top))
+    boxes = node_boxes(drawn_dot())
 
     assert len(boxes) == len(domain_graph()[0])
     assert touching_pairs(boxes) == []

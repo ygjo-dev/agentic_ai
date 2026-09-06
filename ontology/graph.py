@@ -1,7 +1,7 @@
 """온톨로지 그래프 계산.
 
 순수 함수만 둔다. Streamlit 도 DOT 문법도 모른다 — 그리는 방법은
-app/ui/graph_svg/ 가 안다.
+app/ui/graph/ 가 안다.
 
 온톨로지는 store 에게 묻는다. 이 파일은 ontology.yaml 을 직접 열지 않는다 —
 저장소가 그래프DB 로 바뀌어도 여기는 그대로여야 하기 때문이다.
@@ -350,16 +350,3 @@ def dotted_edges() -> dict[tuple[str, str], list[str]]:
         if ABOUT not in labels:
             labels.append(ABOUT)
     return edges
-
-
-def highlight_edges(recipe_id: str) -> list[tuple[str, str]]:
-    """선택된 recipe 의 실행 경로.
-
-    입력  recipe id
-    출력  (from, to) 목록. 순서 그대로
-    제약  집합으로 만들지 않는다.
-          순번 라벨을 붙여야 하고, recipe 에 루프가 생겨 같은 엣지를
-          두 번 지날 때 뭉개면 안 됨
-    """
-    chain = recipe_nodes(recipe_id)
-    return list(zip(chain, chain[1:]))

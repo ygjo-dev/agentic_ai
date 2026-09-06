@@ -1,183 +1,30 @@
 # -*- coding: utf-8 -*-
-"""Generic MCP executor for direct registered-tool orchestration."""
+"""Generic MCP executor — steps 배열 하나를 도구 호출 연쇄로 돌린다.
 
-from datetime import datetime
+**직접 도구 호출(call_mcp_tool) 길을 2026-09-06 에 지웠다.** 도구 목록을 LLM
+프롬프트에 싣고 LLM 이 부를 도구를 직접 고르게 하던 옛 길이고, 우리는 한 번도
+안 썼다 — 무엇을 어떤 순서로 부를지는 온톨로지가 고른 recipe 와 wiring.yaml 이
+정한다. 프롬프트 조립 · 도구 점수 매기기 · Gemini 로 답을 짓던 자리가 함께 갔고,
+그래서 config 의 GEMINI_* 두 칸도 사라졌다.
+
+남은 길은 하나다 — `_execute_generic_mcp_workflow`. 참조 해석($s1.location) ·
+입력 어댑터(point_radius_to_bbox) · 도구 호출 · 지도 commands 까지를 그것이 다 한다.
+"""
+
 import json
 import math
 import re
 from typing import Any, Dict, List, Optional
-from zoneinfo import ZoneInfo
 
-from vendor_to_be_deleted.asap.config import settings
 from vendor_to_be_deleted.asap.command_renderer import build_commands_from_artifacts
-from vendor_to_be_deleted.asap.mcp_result_inspector import inspect_mcp_result, inspect_mcp_trace
+from vendor_to_be_deleted.asap.mcp_result_inspector import inspect_mcp_trace
 from logging import getLogger as get_logger
 from vendor_to_be_deleted.asap.mcp_client import mcp_client
 from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer
 
 logger = get_logger("core.generic_mcp_executor")
 
-GENERIC_MCP_ACTION = "call_mcp_tool"
-GENERIC_MCP_WORKFLOW_ACTION = "call_mcp_workflow"
-_BLOCKED_TOOL_WORDS = ("delete", "remove", "update", "upload", "write", "patch", "create")
-_MAX_PROMPT_TOOLS = 32
-_MAX_RESULT_CHARS = 12000
 _MAX_WORKFLOW_STEPS = 8
-
-
-def is_generic_mcp_intent(action: Optional[str]) -> bool:
-    """Return True when the intent should be handled by the generic MCP executor."""
-    return action in {GENERIC_MCP_ACTION, GENERIC_MCP_WORKFLOW_ACTION}
-
-
-def build_generic_mcp_prompt_lines(
-    allowed_server_ids: Optional[List[str]] = None,
-    allowed_tool_refs: Optional[List[str]] = None,
-) -> List[str]:
-    """Render registered MCP tools into the intent parser prompt."""
-    tools = _load_prompt_tools(allowed_server_ids, allowed_tool_refs)
-    today = datetime.now(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d")
-    lines = [
-        "- call_mcp_tool: Use a registered MCP tool directly when no specialized Harness or Plugin is a better match.",
-        '  Fields: { "action": "call_mcp_tool", "server_id": "<MCP server id>", "tool": "<tool name>", "input": <JSON object matching the tool inputSchema>, "answer_instruction": "<short Korean instruction>" }',
-        "- call_mcp_workflow: Use multiple registered MCP tools in sequence when one tool needs data produced by another tool.",
-        '  Fields: { "action": "call_mcp_workflow", "steps": [{ "id": "<short id>", "server_id": "<MCP server id>", "tool": "<tool name>", "input": <JSON object>, "inputAdapter": "<optional adapter>" }], "answer_instruction": "<short Korean instruction>" }',
-        "  Workflow references: later step inputs may reference previous step outputs with $<step_id>.<path>. For arrays, use numeric path parts such as $from.location.1 for latitude and $from.location.0 for longitude.",
-        "  Context references: use $context.selectedLocation.lon and $context.selectedLocation.lat when the user refers to the selected map interest point.",
-        "  Important: geo.geocode returns location as [lon, lat], not {lat, lon}; it also returns bbox as [[minLon, minLat], [maxLon, maxLat]].",
-        "  For route tools use from_lat=$origin.location.1 and from_lon=$origin.location.0.",
-        "  For bbox tools use minLon=$place.bbox.0.0, minLat=$place.bbox.0.1, maxLon=$place.bbox.1.0, maxLat=$place.bbox.1.1.",
-        '  If the user specifies a radius such as "2km around", do not use the geocode bbox. Use inputAdapter="point_radius_to_bbox" with input { "center": "$place.location", "radiusMeters": 2000 } for bbox-based tools.',
-        f"  Current date for date/time tool inputs is {today} in Asia/Seoul (KST). If the user says today/tomorrow, resolve it using this KST date.",
-        "  Example route workflow: geocode origin -> geocode destination -> call route planning tool with from_lat/from_lon/to_lat/to_lon from geocode results.",
-        "  Example nearby CCTV workflow: geocode place -> call CCTV/bbox tool with minLon/minLat/maxLon/maxLat from geocode bbox.",
-        '  Example EV charger workflow: geocode place -> call ev.searchStations with inputAdapter="point_radius_to_bbox" and input { "center": "$place.location", "radiusMeters": 2000, "availableOnly": false, "limit": 50 }.',
-        "  Example election district workflow: if the user gives a place/address/station instead of an exact district name, call geo.geocode first, then call election.findDistrictByPoint with lon=$place.location.0 and lat=$place.location.1.",
-        "  Administrative boundaries are always-available system tools. Use adminBoundary.searchBoundaries for names/codes and adminBoundary.findBoundaryByPoint for a selected or geocoded location.",
-        "  Keep includeGeometry=false for administrative-boundary reference answers. Set includeGeometry=true only when the user asks to show or apply the boundary on the map.",
-        "  Example web research workflow: when registered MCP/domain tools cannot answer, or the user asks for latest/current/public web information, call web.search first. Use web.fetch on one or two relevant search result URLs only when the snippets are insufficient.",
-        '  For web.search, query is required. If a previous MCP step provides the search entity, combine it with the user topic, e.g. { "query": "$district.item.name 공약" }.',
-        "  Web answers must mention source URLs from web.search/web.fetch results and must not invent facts beyond those results.",
-        "  Note: Prefer read-only/status/search/planning tools. Do not use mutating tools unless the user explicitly asks for that exact operation.",
-    ]
-
-    if not tools:
-        lines.append("  Available MCP tools: none loaded from Gateway.")
-        return lines
-
-    lines.append("  Available MCP tools:")
-    for tool in tools[:_MAX_PROMPT_TOOLS]:
-        lines.extend(_format_tool_for_prompt(tool))
-
-    if len(tools) > _MAX_PROMPT_TOOLS:
-        lines.append(f"  ...and {len(tools) - _MAX_PROMPT_TOOLS} more tools.")
-
-    return lines
-
-
-def build_generic_mcp_fallback_intent(
-    text: str,
-    allowed_server_ids: Optional[List[str]] = None,
-    allowed_tool_refs: Optional[List[str]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Build a deterministic no-argument MCP intent when LLM parsing is unavailable."""
-    normalized_text = _normalize(text)
-    if not normalized_text:
-        return None
-
-    best_tool: Optional[Dict[str, Any]] = None
-    best_score = 0
-
-    for tool in _load_prompt_tools(allowed_server_ids, allowed_tool_refs):
-        required = ((tool.get("inputSchema") or {}).get("required") or [])
-        if required:
-            continue
-
-        score = _score_tool_match(normalized_text, tool)
-        if score > best_score:
-            best_tool = tool
-            best_score = score
-
-    if not best_tool or best_score <= 0:
-        return None
-
-    return {
-        "action": GENERIC_MCP_ACTION,
-        "server_id": best_tool.get("serverId"),
-        "tool": best_tool.get("name"),
-        "input": {},
-        "answer_instruction": "도구 실행 결과를 사용자가 이해하기 쉽게 한국어로 요약한다.",
-    }
-
-
-async def execute_generic_mcp(state: Dict[str, Any]) -> Dict[str, Any]:
-    """Execute one MCP tool or one MCP workflow chosen by the LLM."""
-    intent = state.get("intent") or {}
-    if intent.get("action") == GENERIC_MCP_WORKFLOW_ACTION:
-        return await _execute_generic_mcp_workflow(state, intent)
-
-    tool_name = _string_value(intent.get("tool") or intent.get("tool_name") or intent.get("qualifiedName"))
-    server_id = _string_value(intent.get("server_id") or intent.get("serverId"))
-    tool_input = intent.get("input") or intent.get("arguments") or {}
-    allowed_server_ids = _allowed_mcp_server_ids(state)
-    allowed_tool_refs = _allowed_mcp_tool_refs(state)
-
-    if not tool_name:
-        return _failed_result("호출할 MCP tool 이름이 없습니다.", intent)
-    tool_name, server_id = _resolve_registered_tool_ref(tool_name, server_id, allowed_server_ids, allowed_tool_refs)
-    if not _is_tool_allowed_by_values(server_id, tool_name, allowed_server_ids, allowed_tool_refs):
-        return _failed_result("선택되지 않은 MCP tool은 실행할 수 없습니다.", intent, tool_name, server_id)
-    if not isinstance(tool_input, dict):
-        return _failed_result("MCP tool 입력값은 JSON object여야 합니다.", intent)
-
-    try:
-        tool_input = _resolve_value(tool_input, _build_resolution_scope(state))
-    except Exception as exc:
-        return _failed_result(f"MCP tool 입력 참조를 해석하지 못했습니다: {exc}", intent, tool_name, server_id)
-
-    if not isinstance(tool_input, dict):
-        return _failed_result("해석된 MCP tool 입력값은 JSON object여야 합니다.", intent, tool_name, server_id)
-
-    tool_input = _prepare_tool_input(tool_input, server_id, tool_name, state, _build_resolution_scope(state))
-    missing_fields = _validate_required_inputs(server_id, tool_name, tool_input)
-    if missing_fields:
-        return _failed_result(f"MCP tool 필수 입력값이 비어 있습니다: {', '.join(missing_fields)}", intent, tool_name, server_id)
-
-    try:
-        result = mcp_client.execute_tool(
-            tool_name,
-            tool_input,
-            user_context=_execution_user_context(state),
-            server_id=server_id or None,
-        )
-    except Exception as exc:
-        raw_error = str(exc)
-        logger.error("Generic MCP tool execution failed: %s", raw_error)
-        return _failed_result(_friendly_mcp_error(tool_name, raw_error), intent, tool_name, server_id)
-
-    display_artifacts = inspect_mcp_result(result, {
-        "tool": tool_name,
-        "server_id": server_id,
-    })
-    commands = build_commands_from_artifacts(display_artifacts)
-    answer = await _compose_answer(state, tool_name, server_id, tool_input, result)
-    return {
-        "artifacts": {
-            **dict(state.get("artifacts", {}) or {}),
-            "mcp_result": result,
-            "display_artifacts": display_artifacts,
-        },
-        "executor_state": {
-            "status": "success",
-            "generic_mcp": True,
-            "mcp_servers": [server_id] if server_id else [],
-            "mcp_tools": [_qualified_tool_label(server_id, tool_name)],
-            "display_artifacts": _artifact_kind_labels(display_artifacts),
-        },
-        "commands": commands,
-        "answer_draft": answer,
-        "errors": [],
-    }
 
 
 async def _execute_generic_mcp_workflow(state: Dict[str, Any], intent: Dict[str, Any]) -> Dict[str, Any]:
@@ -320,46 +167,6 @@ async def _execute_generic_mcp_workflow(state: Dict[str, Any], intent: Dict[str,
     }
 
 
-async def _compose_answer(
-    state: Dict[str, Any],
-    tool_name: str,
-    server_id: str,
-    tool_input: Dict[str, Any],
-    result: Any,
-) -> str:
-    """Use Gemini to turn raw MCP output into a concise Korean answer."""
-    if not settings.GEMINI_API_KEY:
-        return _fallback_answer(tool_name, server_id, result)
-
-    result_text = _json_preview(result, _MAX_RESULT_CHARS)
-    input_text = _json_preview(tool_input, 3000)
-    intent = state.get("intent") or {}
-    instruction = intent.get("answer_instruction") or "도구 실행 결과를 한국어로 간결하게 설명한다."
-    prompt = (
-        "You are the final answer writer for an MCP-powered orchestration system.\n"
-        "Answer in Korean Markdown.\n"
-        "Use only the MCP result below. Do not invent missing facts.\n"
-        "If the result is an error or empty, say what failed and what information is missing.\n\n"
-        f"User request:\n{state.get('user_text')}\n\n"
-        f"MCP server: {server_id or '(auto-routed)'}\n"
-        f"MCP tool: {tool_name}\n"
-        f"Tool input JSON:\n{input_text}\n\n"
-        f"Answer instruction:\n{instruction}\n\n"
-        f"MCP result JSON:\n{result_text}\n"
-    )
-
-    try:
-        client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        response = await client.aio.models.generate_content(
-            model=settings.GEMINI_MODEL,
-            contents=prompt,
-        )
-        return response.text.strip()
-    except Exception as exc:
-        logger.error("Generic MCP answer composition failed: %s", exc)
-        return _fallback_answer(tool_name, server_id, result)
-
-
 async def _compose_workflow_answer(state: Dict[str, Any], intent: Dict[str, Any], trace: List[Dict[str, Any]]) -> str:
     """Compose the Korean answer from the workflow trace.
 
@@ -368,31 +175,6 @@ async def _compose_workflow_answer(state: Dict[str, Any], intent: Dict[str, Any]
     system has to show, so the answer is built in vendor_to_be_deleted/asap/workflow_answer.py.
     """
     return compose_workflow_answer(intent, trace)
-
-
-def _load_prompt_tools(
-    allowed_server_ids: Optional[List[str]] = None,
-    allowed_tool_refs: Optional[List[str]] = None,
-) -> List[Dict[str, Any]]:
-    """Load safe-ish registered tools for generic prompt exposure."""
-    try:
-        tools = mcp_client.get_tools()
-    except Exception as exc:
-        logger.warning("Failed to load MCP tools for generic prompt: %s", exc)
-        return []
-
-    return [
-        tool for tool in tools
-        if _is_prompt_safe_tool(tool) and _is_tool_allowed(tool, allowed_server_ids, allowed_tool_refs)
-    ]
-
-
-def _is_prompt_safe_tool(tool: Dict[str, Any]) -> bool:
-    """Avoid exposing obvious mutating tools to generic LLM routing by default."""
-    name = str(tool.get("name") or "").lower()
-    description = str(tool.get("description") or "").lower()
-    haystack = f"{name} {description}"
-    return not any(word in haystack for word in _BLOCKED_TOOL_WORDS)
 
 
 def _resolve_registered_tool_ref(
@@ -566,31 +348,6 @@ def _execution_user_context(state: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     return user_context or None
 
 
-def _format_tool_for_prompt(tool: Dict[str, Any]) -> List[str]:
-    name = tool.get("name")
-    server_id = tool.get("serverId")
-    description = " ".join(str(tool.get("description") or "").split())
-    schema = tool.get("inputSchema") or {}
-    required = schema.get("required") or []
-    properties = schema.get("properties") or {}
-
-    lines = [
-        f"    - server_id={server_id}, tool={name}: {_truncate(description, 220)}",
-    ]
-
-    if properties:
-        field_bits = []
-        for field_name, field_schema in list(properties.items())[:12]:
-            field_type = field_schema.get("type") if isinstance(field_schema, dict) else None
-            required_mark = " required" if field_name in required else ""
-            field_bits.append(f"{field_name}:{field_type or 'any'}{required_mark}")
-        lines.append(f"      input fields: {', '.join(field_bits)}")
-    else:
-        lines.append("      input fields: none")
-
-    return lines
-
-
 def _failed_result(
     message: str,
     intent: Dict[str, Any],
@@ -610,17 +367,6 @@ def _failed_result(
         "answer_draft": message,
         "errors": [message],
     }
-
-
-def _friendly_mcp_error(tool_name: str, raw_error: str) -> str:
-    """Convert low-level MCP errors into compact user-facing messages."""
-    normalized = raw_error.lower()
-    if tool_name == "road.getCctv":
-        if "외부 api 연동 실패 (its)" in normalized or "internal server error" in normalized or "503" in normalized:
-            return "ITS CCTV 외부 API 연동이 일시적으로 실패했습니다. 잠시 후 다시 시도해 주세요."
-        if "center/location" in raw_error or "필수 입력값" in raw_error:
-            return "CCTV를 조회할 기준 지도 범위 또는 중심 좌표가 없습니다."
-    return f"MCP tool 실행에 실패했습니다: {raw_error}"
 
 
 def _friendly_workflow_input_error(step_id: str, tool_name: str, raw_error: str) -> str:
@@ -666,17 +412,6 @@ def _failed_workflow_result(
     }
 
 
-def _fallback_answer(tool_name: str, server_id: str, result: Any) -> str:
-    result_text = _json_preview(result, 4000)
-    label = _qualified_tool_label(server_id, tool_name)
-    return f"**{label}** MCP 실행 결과입니다.\n\n```json\n{result_text}\n```"
-
-
-def _fallback_workflow_answer(trace: List[Dict[str, Any]]) -> str:
-    result_text = _json_preview(trace, 6000)
-    return f"**MCP workflow** 실행 결과입니다.\n\n```json\n{result_text}\n```"
-
-
 def _qualified_tool_label(server_id: str, tool_name: str) -> str:
     return f"{server_id}/{tool_name}" if server_id else tool_name
 
@@ -694,37 +429,8 @@ def _artifact_kind_labels(display_artifacts: List[Dict[str, Any]]) -> List[str]:
     return _dedupe_strings(labels)
 
 
-def _json_preview(value: Any, limit: int) -> str:
-    try:
-        text = json.dumps(value, ensure_ascii=False, indent=2, default=str)
-    except TypeError:
-        text = str(value)
-    return _truncate(text, limit)
-
-
-def _truncate(text: str, limit: int) -> str:
-    if len(text) <= limit:
-        return text
-    return text[: limit - 1] + "…"
-
-
-def _score_tool_match(normalized_text: str, tool: Dict[str, Any]) -> int:
-    haystack = _normalize(
-        f"{tool.get('serverId', '')} {tool.get('name', '')} {tool.get('description', '')}"
-    )
-    score = 0
-    for token in _tokens(normalized_text):
-        if token in haystack:
-            score += 10
-    return score
-
-
 def _normalize(text: str) -> str:
     return " ".join(str(text).strip().lower().split())
-
-
-def _tokens(text: str) -> List[str]:
-    return [token for token in re.split(r"[^0-9a-zA-Z가-힣_.-]+", text) if token]
 
 
 def _string_value(value: Any) -> str:

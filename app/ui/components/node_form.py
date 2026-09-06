@@ -171,10 +171,13 @@ def _show_result():
     elif result.get("reset"):
         st.success("초기화했다.")
     else:
-        # 등록 성공/실패는 DEBUG 와 무관하게 보여준다. group 과 reason 은
+        # 등록 성공/실패는 DEBUG 와 무관하게 보여준다. 대상과 reason 은
         # LLM 이 왜 그렇게 판단했는지를 보는 개발용 정보라 감춘다.
         st.success(f"등록 : **{result['node_id']}**")
         if config.DEBUG:
-            st.caption(f"속한 대상 : {result.get('group') or '(없음)'}")
+            # **groups 다. 여럿일 수 있다** — 승강장 CCTV 영상이 승강장에도
+            # CCTV 에도 관한 것처럼. 한동안 단수 "group" 을 읽어 늘 (없음)
+            # 이었다 (2026-09-06 에 고쳤다).
+            st.caption(f"속한 대상 : {', '.join(result.get('groups') or []) or '(없음)'}")
             st.caption(f"reason : {result['reason']}")
         st.caption(f"새 recipe {len(result['recipe_ids'])}개 : {', '.join(result['recipe_ids'])}")

@@ -45,7 +45,10 @@ def test_a_means_of_execution_that_is_not_a_tool_is_recorded_in_the_wiring_table
     """
     row = step_service.TOOL_OF["show_facility"]
 
-    assert row["command"] == step_service.SHOW_FACILITY_COMMAND
+    # 저쪽 화면이 이 op 을 이름으로 알아본다 — KRRI_ASAP/ASAP-web 의
+    # useChat.isDigitalTwinFacilityCommand 가 `cmd.op === 'digitalTwin.showFacility'`
+    # 로 가른다. 원천은 wiring.yaml 이고 여기는 기대값이다.
+    assert row["command"] == "digitalTwin.showFacility"
     assert "tool" not in row and "server_id" not in row
 
 

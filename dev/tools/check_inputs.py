@@ -146,7 +146,6 @@ RADIUS_KEYS = ("radiusMeters", "radius_meters", "radius", "radiusKm", "radius_km
 # 판정 넷
 UNKNOWN_FIELD = "없는 칸을 보낸다"
 MISSING_REQUIRED = "꼭 필요한데 안 보낸다"
-UNUSED_FIELD = "있는데 안 쓰는 칸"
 OK = "맞다"
 NO_SCHEMA = "스키마를 못 받았다"
 

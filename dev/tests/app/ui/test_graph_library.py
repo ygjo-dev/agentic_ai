@@ -506,28 +506,31 @@ def test_a_chip_markup_with_a_closing_script_tag_cannot_break_the_document(model
 # ── 창구 계약 ───────────────────────────────────────────────────────
 
 
-def test_the_screen_contract_did_not_move():
-    """★ 그래프를 갈면서 /screen 을 안 건드렸다.
+def test_the_screen_contract_is_only_what_the_screen_reads():
+    """★ 창구에 있는 키는 「누군가 이것을 읽는다」는 뜻이다.
 
-    라이브러리로 갈아도 백엔드가 내는 것은 그대로여야 한다. 화면을 편하게
-    하자고 도메인 창구를 굽히지 않는다는 규칙이 여기서 지켜진다.
-    노드 · 엣지 모형은 이미 /screen 이 갖고 있었다 — 서버가 그리게 된 뒤로
-    아무도 안 읽던 세 칸이 그것이고, 이번에 다시 읽히게 됐다.
+    2026-09-06 에 넷(version · nodes · solid_edges · dotted_edges)을 뺐다.
+    서버가 그리게 된 뒤로 그것을 읽는 화면 코드가 0 이었고, 노드 · 엣지 모형은
+    POST /render 의 network 가 좌표까지 함께 들고 간다.
+
+    남은 둘을 읽는 자리도 함께 못 박는다 — 없어지면 등록 폼의 선택지가
+    비고 칩 · 그래프가 기본색으로 떨어진다.
     """
     payload = screen_service.screen_payload()
 
-    assert set(payload) == {
-        "version", "colors", "types", "nodes", "solid_edges", "dotted_edges",
-    }
+    assert set(payload) == {"colors", "types"}
+    assert payload["types"] and set(payload["types"][0]) == {"id", "name"}
+    assert payload["colors"]["highlight"]
 
 
-def test_the_static_svg_path_is_still_there():
-    """정지 그림을 지우지 않았다.
+def test_the_render_response_carries_no_picture():
+    """★ 2026-09-06 에 SVG 를 통째로 걷었다. 되살아나면 여기가 잡는다.
 
-    dev/tools/export_graph.py 가 그것을 쓴다. interactive 로 갈았다고 내보내기
-    길까지 없애면 보도자료 · 문서에 넣을 그림을 만들 데가 사라진다.
+    그림을 서버가 만들던 시절의 칸이 top · variants · focus 셋이었다. 화면이
+    라이브러리로 그리게 된 뒤 그 셋을 읽는 데가 정지 그림 내보내기 하나뿐이었고,
+    그 내보내기도 안 쓰기로 정해 함께 갔다. **Graphviz 는 좌표만 낸다.**
     """
     payload = screen_service.render("plain")
 
-    assert "<svg" in payload["top"]
-    assert "<svg" in payload["variants"][""]
+    assert set(payload) == {"version", "chips", "network"}
+    assert "<svg" not in json.dumps(payload)

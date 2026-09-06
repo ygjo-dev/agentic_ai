@@ -16,7 +16,7 @@ import asyncio
 import pytest
 
 from app.api.services.streamlit import screen_service
-from execution import execute_service, step_service
+from execution import step_service
 from orchestrator import resolve_service
 
 # 저쪽 화면이 실제로 보내는 모양. KRRI_ASAP/ASAP-web 의 ChatRequest 타입과
@@ -133,12 +133,25 @@ def test_a_slot_with_a_previous_step_still_points_at_the_previous_step():
     }
 
 
-def test_a_recipe_starting_from_the_screen_runs_even_without_an_argument_in_the_utterance():
-    """"지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없다. 조회할 곳은 문맥이 말했다."""
-    assert execute_service._from_screen("visible_extent")
-    assert execute_service._from_screen("picked_point")
-    assert not execute_service._from_screen("spoken_place")
-    assert not execute_service._from_screen(None)
+def test_a_recipe_that_reads_only_the_context_runs_without_an_argument():
+    """"지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없다. 조회할 곳은 문맥이 말했다.
+
+    판정 근거는 배선이다 — 그 recipe 의 계획에 @arg 가 남는지를 본다.
+    발화 해석 응답의 given 으로 가르던 자리인데, 2026-09-04 에 축 세 칸을 빼면서
+    그 값이 안 실려 문맥으로만 도는 recipe 까지 막혔었다.
+    """
+    assert not step_service.spoken_needed("recipe_019")   # 찍은 지점 -> CCTV
+    assert not step_service.spoken_needed("recipe_026")   # 보이는 범위 -> 충전소
+    assert step_service.spoken_needed("recipe_002")       # 말한 장소 -> 좌표 -> CCTV
+
+
+def test_a_recipe_that_mixes_the_context_and_the_utterance_still_needs_the_argument():
+    """경로 탐색은 출발지를 문맥에서, 도착지를 발화에서 받는다.
+
+    ★ 문맥이 있다고 인자 없이 부르면 도착지가 빈 채로 도구가 나간다.
+    """
+    assert step_service.context_needs("recipe_062") == {"picked_point"}
+    assert step_service.spoken_needed("recipe_062")
 
 
 def test_an_empty_context_field_does_not_count_that_start_data():

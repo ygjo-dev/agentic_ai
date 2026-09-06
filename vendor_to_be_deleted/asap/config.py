@@ -1,11 +1,10 @@
 """vendor_to_be_deleted/asap 가 읽는 설정. 원본 app/config.py 자리를 대신한다. **우리 코드다.**
 
 원본은 pydantic BaseSettings 로 40여 개 값을 들고 있었다. vendor 로 가져온
-다섯 모듈이 실제로 읽는 것은 아래 다섯 개뿐이라 그것만 둔다.
+다섯 모듈이 실제로 읽는 것은 아래 셋뿐이라 그것만 둔다.
 
-GEMINI_API_KEY 를 None 으로 고정한다. 이 값이 켜지면 generic_mcp_executor 의
-_compose_answer 가 지워진 google.genai 를 부르게 된다 — 우리는 도구 하나만
-부르는 경로(execute_generic_mcp)를 쓰지 않으므로 그 코드는 닿지 않는다.
+**GEMINI_API_KEY · GEMINI_MODEL 이 2026-09-06 에 사라졌다.** 그 둘을 읽던
+generic_mcp_executor._compose_answer 가 직접 도구 호출 길과 함께 지워졌다.
 """
 
 import os
@@ -29,8 +28,6 @@ class _Settings:
     GATEWAY_URL: str = os.environ.get("GATEWAY_URL", "http://localhost:3000").rstrip("/")
     MCP_TIMEOUT: float = _MCP_TIMEOUT
     MCP_TOOLS_CACHE_TTL: float = _MCP_TOOLS_CACHE_TTL
-    GEMINI_API_KEY = None
-    GEMINI_MODEL: str = ""
 
 
 settings = _Settings()

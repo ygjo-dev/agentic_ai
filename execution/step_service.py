@@ -44,12 +44,6 @@ import yaml
 import paths
 from ontology import graph
 
-SERVER_ID = "asap-mcp-core"
-
-# web.search · web.fetch 만 다른 MCP 서버에 있다. 나머지 마흔은 SERVER_ID 다.
-# 여기를 틀리면 Gateway 가 도구를 못 찾는다 — tools.json 의 serverId 가 근거다.
-WEB_SERVER_ID = "web-search"
-
 # 좌표 하나를 지도 범위로 넓힐 때의 반경. road.getCctv 와 ev.searchStations 가
 # 같은 값을 쓴다. vendor 의 point_radius_to_bbox 어댑터가
 # 중심 좌표와 이 값으로 bbox 를 만든다 — 대상 도구의 required 에 bbox 넷이
@@ -64,8 +58,8 @@ RADIUS_METERS = 15000
 #
 # 예전 이름은 @place 였다. 키워드를 받는 도구(search_documents ·
 # search_election_districts)도 같은 자리에 발화에서 온 값을 넣으므로 표시가
-# "장소" 를 뜻하면 안 된다. 그 값이 장소인지 키워드인지 식별자인지는 발화 해석
-# 응답의 given 이 말한다 — 여기는 그것을 구분하지 않는다.
+# "장소" 를 뜻하면 안 된다. 그 값이 장소인지 키워드인지 식별자인지는 경로의
+# 시작 데이터 노드가 말한다 — 여기는 그것을 구분하지 않는다.
 SPOKEN_VALUE = "@arg"
 
 # 발화에서 온 값이 노선 이름인지 가르는 어미.
@@ -76,38 +70,8 @@ SPOKEN_VALUE = "@arg"
 #       실측 표와 언제 이 자를 걷어내는지는 NOTES.md 「쉰째」에 있다
 RAILWAY_LINE_SUFFIX = "선"
 
-# 지도 명령 하나가 곧 실행인 자리의 op 이름.
-#
-# 저쪽 화면이 이 op 을 이름으로 알아본다 — KRRI_ASAP/ASAP-web 의
-# useChat.isDigitalTwinFacilityCommand 가 `cmd.op === 'digitalTwin.showFacility'`
-# 로 가르고 args.facilityName 을 문자열일 때만 읽는다. 저쪽 orchestrator 의
-# market_plugin_engine._show_facility 도 같은 op 과 같은 칸으로 만든다.
-# 두 파일 다 읽기만 했다.
-SHOW_FACILITY_COMMAND = "digitalTwin.showFacility"
-
 # 앞 단계를 가리키는 표시. 실제 step id 로 바꿔서 vendor 에 넘긴다.
 PREVIOUS_STEP = "$prev"
-
-# 앞 단계의 지도 범위를 받는 두 모양. 여러 줄이 똑같이 쓰므로 상수로 둔다 —
-# 줄마다 베껴 적으면 한 곳만 고쳤을 때 조용히 어긋난다.
-#
-# vendor 의 _resolve_reference 가 minLon · minLat · maxLon · maxLat 를
-# 앞 단계 bbox 의 [0][0] · [0][1] · [1][0] · [1][1] 로 푼다. geocode 도
-# rail.getSectionGeometry 도 bbox 를 [[minLon, minLat], [maxLon, maxLat]] 로
-# 내놓으므로 같은 표시가 둘 다에 걸린다.
-#
-# 받는 쪽 모양은 도구마다 다르다. road.getCctv 는 네 칸을 따로 받고
-# (required 넷), 나머지는 bbox 한 칸에 평평한 네 수를 받는다
-# ("[minLon, minLat, maxLon, maxLat] 조회 범위", tools.json).
-BBOX_FROM_PREVIOUS = [
-    f"{PREVIOUS_STEP}.minLon",
-    f"{PREVIOUS_STEP}.minLat",
-    f"{PREVIOUS_STEP}.maxLon",
-    f"{PREVIOUS_STEP}.maxLat",
-]
-
-# 앞 단계의 지점 좌표를 받는 모양. find…ByPoint 다섯이 똑같이 쓴다.
-POINT_FROM_PREVIOUS = {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.lat"}
 
 # 저쪽 화면이 발화와 함께 보내는 지도 문맥을 가리키는 표시.
 #
@@ -121,35 +85,6 @@ POINT_FROM_PREVIOUS = {"lon": f"{PREVIOUS_STEP}.lon", "lat": f"{PREVIOUS_STEP}.l
 # 값을 채우면 같은 일을 두 곳이 하게 되고, 문맥이 빈 요청에서 어느 쪽이
 # 비운 것인지 알 수 없어진다.
 CONTEXT_VALUE = "$context"
-
-# 문맥의 찍은 지점. 저쪽 ChatRequest.context.selectedLocation 이다
-# ({lon, lat, label, source}. source 는 "map-right-click").
-#
-# 통째로 넘긴다. vendor 의 _parse_lon_lat 이 dict 에서 lon · lat 을 꺼내므로
-# 칸 이름을 우리가 다시 적을 필요가 없다.
-SELECTED_LOCATION = f"{CONTEXT_VALUE}.selectedLocation"
-
-# 문맥의 찍은 지점을 lon · lat 두 칸으로. find…ByPoint 다섯이 그 모양으로 받는다.
-POINT_FROM_CONTEXT = {
-    "lon": f"{SELECTED_LOCATION}.lon",
-    "lat": f"{SELECTED_LOCATION}.lat",
-}
-
-# 문맥의 보이는 범위. 저쪽 ChatRequest.context.view.bbox 이고
-# [[minLon, minLat], [maxLon, maxLat]] 두 겹이다 (2026-08-28 확인 —
-# KRRI_ASAP/ASAP-web 의 CameraManager.getMapContext 와 MapLibre2DMap.getMapContext
-# 가 둘 다 [[west, south], [east, north]] 로 만든다).
-#
-# **$prev 의 bbox 와 모양이 같다.** 그래서 BBOX_FROM_PREVIOUS 와 같은 네 이름을
-# 쓴다 — vendor 의 _resolve_reference 가 minLon 을 bbox[0][0] 로 푸는 규칙이
-# 앞 단계 결과든 문맥이든 한 벌이다.
-VIEW_FROM_CONTEXT = f"{CONTEXT_VALUE}.view"
-BBOX_FROM_CONTEXT = [
-    f"{VIEW_FROM_CONTEXT}.minLon",
-    f"{VIEW_FROM_CONTEXT}.minLat",
-    f"{VIEW_FROM_CONTEXT}.maxLon",
-    f"{VIEW_FROM_CONTEXT}.maxLat",
-]
 
 # 부르는 순간의 값을 가리키는 표시. **@arg 도 $prev 도 $context 도 아닌 넷째 자리다.**
 #
@@ -181,26 +116,11 @@ RUNTIME_FIELDS = {
 
 # 문맥의 어느 칸이 어느 시작 데이터 노드인가. **온톨로지 밖이다** —
 # 저쪽 화면의 계약이라 온톨로지가 알 일이 아니고, TOOL_OF · STEP_OF 와 같은
-# 자리에 둔다. key 는 온톨로지의 데이터 노드 id 이고 축 선택지와 같은 값이다
+# 자리에 둔다. key 는 온톨로지의 데이터 노드 id 다
 # (execute_service.NO_ARGUMENT_ANSWER 가 같은 방식이다).
 CONTEXT_STARTS = {
     "picked_point": ("selectedLocation",),
     "visible_extent": ("view", "bbox"),
-}
-
-# 앞 단계의 행정구역을 층위와 코드로 받는 모양. population 두 도구가 똑같이 쓴다.
-#
-# adminBoundary.findBoundaryByPoint 가 여덟 지점에서 늘 items 3건을
-# sido -> sigungu -> emd 순서로 내놓고(2026-08-24 실측, 응답 전문은
-# dev/tools/probe_out/), items.N.layerId 의 낱말이 population 두 도구의 level
-# enum 과 글자까지 같다 (ASAP-mcp/main.py:402).
-#
-# **items.1 은 시군구다. 지금은 시군구 한 자리로 박는다.** 발화가 시도를
-# 말했는지 읍면동을 말했는지는 이 자리에서 알 수 없다 — 발화 해석이 층위를
-# 함께 내놓지 않는다. NOTES.md 「열린 과제」에 남겼다.
-ADMIN_LEVEL_FROM_PREVIOUS = {
-    "level": f"{PREVIOUS_STEP}.items.1.layerId",
-    "code": f"{PREVIOUS_STEP}.items.1.code",
 }
 
 # 중심 좌표와 반경을 bbox 넷으로 바꾸는 vendor 어댑터의 이름.
@@ -424,6 +344,48 @@ def context_starts(context: dict | None) -> list[str]:
         if value not in (None, "", [], {}):
             found.append(node_id)
     return found
+
+
+# spoken_needed 가 계획에 심어 보는 값. 배선이 @arg 를 실제로 쓰면 만들어진
+# input 에 이 문자열이 그대로 남는다.
+#
+# **발화에서 올 수 있는 값과 겹치지 않아야 한다.** 사람이 말할 수 없는 글자로
+# 짓는다 — 겹치면 「인자를 안 썼다」를 「썼다」로 잘못 세게 된다.
+_SPOKEN_PROBE = "\x00spoken-probe\x00"
+
+
+def spoken_needed(recipe_id: str) -> bool:
+    """그 recipe 가 발화에서 온 값을 실제로 쓰는가.
+
+    입력  recipe id
+    출력  참이면 인자가 없을 때 부르면 안 됨
+    규칙  배선이 만든 실제 계획을 봄. 표를 통째로 훑지 않음 — 어느 줄을 쓸지는
+          앞 노드가 건네는 타입이 정하고 input_first 는 첫 자리에서만 쓰임
+          지도 명령의 args 도 봄. 도구를 안 부르고 명령만 내는 노드도 발화에서
+          온 값을 쓸 수 있음 (시설물 화면이 그것임)
+          문맥에서 시작하는 recipe 라도 뒤 단계가 @arg 를 쓰면 참임.
+          경로 탐색(출발지는 찍은 지점 · 도착지는 말한 장소)이 그 자리임
+    제약  recipe id 로 가르지 않는다.
+          특수분기를 두면 recipe 가 늘 때마다 여기를 고쳐야 하고, 배선만
+          바꾼 자리는 조용히 어긋남
+    이력  예전에는 발화 해석 응답의 given 이 화면에서 오는 시작 데이터인지로
+          갈랐음. 2026-09-04 에 축 세 칸을 빼면서 그 값이 늘 None 이 되어
+          문맥으로만 도는 recipe 까지 「인자가 없다」로 막혔음
+    """
+    plan_result = plan(recipe_id, _SPOKEN_PROBE)
+
+    sources = [step["input"] for step in plan_result["steps"]]
+    sources += [command["args"] for command in plan_result["commands"]]
+    return any(_holds_probe(value) for value in sources)
+
+
+def _holds_probe(value) -> bool:
+    """계획 조각 어딘가에 발화 인자가 들어갔는가. 중첩된 dict · list 까지."""
+    if isinstance(value, dict):
+        return any(_holds_probe(item) for item in value.values())
+    if isinstance(value, list):
+        return any(_holds_probe(item) for item in value)
+    return value == _SPOKEN_PROBE
 
 
 def context_needs(recipe_id: str) -> set[str]:

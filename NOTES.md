@@ -3198,6 +3198,241 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-06 (백열일곱째) · legacy · dead code 전수 정리 — ★ SVG 를 통째로 걷었다
+
+**기능을 더한 판이 아니다.** 지금 architecture 를 리뷰어가 그대로 읽을 수 있게
+쓰지 않는 코드를 걷었다. 온톨로지 · recipe · menu · wiring · 프롬프트 · provider 를
+**한 글자도 안 건드렸다.**
+
+#### 걷기 전후 — 잰 숫자
+
+```
+                    전         후      차
+추적 파일           203       195      -8
+Python 파일         107        99      -8
+제품 Python 파일     58        56      -2
+제품 LOC          13,340    12,231  -1,109
+시험 파일            38        33      -5
+모은 시험           411       363     -48
+엔드포인트            8         7      -1   (POST /chat 이 없어졌다)
+diff              66 files  +1,274  -3,534   (순 -2,260줄)
+```
+
+#### 무엇을 지웠나 — 갈래별
+
+```
+UI          app/ui/components/sample_picker.py 통째로.
+            ★ 사람이 정했다 — 화면 공간만 차지한다
+API         POST /chat.  제품 계약은 POST /chat/stream 하나다
+            ChatRequest.target_documents.  한 번도 안 읽었고 앞으로도 안 읽는다
+resolve 잔재 recent_service 의 given · want · about 세 칸
+            (2026-09-04 에 스키마에서 빠진 축이 회차 기록에만 남아 있었다)
+vendor      직접 도구 호출(call_mcp_tool) 길 함수 열다섯.
+            그 길만 쓰던 GEMINI_API_KEY · GEMINI_MODEL 도 함께
+caller 0    execution/gateway_client.py · MCPClient 의 async 둘 ·
+            geojson_contains_point · paths 상수 둘 · 안 쓰는 import 넷 ·
+            wiring 이 원천이 된 뒤 남아 있던 옛 파이썬 상수 아홉
+ontology    graph.highlight_edges (제품 호출처 0. 시험만 붙들고 있었다)
+```
+
+#### ★ SVG 를 통째로 걷었다 — Graphviz 는 이제 좌표만 낸다
+
+2026-09-06 「백열셋째」에 화면 그래프가 vis-network 로 갔다. 그때 SVG 를 안 지운
+근거가 **`dev/tools/export_graph.py` 의 정지 그림 하나**였는데, 그 내보내기도
+쓰지 않기로 정해 함께 걷었다.
+
+```
+지운 것   dev/tools/export_graph.py
+          build.top_svg · build.variant_svgs · build 의 캐시 넷
+          graphviz.render_svg · fit_svg · stack_nodes_on_top
+          SVG 정규식 다섯 (_SVG_OPEN_TAG · _SVG_SIZE_ATTR · _SVG_PRESERVE_ATTR ·
+                          _SVG_NODE_GROUP · _SVG_GRAPH_CLOSE)
+          build_dot 의 그리기 전용 인자 열둘
+          그리기 전용 상수 아홉 (FLOW_CLASS · PATH_PENWIDTH · PATH_ARROWSIZE ·
+                              HIGHLIGHT_NODE_PENWIDTH · MARK_* 넷 · NEW_DOTTED_COLOR ·
+                              NODE_ATTRS_TOP · GROUP_ATTRS_TOP · DOTTED_PENWIDTH_TOP)
+남긴 것   layout_positions · node_boxes — 둘 다 `-Tdot` 이다
+          상자 크기를 바꾸는 것 전부 (글꼴 · 글씨 크기 · 여백 · 최소 크기 ·
+          도형 · 두 줄 접기 · 엣지 길이). ★ 하나라도 빼면 겹침 판정이 헛돈다
+```
+
+전수조사 결과 :
+
+```
+커밋된 *.svg 파일        0
+SVG 생성 함수            0
+Graphviz -Tsvg           0
+SVG 파서                 0
+런타임 SVG 응답 키       0
+SVG 전용 시험            0
+SVG 내보내기             0
+남은 "SVG" 문자열        NOTES 의 과거 기록과 「무엇을 왜 걷었나」를 적은 이력 절뿐
+```
+
+★ **화면은 안 바뀐다.** 지금 화면은 이미 vis-network 가 그리고 있어서,
+지운 것은 아무도 안 보던 그림이다.
+
+#### 패키지 이름을 갈았다 — `app/ui/graph_svg/` → `app/ui/graph/`
+
+SVG 가 하나도 없는데 이름에 SVG 가 남으면 읽는 사람이 여기서 그림이 나온다고
+읽는다. 시험도 `dev/tests/app/ui/graph/` 로 함께 갔다.
+`ontology.graph` 와 이름이 같지만 namespace 가 달라 부딪히는 자리는 없다.
+
+#### ★ 이 판에서 찾은 실제 결함 셋
+
+**1. 문맥으로만 도는 recipe 가 하나도 안 불리고 있었다.**
+
+`execute_service.chat` 의 인자 판정이 이랬다.
+
+```python
+if not argument and not _from_screen(resolved.get("given")):
+```
+
+**2026-09-04 에 축 세 칸을 스키마에서 뺐다.** 그래서 `resolved["given"]` 이
+그날부터 늘 `None` 이고 `_from_screen(None)` 은 늘 False 다 — 즉 위 줄은
+**`if not argument:` 와 같았다.** 배선이 발화에서 온 값을 안 쓰는 recipe 열셋은
+발화에 뽑을 말이 없는 것이 정상인데, 그 열셋이 전부 「어느 장소인지 알 수
+없습니다」로 막히고 있었다.
+
+★ **고친 뒤 실제 서버에서 확인했다** (2026-09-06 · Gateway 살아 있음).
+
+```
+POST /chat/stream {"text": "여기 CCTV 보여줘", context: {selectedLocation, view.bbox}}
+  → SELECT recipe_019 → road.getCctv 완료 → 83건
+```
+
+새 판정은 **배선을 본다.** recipe id 로 가르지 않는다.
+
+```python
+if not argument and step_service.spoken_needed(recipe_id):
+```
+
+`spoken_needed` 는 `context_needs` 와 같은 방식이다 — `plan()` 을 탐침 값으로
+한 번 돌려 만들어진 step input 과 지도 명령 args 에 그 값이 남는지 본다.
+recipe 38벌에 대해 이렇게 갈린다.
+
+```
+                                             38벌 중
+@arg 를 쓰는 스물다섯       spoken_needed True    인자 없으면 실행 안 함
+문맥으로만 도는 열셋        spoken_needed False   인자 없어도 실행함
+                            018·019·020·021·022 · 024·026·027·029·031 · 054·055·056
+★ recipe_062 는 섞여 있다   출발지는 문맥 · 도착지는 발화.
+                            context_needs {picked_point} 이면서 spoken_needed True —
+                            문맥이 와 있어도 인자가 없으면 실행 안 한다
+```
+
+안내 문구(장소 · 키워드 · 식별자 셋)는 그대로다. 무엇을 더 말해 달라고 할지는
+이제 **경로의 첫 데이터 노드**가 말한다 — 없어진 `given` 이 가리키던 것과 같은 값이다.
+
+**2. 등록 머리말이 닫히지 않은 태그 하나였다.**
+
+```python
+name = node.get("name") or result.get("node_id", "")
+return ('<div class="utterance">')      # ← name 을 안 쓰고 여는 태그만
+```
+
+닫히지 않은 `div` 라 화면에 아무것도 안 뜨고 뒤 마크업이 그 안에 빨려 들어갔다.
+`utterance_markup` 과 같은 틀로 고쳤다. **새 디자인을 만들지 않았다.**
+
+**3. 화면이 단수 `group` 을 읽고 있었다.** 창구는 `groups` 를 보내는데
+`node_form` 의 DEBUG 줄이 `result.get("group")` 이라 **늘 「(없음)」**이었다.
+복수로 맞췄다.
+
+#### 창구 DTO 를 줄였다 — 「여기 있는 키는 누군가 읽는다」
+
+실제 호출처를 하나씩 따라가 안 읽는 키를 걷었다.
+
+```
+GET  /screen   version · colors · types · nodes · solid_edges · dotted_edges
+               → colors · types                    (넷을 뺐다)
+POST /render   version · top · variants · focus · chips · network
+               → version · chips · network         (SVG 셋을 뺐다)
+POST /nodes    node_id · node · groups · reason · recipe_ids · paths ·
+               accepted · new_solid_edges · new_dotted_edges · counts · version
+               → 위에서 paths · accepted · counts · version 넷을 뺐다
+GET  /recent   축 세 칸이 빠졌다. 나머지는 그대로
+```
+
+★ **`focus` 가 말하던 것은 `network` 이 이미 갖고 있었다.** 「어느 후보가 어느
+노드로 끝나나」는 `variants` 의 키와 `picks` 가 말한다. `chips` 도 변형별 dict 를
+접어 목록 하나로 줄였다 — 화면이 읽던 것이 `chips[""]` 하나뿐이었다.
+
+★ **암묵 표시를 없앴다.** 「`accepted` 키가 있으면 등록 장면」이라는 규칙이
+있었다 — 값이 비어도 키는 남겨야 한다는 조건이 딸려 있어서, 그것을 모르는
+사람이 빈 값을 지우면 등록 장면이 조용히 해석 장면이 됐다. 지금은 부르는 쪽이
+`mode == "register"` 를 그대로 넘긴다.
+
+#### 시험 — 무엇을 지우고 무엇을 옮겼나
+
+```
+지운 것 (표현만 보던 것)      test_render_svg.py · test_dim_edges.py ·
+                              test_path_flow.py · test_path_flow_svg.py ·
+                              test_layout_is_fixed.py
+                              test_layout_invariants 의 그리기 표시 아홉
+                              ★ build_dot 에 그 인자가 아예 없어져 구조로 불가능해졌다
+옮긴 것 (뜻은 그대로, 자만 갈았다)
+  test_layout_invariants      SVG <text x= y=> → node_boxes 의 `-n -Tdot` pos
+  test_register_colours       SVG stroke 정규식 → network.node_styles / solid_styles
+                              (화면에 실제로 실리는 표다)
+  test_nodes_do_not_overlap   제 파일에 있던 node_boxes 사본을 지우고
+                              제품 함수(graphviz.node_boxes)를 그대로 쓴다
+  test_chat_stream_parity     → test_chat_stream.  「두 길이 같은가」 대신
+                              「창구 하나가 계약을 지키는가」를 본다
+```
+
+★ **알려진 음성 대조군은 그대로다.**
+`test_dense_graph_would_move_if_overlap_removal_were_used` 는 원래부터 DOT 기반
+(`layout_positions`)이라 옮길 것이 없었고, Graphviz 버전 차이로 나는 실패도
+걷기 전과 같다. **뜻은 안 바꿨다.**
+
+#### 계기판에서 늘 빈 값이던 칸을 지웠다
+
+2026-09-04 에 축 조회를 걷은 뒤로 늘 「-」나 「조회 없음」을 찍던 칸들이다.
+**정답표 발화와 기대값은 한 글자도 안 건드렸다.**
+
+```
+check_resolve      축 표 → 인자 표 (argument 한 칸만 남았다) · AXIS_WIDTH ·
+                   「조회 후보 수」 · 「조회 판정」 · _grade_lookup · LOOKUP_* 상수 넷
+                   ★ --execute 가 POST /chat → POST /chat/stream 으로 갔다.
+                     SSE 를 파싱하지 않는다 — 읽을 것은 전부 GET /recent 에 있다
+sweep_utterances   given · want · about · shortlist · lookup_count
+check_argument     축 세 칸 · gateway_client 의존.
+                   Gateway 주소는 이 파일이 직접 환경변수를 읽는다 —
+                   한 줄을 위해 제품 모듈을 남겨 두지 않는다
+```
+
+#### 관문
+
+```
+pytest          362 passed · 1 failed (위 음성 대조군. 걷기 전과 같다)
+                걷기 전 410 passed · 1 failed
+check_wiring    recipe 38 · A 0 · B 0 · C 1 (known : web_fetch × web_address)
+check_inputs    없는 칸 0 · 안 보낸 required 0
+demo9           ★ SELECT 9/9 · 적중 9/9 · 11.6초 (실제 서버 · 2026-09-06)
+API smoke       POST /chat 404 · /chat/stream 정상 SSE ·
+                /render 에 SVG 키 0 · /screen 두 칸 · /recent 에 축 셋 없음
+```
+
+★ **Solar 벤치마크를 다시 안 돌렸다.** menu · recipe · 온톨로지 의미 · 프롬프트 ·
+provider · resolver 선택 규칙을 하나도 안 건드렸다. demo9 가 9/9 로 그것을 뒷받침한다.
+
+#### 안 지운 것과 그 까닭
+
+```
+vendor_to_be_deleted/asap   이름과 달리 제품이 쓴다 — 워크플로 실행기 · MCP client ·
+                            result inspector · command renderer · workflow_answer.
+                            그 안의 죽은 직접 호출 길만 걷었다
+OllamaProvider.ping()       #91 lifecycle 정리 전까지 둔다
+OLLAMA_MODEL 별칭           위와 같다
+dev/tools/rebuild_init.py   #97 · #108~112 에서 쓴다. **이번에 한 번도 안 돌렸다**
+mark 의 「이미 줄어든 형태」 갈래  /render 의 mark 가 두 모양을 받는다는 것은
+                            창구에 적힌 계약이다. 쓰는 데가 시험뿐이라고 좁히지 않았다
+check_inputs 의 판정 라벨    UNUSED_FIELD 하나가 호출처 0 이라 지웠다.
+                            나머지 넷은 쓴다
+```
+
+---
+
 ### 2026-09-06 (백열여섯째) · 새 노드는 지도 밖으로 밀어낸다 — 좌표계와 화면을 갈랐다
 
 ★ **「백열다섯째」의 마지막 관문 하나를 닫은 판이다.** OTP 는 한 글자도 안 건드렸다 —

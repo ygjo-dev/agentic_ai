@@ -33,13 +33,13 @@ def _signature(rendered: dict, view: dict | None = None) -> str:
           같은 발화를 다시 눌렀을 때도 새 해석임. view 가 그때마다 새로
           만들어지므로 그 안의 값(잰 시간, 또는 회차 번호)이 그것을 가리킴
           후보 recipe 와 온톨로지 version 도 넣음. 둘 중 하나만 바뀌어도
-          보여줄 그림이 달라짐
+          보여줄 그림이 달라짐. 후보는 network 의 변형 키에서 옴 —
+          옛 focus 칸이 말하던 것과 같은 값이고 원천이 하나로 줄었음
     제약  화면을 다시 그리는 것만으로 값이 바뀌지 않게 한다.
           Streamlit 은 무엇을 누르든 스크립트를 다시 도는데 그때마다
           값이 바뀌면 확대가 되풀이됨
     """
-    by_node = (rendered.get("focus") or {}).get("recipes_by_last_node") or {}
-    후보 = sorted({rid for ids in by_node.values() for rid in ids})
+    후보 = sorted(_candidate_order(rendered))
 
     발화, 회차 = "", ""
     if isinstance(view, dict):
@@ -82,7 +82,7 @@ def render_focus_section(
 ):
     """하단 본문. 해석 그래프와 recipe 칩 목록을 한 iframe 에 담음.
 
-    입력  rendered  POST /render 응답. variants · chips · focus 가 들어 있음
+    입력  rendered  POST /render 응답. network · chips 가 들어 있음
           view      지금 장면. 칩 색을 고르는 데만 씀
           ratios    config.layout_ratios() 결과
     규칙  후보가 없어도 그림. 실행 전에는 위아래가 같은 지도로 채워진 채
@@ -98,8 +98,8 @@ def render_focus_section(
     height = styles.panel_heights(ratios)["bottom"]
 
     # 목록은 늘 후보 전부다. 좁혀도 줄이 사라지지 않고 흐려질 뿐이라
-    # 변형마다 따로 만들지 않는다.
-    전부 = (rendered.get("chips") or {}).get("", [])
+    # 서버도 변형마다 따로 만들지 않는다.
+    전부 = rendered.get("chips") or []
 
     st.components.v1.html(
         network.bottom_html(

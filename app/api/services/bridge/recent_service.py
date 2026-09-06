@@ -18,13 +18,13 @@
 코드가 둘이 되는 순간 한쪽이 geojson 을 흘린다. `commands` 는 아예 안 읽는다.
 지도 명령이 좌표 배열을 통째로 들고 있는 자리가 그것이다.
 
-**기록 때문에 `/chat` 이 깨지면 안 된다.** 훔쳐보는 자리도 남기는 자리도 전부
+**기록 때문에 `/chat/stream` 이 깨지면 안 된다.** 훔쳐보는 자리도 남기는 자리도 전부
 감싸서 삼킨다. 답이 먼저다.
 
 지나가며 훔쳐보는 자리가 둘이다. 둘 다 **값을 안 바꾸는 껍데기**이고
 `app/api/main.py` 가 한 번 씌운다.
 
-    resolve_service.resolve   축 셋 · 인자 · 고른 recipe · 후보들
+    resolve_service.resolve   인자 · 고른 recipe · 후보들
     execute_service.run       실제로 부른 recipe 와 인자 (되묻기 뒤 고르기는
                               해석을 안 거치므로 이 자리에서만 보인다)
 
@@ -57,7 +57,7 @@ TAIL = 5
 # 안 걸리므로 바로 앞 단계에 붙인다 — 떼어 내면 화면에서 조각이 사라진다.
 _STEP_HEAD = re.compile(r"^\d+\. ")
 
-# 이 회차가 지나가며 모으는 칸. /chat 흐름 안에서만 채워진다.
+# 이 회차가 지나가며 모으는 칸. /chat/stream 흐름 안에서만 채워진다.
 #
 # 이 칸이 None 이면 아무것도 안 남긴다 — Streamlit 이 부르는 POST /resolve 는
 # 회차가 아니므로 그때는 훔쳐보는 자리가 조용히 지나간다.
@@ -76,7 +76,7 @@ CHOICE = "CHOICE"
 
 # ================================================================ 남기기
 def watched(text: str, events):
-    """`/chat` 이벤트 흐름을 그대로 흘려보내면서 회차 하나를 남김.
+    """`/chat/stream` 이벤트 흐름을 그대로 흘려보내면서 회차 하나를 남김.
 
     입력  발화 · execute_service.chat 이 낸 이벤트 흐름
     출력  받은 이벤트를 순서 그대로 다시 냄. 하나도 안 바꿈
@@ -108,9 +108,6 @@ def _new_slot(text: str) -> dict:
         "at": time.time(),
         "utterance": text,
         "status": "",
-        "given": None,
-        "want": None,
-        "about": None,
         "argument": "",
         "recipe_id": None,
         "candidate_recipe_ids": [],
@@ -174,9 +171,6 @@ def _keep(slot: dict) -> None:
                 "at": slot["at"],
                 "utterance": slot["utterance"],
                 "status": slot["status"] or CHOICE,
-                "given": slot["given"],
-                "want": slot["want"],
-                "about": slot["about"],
                 "argument": slot["argument"],
                 "recipe_id": slot["recipe_id"],
                 "candidate_recipe_ids": list(slot["candidate_recipe_ids"]),
@@ -238,7 +232,7 @@ def _steps(answer: str, nodes: list[str]) -> list[dict]:
 
 # ================================================================ 훔쳐보기
 def watch_resolve(resolve):
-    """`resolve_service.resolve` 를 감싸 축 셋과 후보를 훔쳐봄.
+    """`resolve_service.resolve` 를 감싸 고른 recipe · 후보 · 인자를 훔쳐봄.
 
     출력  같은 값을 그대로 돌려주는 함수
     제약  결과를 고치지 않는다.
@@ -279,9 +273,6 @@ def _note_resolve(result) -> None:
         return
     try:
         slot["status"] = result.get("status") or ""
-        slot["given"] = result.get("given")
-        slot["want"] = result.get("want")
-        slot["about"] = result.get("about")
         slot["recipe_id"] = result.get("recipe_id")
         slot["candidate_recipe_ids"] = list(result.get("candidate_recipe_ids") or [])
         slot["argument"] = result.get("argument") or ""

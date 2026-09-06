@@ -40,21 +40,23 @@ class RenderRequest(BaseModel):
 
 
 class ChatRequest(BaseModel):
-    """ASAP-orchestrator 계약의 POST /chat 요청 본문.
+    """ASAP-orchestrator 계약의 POST /chat/stream 요청 본문.
 
-    KRRI_ASAP 이 8000 번으로 보내던 것을 그대로 받는다. 안 읽는 필드도
-    선언은 해둔다 — 없는 필드가 오면 FastAPI 가 422 를 내고, 저쪽 화면에서는
-    연결이 안 된 것과 구분되지 않는다.
+    KRRI_ASAP 이 8000 번으로 보내던 것을 그대로 받는다.
 
-    **sessionId 는 안 받는다** (2026-09-01). 2026-08-26 부터 되묻기를 세션마다
-    하나 기억해 두는 데 썼는데, 세션을 걷어내면서 읽을 데가 없어졌다. 칸을
-    지워도 저쪽 화면은 안 깨진다 — 저쪽(ASAP-web useChat)은 여전히 uuid 를
-    실어 보내지만 pydantic 이 모르는 칸을 그냥 버린다. **칸을 남겨 두는 쪽이
-    오히려 위험하다** — 지금 모양이 required 라, 저쪽이 안 보내는 날 422 가 난다.
+    **안 읽는 칸은 선언하지 않는다.** pydantic 이 모르는 칸을 조용히 버리므로
+    저쪽이 더 보내도 안 깨진다. 반대로 칸을 남겨 두면 그것이 required 로
+    굳거나(저쪽이 안 보내는 날 422 가 난다) 「우리가 읽는다」로 읽힌다.
 
-    text 말고 둘(context · target_documents)은 여전히 안 읽는다.
+    **sessionId 를 안 받는다** (2026-09-01). 2026-08-26 부터 되묻기를 세션마다
+    하나 기억해 두는 데 썼는데, 세션을 걷어내면서 읽을 데가 없어졌다.
+    저쪽(ASAP-web useChat)은 여전히 uuid 를 실어 보내고 그것은 버려진다.
+
+    **target_documents 도 안 받는다** (2026-09-06). 선언만 해두고 한 번도 안
+    읽었고, 앞으로도 해석하지 않기로 정했다. sessionId 와 같은 자리다.
+
+    context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 한다.
     """
 
     text: str
     context: dict = {}
-    target_documents: list = []

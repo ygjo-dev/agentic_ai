@@ -1,25 +1,23 @@
-"""`/chat` 과 `/chat/stream` 이 같은 답을 내는지 지킨다.
+"""`POST /chat/stream` 의 계약을 지킨다.
 
-저쪽 화면은 `POST /chat/stream` 을 쓰고 — **시연에서 도는 길이 이쪽이다** —
-tools/check_resolve.py --execute 는 `POST /chat` 을 쓴다. 둘은 지금 같은 흐름
-(`app/api/main._chat_events`)을 쓰므로 같은 답이 나온다. main.py 주석도 그렇게
-적고 있다: "두 경로가 다른 답을 하면 화면과 curl 중 무엇을 믿을지가 갈린다".
+**제품 창구가 이것 하나다.** 저쪽 화면(ASAP-web)도 dev/tools/check_resolve.py
+--execute 도 이쪽을 부른다. 2026-09-06 에 평범한 `POST /chat` 을 지웠다 —
+같은 흐름(`app/api/main._chat_events`)에서 중간 이벤트만 버리는 창구였고,
+쓰는 데가 없어졌는데 「두 길이 같은 답을 내는가」를 지키는 값만 치렀다.
 
-**경고만 있고 지키는 장치가 없었다.** tests/ 에 "chat/stream" 을 건드리는 시험이
-0건이라, 누가 한쪽만 고쳐도 아무도 안 잡았다. 그 자리를 메운다.
-
-지키는 것은 넷이다.
-  answer 가 두 길에서 같다
-  commands 가 두 길에서 같다 — 지도 명령이 화면에서만 어긋나는 것을 막는다
+지키는 것은 다섯이다.
+  이벤트 순서 — step_start · step_end 가 짝으로, 마지막이 result
   SSE 틀 — "data: " 접두어 · 이벤트마다 빈 줄 · 마지막 [DONE]
+  content-type 이 text/event-stream 이다
   ensure_ascii 가 꺼져 한글이 그대로 나간다 (main.py 가 적은 제약이다)
+  모르는 칸이 와도 422 가 안 난다 — 저쪽이 sessionId · target_documents 를
+  여전히 보낸다
 
 **진짜 서버를 띄워 부르지 않는다.** 시연 중에 pytest 가 돌면 8000 을 쓰는 저쪽
 화면과 부딪히고, LLM 이 회차마다 다른 답을 내면 이 시험이 답의 내용에 흔들린다.
-여기서 볼 것은 「두 길이 같은가」지 「답이 맞는가」가 아니다. 그래서 TestClient
-(프로세스 안)로 진짜 창구 함수를 부르되, `_chat_events` 만 대역으로 바꾼다 —
-창구 두 개의 코드(/chat 의 result 추리기 · /chat/stream 의 SSE 직렬화)는 진짜가
-돌고 LLM · 온톨로지 · vendor 실행기는 안 돈다.
+여기서 볼 것은 「창구가 계약을 지키는가」지 「답이 맞는가」가 아니다. 그래서
+TestClient(프로세스 안)로 진짜 창구 함수를 부르되 `_chat_events` 만 대역으로
+바꾼다 — SSE 직렬화는 진짜가 돌고 LLM · 온톨로지 · vendor 실행기는 안 돈다.
 
 이벤트 모양은 tests/app/api/test_recent.py 의 `executed()` 와 같은 것을 쓴다 —
 이미 있는 대역이고, 저쪽 화면이 읽는 흐름의 모양이 거기 적혀 있다.
@@ -56,21 +54,20 @@ EVENTS = [
     {"type": "result", "answer": ANSWER, "commands": COMMANDS},
 ]
 
-# sessionId 를 일부러 남겨 둔다. 2026-09-01 에 세션을 걷으면서 ChatRequest 의
-# 칸을 지웠으므로 이것은 이제 모르는 칸이다. 저쪽 화면(ASAP-web)은 여전히
-# 보내므로, 모르는 칸이 와도 422 가 안 나는 것을 두 창구가 함께 지킨다.
-BODY = {"text": "오송역 CCTV 보여줘", "sessionId": "parity", "context": {}}
+# **모르는 칸을 일부러 남겨 둔다.** sessionId 는 2026-09-01 에,
+# target_documents 는 2026-09-06 에 ChatRequest 에서 지웠다. 저쪽 화면은 둘 다
+# 여전히 보내므로 그것이 와도 422 가 안 나는 것을 이 본문이 지킨다.
+BODY = {
+    "text": "오송역 CCTV 보여줘",
+    "sessionId": "stream",
+    "target_documents": ["doc-1", "doc-2"],
+    "context": {},
+}
 
 
 @pytest.fixture
 def client(monkeypatch):
-    """`_chat_events` 만 대역으로 바꾼 진짜 앱.
-
-    창구 둘은 모듈 전역으로 `_chat_events` 를 찾으므로 여기만 바꾸면 둘 다
-    같은 이벤트를 받는다. **두 창구에 서로 다른 대역을 물리지 않는 것이
-    이 시험의 전부다** — 같은 입력에서 같은 답이 나오는지를 보는 것이라
-    입력이 갈리면 아무것도 못 잰다.
-    """
+    """`_chat_events` 만 대역으로 바꾼 진짜 앱."""
 
     def fake_chat_events(form, model=None):
         async def events():
@@ -103,30 +100,19 @@ def sse_result(raw: str) -> dict:
     return results[0]
 
 
-# ================================================================ 두 길이 같은가
-def test_the_two_paths_give_the_same_answer(client):
-    """화면(/chat/stream)과 curl(/chat) 중 무엇을 믿을지가 갈리지 않게."""
-    plain = client.post("/chat", json=BODY).json()
-    streamed = sse_result(client.post("/chat/stream", json=BODY).text)
-
-    assert plain["answer"] == streamed["answer"]
-    assert plain["answer"] == ANSWER
+# ================================================================ 창구가 하나다
+def test_the_plain_chat_endpoint_is_gone(client):
+    """평범한 POST /chat 은 2026-09-06 에 지웠다. 되살아나면 여기가 잡는다."""
+    assert client.post("/chat", json=BODY).status_code == 404
 
 
-def test_the_two_paths_give_the_same_commands(client):
-    """지도 명령이 어긋나면 화면에만 안 그려진다. answer 로는 안 잡힌다."""
-    plain = client.post("/chat", json=BODY).json()
-    streamed = sse_result(client.post("/chat/stream", json=BODY).text)
+# ================================================================ 답
+def test_the_result_event_carries_the_answer(client):
+    """저쪽 화면이 읽는 두 칸이 마지막 이벤트에 그대로 실린다."""
+    result = sse_result(client.post("/chat/stream", json=BODY).text)
 
-    assert plain["commands"] == streamed["commands"]
-    assert plain["commands"] == COMMANDS
-
-
-def test_chat_drops_the_intermediate_events_and_gives_only_the_result(client):
-    """두 길의 **의도된** 차이. 이것까지 같아지면 SSE 를 쓸 까닭이 없다."""
-    plain = client.post("/chat", json=BODY).json()
-
-    assert set(plain) == {"answer", "commands"}
+    assert result["answer"] == ANSWER
+    assert result["commands"] == COMMANDS
 
 
 # ================================================================ SSE 틀
@@ -158,3 +144,18 @@ def test_korean_goes_out_verbatim_without_escaping(client):
 
     assert "오송역 CCTV 를 조회했습니다." in raw
     assert "\\u" not in raw, "유니코드 이스케이프가 섞였다 — ensure_ascii 가 켜졌다"
+
+
+# ================================================================ 모르는 칸
+def test_unknown_fields_are_dropped_instead_of_rejected(client):
+    """저쪽이 sessionId · target_documents 를 보내도 422 가 아니어야 한다.
+
+    ChatRequest 에 그 칸이 없다. pydantic 이 모르는 칸을 그냥 버리는 것이
+    「안 읽는 칸은 선언하지 않는다」의 근거이므로 여기서 실제로 지킨다.
+    """
+    assert client.post("/chat/stream", json=BODY).status_code == 200
+
+    form = main.ChatRequest(**BODY)
+    assert not hasattr(form, "target_documents")
+    assert not hasattr(form, "sessionId")
+    assert form.text == BODY["text"]
