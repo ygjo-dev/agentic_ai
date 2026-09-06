@@ -23,6 +23,47 @@ from app.ui import config, styles, theme
 from app.ui.components import network, path_panel
 
 
+def _signature(rendered: dict, view: dict | None = None) -> str:
+    """이 **해석 한 번**의 서명. 좁혀 들어가기를 한 번만 돌리는 기준이다.
+
+    입력  POST /render 응답 · 지금 장면
+    출력  발화 · 후보 · 그 해석을 가리키는 값을 이은 문자열
+    규칙  발화를 넣음. 서로 다른 발화가 우연히 같은 후보를 골라도 그때는
+          새 해석이므로 다시 한 번 보여줘야 함
+          같은 발화를 다시 눌렀을 때도 새 해석임. view 가 그때마다 새로
+          만들어지므로 그 안의 값(잰 시간, 또는 회차 번호)이 그것을 가리킴
+          후보 recipe 와 온톨로지 version 도 넣음. 둘 중 하나만 바뀌어도
+          보여줄 그림이 달라짐
+    제약  화면을 다시 그리는 것만으로 값이 바뀌지 않게 한다.
+          Streamlit 은 무엇을 누르든 스크립트를 다시 도는데 그때마다
+          값이 바뀌면 확대가 되풀이됨
+    """
+    by_node = (rendered.get("focus") or {}).get("recipes_by_last_node") or {}
+    후보 = sorted({rid for ids in by_node.values() for rid in ids})
+
+    발화, 회차 = "", ""
+    if isinstance(view, dict):
+        발화 = view.get("utterance") or ""
+        # 같은 발화를 다시 눌러도 새 해석이다. 그것을 가리키는 값이
+        # 발화로 온 것에는 잰 시간, 회차를 따라온 것에는 회차 번호다.
+        회차 = str(view.get("elapsed") or (view.get("follow") or {}).get("seq") or "")
+
+    return "|".join([rendered.get("version", ""), ",".join(후보), 발화, 회차])
+
+
+def _candidate_order(rendered: dict) -> list[str]:
+    """목록 줄 차례에 맞춘 recipe id.
+
+    출력  줄 수와 같은 길이의 recipe id 목록
+    규칙  서버가 후보를 낸 차례가 곧 줄 차례임. 변형 키에서 빈 것을 빼면
+          그것이 후보 하나씩이고 그 차례가 chips 와 같음
+    제약  여기서 차례를 다시 매기지 않는다.
+          두 곳이 정하면 목록과 그래프가 서로 다른 후보를 가리킴
+    """
+    variants = (rendered.get("network") or {}).get("variants") or {}
+    return [key for key in variants if key]
+
+
 def chip_color(view: dict | None) -> str:
     """칩 색.
 
@@ -53,18 +94,23 @@ def render_focus_section(
         return
 
     color = chip_color(view)
-    chips = rendered.get("chips") or {}
     ratios = ratios or config.LAYOUT
     height = styles.panel_heights(ratios)["bottom"]
+
+    # 목록은 늘 후보 전부다. 좁혀도 줄이 사라지지 않고 흐려질 뿐이라
+    # 변형마다 따로 만들지 않는다.
+    전부 = (rendered.get("chips") or {}).get("", [])
 
     st.components.v1.html(
         network.bottom_html(
             rendered["network"],
             theme.colors(),
-            {key: path_panel.chips_markup(chains, color) for key, chains in chips.items()},
+            path_panel.chips_markup(전부, color),
             left_ratio=ratios["bottom_left_ratio"],
-            clickable=(rendered.get("focus") or {}).get("last_nodes") or [],
+            # 줄 차례에 맞춘 recipe id. 어느 줄이 고른 후보인지 가리는 데 쓴다.
+            order=_candidate_order(rendered),
             height=height,
+            signature=_signature(rendered, view),
         ),
         height=height,
     )

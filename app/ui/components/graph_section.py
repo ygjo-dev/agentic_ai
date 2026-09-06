@@ -13,47 +13,22 @@ interactive graph library 에 넘겨 iframe 으로 띄울 뿐이다.
 버릴 수 있는 것만 남았다.
 """
 
-import re
-
 import streamlit as st
 
 from app.ui import config, styles, theme
 from app.ui.components import network
 
 # 새로 생긴 것이 잠깐 두근거린다. 짧게 두 번만 — 계속 깜빡이면 시선을 뺏는다.
-# 새로 생긴 것이 잠깐 두근거린다. 짧게 두 번만 — 계속 깜빡이면 시선을 뺏는다.
-#
-# ★ 라이브러리는 <canvas> 로 그리므로 SVG 시절처럼 노드 하나를 CSS 로 집을 수
-# 없다. 그래서 캔버스 전체를 한 번 어루만진다. 「무엇이 새로 생겼는가」는 그
-# 노드의 분홍 테두리가 이미 말하고, 이 애니메이션은 「방금 무슨 일이 있었다」만
-# 말한다. 색으로 뜻을 나르는 규칙은 그대로다.
-_PULSE_CSS = """
-@keyframes markpulse {
-  0%   { opacity: 1; }
-  50%  { opacity: 0.55; }
-  100% { opacity: 1; }
-}
-#mynetwork { animation: markpulse 0.6s ease-in-out 2; }
-"""
-
-
 def graph_fill_html(model: dict, colors: dict, height: int, pulse: bool = False) -> str:
     """고정 높이 패널을 꽉 채우는 iframe 문서.
 
     입력  network 모형 · 색 · 픽셀 높이 · 방금 등록했는지
     출력  iframe 에 넣을 HTML 문서
-    규칙  라이브러리가 만든 문서에 두근거림 CSS 한 벌만 얹음.
-          확대 · 끌기는 라이브러리 것이라 우리 JS 가 없음
-          pulse 는 방금 등록된 것에만 줌. CSS 애니메이션이라 JS 가 없음
-    제약  캔버스를 우리가 다시 그리지 않는다.
-          라이브러리가 <canvas> 로 그리므로 SVG 시절처럼 DOM 을 만지면
-          다음 판에서 지워짐
+    규칙  두근거림은 방금 등록된 것에만 줌. CSS 애니메이션이라 JS 가 없음
+    제약  발화 해석 결과를 상단에 칠하지 않는다.
+          강조 · 흐르는 표시 · 좁혀 들어가기는 전부 하단의 일임
     """
-    html = network.network_html(model, colors, top=True, height=height)
-    if not pulse:
-        return html
-    css = "<style>" + _PULSE_CSS.replace("MARK", theme.new().lower()) + "</style>"
-    return re.sub(r"</head>", css + "</head>", html, count=1)
+    return network.top_html(model, colors, height=height, pulse=pulse)
 
 
 def show_network(model: dict, height: int, pulse: bool = False, colors: dict | None = None):

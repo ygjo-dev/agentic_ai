@@ -272,10 +272,14 @@ def network_payload(
     출력  positions · nodes · dotted · solid · variants · registering
     규칙  위 variant_svgs 와 **같은 규칙을 같은 함수로** 계산함.
           강조 · 짙은 주황 · 옅은 주황 · 새 노드 · 새 점선이 SVG 와 한 벌임
-          변형 키도 focus.focus_variants 그대로임. 그림과 데이터가 같은
-          자리에서 갈려야 하나만 고쳤을 때 조용히 어긋나지 않음
-          경로가 정확히 하나면 순번을 함께 냄. build_dot 이 xlabel 로 하는 것과
-          같은 값이고, 그리는 쪽이 그것을 엣지 라벨로 쓸지는 화면이 정함
+          ★ 변형 키가 recipe id 임. SVG 판은 「마지막 노드」로 갈랐는데
+          후보가 마지막 노드를 함께 쓰면(인구 둘이 그렇다) 좁힌 것이 전체와
+          똑같아져 고를 뜻이 없어짐. 후보 하나하나를 키로 두면 그 일이 없음
+          picks 가 「이 노드는 어느 후보에만 있나」를 말함. 여럿에 걸친
+          노드는 안 담음 — 눌러도 후보를 좁힐 수 없는 자리임
+          final 이 후보마다의 마지막 엣지임. 화살촉이 거기에만 붙음
+          순번을 안 냄. 「쉰셋째」에 이미 xlabel 을 뺐고 그 자리를 흐르는
+          표시가 맡음. 그래프 위에 숫자를 다시 올리지 않음
     제약  색을 여기서 정하지 않는다.
           팔레트의 주인은 dot.COLORS 이고 화면은 그것을 /screen 으로 이미 받음.
           여기서 색을 실으면 출처가 둘이 됨
@@ -295,23 +299,41 @@ def network_payload(
             edge for path in focus.edges_of(paths, ids) for edge in path
         ))
 
+    def final_edges(ids):
+        """후보마다의 마지막 엣지. 화살촉이 거기에만 붙는다.
+
+        중간 방향은 흐르는 표시가 말하므로 엣지마다 화살촉을 되풀이하면
+        복잡하기만 하다. 후보들이 마지막 엣지를 함께 쓰면 한 번만 담긴다.
+        """
+        return list(dict.fromkeys(
+            path[-1] for path in focus.edges_of(paths, ids) if path
+        ))
+
     def variant(ids):
-        고른_경로 = focus.edges_of(paths, ids)
         나머지 = [recipe_id for recipe_id in all_ids if recipe_id not in set(ids)]
-        칸 = {
+        return {
             "highlight": [] if registering else [list(e) for e in path_edges(ids)],
             "nodes": [] if registering else sorted(focus.nodes_of(paths, ids)),
+            "final": [] if registering else [list(e) for e in final_edges(ids)],
             "mark": [list(e) for e in path_edges(ids)] if registering else [],
             "dim": [list(e) for e in path_edges(나머지)] if registering else [],
         }
-        # 경로가 정확히 하나일 때만 순번을 붙인다. build_dot 의 규칙과 같다 —
-        # 여럿이면 같은 엣지에 서로 다른 순번이 붙어 읽을 수가 없다.
-        if not registering and len(고른_경로) == 1:
-            칸["order"] = {
-                f"{a}>{b}": index
-                for index, (a, b) in enumerate(고른_경로[0], start=1)
-            }
-        return 칸
+
+    def picks():
+        """노드 -> 그 노드를 가진 유일한 후보. 여럿에 걸친 노드는 안 담는다.
+
+        누르면 후보가 하나로 좁혀지는 자리만 담긴다. 여럿이 함께 쓰는 노드는
+        어느 후보인지 가릴 근거가 없어 눌러도 아무 일이 없어야 한다.
+        """
+        가진_후보 = {}
+        for recipe_id in all_ids:
+            for node_id in focus.nodes_of(paths, [recipe_id]):
+                가진_후보.setdefault(node_id, []).append(recipe_id)
+        return {
+            node_id: ids[0]
+            for node_id, ids in 가진_후보.items()
+            if len(ids) == 1
+        }
 
     return {
         "positions": {node_id: list(xy) for node_id, xy in positions.items()},
@@ -319,6 +341,10 @@ def network_payload(
             node_id: {
                 "label": node["name"],
                 "title": nodes[node_id]["description"],
+                # 대상(group) 노드를 화면이 가르는 유일한 근거다. 노드에 종류가
+                # 적혀 있지 않고 about 의 대상으로 등장하는지가 그것을 말하는데,
+                # 그 판정은 온톨로지가 이미 했고 여기서 다시 하지 않는다.
+                "kind": node.get("kind", ""),
                 "new": node_id in 새_노드,
             }
             for node_id, node in wrapped.items()
@@ -328,10 +354,12 @@ def network_payload(
             for (a, b) in dotted
         ],
         "solid": [list(edge) for edge in solid],
-        "variants": {
-            key: variant(ids)
-            for key, ids in focus.focus_variants(paths, recipe_ids).items()
-        },
+        # 빈 키가 후보 전부(union)이고, 그 밖은 후보 하나씩이다.
+        "variants": dict(
+            [("", variant(all_ids))]
+            + [(recipe_id, variant([recipe_id])) for recipe_id in all_ids]
+        ),
+        "picks": {} if registering else picks(),
         "registering": registering,
     }
 
