@@ -46,6 +46,13 @@ anchors:
   # — 배선만 맞으면 되는 것이 아니다(실측 2026-09-06 · HTTP 500 "not applied").
   r5_server_id: &r5_server_id "r5-server"
 
+  # 경로 탐색 하나만 여기다. r5-server 와 같은 자리 — 다른 MCP 서버이고,
+  # 그 서버를 부르려면 execute_service 의 selected_mcp_tool_refs 에도
+  # "otp-router/*" 가 있어야 한다 (실측 2026-09-06 · 없으면 HTTP 500
+  # "MCP tool 'otp-router/otp_health_check' is not applied for this user.",
+  # 넣으면 HTTP 200 {"ok": true}).
+  otp_server_id: &otp_server_id "otp-router"
+
   # 발화에서 온 값을 가리키는 표시. 장소인지 키워드인지 식별자인지는 안 가른다.
   spoken_value: &arg "@arg"
 
@@ -109,6 +116,13 @@ tool_of:
     server_id: *r5_server_id
     tool: compute_isochrone
     headline: "{arg} 도달권을 계산했습니다."
+
+  # asap-mcp-core 가 아닌 넷째 도구다. headline 의 {arg} 는 도착지(말한 장소)다
+  # — 출발지는 사람이 화면에서 찍은 자리라 발화에 이름이 없다.
+  plan_trip:
+    server_id: *otp_server_id
+    tool: otp_plan_trip
+    headline: "{arg}까지 가는 경로를 찾았습니다."
 
   find_cctv:
     server_id: *server_id
@@ -349,6 +363,32 @@ step_of:
         origin_lat: "$prev.lat"
         max_minutes: 30
         mode: "TRANSIT"
+
+  # **지점 좌표를 두 곳에서 받는 유일한 줄이다.** 도착지는 앞 단계(장소 좌표
+  # 변환)가 내놓고, 출발지는 화면이 찍어 둔 자리에서 곧장 온다. 앞 단계도
+  # 문맥도 같은 「지점 좌표」라 관계는 한 줄인데 값의 출처가 갈린다.
+  #
+  # $context 를 input 에 적은 첫 줄이다. 지금까지 문맥은 input_first 에만
+  # 있었다 — 그때는 「첫 자리면 문맥에서, 아니면 앞 단계에서」라 둘 중 하나였다.
+  # 여기는 둘을 함께 쓴다. vendor 의 _build_resolution_scope 가 context 를
+  # 단계마다 scope 에 얹으므로 첫 자리가 아니어도 풀린다.
+  #
+  # input_first 가 없다. 첫 자리에 서면 도착지($prev)가 빠져 required 가
+  # 비는데, 그 자리(찍은 지점 -> 경로 탐색)는 어디로 가는지가 없는 경로다.
+  #
+  # date · time_kst 는 required 다(실측 2026-09-06 · 빼면 HTTP 500
+  # "2 validation errors ... Field required"). 고정된 날짜를 박으면 그날이
+  # 지나는 순간 거짓이 되므로 부르는 순간의 값을 쓴다 — $now 가 그것이고
+  # step_service 가 Asia/Seoul 로 채운다. 도구 설명이 KST 를 요구한다.
+  plan_trip:
+    point:
+      input:
+        from_lat: "$context.selectedLocation.lat"
+        from_lon: "$context.selectedLocation.lon"
+        to_lat: "$prev.lat"
+        to_lon: "$prev.lon"
+        date: "$now.date"
+        time_kst: "$now.time"
 
   # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
   # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.

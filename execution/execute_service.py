@@ -50,13 +50,20 @@ from vendor_to_be_deleted.asap.workflow_answer import (
 # this user." 로 막힌다 — 배선이 가리켜도 못 부른다(실측 2026-09-06).
 #
 # r5-server 를 2026-09-06 에 더했다. 도달권 계산이 그 서버에만 있고, 그 전에는
-# 같은 오류로 막혀 있었다. **넓힌 것은 그 서버 하나뿐이다** —
-# web-search 는 Gateway 쪽 권한이 따로 안 열려 있고(NOTES 「아흔셋째」),
-# otp-router 는 아직 부를 배선도 recipe 도 없다. 부를 것이 없는 서버를 미리
-# 열면 「무엇을 왜 열었나」를 나중에 되짚을 수 없다.
+# 같은 오류로 막혀 있었다.
+#
+# otp-router 를 2026-09-06 에 더했다. 경로 탐색(recipe_062)이 그 서버에만 있다.
+# 그 전에는 같은 오류로 막혀 있었다 — refs 에 없이 부르면 HTTP 500
+# "MCP tool 'otp-router/otp_health_check' is not applied for this user." 이고
+# 넣으면 HTTP 200 {"ok": true} 다(실측). **막고 있던 것은 서버가 아니라
+# 우리 권한이었다. otp-router 는 살아 있다.**
+#
+# **넓힌 것은 그 둘뿐이다** — web-search 는 Gateway 쪽 권한이 따로 안 열려
+# 있다(NOTES 「아흔셋째」). 부를 것이 없는 서버를 미리 열면 「무엇을 왜
+# 열었나」를 나중에 되짚을 수 없다.
 USER_CONTEXT = {
     "user_id": "asap-ontology-orchestrator",
-    "selected_mcp_tool_refs": ["asap-mcp-core/*", "r5-server/*"],
+    "selected_mcp_tool_refs": ["asap-mcp-core/*", "r5-server/*", "otp-router/*"],
 }
 
 # vendor 가 steps 를 workflow 로 알아보게 하는 이름.

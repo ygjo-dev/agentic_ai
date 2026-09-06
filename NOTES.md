@@ -83,6 +83,56 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 
 ## 열린 과제
 
+### ★ 노드를 하나 더 등록하면 겹친다 — 배치 기법의 한계 (2026-09-06 「백열다섯째」)
+
+경로 탐색(plan_trip)을 붙이면서 `geocode_place` 에 남아 있던 마지막 자리가 찼다.
+**그 다음 한 개를 등록하면 겹친다.**
+
+```
+깨진 시험  test_nodes_do_not_overlap.py::test_registering_a_node_does_not_make_it_touch
+지금 지도  ★ 겹치는 쌍 0. test_no_two_nodes_touch 는 통과한다
+```
+
+★ **OTP 때문이 아니다.** 바꾸기 전 지도에 노드를 둘 이어서 등록해도 똑같이
+깨진다 — probe1 이 (933.55, -56.39), probe2 가 (905.53, -33.17) 로 붙는다.
+plan_trip 이 probe1 자리에 놓였을 뿐이다. **원래 한 자리밖에 없었다.**
+
+```
+왜 그런가  증분 배치(NEATO_ATTRS)는 겹침 제거를 못 쓴다 — overlap 이 핀을
+           무시하고 388~710pt 씩 밀어낸다(실측). sep 도 없다
+고르는 길  ㄱ 증분에 sep 을 준다 (기존 노드가 움직일 수 있다. 재봐야 한다)
+           ㄴ plan_trip 을 사람이 옮긴다 (좌표를 손으로 정하는 첫 자리가 된다)
+           ㄷ 시험의 뜻을 「한 번 더 등록할 자리가 있는가」로 갈른다
+왜 안 했나 ★ 배치 설정은 CLAUDE.md 가 「사람이 정할 자리」로 묶어 둔 곳이고,
+           고치면 지도가 통째로 움직인다. 이 판에서 정할 것이 아니다
+```
+
+★ **닫았다 (2026-09-06 「백열여섯째」).** 사람이 정책을 정했고 ㄱ · ㄴ · ㄷ 중
+어느 것도 아니었다 — **넷째 길**이다. 위 세 줄은 그때의 판단이라 그대로 둔다.
+
+```
+사람이 정한 것  개요에서 모든 글씨가 읽히는 것은 요구사항이 아니다.
+                새 노드가 기존 지도 밖으로 나가도 된다. 화면은 카메라가 맞춘다
+채택한 것       겹치면 **새 노드 하나만** 바깥으로 밀어낸다
+                (app/ui/graph_svg/layout_store.settled)
+```
+
+### ★ 말한 장소 둘로는 경로를 못 묻는다 (2026-09-06 「백열다섯째」)
+
+지금 경로 recipe 는 「찍은 지점 → 말한 장소」 하나(recipe_062)다.
+**「오송역에서 대전역까지 어떻게 가」는 아직 못 묻는다.**
+
+```
+막는 것    argument 가 string|null 한 칸이다. 스키마 docstring 이
+           「장소·키워드·식별자 세 칸으로 나누지 않는다」고 못박았다
+안 막는 것 ★ vendor 는 이미 된다. scope[step_id] = result 로 단계 결과를 다
+           쌓아 두므로 $s1 · $s2 를 저쪽은 푼다. 못 가리키는 것은 우리 배선
+           어휘($prev 하나)다
+곁들일 것  argument 를 늘리면 서른여덟 벌의 LLM 계약이 통째로 흔들린다.
+           재고 나서 정할 일이다
+```
+
+
 ### ★ 17번 · 30번이 새로 흔들린다 — r5 menu 한 줄이 지난 자리다 (2026-09-06 「백열셋째」)
 
 r5 recipe 를 붙이며 menu 에 한 줄을 더했더니 옛 서른여섯 중 둘이 적중에서 근접이 됐다.
@@ -3147,6 +3197,419 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-06 (백열여섯째) · 새 노드는 지도 밖으로 밀어낸다 — 좌표계와 화면을 갈랐다
+
+★ **「백열다섯째」의 마지막 관문 하나를 닫은 판이다.** OTP 는 한 글자도 안 건드렸다 —
+recipe · menu · 정답표 · wiring · permission · resolve · `$now` 그대로다.
+
+#### 사람이 정한 정책 — 이 판의 원천
+
+상단 그래프는 **전체를 담아 보는 개요**다. 노드는 계속 는다.
+
+```
+요구사항이 아닌 것  개요에서 모든 노드 label 이 읽히는 것
+                    새 노드가 기존 bbox / viewport 안에 있는 것
+요구사항인 것       노드가 안 겹치는 것
+                    기존 노드가 안 움직이는 것
+```
+
+★ **좌표계(world)와 화면(viewport)을 갈랐다.** 좌표를 작은 Streamlit 칸에 맞춰
+압축하지 않는다. 전체를 보고 싶으면 카메라가 더 축소한다. 아래쪽 고른 recipe
+그래프는 제 viewport 가 따로 있어 거기가 읽기용이다.
+
+#### root cause — OTP 가 아니었다
+
+```
+등록이 지나는 길
+  POST /nodes → registry.register_node        ontology · recipe · menu 만 씀
+  render      → screen_service.render_payload
+                 → layout_store.ensure_positions   ★ 좌표를 만드는 유일한 곳
+                      resolve            기존 좌표 · 없는 노드
+                      build_dot(pin=True) 기존을 pos="x,y!" 로 못박음
+                      layout_positions   neato 가 새 노드만 놓음
+                      save
+겹침을 보는 곳  ★ 없었다. 그것이 구멍이다
+```
+
+neato 는 **남은 빈틈**에 새 노드를 놓는다. `geocode_place` 는 실선이 열 갈래
+넘게 나가는 허브라 그 아래 빈틈이 하나뿐이었고, `plan_trip` 이 그것을 채웠다.
+**바꾸기 전 지도에 노드를 둘 이어 등록해도 똑같이 겹쳤다**(「백열다섯째」의
+대조 실험). OTP 와 무관한, 배치가 포화되면 늘 나는 일이다.
+
+#### 채택한 generic 규칙
+
+```
+1  neato 가 준 자리를 먼저 쓴다        안 겹치면 그대로 채택 (지금까지와 같음)
+2  겹칠 때만 새 노드를 옮긴다          무리 한가운데에서 바깥 방향으로
+                                       PUSH_STEP(24pt)씩 걸어가며 첫 빈자리
+3  기존 좌표는 한 자리도 안 건드린다
+4  기존 bbox 밖으로 나가도 멈추지 않는다
+```
+
+★ **노드 이름을 안 본다.** `plan_trip` · `recipe_062` · `otp-router` 를
+배치 코드가 모른다. 어느 것이 새것인지는 **좌표가 있느냐**로만 안다.
+★ **무작위가 없다.** 같은 온톨로지에서 같은 좌표가 나온다(재서 확인).
+
+```
+왜 sep · overlap 이 아닌가
+  겹침 제거는 고정(!)을 무시하고 기존 노드를 388~710pt 씩 움직인다(실측).
+  ★ 그것은 「기존 노드가 0.0000pt」와 정면으로 부딪힌다.
+  그래서 배치는 그대로 두고 **새 노드 하나만** 옮긴다
+```
+
+#### ★ 함정 하나 — 상자 중심은 저장 좌표 × 배율이 아니다
+
+처음에 `저장좌표 × DRAW_SCALE` 을 상자 중심으로 보고 겹침을 쟀는데 **안 걸렸다.**
+
+```
+plan_trip 저장 좌표   (933.55, -56.39)
+그린 상자 중심        (1022.2, 28.0)     ★ 933.55 × 1.1 = 1026.9 도, -56.39 × 1.1 도 아니다
+```
+
+Graphviz 는 캔버스에 음수가 안 남게 그림을 **통째로 평행이동**시킨다. 우리
+좌표에 음수가 생긴 순간(새 노드가 아래로 나갔다) 그 어긋남이 드러났다.
+★ **그래서 상자 좌표에서 걷고, 옮긴 만큼만 배율로 나눠 저장 좌표에 되돌린다.**
+겹침은 상대 거리라 평행이동과 무관하다.
+
+#### 덤으로 고친 것 — 저장 파일이 등록마다 통째로 바뀌던 것
+
+같은 평행이동 때문에 `ensure_positions` 가 **기존 노드 좌표까지 전부 새 값으로
+덮어쓰고** 있었다. 화면에는 안 보이지만(평행이동) 저장 파일이 등록할 때마다
+통째로 바뀌어 「무엇이 움직였나」를 diff 로 못 읽는다.
+
+★ `_kept` 가 그 한 값을 재서 새 노드에서만 뺀다. **이제 기존 줄은 diff 에
+한 줄도 안 뜬다.** 기존 시험은 `anchored()` 로 평행이동을 빼고 재고 있어서
+이 성질을 못 봤다 — 저장소가 「화면에 안 보인다」까지만 알고 있었다.
+
+#### 실측
+
+```
+old bbox          x 47.00..2304.50   y -56.39..733.00
+현재 겹침         0 쌍
+```
+
+```
+등록          새 노드 좌표             bbox        기존 노드 이동   겹침
+add #1        ( 857.15, -116.09)      ★ 바깥      0.0000pt        0 쌍
+add #2        ( 780.33, -183.90)      ★ 바깥      0.0000pt        0 쌍
+add #3        ( 896.49,   21.05)        안쪽      0.0000pt        0 쌍
+final bbox    x 47.00..2304.50  y -183.90..733.00
+결정적        같은 입력 두 번 → 같은 좌표 (857.1467196494318, -116.0879706119293)
+```
+
+★ **bbox 밖은 실패가 아니다.** 세 번을 이어 등록해도 겹침 0 · 기존 이동 0 이다.
+★ **plan_trip 좌표는 안 옮겼다** — (933.55, -56.39) 그대로다. 정상 배치 결과라
+이번 일 때문에 옮길 까닭이 없다.
+
+#### 상단 개요 — UI 0줄
+
+```
+network.py 의 fitAll   network.fit({})   ← nodes 를 안 준다 = 전체를 맞춘다
+```
+
+★ **이미 전체를 맞추고 있다.** 새 노드가 지도를 넓혀도 카메라가 따라간다.
+label 을 키우거나 노드를 줄이거나 좌표를 압축하는 손을 하나도 안 댔다.
+
+#### 시험
+
+★ **`test_registering_a_node_does_not_make_it_touch` 를 지우지도 skip 하지도
+않았다. 대신 등록이 실제로 지나는 길을 재게 했다.**
+
+```
+전   build_dot + layout_positions 를 시험이 직접 부름  ← 등록 길의 가운데 토막
+후   layout_store.ensure_positions 를 부름            ← 등록이 실제로 지나는 길
+```
+
+겹침을 피하는 자리(`settled`)가 그 토막 **뒤**에 생겨서, 흉내로 재면 그 자리를
+통째로 못 본다. 판정(`touching_pairs == []`)과 여유(MIN_GAP 8.0)는 그대로다.
+진짜 좌표 파일은 `tmp_path` 로 옮겨 담아 안 건드린다(`test_rotation.py` 의
+`store` 픽스처와 같은 방식).
+
+한 벌 더했다 — `test_the_registered_node_never_moves_the_old_ones`.
+`_kept` 가 지키는 「기존 좌표 한 자리도 안 움직임」을 **절대 좌표로** 잰다.
+
+```
+pytest   ★ 1 failed · 410 passed
+         유일한 실패가 알려진 음성 대조군이다
+         (test_dense_graph_would_move_if_overlap_removal_were_used · graphviz 판 차이)
+         「백열다섯째」의 새 실패 하나는 사라졌다. ★ 새 실패 0
+```
+
+#### OTP 관문 재확인 (배치만 고쳤으므로 이 셋만 다시 눌렀다)
+
+```
+check_wiring   recipe 38 · A 0 · B 0 · C 1 (web_fetch × web_address · 그대로)
+check_inputs   판정 53줄 · 없는 칸 0 · 안 보낸 required 0 · 스키마 못 받음 0
+demo9          9/9 SELECT · 9/9 적중
+Solar          ★ 안 쟀다. menu · resolver · 온톨로지를 한 글자도 안 건드렸고
+               같은 working tree 의 측정이 「백열다섯째」에 있다
+KRRI_ASAP      0줄
+```
+
+---
+
+### 2026-09-06 (백열다섯째) · 경로 탐색(otp-router)을 붙였다 — ★ 관문 하나가 새로 빨갛다
+
+★ **커밋하지 않았다.** 기능은 실제 Gateway 까지 흐르고 자도 안 무너졌는데
+배치 불변식 시험 하나가 새로 깨졌다. 아래 「새로 깨진 관문」이 그 자리다.
+
+#### 정정 / 현재 실측 — otp-router 는 살아 있다
+
+★ **「아흔째」의 `otp-plan-trip  otp-router 가 없다` 와 「백째」의
+`curl :8001/ (otp-router) HTTP 000` 은 그때의 사실이다. 지우지 않는다.**
+2026-08-27 에 조종식 대표님이 「철도연 자산이라 지금 중지해 두었다」고 회신했고
+그 뒤로 아무도 다시 안 눌러 봤다. **오늘 눌러 보니 켜져 있다.**
+
+```
+GET /api/tools                        47개 · otp-router 둘
+  otp-router/otp_health_check         inputSchema properties {} · required 없음
+  otp-router/otp_plan_trip            required 여섯
+refs ["asap-mcp-core/*","r5-server/*"]            → HTTP 500
+  "MCP tool 'otp-router/otp_health_check' is not applied for this user."
+refs 에 "otp-router/*" 를 더함                     → HTTP 200
+  {"ok": true, "endpoint": "http://localhost:8080/otp/gtfs/v1"}
+```
+
+★ **막고 있던 것은 서버가 아니라 우리 권한이었다. r5 때와 글자까지 같은 자리다.**
+
+#### live inputSchema — otp_plan_trip
+
+```
+required   from_lat · from_lon · to_lat · to_lon · date · time_kst
+optional   arrive_by (기본 false) · num_itineraries (기본 3)
+설명       date/time_kst 를 Asia/Seoul 로 넣으라고 도구가 명시로 요구한다
+           "서버 로케일이나 UTC 기준으로 넣으면 자정 근처에서 하루가 어긋날 수 있다"
+```
+
+★ **date · time_kst 를 빼고 불러 봤다.** HTTP 500
+`"2 validation errors for otp_plan_tripArguments ... Field required"`.
+**required 가 맞다.** 도구 기본값이 없다 — 도달권의 분 · 이동수단과 다른 자리다.
+
+#### 좌표는 지어내지 않았다
+
+```
+geo.geocode 오송역    [127.3276666158151, 36.61995281117007]  충북 청주시 흥덕구 오송읍 봉산리 369-1
+geo.geocode 대전역    [127.42848771585577, 36.44872354209345] 대전 대덕구 석봉동 388-1
+geo.geocode 조치원역  [127.29581318797206, 36.60192367287787] 세종 조치원읍 원리 141-1
+```
+
+#### live 응답 모양 (오송역 → 대전역 · 1.15초)
+
+```
+최상위   ok · itinerary_count · itineraries
+itinerary duration_sec · walk_distance_m · start_time · end_time ·
+          numberOfTransfers · legs
+leg      mode · start_time · end_time · duration_sec · from_name · from_lat ·
+          from_lon · to_name · to_lat · to_lon · route_short_name ·
+          route_long_name · geometry_polyline · geometry_length · intermediate_stops
+```
+
+전문은 `dev/tools/probe_out/otp_plan_trip.json` 이다 (.gitignore).
+
+#### ★ 두 지점 문제 — 지금 구조가 무엇을 표현할 수 있나
+
+값이 오는 자리가 셋뿐이다.
+
+```
+@arg       발화에서 온 값 하나. 스키마의 argument 는 string|null 한 칸이고
+           그 docstring 이 「장소·키워드·식별자 세 칸으로 나누지 않는다」고 못박았다
+$prev      바로 앞 단계가 내놓은 것. 두 단계 앞은 못 가리킨다
+$context   화면이 보낸 값. ★ vendor 의 _build_resolution_scope 가 단계마다
+           scope 에 얹으므로 첫 자리가 아니어도 풀린다
+```
+
+```
+말한 A → 말한 B    ★ 표현 못 한다. argument 가 한 칸이다
+찍은 지점 → 말한 B  ★ 표현된다. 셋 중 둘을 쓰면 된다
+```
+
+★ **vendor 는 막고 있지 않다.** `scope[step_id] = result` 로 단계 결과를 다
+쌓아 두므로 `$s1` · `$s2` 를 저쪽은 이미 푼다. 못 가리키는 것은 **우리 배선
+어휘**($prev 하나)다. 두 말한 장소를 붙이려면 argument 를 늘리는 판이고
+그것은 서른일곱 벌의 LLM 계약을 통째로 흔든다 — **안 했다.**
+
+#### 무엇을 더했나
+
+```
+온톨로지   이동 경로(타입) · 경로 탐색(기능). 관계 둘(hasInput 지점 좌표 ·
+           hasOutput 이동 경로). ★ about 을 안 붙였다 — 도달권과 같은 까닭이고
+           「OTP 니까 교통」으로 붙이지 않았다
+경로       ★ 관계에서 나온다. registry.all_recipes 가
+           [spoken_place, geocode_place, plan_trip] 을 스스로 낸다
+배선       tool_of 한 줄 · step_of 한 줄. 출발지는 $context.selectedLocation,
+           도착지는 $prev, 날짜·시각은 $now
+권한       refs 에 "otp-router/*" 하나. web-search 는 안 건드렸다
+recipe     recipe_062. ★ 빈 번호(006·013·032 …)를 안 썼다. 061 다음이다
+menu       한 줄 (작업본 · _init 둘 다). 정답표 32번 한 발화
+좌표       _init/layout.json 에 한 칸
+답 문구    summarize 에 경로 규칙 한 줄
+```
+
+#### ★ generic extension 둘 — OTP 이름이 어디에도 없다
+
+```
+1  $now.date · $now.time
+   부르는 순간의 값. @arg · $prev · $context 어디에도 없던 넷째 자리다.
+   ★ 왜 필요했나 : date · time_kst 가 required 인데 채울 데가 없었다.
+     고정 날짜를 박으면 그날이 지나는 순간 거짓이 된다
+   Asia/Seoul 로 읽는다. 경로 하나에 한 번만 읽어 자정 언저리에서 date 와
+   time 이 다른 날을 가리키지 않게 한다
+2  문맥 요구를 배선에서 센다 (step_service.context_needs)
+   ★ 예전에는 경로의 첫 칸만 봤다(resolve_service._starts_at). 경로 탐색은
+     문맥을 둘째 단계에서 읽어 첫 칸만 보면 찍은 지점 없이도 후보로 남는다
+   ★ **서른일곱 벌에서 두 방식의 판정이 한 벌도 안 갈렸다** (재서 확인).
+     기존 문맥 참조가 전부 input_first 에 있었기 때문이고, 그래서 이것은
+     넓히기가 아니라 **같은 규칙을 제자리에서 읽는 것**이다
+```
+
+#### 실제 E2E (우리 app 길 전체)
+
+```
+발화      여기서 조치원역까지 어떻게 가
+resolve   SELECT recipe_062 · 후보 하나 · argument "조치원역"
+s1        asap-mcp-core/geo.geocode  {query: "조치원역"}
+s2        otp-router/otp_plan_trip
+          from_lat 36.6200 · from_lon 127.3277   ← 찍은 지점
+          to_lat 36.6019 · to_lon 127.2958       ← 조치원역
+          date 2026-09-06 · time_kst 실행 시각
+답        조치원역까지 가는 경로를 찾았습니다.
+          … 25분 걸림 · 갈아타지 않음 · 도보 → 버스 → 도보 · 경로 3개 중 첫째
+명령      transit.route.show (route · layerId · fitBounds)
+```
+
+★ **화면을 위한 코드를 한 줄도 안 만들었다.** vendor 의 generic 길이
+`itineraries` 안에 `legs` 가 있으면 이미 `transit_route` 로 알아본다
+(`mcp_result_inspector._is_transit_route`). r5 때와 같다.
+
+★ **출발/도착이 안 뒤바뀌는지가 이 판의 유일한 조용한 위험이다.** 둘 다
+「지점 좌표」라 타입으로는 안 갈리고, 뒤바꿔도 도구는 아무 오류도 안 낸다.
+시험 하나가 그 자리를 붙든다.
+
+#### Solar 자 — 대조 · 손 · 대조
+
+```
+환경  Solar-Open2 · vLLM pid 1944191 · TP4 · ctx 32768 · port 18000
+      --no-enable-flashinfer-autotune · --runs 3 · --context both
+      ★ r5 판(「백열셋째」)과 같은 프로세스다. menu 4,163자도 그때와 같다
+```
+
+```
+              적중      근접  빗나감  못 붙음  점수   완전 적중 아닌 것
+대조 (앞)     105/114   6     0       3        —      17 · 30 · 32(OTP 없음)
+대조 (뒤)     105/114   6     0       3        —      17 · 30 · 32
+  ★ 앞뒤가 한 칸도 안 달랐다. 자가 안 흔들렸다
+대조 옛37     적중 35 · 근접 2 (17 · 30) · 빗나감 0 · 못 붙음 0 → 점수 2
+  ★ 「백열셋째」가 적은 값과 같다 (35/37 · 근접 2 · 실패 2)
+```
+
+```
+손 1 (첫 문안)  102/114 · 근접 9 · 빗나감 3
+  옛37  적중 33 · 근접 3 (7 · 22 · 29) · ★ 빗나감 1 (20 → {060}) → 점수 5
+  ★ 무너졌다. 문안이 두 집안의 앞토막을 한 줄에 다 넣었다 —
+    「「여기」·「이 위치」」(찍은 지점 여섯의 것)와 「대전역처럼 말한 장소」
+    (말한 장소 열하나의 것)를 함께 적어 양쪽에서 후보를 끌어왔다
+손 2 (고친 문안) 108/114 · 근접 6 · 빗나감 0 · 못 붙음 0
+  옛37  적중 35 · 근접 2 (7 · 29) · 빗나감 0 · 못 붙음 0 → 점수 2
+  OTP 32번  ★ 적중 3/3 · SELECT · 후보 하나
+```
+
+★ **손은 한 번만 썼다.** 「백열셋째」의 교훈(앞토막을 갈라 쓴다)을 그대로
+적용했고, 두 집안의 표지 문구를 빼고 이 recipe 만 쓰는 낱말
+(출발지 · 도착지 · 갈아타는 · 대중교통)으로 갈랐다.
+
+```
+옛37 점수  대조 2 → 손 2   ★ 총점은 같고 자리가 갈렸다
+새로 붙은 것  17 (부산역 쪽 의원 공약) · 30 (여기 연령대별 인구)
+새로 깨진 것  7 (철도 공약 낸 의원) · 29 (여기 의원 공약)
+  ★ 둘 다 「열린 과제」에 이미 있는 흔들리는 자리다 —
+    7 은 「흔들리는 자리다」 항목, 29 는 {021, 022} 항목이다
+  ★ 빗나감은 대조도 손도 0 이다
+```
+
+★ **「총점이 같으니 괜찮다」로 읽지 않는다.** 옛37 안에서 넷이 자리를 바꿨고,
+그 넷이 전부 이미 알려진 흔들림 자리라는 것이 이 판이 말할 수 있는 전부다.
+
+#### 관문
+
+```
+check_wiring   recipe 38 · 배선 38 · A 0 · B 0 · C 1 (web_fetch × web_address · 그대로)
+check_inputs   판정 53줄 · 없는 칸 0 · 안 보낸 required 0 · 스키마 못 받음 0
+               otp_plan_trip × point → 맞다 (required 여섯 다 보냄 · 안 쓰는 칸 2)
+demo9          9/9 SELECT · 9/9 적중 · recipe 바뀐 것 없음
+pytest         ★ 2 failed · 408 passed
+KRRI_ASAP      ★ 0줄
+```
+
+#### ★ 새로 깨진 관문 — 커밋을 멈춘 자리
+
+```
+dev/tests/app/ui/graph_svg/test_nodes_do_not_overlap.py
+  ::test_registering_a_node_does_not_make_it_touch
+```
+
+★ **원인은 OTP 가 아니다. 배치 기법의 한계다.**
+
+```
+plan_trip 좌표    (933.55, -56.39)  ← neato 가 낸 값이다. 지어낸 값이 아니다
+기존 49개 이동     0.0000pt (relative · anchored 기준. 그 시험이 쓰는 기준과 같다)
+test_no_two_nodes_touch  ★ 통과한다. 지금 지도에는 겹치는 쌍이 없다
+```
+
+★ **대조 실험으로 갈랐다.** plan_trip 이 없는 **바꾸기 전 지도**에 노드를
+`geocode_place` 에 **둘** 이어서 등록해 보니 —
+
+```
+probe1 → (933.55, -56.39)   ★ plan_trip 과 같은 자리다
+probe2 → (905.53, -33.17)
+겹침   [(probe1, probe2)]   ★ 바꾸기 전에도 똑같이 깨진다
+```
+
+**즉 `geocode_place` 에 새 노드를 하나 더 놓을 자리는 원래 하나뿐이었다.**
+plan_trip 이 그 자리를 채웠고, 그래서 「다음 한 개」를 놓는 시험이 빨개졌다.
+증분 배치(NEATO_ATTRS)에는 겹침 제거가 없고 — 핀을 무시하기 때문에 못 쓴다 —
+`sep` 도 없다.
+
+★ **고치지 않았다.** 배치 설정은 CLAUDE.md 가 「사람이 정할 자리」로 묶어 둔
+곳이고, 이 판에서 고치면 지도가 통째로 움직인다. **사람이 정할 자리다.**
+
+```
+고르는 길 셋
+  ㄱ 증분 배치에 sep 을 준다      기존 노드가 움직일 수 있다. 재봐야 한다
+  ㄴ plan_trip 을 사람이 옮긴다   좌표를 손으로 정하는 첫 자리가 된다
+  ㄷ 그대로 두고 시험의 뜻을 갈른다  「한 번 더 등록할 자리가 있는가」로 읽는다
+```
+
+#### 알려진 그대로인 실패 하나
+
+```
+test_layout_invariants.py::test_dense_graph_would_move_if_overlap_removal_were_used
+  ★ 음성 대조군. graphviz 판 차이다. 「백열째」부터 그대로다
+```
+
+★ **이 판에서 「graphviz 가 핀을 무시한다」고 한 번 잘못 읽었다.** 다시 재보니
+어긋남이 **전부 균일 평행이동**이었다 (dx 0.00 · dy 한 값). 캔버스 정규화이지
+재배치가 아니다. `test_adding_a_node_does_not_move_the_existing_ones` 가 이미
+`anchored()` 로 그 평행이동을 빼고 재고 있었다 — 저장소가 먼저 알고 있었다.
+
+#### 안 한 것
+
+```
+말한 A → 말한 B 경로            argument 한 칸을 늘리는 판이다
+arrive_by · num_itineraries     도구 기본값이 있고 우리가 고를 근거를 안 쟀다
+찍은 지점 → 경로 탐색 recipe    관계는 그 사슬을 내지만(picked_point → plan_trip)
+                                도착지가 없는 경로다. 배선도 recipe 도 안 만들었다
+route 전용 화면                 generic 길이 이미 읽는다. 0줄
+```
+
+#### ★ 곁다리로 알게 된 것 — check_resolve 머리말이 낡았다
+
+`dev/tools/check_resolve.py` 의 머리말이 아직 「발화가 마흔다섯이다 ·
+1~29 · 30~36 · 37~45」다. **이번 판이 만든 것이 아니다** — 정답표가 45 → 36 →
+37 로 줄 때 안 따라왔고 r5 판도 안 고쳤다. 이번에 38 이 되어 더 멀어졌다.
+**안 고쳤다** — 이 판의 것이 아니고, 고치면 이 판의 diff 에 상관없는 줄이 섞인다.
+
+---
 
 ### 2026-09-06 (백열넷째) · 도달권 실행값을 명시로 보낸다 — ★ TRANSIT 은 34배 느리다
 

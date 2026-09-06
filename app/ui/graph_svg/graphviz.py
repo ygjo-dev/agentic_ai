@@ -104,6 +104,43 @@ def layout_positions(dot: str) -> dict[str, tuple[float, float]]:
     return positions
 
 
+_WIDTH_ATTR = re.compile(r'width="?([\d.]+)')
+_HEIGHT_ATTR = re.compile(r'height="?([\d.]+)')
+
+# 인치로 나오는 width · height 를 pt 로.
+POINTS_PER_INCH = 72
+
+
+def node_boxes(dot: str) -> dict[str, tuple[float, float, float, float]]:
+    """그려질 노드 사각형. {node_id: (중심x, 중심y, 폭, 높이)} 단위 pt.
+
+    입력  좌표가 이미 박힌 DOT. -n 으로 돌리므로 배치를 다시 계산하지 않음
+    출력  상자 넷. pos · width · height 가 다 있는 노드만 담음
+    규칙  엣지에도 pos(스플라인)가 붙으므로 엣지 문장을 먼저 지움.
+          layout_positions 와 같은 자와 같은 정규식임
+    제약  SVG 로 재지 않는다.
+          style="rounded,filled" 라 노드가 <path> 로 나오고 거기서 사각형을
+          되찾으려면 경로 문자열을 파싱해야 함. 같은 엔진 · 출력 형식만 다름
+    """
+    out = _run_graphviz(dot, "neato", ["-n", "-Tdot"])
+    flat = _EDGE_STATEMENT.sub(" ", re.sub(r"\s+", " ", out))
+
+    boxes = {}
+    for match in _NODE_STATEMENT.finditer(flat):
+        body = match.group(2)
+        pos = _POS_ATTR.search(body)
+        width = _WIDTH_ATTR.search(body)
+        height = _HEIGHT_ATTR.search(body)
+        if pos and width and height:
+            boxes[match.group(1)] = (
+                float(pos.group(1)),
+                float(pos.group(2)),
+                float(width.group(1)) * POINTS_PER_INCH,
+                float(height.group(1)) * POINTS_PER_INCH,
+            )
+    return boxes
+
+
 # <svg ...> 여는 태그 하나. 속성 순서는 Graphviz 가 정한다.
 _SVG_OPEN_TAG = re.compile(r"<svg\b[^>]*>", re.S)
 _SVG_SIZE_ATTR = re.compile(r'\s(?:width|height)="[^"]*"')

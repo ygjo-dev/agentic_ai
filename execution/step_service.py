@@ -35,7 +35,9 @@ vendor_to_be_deleted/asap/generic_mcp_executor 의 _resolve_reference 가 안다
 argument 로 함께 내놓고, 그것이 없을 때만 place_in 이 장소 하나를 뽑는다.
 """
 
+import datetime
 import re
+import zoneinfo
 
 import yaml
 
@@ -148,6 +150,34 @@ BBOX_FROM_CONTEXT = [
     f"{VIEW_FROM_CONTEXT}.maxLon",
     f"{VIEW_FROM_CONTEXT}.maxLat",
 ]
+
+# 부르는 순간의 값을 가리키는 표시. **@arg 도 $prev 도 $context 도 아닌 넷째 자리다.**
+#
+# 앞의 셋은 값이 어딘가에서 온다 — 사람의 입 · 앞 단계 · 화면. 이것은 아무도
+# 보내지 않았고 부르는 순간에 생긴다. 도구가 "오늘"을 required 로 받으면
+# 채울 데가 여기밖에 없다.
+#
+# **왜 필요했나.** otp_plan_trip 의 date · time_kst 가 required 다(실측
+# 2026-09-06 · 빼면 HTTP 500 "2 validation errors ... Field required").
+# 고정된 날짜를 배선에 박으면 그날이 지나는 순간 거짓이 된다.
+#
+# **Asia/Seoul 이다.** 이 플랫폼의 자료가 전부 한국 것이고, otp_plan_trip 은
+# 설명에서 KST 를 명시적으로 요구한다("서버 로케일이나 UTC 기준으로 넣으면
+# 자정 근처에서 하루가 어긋날 수 있다"). 서버 시간대에 기대지 않는다.
+#
+# **도구 칸 이름을 쓰지 않는다.** 저쪽 칸은 time_kst 지만 여기 이름은 time 이다 —
+# 이 표시는 "부르는 순간"이라는 뜻이지 특정 도구의 칸이 아니다.
+RUNTIME_NOW = "$now"
+
+RUNTIME_ZONE = zoneinfo.ZoneInfo("Asia/Seoul")
+
+# $now 뒤에 올 수 있는 이름과 그 형식. 여기 없는 이름은 터진다 —
+# 조용히 넘기면 "$now.datetime" 이 문자열 그대로 도구에 실려 나간다.
+RUNTIME_FIELDS = {
+    "date": "%Y-%m-%d",
+    "time": "%H:%M",
+}
+
 
 # 문맥의 어느 칸이 어느 시작 데이터 노드인가. **온톨로지 밖이다** —
 # 저쪽 화면의 계약이라 온톨로지가 알 일이 아니고, TOOL_OF · STEP_OF 와 같은
@@ -396,6 +426,61 @@ def context_starts(context: dict | None) -> list[str]:
     return found
 
 
+def context_needs(recipe_id: str) -> set[str]:
+    """그 recipe 가 화면 문맥에서 값을 받아야 하는 시작 데이터 노드.
+
+    입력  recipe id
+    출력  노드 id 집합. 문맥을 안 쓰는 recipe 는 빈 집합
+    규칙  실제로 만들어진 step 의 input 을 봄. 배선표를 통째로 훑지 않음 —
+          input_first 는 그 단계가 첫 자리일 때만 쓰이므로, 쓰이지도 않을
+          줄을 세면 「말한 장소 -> 좌표 -> 충전소」가 찍은 지점을 요구하게 됨
+          "$context.<칸>" 의 첫 칸 이름으로 가름. 그 이름이 어느 시작 데이터
+          노드인지는 CONTEXT_STARTS 가 앎
+          지도 명령의 args 도 봄. 도구를 안 부르고 명령만 내는 노드도 문맥을
+          읽을 수 있음
+    제약  경로의 첫 칸만 보지 않는다.
+          문맥 값이 첫 단계에만 온다는 보장이 없다. 경로 탐색은 출발지를
+          문맥에서 받는데 그것이 둘째 단계다 — 첫 칸만 보면 찍은 지점이
+          없어도 후보로 남아 required 가 빈 채로 도구를 부른다
+    이력  예전에는 orchestrator/resolve_service._starts_at 이 경로 첫 칸을
+          봤음. 그때는 문맥을 읽는 줄이 전부 input_first 에만 있어 결과가
+          같았음 — recipe 37 벌에서 두 방식의 판정이 한 벌도 안 갈렸다(실측).
+          경로 탐색이 $context 를 input 에 적은 첫 줄이라 갈라졌음
+    """
+    plan_result = plan(recipe_id, "")
+
+    found: set[str] = set()
+    sources = [step["input"] for step in plan_result["steps"]]
+    sources += [command["args"] for command in plan_result["commands"]]
+    for value in sources:
+        _context_roots(value, found)
+    return found
+
+
+def _context_roots(value, found: set[str]) -> None:
+    """input 조각에 든 "$context.<칸>" 의 칸 이름을 시작 데이터 노드로.
+
+    규칙  중첩된 dict · list 까지 내려감
+          CONTEXT_STARTS 에 없는 칸 이름은 담지 않음. 아직 시작 데이터가 아닌
+          문맥 값을 읽는 줄이 생기면 그것은 판정할 것이 없음
+    """
+    if isinstance(value, dict):
+        for item in value.values():
+            _context_roots(item, found)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _context_roots(item, found)
+        return
+    if not isinstance(value, str) or not value.startswith(CONTEXT_VALUE + "."):
+        return
+
+    root = value[len(CONTEXT_VALUE) + 1:].split(".")[0]
+    for node_id, path in CONTEXT_STARTS.items():
+        if path[0] == root:
+            found.add(node_id)
+
+
 def wiring_at(node_id: str, source_id: str) -> dict | None:
     """그 자리에서 쓸 배선 한 줄.
 
@@ -502,6 +587,10 @@ def plan(recipe_id: str, argument: str) -> dict:
     """
     reload_wiring()
 
+    # 경로 하나에 한 번만 읽는다. 단계마다 읽으면 자정 언저리에서 date 와
+    # time 이 서로 다른 날을 가리킬 수 있다.
+    now = datetime.datetime.now(RUNTIME_ZONE)
+
     steps: list[dict] = []
     nodes: list[str] = []
     commands: list[dict] = []
@@ -522,6 +611,7 @@ def plan(recipe_id: str, argument: str) -> dict:
             _by_argument(wiring, input_of(wiring, first=previous_id is None), argument),
             argument,
             previous_id,
+            now,
         )
         headline = _headline(tool["headline"], argument)
 
@@ -620,15 +710,38 @@ def _has_center(tool_input: dict) -> bool:
     return any(key in tool_input for key in CENTER_KEYS)
 
 
-def _filled(value, argument: str, previous_id: str | None):
-    """input 안의 @arg 와 $prev 를 실제 값으로. 중첩된 것까지.
+def _now_field(reference: str, now: datetime.datetime) -> str:
+    """"$now.date" 같은 표시를 부르는 순간의 값으로.
 
-    입력  input 조각 · 발화에서 뽑은 인자 · 앞 step 의 id(없으면 None)
+    입력  $now 로 시작하는 어절 · 그 경로를 만들 때 읽은 시각
+    출력  RUNTIME_FIELDS 의 형식으로 찍은 문자열
+    규칙  점 뒤 이름 하나만 봄. "$now" 만 적은 것도 모르는 이름으로 봄
+    제약  모르는 이름을 조용히 넘기지 않는다.
+          그대로 두면 "$now.datetime" 이라는 문자열이 도구에 그대로 실려
+          나가고, 0건이 오지 오류가 오지 않는다
+          시각을 여기서 읽지 않는다.
+          부르는 쪽이 경로 하나에 한 번 읽어 넘김. 여기서 읽으면 칸마다
+          다른 순간이 되어 자정 언저리에서 date 와 time 이 어긋남
+    """
+    field = reference[len(RUNTIME_NOW):].lstrip(".")
+    if field not in RUNTIME_FIELDS:
+        raise ValueError(f"{paths.WIRING_PATH.name}: 모르는 {RUNTIME_NOW} 이름 {field!r}")
+    return now.strftime(RUNTIME_FIELDS[field])
+
+
+def _filled(value, argument: str, previous_id: str | None, now: datetime.datetime):
+    """input 안의 @arg · $prev · $now 를 실제 값으로. 중첩된 것까지.
+
+    입력  input 조각 · 발화에서 뽑은 인자 · 앞 step 의 id(없으면 None) ·
+          이 경로를 만들 때 읽은 시각
     출력  같은 모양에 표시만 바뀐 것. 앞 단계가 없어 채울 수 없던 칸은 빠짐
     규칙  "@arg" 는 어절 전체가 표시일 때만 바꿈. 값의 타입이 바뀌므로
           문자열 안에 섞어 쓰지 않음
           "$prev" 로 시작하면 뒤의 경로는 그대로 두고 앞만 바꿈
           앞 단계가 없으면 그 칸을 DROP 으로 표시하고 dict · list 에서 뺌
+          "$now" 로 시작하면 여기서 값으로 바꿔 내보냄. vendor 에 넘기지
+          않음 — 저쪽 scope 에는 그런 이름이 없어 None 이 됨
+          "$context" 는 안 건드림. 그것은 vendor 가 단계마다 품
     제약  값을 지어내지 않는다. 앞 단계가 없을 때 좌표를 만들어 넣지 않고
           칸을 통째로 뺀다
           required 인 칸이 $prev 를 쓰는데 앞 단계가 없으면 도구가 거부한다.
@@ -645,14 +758,17 @@ def _filled(value, argument: str, previous_id: str | None):
     """
     if isinstance(value, dict):
         filled = {
-            key: _filled(item, argument, previous_id) for key, item in value.items()
+            key: _filled(item, argument, previous_id, now)
+            for key, item in value.items()
         }
         return {key: item for key, item in filled.items() if item is not DROP}
     if isinstance(value, list):
-        filled = [_filled(item, argument, previous_id) for item in value]
+        filled = [_filled(item, argument, previous_id, now) for item in value]
         return [item for item in filled if item is not DROP]
     if value == SPOKEN_VALUE:
         return argument
+    if isinstance(value, str) and value.startswith(RUNTIME_NOW):
+        return _now_field(value, now)
     if isinstance(value, str) and value.startswith(PREVIOUS_STEP):
         if previous_id is None:
             return DROP

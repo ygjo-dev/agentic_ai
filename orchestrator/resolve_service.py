@@ -70,31 +70,31 @@ def _dropped_starts(context: dict | None) -> set[str]:
 
 
 def _without_dropped(recipe_ids: list[str], dropped: set[str]) -> list[str]:
-    """값을 못 받는 시작 데이터에서 출발하는 recipe 를 뺀 목록.
+    """값을 못 받는 화면 문맥을 쓰는 recipe 를 뺀 목록.
 
-    입력  recipe id 목록 · 뺄 시작 데이터 노드 id 집합
+    입력  recipe id 목록 · 값이 안 온 시작 데이터 노드 id 집합
     출력  차례를 지킨 목록. 뺄 것이 없으면 받은 것 그대로
-    규칙  경로의 첫 칸이 곧 시작 데이터임. 그것을 보고 가름
-          타입 판정은 ontology.graph 가 함. 여기서 recipe 파일을 열지 않음
+    규칙  그 recipe 의 배선이 실제로 읽는 문맥을 봄.
+          step_service.context_needs 가 그것을 셈. 여기서 recipe 파일도
+          배선표도 열지 않음
     제약  menu 에서 그 문장을 지우지 않는다.
           menu 는 온톨로지가 만드는 것이고 요청마다 다를 수 없음. 지울 수
           없으니 LLM 이 그것을 골라도 여기서 뺀다
     이력  2026-08-29 에 그 제약을 깼다 — _menu_for 가 요청마다 menu 를 갈랐다.
           2026-09-04 에 그 갈래를 걷어 제약이 다시 참이 됐다. 프롬프트에는 늘
           menu 전벌이 실리고, 값이 없는 것을 LLM 이 고르면 여기서 뺀다
+          2026-09-06 까지는 경로의 첫 칸(_starts_at)만 봤다. 그때는 문맥을
+          읽는 줄이 전부 input_first 에 있어 두 방식이 같았고, recipe 37 벌
+          어느 하나도 판정이 안 갈렸다(실측). 경로 탐색이 문맥을 둘째 단계에서
+          읽어 갈라졌다 — 첫 칸만 보면 찍은 지점 없이도 후보로 남는다
     """
     if not dropped:
         return recipe_ids
-    return [recipe_id for recipe_id in recipe_ids if _starts_at(recipe_id) not in dropped]
-
-
-def _starts_at(recipe_id: str) -> str | None:
-    """그 recipe 가 무엇에서 출발하는가.
-
-    출력  경로 첫 칸의 노드 id. 경로가 비면 None
-    """
-    path = graph.path_of(recipe_id)
-    return path[0]["node_id"] if path else None
+    return [
+        recipe_id
+        for recipe_id in recipe_ids
+        if not (step_service.context_needs(recipe_id) & dropped)
+    ]
 
 
 def _resolve_full(

@@ -224,6 +224,15 @@ nodes:
     name: 도달권
     description: 한 지점에서 정해진 시간 안에 닿을 수 있는 범위.
 
+  # 받는 노드가 하나도 없는 타입이다. 도달권 · 경계 도형 · 통계와 같은 자리다.
+  #
+  # **도달권으로 안 묶었다.** 도달권은 한 지점에서 시간을 들여 닿는 범위(면)이고
+  # 이것은 두 지점을 잇는 하나의 길(선)이다. 둘을 한 타입으로 묶으면 도달권을
+  # 받는 노드 뒤에 경로 탐색이 타입상 이어져 버리는데 그런 경로는 없다.
+  travel_route:
+    name: 이동 경로
+    description: 한 지점에서 다른 지점까지 가는 길과 갈아타는 곳, 걸리는 시간.
+
   # 받는 노드가 하나도 없는 타입이다. 그래서 이것을 내놓는 노드 뒤에는 아무도
   # 못 선다(can_connect). 경계 도형 · 통계와 같은 자리이고, 다른 점은 조회해서
   # 받는 자료가 아니라 화면이 바뀌는 것이라는 것뿐이다.
@@ -308,6 +317,19 @@ nodes:
   compute_isochrone:
     name: 도달권 계산
     description: 한 지점에서 걸어서나 자전거·차·대중교통으로 몇 분 안에 어디까지 갈 수 있는지 그 범위를 계산한다.
+
+  # **about 을 안 붙였다. 도달권 계산과 같은 까닭이다.** 이름이 「경로」라고
+  # 교통에 넣지 않았다 — 대상 교통은 「도로와 철도, 현장 영상에 관한 것」이고
+  # 이것은 좌표 둘을 받아 그 사이의 길을 내놓는 범용 계산이다. 걸어서 가든
+  # 열차로 가든 같은 계산이라 교통에 넣으면 그 대상의 뜻이 흐려진다.
+  #
+  # **좌표를 둘 받는다.** 온톨로지는 노드가 무엇을 받는지만 말하고 몇 개
+  # 받는지는 말하지 않는다(노드에는 name 과 description 뿐이다). 어느 지점
+  # 좌표가 출발이고 어느 것이 도착인지는 배선이 갖는다 — wiring.yaml 의
+  # step_of 한 줄이다.
+  plan_trip:
+    name: 경로 탐색
+    description: 찍어 둔 지점에서 말한 장소까지 대중교통으로 가는 길을 갈아타는 곳과 걸리는 시간까지 찾는다.
 
   admin_boundary_dataset_info:
     name: 행정경계 데이터 정보
@@ -515,6 +537,14 @@ edges:
   # (실측 2026-09-06 · Gateway /api/tools 의 inputSchema).
   - { from: compute_isochrone, to: point,          predicate: hasInput }
   - { from: compute_isochrone, to: reachable_area, predicate: hasOutput }
+
+  # 지점 좌표 하나만 적는다. 실제로 받는 좌표는 둘(출발 · 도착)인데 온톨로지에는
+  # 그 둘이 같은 타입이라 관계도 한 줄이다. 출발을 어디서 받고 도착을 어디서
+  # 받는지는 배선이 안다 — 관계는 「지점 좌표를 받는다」까지만 말한다.
+  # required 는 from_lat · from_lon · to_lat · to_lon · date · time_kst 여섯이다
+  # (실측 2026-09-06 · Gateway /api/tools 의 inputSchema).
+  - { from: plan_trip, to: point,        predicate: hasInput }
+  - { from: plan_trip, to: travel_route, predicate: hasOutput }
 
   - { from: admin_boundary_dataset_info, to: dataset_info, predicate: hasOutput }
 

@@ -1,8 +1,8 @@
 """도달권 계산(r5-server)이 지금 구조를 그대로 지나는가.
 
-**우리가 부르는 유일한 둘째 MCP 서버다.** 마흔은 asap-mcp-core 이고
-web.search · web.fetch 는 권한이 없어 못 부른다. 그래서 「서버가 둘이면
-무엇이 달라지는가」를 이 파일이 혼자 붙든다.
+**우리가 부르는 둘째 MCP 서버다.** 마흔은 asap-mcp-core 이고 web.search ·
+web.fetch 는 권한이 없어 못 부른다. 셋째는 otp-router 이고 그것은
+dev/tests/execution/test_otp_route.py 가 붙든다.
 
 여기서 지키는 것은 넷이다.
 
@@ -57,16 +57,21 @@ def test_the_r5_server_is_in_the_permission_scope():
     assert f"{R5_SERVER}/*" in refs
 
 
-def test_the_scope_was_widened_by_exactly_one_server():
+def test_the_scope_holds_only_servers_a_recipe_calls():
     """부를 것이 없는 서버를 미리 열지 않음.
 
     Gateway 에는 넷이 있다 — asap-mcp-core · web-search · otp-router · r5-server.
-    web-search 는 저쪽 권한이 따로 안 열려 있고 otp-router 는 부를 배선도
-    recipe 도 아직 없다. 「무엇을 왜 열었나」가 refs 만 보고 읽혀야 함.
+    web-search 만 빠져 있고 그것은 저쪽 권한이 안 열려 있어 부를 수 없다.
+    「무엇을 왜 열었나」가 refs 만 보고 읽혀야 함.
+
+    이력  2026-09-06 까지는 서버 둘이었고 이름이
+          test_the_scope_was_widened_by_exactly_one_server 였음. 경로 탐색이
+          otp-router 를 부르면서 셋이 됐고, 「하나만 넓혔다」가 아니라
+          「부르는 것만 열려 있다」가 이 시험이 지키려던 것임
     """
     refs = execute_service.USER_CONTEXT["selected_mcp_tool_refs"]
 
-    assert set(refs) == {"asap-mcp-core/*", f"{R5_SERVER}/*"}
+    assert set(refs) == {"asap-mcp-core/*", f"{R5_SERVER}/*", "otp-router/*"}
 
 
 def test_every_server_a_recipe_actually_calls_is_inside_the_permission_scope():

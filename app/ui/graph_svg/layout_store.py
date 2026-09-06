@@ -21,6 +21,7 @@
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import tempfile
@@ -32,7 +33,7 @@ from app.ui.graph_svg.dot import (
     build_dot,
     wrap_node_labels,
 )
-from app.ui.graph_svg.graphviz import layout_positions
+from app.ui.graph_svg.graphviz import layout_positions, node_boxes
 
 # 이 패키지 안에 둔다. 좌표는 그리기의 소유다 — 만드는 것도 쓰는 것도 여기뿐이고,
 # 나중에 JS 렌더러로 갈아끼우면 좌표 파일도 함께 사라진다.
@@ -350,6 +351,145 @@ def spread(
     )
 
 
+# 노드 사이에 남아야 하는 최소 빈 거리(pt · 그리는 좌표계).
+#
+# **여유 0 이 아니다.** 0 으로 두면 이름 한 글자가 길어진 다음 등록에서 바로
+# 붙는다. 0.64 배 시절 실측이 10.7pt 였고 8 을 요구한다 —
+# dev/tests/app/ui/graph_svg/test_nodes_do_not_overlap.py 가 같은 값을 쓴다.
+MIN_GAP = 8.0
+
+# 겹친 새 노드를 밖으로 밀 때의 한 걸음(pt · 저장 좌표계)과 걸음 상한.
+#
+# **왜 밀어내기인가.** 겹침 제거(overlap=voronoi · prism)는 고정(!)을 무시하고
+# 기존 노드를 388~710pt 씩 움직인다(실측). 핀이 있는 증분 배치에는 못 쓴다.
+# 그래서 배치는 그대로 두고 **새 노드 하나만** 옮긴다.
+#
+# **기존 지도 밖으로 나가도 된다.** 상단 그래프는 전체를 담아 보는 개요이고,
+# 개요에서 모든 글씨가 읽히는 것은 요구사항이 아니다 (2026-09-06 사람이 정함).
+# 좌표계는 화면 크기와 따로 논다 — 화면은 카메라가 맞춘다.
+PUSH_STEP = 24.0
+PUSH_LIMIT = 200
+
+
+def _drawn_boxes(nodes: dict, solid, dotted: dict, positions: dict) -> dict:
+    """그 좌표로 그렸을 때의 노드 사각형.
+
+    입력  노드 · 실선 · 점선 · 저장 좌표계의 좌표
+    출력  {node_id: (중심x, 중심y, 폭, 높이)} 단위 pt. 그리는 좌표계다
+    규칙  화면에 나가는 것과 같은 조건으로 만듦 — 두 줄 접기 · 노드 크기 ·
+          점선 라벨이 다 상자 크기를 바꿈. 하나라도 빠지면 여기서 잰 상자와
+          화면에 뜨는 상자가 달라짐
+    """
+    return node_boxes(
+        build_dot(
+            wrap_node_labels(nodes),
+            solid,
+            dotted,
+            positions=for_drawing(positions),
+            spring=True,
+            dotted_labels=False,
+            node_attrs=NODE_ATTRS,
+            group_attrs=GROUP_ATTRS,
+        )
+    )
+
+
+def _clear_of(center, size, others, gap: float = MIN_GAP) -> bool:
+    """그 자리에 놓아도 어느 상자와도 안 붙는가.
+
+    입력  중심 (x, y) · 크기 (폭, 높이) · 다른 상자들 · 최소 빈 거리
+    출력  참이면 놓아도 됨
+    규칙  두 축이 **모두** 가까울 때만 붙은 것으로 봄. 한 축이라도 떨어져
+          있으면 사각형은 안 겹침
+    """
+    x, y = center
+    width, height = size
+    for other_x, other_y, other_width, other_height in others:
+        if (
+            abs(x - other_x) - (width + other_width) / 2 < gap
+            and abs(y - other_y) - (height + other_height) / 2 < gap
+        ):
+            return False
+    return True
+
+
+def _outward(point, center):
+    """무리의 한가운데에서 그 점으로 향하는 단위 벡터.
+
+    출력  (x, y). 점이 한가운데면 (1.0, 0.0)
+    규칙  무작위를 쓰지 않음. 같은 입력에서 같은 방향이 나와야 함
+    """
+    dx, dy = point[0] - center[0], point[1] - center[1]
+    span = math.hypot(dx, dy)
+    if span < 1e-9:
+        return 1.0, 0.0
+    return dx / span, dy / span
+
+
+def settled(nodes: dict, solid, dotted: dict, positions: dict, fresh: list) -> dict:
+    """새 노드가 어디와도 안 붙게 만듦. **기존 노드는 안 건드린다.**
+
+    입력  노드 · 실선 · 점선 · 저장 좌표계의 좌표 · 이번에 새로 놓인 노드 id
+    출력  같은 좌표에서 새 노드만 옮겨진 것. 옮길 것이 없으면 받은 것 그대로
+    규칙  neato 가 준 자리를 먼저 씀. 거기서 안 붙으면 그대로 채택함
+          붙으면 무리 바깥 방향으로 PUSH_STEP 씩 걸어가며 처음으로 안 붙는
+          자리를 씀. 결정적이라 같은 온톨로지에서 같은 좌표가 나옴
+          새 노드가 여럿이면 id 차례로 하나씩 놓고, 앞서 놓인 것도 피함
+          상한까지 못 찾으면 neato 가 준 자리를 그대로 둠. 좌표를 잃는 것보다
+          붙은 채로 두고 시험이 우는 것이 낫음
+    제약  기존 노드를 옮기지 않는다.
+          겹침 제거(overlap)가 하는 일이 그것이고, 그것은 고정을 무시해
+          기존 노드를 388~710pt 씩 움직인다(실측)
+          기존 지도 밖으로 나가는 것을 막지 않는다.
+          안쪽으로 다시 당기면 결국 겹치는 자리로 돌아옴. 좌표계는 화면
+          크기와 따로 논다
+          노드 이름을 보지 않는다.
+          어느 노드가 새것인지는 부르는 쪽이 좌표 유무로 앎
+    """
+    if not fresh:
+        return positions
+
+    boxes = _drawn_boxes(nodes, solid, dotted, positions)
+    fixed = [box for node_id, box in boxes.items() if node_id not in fresh]
+    if not fixed:
+        return positions
+
+    center = (
+        sum(box[0] for box in fixed) / len(fixed),
+        sum(box[1] for box in fixed) / len(fixed),
+    )
+
+    placed = dict(positions)
+    taken = list(fixed)
+    for node_id in sorted(fresh):
+        box = boxes.get(node_id)
+        if box is None:
+            continue
+        size = (box[2], box[3])
+        step_x, step_y = _outward((box[0], box[1]), center)
+
+        # **상자 좌표로 걷는다.** Graphviz 는 캔버스에 음수가 안 남게 그림을
+        # 통째로 평행이동시키므로 상자 중심이 (저장 좌표 × DRAW_SCALE) 이
+        # 아니다. 겹침은 상대 거리라 그 평행이동과 무관하고, 옮긴 만큼만
+        # 배율로 나눠 저장 좌표에 되돌린다.
+        for step in range(PUSH_LIMIT + 1):
+            drawn = (
+                box[0] + step_x * PUSH_STEP * DRAW_SCALE * step,
+                box[1] + step_y * PUSH_STEP * DRAW_SCALE * step,
+            )
+            if _clear_of(drawn, size, taken):
+                placed[node_id] = (
+                    placed[node_id][0] + (drawn[0] - box[0]) / DRAW_SCALE,
+                    placed[node_id][1] + (drawn[1] - box[1]) / DRAW_SCALE,
+                )
+                taken.append((drawn[0], drawn[1], size[0], size[1]))
+                break
+        else:
+            taken.append(box)
+
+    return placed
+
+
 def ensure_positions(
     nodes: dict, solid: dict, dotted: dict
 ) -> dict[str, tuple[float, float]]:
@@ -380,10 +520,11 @@ def ensure_positions(
     if fresh_install:
         restore_from_init()
 
-    positions, missing = resolve(nodes)
+    stored, missing = resolve(nodes)
     if not missing:
-        return positions
+        return stored
 
+    positions = stored
     fresh = not positions  # 처음이면 핀이 없으니 겹침 제거를 쓸 수 있다
     dot = build_dot(
         # 그리는 것과 같은 조건으로 놓는다. 두 줄 접기 · 노드 크기 · 점선
@@ -419,9 +560,42 @@ def ensure_positions(
     # 최초 배치에만 늘린다. 증분에 걸면 핀이 통째로 밀린다.
     if fresh:
         positions = spread(nodes, solid, dotted, positions)
+    else:
+        positions = _kept(stored, positions, missing)
+        positions = settled(nodes, solid, dotted, positions, missing)
 
     save(positions)
     return positions
+
+
+def _kept(stored: dict, placed: dict, missing: list) -> dict:
+    """기존 좌표는 저장된 값 그대로, 새 노드만 그 좌표계로 옮겨 담음.
+
+    입력  저장돼 있던 좌표 · neato 가 낸 좌표 · 새 노드 id
+    출력  기존은 stored 그대로, 새 것은 평행이동을 뺀 값
+    규칙  neato 는 배치를 캔버스에 맞춰 평행이동시킴. 핀은 지켜지지만 좌표가
+          통째로 밀려 나옴 — 어긋남이 노드마다 같은 한 값임(실측)
+          그 값을 기존 노드 하나에서 재서 새 노드에서 뺌. 그러면 neato 가
+          잡은 **상대 배치**는 그대로이고 기존 좌표는 한 자리도 안 움직임
+    제약  기존 좌표를 neato 가 낸 값으로 덮어쓰지 않는다.
+          화면에는 안 보이는 차이지만(평행이동) 저장 파일이 등록할 때마다
+          통째로 바뀌어 "무엇이 움직였나" 를 diff 로 못 읽는다
+    """
+    anchor = next((node_id for node_id in stored if node_id in placed), None)
+    if anchor is None:
+        return placed
+
+    shift_x = placed[anchor][0] - stored[anchor][0]
+    shift_y = placed[anchor][1] - stored[anchor][1]
+
+    kept = dict(stored)
+    for node_id in missing:
+        if node_id in placed:
+            kept[node_id] = (
+                placed[node_id][0] - shift_x,
+                placed[node_id][1] - shift_y,
+            )
+    return kept
 
 
 def layout_hash(positions: dict) -> str:

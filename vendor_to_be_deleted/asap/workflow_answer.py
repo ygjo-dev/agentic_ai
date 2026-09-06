@@ -130,6 +130,45 @@ REACH_MODE_WORDS = {
 REACH_RANGE = "{minutes}분 안에 닿는 범위"
 REACH_CELLS = "격자 {cells}칸"
 
+# 경로 탐색 결과를 알아보는 칸과 그 문장 재료.
+#
+# 도달권과 같은 자리다 — 이 응답도 목록도 건수도 좌표도 아니라 칸 이름만
+# 나가던 자리다(2026-09-06 실측 — "칸: ok · itinerary_count · itineraries").
+# 길은 지도가 그리므로 말로 낼 것은 **얼마나 걸리나 · 몇 번 갈아타나 ·
+# 무엇을 타나** 셋이다.
+#
+# 알아보는 칸이 mcp_result_inspector._is_transit_route 와 같다 —
+# itineraries 안에 legs 가 있으면 경로다. 도구 이름을 보지 않는다.
+ROUTE_KEY = "itineraries"
+ROUTE_LEGS_KEY = "legs"
+ROUTE_DURATION_KEY = "duration_sec"
+ROUTE_TRANSFERS_KEY = "numberOfTransfers"
+ROUTE_MODE_KEY = "mode"
+
+# 이동 수단은 도구가 영어 enum 으로 돌려준다. 도달권의 REACH_MODE_WORDS 와
+# 같은 까닭으로 우리말로 바꾸고, 모르는 값이 오면 그 구간을 빼고 낸다 —
+# 영어를 그대로 내보내지 않는다.
+ROUTE_MODE_WORDS = {
+    "WALK": "도보",
+    "BICYCLE": "자전거",
+    "CAR": "차",
+    "BUS": "버스",
+    "RAIL": "열차",
+    "SUBWAY": "지하철",
+    "TRAM": "트램",
+    "FERRY": "배",
+}
+ROUTE_MINUTES = "{minutes}분 걸림"
+ROUTE_HOURS = "{hours}시간 {minutes}분 걸림"
+ROUTE_HOURS_SHARP = "{hours}시간 걸림"
+ROUTE_TRANSFERS = "{count}번 갈아탐"
+ROUTE_NO_TRANSFER = "갈아타지 않음"
+ROUTE_MODE_JOIN = " → "
+ROUTE_CHOICES = "경로 {count}개 중 첫째"
+
+# 한 시간을 분으로. 위 세 문장을 고를 때만 쓴다.
+MINUTES_PER_HOUR = 60
+
 # 도구 호출이 터진 사유를 가르는 유일한 영어 조각.
 #
 # 실측 : web-search/web.search 를 부르면 Gateway 가 500 과 함께
@@ -521,6 +560,8 @@ def summarize(tool_input: Any, result: Any) -> str:
           앞임 — 건수만 내면 사람이 알고 싶은 것이 안 나감
           도달권이면 이동 수단 · 분 · 격자 칸 수. 도형은 지도가 그리므로
           말로는 안 냄
+          경로면 걸리는 시간 · 갈아타는 횟수 · 무엇을 타는가. 길은 지도가
+          그리므로 말로는 안 냄
           건수를 세는 칸이 있으면 건수. 0건이고 안내 문장이 있으면 함께 냄.
           한 건이고 그 한 건이 item 에 담겨 있으면 그것을 요약하고, 전체가
           그보다 많으면 여럿 중 하나라는 것을 밝힘
@@ -553,6 +594,10 @@ def summarize(tool_input: Any, result: Any) -> str:
         reach = _reach_line(result)
         if reach:
             return reach
+
+        route = _route_line(result)
+        if route:
+            return route
 
         counted = _counted(result)
         if counted:
@@ -1164,6 +1209,91 @@ def _reach_line(result: Dict[str, Any]) -> str:
         parts.append(REACH_CELLS.format(cells=cells))
 
     return NOTICE_JOIN.join(parts)
+
+
+def _route_line(result: Dict[str, Any]) -> str:
+    """경로 탐색 결과. 얼마나 걸리나 · 몇 번 갈아타나 · 무엇을 타나. 아니면 "".
+
+    출력  "24분 걸림 · 갈아타지 않음 · 도보 → 열차 → 도보".
+          경로가 아니면 빈 문자열
+    규칙  itineraries 안에 legs 가 있어야 경로임. 그 칸이 이 응답을 가름
+          첫째 경로만 말함. 여럿이면 몇 개 중 첫째인지 밝힘
+          걸리는 시간은 초를 분으로 내림. 한 시간을 넘으면 시간과 분으로 나눔
+          갈아타는 횟수는 정수일 때만 냄. 0 이면 안 갈아탄다고 냄
+          이동 수단은 ROUTE_MODE_WORDS 에 있는 값만 우리말로 냄. 모르는 값은
+          그 구간을 뺌. 잇달아 같은 수단이면 한 번만 냄
+          하나도 못 읽으면 빈 문자열이라 아래 칸 이름 줄로 떨어짐
+    제약  길을 문자열에 담지 않는다.
+          geometry_polyline · 좌표를 그대로 실으면 raw JSON 이 화면에 샌다 —
+          summarize 의 제약 절과 같은 자리다. 여기서 읽는 것은 미리 정한
+          칸 다섯뿐이다
+          정류장 이름을 늘어놓지 않는다.
+          intermediate_stops 까지 실으면 한 줄이 아니라 목록이 된다
+    """
+    itineraries = result.get(ROUTE_KEY)
+    if not isinstance(itineraries, list) or not itineraries:
+        return ""
+
+    first = itineraries[0]
+    if not isinstance(first, dict) or not isinstance(first.get(ROUTE_LEGS_KEY), list):
+        return ""
+
+    parts = []
+    spent = _spent_words(_int_value(first.get(ROUTE_DURATION_KEY)))
+    if spent:
+        parts.append(spent)
+
+    transfers = _int_value(first.get(ROUTE_TRANSFERS_KEY))
+    if transfers is not None:
+        parts.append(
+            ROUTE_NO_TRANSFER if transfers == 0 else ROUTE_TRANSFERS.format(count=transfers)
+        )
+
+    modes = _mode_words(first[ROUTE_LEGS_KEY])
+    if modes:
+        parts.append(ROUTE_MODE_JOIN.join(modes))
+
+    if not parts:
+        return ""
+
+    if len(itineraries) > 1:
+        parts.append(ROUTE_CHOICES.format(count=len(itineraries)))
+
+    return NOTICE_JOIN.join(parts)
+
+
+def _spent_words(seconds: Optional[int]) -> str:
+    """걸리는 시간 한 마디. 초를 분으로 내림. 못 읽으면 "".
+
+    규칙  한 시간을 넘으면 시간과 분으로 나눔. 분이 0 이면 시간만 냄
+    """
+    if seconds is None or seconds < 0:
+        return ""
+
+    minutes = seconds // MINUTES_PER_HOUR
+    if minutes < MINUTES_PER_HOUR:
+        return ROUTE_MINUTES.format(minutes=minutes)
+
+    hours, rest = divmod(minutes, MINUTES_PER_HOUR)
+    if rest == 0:
+        return ROUTE_HOURS_SHARP.format(hours=hours)
+    return ROUTE_HOURS.format(hours=hours, minutes=rest)
+
+
+def _mode_words(legs: List[Any]) -> List[str]:
+    """구간마다의 이동 수단을 우리말로. 잇달아 같은 것은 한 번만.
+
+    규칙  ROUTE_MODE_WORDS 에 있는 값만 담음. 모르는 값은 그 구간을 뺌
+    제약  영어 enum 을 그대로 담지 않는다. 답에 영어가 섞인다
+    """
+    words: List[str] = []
+    for leg in legs:
+        if not isinstance(leg, dict):
+            continue
+        word = ROUTE_MODE_WORDS.get(leg.get(ROUTE_MODE_KEY))
+        if word and (not words or words[-1] != word):
+            words.append(word)
+    return words
 
 
 def _keys_line(result: Dict[str, Any]) -> str:

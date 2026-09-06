@@ -33,10 +33,10 @@ from app.ui.graph_svg.dot import (
     NODE_ATTRS_TOP,
     build_dot,
 )
-from app.ui.graph_svg.graphviz import _run_graphviz, layout_positions
+from app.ui.graph_svg import layout_store
+from app.ui.graph_svg.graphviz import _run_graphviz
 from app.ui.graph_svg.layout_store import (
     DRAW_SCALE,
-    NEATO_ATTRS,
     for_drawing,
     load,
 )
@@ -121,18 +121,36 @@ def test_no_two_nodes_touch(top):
     assert touching_pairs(boxes) == []
 
 
-def test_registering_a_node_does_not_make_it_touch():
-    """새로 놓인 노드도 붙으면 안 됨. 등록이 시연의 핵심 장면임."""
-    nodes, solid, dotted = domain_graph()
-    stored = load()
+def registered(tmp_path, monkeypatch, extra: list[str]) -> tuple:
+    """지금 지도에 노드를 차례로 등록해 본 결과.
 
-    nodes = {**nodes, "probe_new_node": {"name": "구조물 균열 추세 분석"}}
-    solid = list(solid) + [(solid[0][1], "probe_new_node")]
-    # 증분 배치는 저장된 좌표계에서 돈다. 배율은 그린 뒤에 곱한다.
-    grown = layout_positions(
-        build_dot(nodes, solid, dotted, positions=stored, spring=True,
-                  graph_attrs=NEATO_ATTRS)
-    )
+    입력  tmp_path · monkeypatch · 새로 등록할 노드 이름들
+    출력  (좌표, 노드, 실선, 점선)
+    규칙  등록이 실제로 지나는 길(ensure_positions)을 그대로 탐. 진짜 좌표
+          파일은 안 건드리고 tmp 로 옮겨 담아 「지금 지도에 하나 더」를 만듦
+    """
+    layout = tmp_path / "layout.json"
+    monkeypatch.setattr(layout_store, "LAYOUT_PATH", layout)
+    layout_store.save(load(), layout)
+
+    nodes, solid, dotted = domain_graph()
+    positions = None
+    for name in extra:
+        nodes = {**nodes, name: {"name": "구조물 균열 추세 분석"}}
+        solid = list(solid) + [(solid[0][1], name)]
+        positions = layout_store.ensure_positions(nodes, solid, dotted)
+    return positions, nodes, solid, dotted
+
+
+def test_registering_a_node_does_not_make_it_touch(tmp_path, monkeypatch):
+    """새로 놓인 노드도 붙으면 안 됨. 등록이 시연의 핵심 장면임.
+
+    ★ 등록이 실제로 지나는 길로 잼. 2026-09-06 까지는 그 길의 가운데 토막
+    (build_dot + layout_positions)만 흉내 냈는데, 겹치면 새 노드만 밖으로
+    미는 자리가 그 뒤에 생겨(layout_store.settled) 흉내가 등록을 대표하지
+    못하게 됐음. 흉내로 재면 그 자리를 통째로 못 봄.
+    """
+    grown, nodes, solid, dotted = registered(tmp_path, monkeypatch, ["probe_new_node"])
 
     boxes = node_boxes(
         drawn_dot(positions=grown, nodes=nodes, solid=solid, dotted=dotted)
@@ -140,6 +158,19 @@ def test_registering_a_node_does_not_make_it_touch():
 
     assert "probe_new_node" in boxes
     assert touching_pairs(boxes) == []
+
+
+def test_the_registered_node_never_moves_the_old_ones(tmp_path, monkeypatch):
+    """새 노드를 놓느라 기존 노드를 밀면 「지도가 리셋됐다」로 보임.
+
+    ★ 겹침 제거(overlap)를 안 쓰는 까닭이 이것임 — 그것은 고정을 무시하고
+    기존 노드를 388~710pt 씩 움직임(실측). 미는 것은 새 노드 하나뿐임.
+    """
+    before = load()
+
+    grown, _, _, _ = registered(tmp_path, monkeypatch, ["probe_new_node"])
+
+    assert all(grown[node_id] == tuple(point) for node_id, point in before.items())
 
 
 def test_a_smaller_scale_would_make_nodes_touch():
