@@ -157,7 +157,7 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
 }}
 
 /* ---------------------------------------------- 따라 보기 */
-/* 저쪽 답과 단계 줄은 등폭이라야 읽힌다. 도구 이름 칸을 ljust 로 맞춰 왔고
+/* 실행 답과 단계 줄은 등폭이라야 읽힌다. 도구 이름 칸을 ljust 로 맞춰 왔고
    비례폭으로 내면 그 정렬이 통째로 무너진다. */
 .st-key-follow_slot [data-testid="stCode"] {{ margin-bottom: 0.3rem; }}
 .st-key-follow_slot pre {{ padding: 0.45rem 0.55rem; }}

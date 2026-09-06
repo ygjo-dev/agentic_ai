@@ -12,8 +12,7 @@
     python dev/tools/check_resolve.py --only 2          고친 발화만 다시
     python dev/tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
     python dev/tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
-    python dev/tools/check_resolve.py --context none    지도 문맥 없이. 「마흔여섯째」 이전과 같은 조건
-    python dev/tools/check_resolve.py --context bbox    우클릭 전 (보이는 범위만). 「쉰다섯째」까지의 기본
+    python dev/tools/check_resolve.py --context bbox    실행에 실을 문맥을 우클릭 전 모양으로
     python dev/tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
 
 ## 두 가지를 잰다 — 경로와 실행
@@ -25,7 +24,7 @@
 "찾지 못했습니다" 였다 — 고른 recipe 는 맞고 그것을 부른 결과가 0건이었다.
 경로만 재는 표는 그 자리를 「다 잘 된다」로 읽는다.
 
-**실행 칸을 관문으로 삼지 않는다.** 저쪽 데이터가 늘면 건수가 바뀌고 Gateway 가
+**실행 칸을 관문으로 삼지 않는다.** Gateway 쪽 데이터가 늘면 건수가 바뀌고 Gateway 가
 꺼지면 전부 실패한다. 적중 판정은 이 칸을 안 본다. 자세한 것은 「실행」 절의
 주석에 있다.
 
@@ -39,31 +38,30 @@
 자리에 좁히기 표가 한 장 더 있었다. 그 성적표는 NOTES.md 「마흔한째」·「마흔두째」
 에 남아 있고, 코드는 태그 `had-narrow-path` 에 있다.
 
-## 「지도 문맥」 옵션 — 기본이 「둘 다」다
+## 「지도 문맥」 옵션 — `--execute` 에만 걸린다
 
-`--context` 는 /resolve 본문에 저쪽 화면이 보내는 지도 문맥을 실어 보낸다.
-값은 `app/ui/config.py` 의 고정값이고 거기 근거가 적혀 있다 (오송역 반경 15km).
+**경로 판정에는 안 걸린다.** recipe 선택은 발화와 menu 만 보므로 /resolve 는
+문맥을 안 받는다. `--context` 가 실리는 곳은 `--execute` 의 /chat/stream 뿐이고,
+배선이 실제로 `$context` 를 읽는 recipe 는 값이 있어야 실행된다.
 
-    none   안 보낸다. 화면 시작 데이터 둘이 죽는다 — 「마흔여섯째」 이전과 같은 조건
-    bbox   보이는 범위만. 저쪽 평상시(우클릭 전)와 같은 모양. 「쉰다섯째」까지의 기본
-    both   보이는 범위 + 찍은 지점. **기본값이다.** 저쪽에서 우클릭을 한 뒤와 같은 모양
+    none   안 보낸다. 화면 문맥을 읽는 recipe 는 실행 전에 막힌다
+    bbox   보이는 범위만. KRRI_ASAP 평상시(우클릭 전)와 같은 모양
+    both   보이는 범위 + 찍은 지점. **기본값이다.** 우클릭을 한 뒤와 같은 모양
 
-**2026-08-30 에 기본을 bbox 에서 both 로 바꿨다** (「쉰여섯째」). bbox 뿐이면
-**찍은 지점에서 출발하는 recipe 를 아예 못 잰다** — 값이 안 왔으므로
-resolve_service 가 후보에서 뺀다(`_without_dropped`). 정답표의 찍은 지점 일곱이
-그 자리라 기본이 bbox 면 일곱 줄이 처음부터 못 닿는 자리가 된다.
-
-**옛 기록과 맞대려면 `--context bbox` 를 적는다.** 「쉰다섯째」까지의 숫자는
-전부 bbox 로 잰 것이다.
+**옛 기록의 `--context` 값과 지금 값의 뜻이 다르다.** 「쉰다섯째」까지의 숫자는
+문맥이 후보를 거르던 때의 것이라 지금 판정과 같은 자로 견줄 수 없다.
 
 ## 세 묶음 — 스물아홉과 일곱과 아홉을 갈라 찍는다
 
 발화가 마흔다섯이다. **한 백분율로 합치지 않는다.**
 
-    말한 것 스물아홉   1~29번    발화만으로 닿는다. --context none 으로도 잴 수 있다
-    찍은 지점 일곱     30~36번   우클릭한 지점이 와야 닿는다. --context both 라야 잰다
-    보이는 범위 아홉   37~45번   보고 있는 화면이 와야 닿는다
-    합계               셋을 더한 값도 내지만 묶음 값이 그 위에 따로 보인다
+    말한 것        발화만으로 닿는다                     ~BASELINE_LAST
+    찍은 지점      실행에 우클릭한 지점이 있어야 닿는다   ~EXTENSION_LAST
+    보이는 범위    실행에 보고 있는 화면이 있어야 닿는다  그 위
+    합계           셋을 더한 값도 내지만 묶음 값이 그 위에 따로 보인다
+
+★ **경계값은 코드가 갖는다** (BASELINE_LAST · EXTENSION_LAST). 여기 숫자를
+다시 적으면 발화가 늘 때마다 두 곳이 어긋난다.
 
 ★ **2026-09-03 「아흔셋째」에 정답표를 통째로 갈고 묶음도 다시 갈랐다.**
 옛 셋(기준선 아홉 · 확장 스물둘 · 화면 다섯)은 「언제 만든 자인가」로 가른
@@ -141,7 +139,7 @@ resolve_service 가 후보에서 뺀다(`_without_dropped`). 정답표의 찍은
 
 5번(오송역 근처 충전소)이 그 자리였다 — 충전소 검색과 충전기 조회가 축 셋이
 같아 조회로는 못 갈렸고 후보가 늘 둘이었다. **2026-08-26 에 충전기 조회
-노드를 뺐다**(저쪽이 폐기 예정이라 적어 둔 `ev.searchChargers`). 이제 그
+노드를 뺐다**(Gateway 가 폐기 예정이라 적어 둔 `ev.searchChargers`). 이제 그
 자리의 조회 후보는 하나다. 축 셋이 같은 짝이 또 생기면 여기에 다시 적는다.
 
 ## ★ 축 · 조회 · 검산이 없어졌다 (2026-09-04) — 그 칸들을 2026-09-06 에 지웠다
@@ -191,10 +189,6 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-# 고정 지도 문맥은 화면이 갖는다. 이 도구가 같은 값을 다시 적으면 둘이 조용히
-# 어긋나고, 그러면 "시연과 같은 조건" 이라는 말이 거짓이 된다.
-from app.ui import config as ui_config  # noqa: E402
-
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
 # **기대값은 잠정이다.** 무엇이 정답인지는 표를 보고 사람이 정한다.
@@ -227,7 +221,7 @@ from app.ui import config as ui_config  # noqa: E402
 # 3 · 4 · 5 번이 그 뒤라 함께 움직였고 나머지 여섯은 017 이하라 그대로다.
 #
 # **세 번째로 옮겼다. 기대값은 이번에도 한 글자도 안 바꿨다**
-# (`search_ev_chargers` 빼기, 2026-08-26. 저쪽이 폐기 예정이라 적어 둔 도구다).
+# (`search_ev_chargers` 빼기, 2026-08-26. Gateway 가 폐기 예정이라 적어 둔 도구다).
 # 옛 013 · 033 · 040 · 045 가 사라지고 014 이후가 하나씩 · 둘씩 · 셋씩 당겨졌다.
 # 사라진 넷은 전부 충전기 조회를 거치는 사슬이라 아홉 발화에 하나도 없다.
 # 3 · 4 · 5 · 8 · 9 번이 그 뒤라 움직였고 1 · 2 · 6 · 7 번은 012 이하라 그대로다.
@@ -336,11 +330,10 @@ from app.ui import config as ui_config  # noqa: E402
 # 16 번만 말투를 고쳤고 기대값은 그대로다 (그 줄 위의 주석).
 #
 # **왜 늘렸나.** 화면 recipe 열아홉(018~032 · 053~056)이 정답표에 하나도
-# 없었다. 저쪽 화면에서 우클릭한 뒤에만 닿는 자리라 「말한 장소」로 재던
-# 서른하나로는 한 번도 안 지나갔다. 그중 **찍은 지점 아홉**은 문맥이
-# bbox 뿐이면 값이 안 와서 후보에서 빠져 아예 못 잰다
-# (resolve_service._without_dropped). 그래서 이 다섯을 넣으면서
-# 이 도구의 기본 문맥을 both 로 바꿨다 — 까닭은 CONTEXT 옆 주석에 있다.
+# 없었다. KRRI_ASAP 화면에서 우클릭한 뒤에만 실행되는 자리라 「말한 장소」로
+# 재던 서른하나로는 한 번도 안 지나갔다. 그때는 문맥이 후보까지 걸렀고,
+# 그래서 이 다섯을 넣으면서 이 도구의 기본 문맥을 both 로 바꿨다.
+# 지금 문맥은 실행에만 걸린다 — 까닭은 CONTEXT 옆 주석에 있다.
 #
 # **고른 법. 경로만 보고 발화를 만들지 않았다.** 셋을 다 지난 것만 넣었다.
 #
@@ -435,7 +428,7 @@ from app.ui import config as ui_config  # noqa: E402
 #   **필요 없어서가 아니라 지금 되는 발화부터 세우려고 미룬 것이다.**
 #
 # ★ **004 는 지우려다 되살렸다.** 나머지 열둘과 성격이 다르다 — 명령은 나가고
-#   배선도 온톨로지도 멀쩡하며 저쪽 화면이 안 받을 뿐이다. 게다가 지우면
+#   배선도 온톨로지도 멀쩡하며 KRRI_ASAP 화면이 안 받을 뿐이다. 게다가 지우면
 #   dev/tests/execution/test_command_step.py 의 시험 넷이 「도구를 안 부르는
 #   실행 경로」를 아무것도 안 지키게 된다 (그 파일이 사슬
 #   ["spoken_place", "show_facility"] 로 recipe 를 찾는데 004 가 유일하다).
@@ -459,7 +452,7 @@ from app.ui import config as ui_config  # noqa: E402
 #   ★ **딱 하나 예외가 4번의 「오송 테스트트랙 교량」이다.** 확인한 것이 아니라
 #   **확인할 데가 없다** — 004 는 MCP 도구를 안 부르므로(TOOL_OF 에 command 만
 #   있다) 맞대 볼 inputSchema 가 아예 없고, 시설물명을 실제 이름으로 바꾸는
-#   「Facility Aliases」 표는 저쪽 skill.md 에 있어 우리가 안 베꼈다
+#   「Facility Aliases」 표는 KRRI_ASAP 의 skill.md 에 있어 우리가 안 베꼈다
 #   (「마흔아홉째」). 위 표 4번에 있던 줄을 글자 그대로 가져왔다.
 #
 # ★ **묶음 셋의 뜻은 「아흔셋째」 그대로 시작 데이터다. 경계값만 옮겼다** —
@@ -511,7 +504,7 @@ UTTERANCES = [
     (3, "천안역에 무슨 노선 다녀", {"recipe_003"}, True),  # 청주역은 0건이라 천안역(26건)으로 쓴다
     # ★ 도구가 아니라 화면 명령(digitalTwin.showFacility)이다. 그래서 이 발화의
     # 「오송 테스트트랙 교량」은 **되는 이름인지 확인할 데가 없다** — 맞대 볼
-    # inputSchema 가 없고 시설물명 alias 표는 저쪽 화면 것이다. 지어낸 것이
+    # inputSchema 가 없고 시설물명 alias 표는 KRRI_ASAP 화면 것이다. 지어낸 것이
     # 아니라 확인이 불가능한 자리다
     (4, "오송 테스트트랙 교량 화면에 띄워줘", {"recipe_004"}, True),
     # 함께 걸림 033 · 024. 033 과 갈리는 근거는 「논산이 행정구역 이름이다」
@@ -787,25 +780,23 @@ INIT_RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "_init" / "recipes"
 
 UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번호로 알아본다.
 
-# 지도 문맥 스위치. --context 가 정한다. **기본은 "both".** main() 만 바꾼다.
+# 실행에 실어 보내는 지도 문맥 스위치. --context 가 정한다. 기본은 "both".
 #
-# 고정값은 여기서 다시 적지 않는다. 화면이 보내는 것과 한 글자도 달라지면
-# 표가 시연을 못 말하므로 출처를 하나로 둔다 — app/ui/config.py 다.
+# **고르는 데는 안 쓰인다.** recipe 선택은 발화와 menu 만 보므로 /resolve 는
+# 문맥을 안 받는다. 이 값이 걸리는 곳은 `--execute` 의 /chat/stream 하나이고,
+# 거기서는 배선이 실제로 $context 를 읽는 recipe 가 있어 값이 있어야 돈다.
 #
-# **2026-08-30 에 기본을 bbox 에서 both 로 바꿨다** (「쉰여섯째」). 까닭은
-# 하나다 — bbox 뿐이면 **찍은 지점에서 출발하는 recipe 를 아예 못 잰다.**
-# 값이 안 왔으므로 resolve_service 가 후보에서 뺀다(_without_dropped).
-# 정답표의 찍은 지점 일곱이 그 자리라 기본이 bbox 면 일곱 줄이 처음부터
-# 못 닿는 자리가 된다.
-#
-# **저쪽 화면에서 우클릭한 뒤와 같은 조건이다.** 우클릭 전을 재려면
-# `--context bbox` 를 적는다. 옛 기록(「쉰다섯째」까지)은 bbox 로 잰 것이라
-# 그 숫자와 맞대려면 그 옵션을 적어야 한다.
+# 기본이 both 인 것은 KRRI_ASAP 화면에서 우클릭한 뒤와 같은 조건이기 때문이다.
+# 우클릭 전을 재려면 `--context bbox`, 아예 안 보내려면 `--context none`.
 CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = "none", "bbox", "both"
 CONTEXT = CONTEXT_BOTH
 
-# --context both 일 때 얹는 찍은 지점. 오송역이고 bbox 의 중심과 같은 좌표다.
-# label 과 source 는 저쪽 useChat 이 우클릭 뒤에 얹는 것과 같은 문자열이다.
+# 실행에 쓰는 지도 범위. 오송역(127.3277, 36.6200)에서 반경 15km 이고
+# step_service.RADIUS_METERS 로 만든 상자다. 시연이 오송·청주에서 돈다.
+VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
+
+# --context both 일 때 얹는 찍은 지점. bbox 의 중심과 같은 좌표다.
+# label 과 source 는 KRRI_ASAP 의 useChat 이 우클릭 뒤에 얹는 문자열과 같다.
 PICKED_POINT = {
     "lon": 127.3277,
     "lat": 36.6200,
@@ -815,16 +806,16 @@ PICKED_POINT = {
 
 
 def _context_payload() -> dict | None:
-    """이번 측정에서 /resolve 본문에 실을 지도 문맥.
+    """이번 측정에서 /chat/stream 본문에 실을 지도 문맥.
 
     출력  문맥 dict. --context none 이면 None
-    규칙  bbox 는 화면과 같은 고정값을 씀. 여기서 좌표를 적지 않음
-          both 는 그 위에 찍은 지점을 얹음. 저쪽 우클릭 뒤와 같은 모양
+    규칙  bbox 만 있는 것이 우클릭 전 모양임. selectedLocation 은 null
+          both 는 그 위에 찍은 지점을 얹음
     """
     if CONTEXT == CONTEXT_NONE:
         return None
 
-    context = ui_config.map_context()
+    context = {"view": {"bbox": VIEW_BBOX}, "selectedLocation": None}
     if CONTEXT == CONTEXT_BOTH:
         context = {**context, "selectedLocation": dict(PICKED_POINT)}
     return context
@@ -902,39 +893,18 @@ def _tally(result: dict) -> tuple:
     return llm_count, result.get("status") or "-"
 
 
-def _alone(result: dict):
-    """검산을 거치기 전에 LLM 이 쓴 후보 집합.
-
-    입력  /resolve 응답
-    출력  frozenset. 아무것도 안 썼으면 None
-    규칙  llm_recipe_id 가 있으면 그 하나. **status 가 SELECT 가 아니어도
-          recipe_id 는 오므로 그것을 봄**
-          비어 있으면 llm_candidate_recipe_ids 를 봄
-          둘 다 없으면 None. 표에서 「없음」 으로 셈
-    제약  recipe_id · candidate_recipe_ids 를 보지 않는다.
-          그 둘은 문맥 거르개(_without_dropped)를 지난 값이라 LLM 이 쓴 것이 아님
-    """
-    chosen = result.get("llm_recipe_id")
-    if chosen:
-        return frozenset({chosen})
-    spoken = result.get("llm_candidate_recipe_ids") or []
-    return frozenset(spoken) if spoken else None
-
-
 def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, status, 축 넷, 후보 수와 조회 후보 집합, LLM 단독 후보 집합,
-           시간 칸). 후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
+    출력  (후보 집합, status, 인자, 후보 수와 조회 후보 집합, 시간 칸).
+          후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
           시간 칸은 이 도구가 잰 /resolve 한 번의 시간(elapsed) 하나뿐인 dict
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
-          지도 문맥은 본문으로 실어 보냄. --context none 이면 안 보냄 —
-          그때 요청은 이 옵션을 만들기 전과 한 글자도 같음
+          지도 문맥을 안 보냄. 고르는 것은 LLM 뿐이라 /resolve 가 안 받음
           status 를 후보와 함께 냄. 적중 표가 근접·빗나감을 가르는 데 씀 —
           후보 집합만으로는 CLARIFY 와 SELECT 가 안 갈림
-          LLM 단독 후보는 같은 응답에서 읽음. 부르는 횟수가 안 늘어남
     """
     params = {"utterance": utterance}
     if model:
@@ -945,7 +915,6 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
         response = requests.post(
             f"{BASE_URL}/resolve",
             params=params,
-            json=_context_payload(),
             timeout=TIMEOUT,
         )
     except requests.exceptions.ConnectionError as exc:
@@ -960,7 +929,6 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
         result.get("status") or "-",
         _argument_of(result),
         _tally(result),
-        _alone(result),
         {"elapsed": elapsed},
     )
 
@@ -969,7 +937,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
 
 
 def _measure(
-    entries, runs: int, outcomes: dict, axes: dict, tallies: dict, alones: dict,
+    entries, runs: int, outcomes: dict, axes: dict, tallies: dict,
     model: str | None = None, times: dict | None = None,
 ) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
@@ -980,13 +948,9 @@ def _measure(
           적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
           axes[번호] 에 나온 argument 의 Counter 를 쌓음
           tallies[번호] 에 나온 (LLM 후보 수, status) 의 Counter 를 쌓음
-          alones[번호] 에 나온 (LLM 단독 후보, 최종 후보, status) 의 Counter 를 쌓음.
-          **outcomes 와 따로 둠.** 한 Counter 에 합치면 적중 표의 "틀렸을 때
-          나온 것" 줄이 LLM 단독 값에 따라 더 쪼개져 표 모양이 바뀜.
-          숫자는 안 바뀌지만 예전 표와 눈으로 못 맞대게 됨
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
-          오류도 결과의 하나로 Counter 에 남김. 그때 인자와 후보 수와 LLM 단독은
+          오류도 결과의 하나로 Counter 에 남김. 그때 인자와 후보 수는
           안 쌓음. 응답이 없음
           times[번호] 에 회차마다 시간 칸(dict)을 목록으로 쌓음. 시간 줄이 씀
     제약  결과를 돌려주지 않는다.
@@ -997,23 +961,20 @@ def _measure(
         counter = Counter()
         axis_counter = Counter()
         tally_counter = Counter()
-        alone_counter = Counter()
         time_rows = []
         outcomes[number] = counter
         axes[number] = axis_counter
         tallies[number] = tally_counter
-        alones[number] = alone_counter
         if times is not None:
             times[number] = time_rows
         sys.stdout.write(f"  {number} ")
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                found, status, axis, tally, alone, timing = _call_resolve(utterance, model)
+                found, status, axis, tally, timing = _call_resolve(utterance, model)
                 counter[(found, status)] += 1
                 axis_counter[axis] += 1
                 tally_counter[tally] += 1
-                alone_counter[(alone, found, status)] += 1
                 time_rows.append(timing)
                 sys.stdout.write(".")
             except ServerDown:
@@ -1038,13 +999,13 @@ def _measure(
 #   정답(기대값)  "이 발화는 이 recipe 로 가야 한다"   사람이 정한 것. 안 바뀜
 #   실행 칸       "그 recipe 가 답을 내놓는다"          관찰한 사실. 날짜와 함께
 #
-# **실행 칸을 관문으로 삼지 않는다.** 저쪽 데이터가 늘면 건수가 바뀌고
+# **실행 칸을 관문으로 삼지 않는다.** Gateway 쪽 데이터가 늘면 건수가 바뀌고
 # Gateway 가 꺼지면 전부 실패한다. 적중 판정은 이 칸을 안 본다 — 네 칸과
 # 그 합계는 --execute 를 붙이기 전과 같은 숫자가 나와야 한다.
 #
-# ## 무엇을 부르나 — 저쪽 화면과 같은 길
+# ## 무엇을 부르나 — KRRI_ASAP 화면과 같은 길
 #
-# POST /chat/stream 이다. **저쪽 화면이 부르는 바로 그 길이다.** 해석부터 도구
+# POST /chat/stream 이다. **KRRI_ASAP 화면이 부르는 바로 그 길이다.** 해석부터 도구
 # 호출까지 한 번에 지난다. 그다음 GET /recent 로 그 회차를 읽는다. 회차에
 # status · recipe_id · candidate_recipe_ids · 단계 줄 · 답 문구가 다 들어 있어
 # 무엇이 불렸고 무엇이 돌아왔는지를 응답 본문을 다시 파싱하지 않고 읽는다.
@@ -1072,11 +1033,11 @@ def _measure(
 #   ✗  기대 recipe 가 돌았는데 답이 안 나왔다. 0건 · not_found · 권한 · 인자 · 배선
 #   ?  기대 recipe 를 아예 안 지났다. 해석이 다른 데로 갔다
 #
-# **왜 그런지를 한 줄로 함께 적는다.** ✗ 만 있으면 저쪽 데이터가 없는 것인지
+# **왜 그런지를 한 줄로 함께 적는다.** ✗ 만 있으면 Gateway 쪽 데이터가 없는 것인지
 # 우리 인자가 틀린 것인지 권한이 없는 것인지를 못 가른다. 그 셋은 할 일이
 # 전혀 다르다.
 
-# 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 저쪽
+# 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 그쪽
 # 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
 # 표는 ✓ 로 찍히는 식이다.
 from execution.execute_service import (  # noqa: E402
@@ -1100,7 +1061,7 @@ UNWIRED_TAIL = UNWIRED_ANSWER.split("{names}")[-1]
 #
 # **응답이 status 로 "없다" 고 말한 것은 그 status 이름을 그대로 쓴다**
 # (not_found · empty). 셋의 뜻이 다르고 할 일도 다르다 — 0건은 낱말을 바꾸면
-# 되고, not_found 는 데이터에 있는 이름을 그대로 대야 하고, empty 는 저쪽에
+# 되고, not_found 는 데이터에 있는 이름을 그대로 대야 하고, empty 는 Gateway 에
 # 데이터가 아예 안 실린 것이라 우리가 할 일이 없다. 이름은 MISSING_STATUS 에서
 # 온다. 여기서 다시 적지 않는다.
 WHY_EMPTY = "0건"
@@ -1142,13 +1103,13 @@ def _chat_turn(text: str, since: int) -> tuple:
     출력  (회차 dict, 새 회차 번호). 회차가 안 남았으면 (None, 그대로)
     규칙  흐름을 끝까지 받고 버림. **SSE 를 파싱하지 않음** — 읽을 것은 전부
           GET /recent 의 회차에 있고(status · 후보 · 단계 줄 · 답), 여기서
-          이벤트를 다시 해석하면 저쪽 화면과 다른 자를 갖게 됨.
+          이벤트를 다시 해석하면 KRRI_ASAP 화면과 다른 자를 갖게 됨.
           끝까지 받는 것은 필요함 — 흐름이 끝나야 회차가 남는다
           (recent_service.watched 의 finally)
     제약  서버에 못 닿으면 ServerDown 을 올린다.
           측정과 같은 처신임. 재시도하지 않음
     이력  2026-09-06 까지는 평범한 POST /chat 을 썼음. 그 창구를 지우면서
-          저쪽 화면과 같은 길로 옮겼음 — 그 전에도 같은 흐름이었지만
+          KRRI_ASAP 화면과 같은 길로 옮겼음 — 그 전에도 같은 흐름이었지만
           「같은 흐름을 쓴다」는 것을 사람이 알고 있어야 성립하던 자리였다
     """
     try:
@@ -1293,7 +1254,6 @@ HIT, NEAR, MISS, UNATTACHED = "적중", "근접", "빗나감", "못 붙음"
 # 다섯째 칸. 검산을 거치기 전에 LLM 이 쓴 것만으로 잰 적중이다. **네 칸과 더하지
 # 않는다** — 같은 시행을 다른 눈으로 본 것이라 합이 시행 횟수가 되지 않는다.
 # 읽는 법은 파일 맨 위 주석에 있다.
-ALONE = "LLM 단독"
 
 # 칸 폭. 머리글보다 좁으면 표가 어긋난다 ("못 붙음" 이 폭 7).
 NEAR_WIDTH = 8
@@ -1324,46 +1284,24 @@ def _grade(result, status: str, expected: set) -> str:
     return MISS
 
 
-def _alone_hits(alone_counter, expected: set) -> tuple:
-    """LLM 단독 적중 수.
-
-    입력  alones[번호] Counter · 기대 recipe 집합
-    출력  (적중 수, 잰 횟수, LLM 이 아무것도 안 쓴 횟수)
-    규칙  적중 판정은 최종과 같은 모양임 — set(후보) == 기대값.
-          최종은 검산을 지난 후보를 보고 여기는 LLM 이 쓴 후보를 봄.
-          그 차이만이 두 칸의 차이임
-          잰 횟수는 오류를 뺀 것임. 오류 회차는 alone_counter 에 안 쌓임
-    """
-    hits = done = missing = 0
-    for (alone, _found, _status), count in (alone_counter or {}).items():
-        done += count
-        if alone is None:
-            missing += count
-        elif set(alone) == expected:
-            hits += count
-    return hits, done, missing
-
-
 # 표시 칸의 폭. 머리글("표시" 폭 4)보다 좁으면 표가 어긋난다.
 MARK_WIDTH = 6
 
 
-def _print_rows(entries, outcomes: dict, alones: dict, widths: tuple) -> tuple:
+def _print_rows(entries, outcomes: dict, widths: tuple) -> tuple:
     """한 묶음의 발화 줄을 찍고 그 묶음의 합을 돌려줌.
 
-    입력  그 묶음의 발화 목록 · outcomes · alones · 칸 폭 묶음
-    출력  (네 칸 Counter, 시행 횟수, LLM 단독 (적중, 잰 횟수, 안 쓴 횟수),
-           완전 적중이 아닌 번호 목록)
+    입력  그 묶음의 발화 목록 · outcomes · 칸 폭 묶음
+    출력  (네 칸 Counter, 시행 횟수, 완전 적중이 아닌 번호 목록)
     규칙  줄을 찍는 법은 묶음을 가르기 전과 글자까지 같음.
           **판정은 표시 칸을 안 봄** — 표시는 사람이 읽으라고 적는 칸이고
           _grade 는 예전 그대로 후보 집합과 status 만 봄
     제약  합계 줄은 안 찍는다. 부르는 쪽이 묶음마다 찍음
     """
-    alone_width, hit_width, detail_column = widths
+    hit_width, detail_column = widths
 
     total = Counter()
     total_runs = 0
-    alone_total = alone_measured = alone_missing = 0
     imperfect = []
 
     for number, utterance, expected, _default in entries:
@@ -1375,11 +1313,6 @@ def _print_rows(entries, outcomes: dict, alones: dict, widths: tuple) -> tuple:
         graded = Counter()
         for (result, status), count in counter.items():
             graded[_grade(result, status, expected)] += count
-
-        alone_hits, alone_done, missing = _alone_hits(alones.get(number), expected)
-        alone_total += alone_hits
-        alone_measured += alone_done
-        alone_missing += missing
 
         hits = graded[HIT]
         total.update(graded)
@@ -1404,7 +1337,6 @@ def _print_rows(entries, outcomes: dict, alones: dict, widths: tuple) -> tuple:
             + _pad(str(number), 3)
             + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
             + _pad(_mark(number), MARK_WIDTH)
-            + _pad(f"{alone_hits}/{alone_done}" if alone_done else "-", alone_width)
             + _pad(f"{hits}/{done}", hit_width)
             + _pad(str(graded[NEAR]), NEAR_WIDTH)
             + _pad(str(graded[MISS]), MISS_WIDTH)
@@ -1425,27 +1357,24 @@ def _print_rows(entries, outcomes: dict, alones: dict, widths: tuple) -> tuple:
                 + f"{count}회"
             )
 
-    return total, total_runs, (alone_total, alone_measured, alone_missing), imperfect
+    return total, total_runs, imperfect
 
 
-def _print_sum(label: str, total, total_runs: int, alone: tuple, widths: tuple) -> None:
+def _print_sum(label: str, total, total_runs: int, widths: tuple) -> None:
     """한 줄짜리 합. 묶음마다 한 번, 맨 아래 합계에 한 번 쓴다.
 
-    입력  줄 끝에 적을 이름 · 네 칸 Counter · 시행 횟수 · LLM 단독 셋 · 칸 폭
+    입력  줄 끝에 적을 이름 · 네 칸 Counter · 시행 횟수 · 칸 폭
     규칙  적중 백분율 뒤에 이름을 붙임. **이름이 붙어야 어느 묶음의 값인지
           읽힌다** — 백분율 셋이 세로로 놓이면 어느 것이 아홉인지 못 가름
     """
-    alone_width, hit_width, hit_column = widths
-    grade_width = alone_width + hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
-    alone_total, alone_measured, alone_missing = alone
+    hit_width, hit_column = widths
+    grade_width = hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
 
     percent = round(100 * total[HIT] / total_runs) if total_runs else 0
-    alone_percent = round(100 * alone_total / alone_measured) if alone_measured else 0
 
     print(" " * hit_column + "─" * grade_width)
     print(
         " " * hit_column
-        + _pad(f"{alone_total}/{alone_measured}" if alone_measured else "-", alone_width)
         + _pad(f"{total[HIT]}/{total_runs}", hit_width)
         + _pad(str(total[NEAR]), NEAR_WIDTH)
         + _pad(str(total[MISS]), MISS_WIDTH)
@@ -1453,29 +1382,21 @@ def _print_sum(label: str, total, total_runs: int, alone: tuple, widths: tuple) 
         + _pad(f"{percent}%", 7)
         + f"← {label}"
     )
-    if alone_measured:
-        print(
-            " " * hit_column
-            + _pad(f"{alone_percent}%", alone_width)
-            + f"← {ALONE}"
-            + (f" · LLM 이 아무것도 안 쓴 것 {alone_missing}회" if alone_missing else "")
-        )
 
 
-def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
+def _print_table(entries, outcomes: dict, runs: int) -> None:
     """적중 표. **두 묶음을 갈라 찍는다.**
 
-    입력  발화 목록 · outcomes · alones · 반복 횟수
+    입력  발화 목록 · outcomes · 반복 횟수
     규칙  기준선 아홉과 확장 열아홉의 점수를 따로 냄. 합계 한 줄도 내지만
           아홉의 값이 그 위에 따로 보임. 둘을 한 백분율로 합치지 않음 —
           왜인지는 BASELINE_LAST 옆 주석에 있음
           한 묶음만 돌았으면(--only) 합계 줄은 안 찍음. 같은 값이 두 번 나옴
     """
-    # 표의 "LLM 단독" 칸이 시작하는 자리. 표시 칸이 들어와 MARK_WIDTH 만큼 밀렸다.
+    # 표의 적중 칸이 시작하는 자리. 표시 칸이 들어와 MARK_WIDTH 만큼 밀렸다.
     hit_column = 2 + 3 + UTTERANCE_WIDTH + 4 + MARK_WIDTH
     hit_width = len(f"{runs}/{runs}") + 4
-    alone_width = max(hit_width, _width(ALONE) + 3)
-    grade_width = alone_width + hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
+    grade_width = hit_width + NEAR_WIDTH + MISS_WIDTH + UNATTACHED_WIDTH
     detail_column = hit_column + grade_width  # "틀렸을 때 나온 것" 칸이 시작하는 자리.
 
     print()
@@ -1484,7 +1405,6 @@ def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
         + _pad("#", 3)
         + _pad("발화", UTTERANCE_WIDTH + 4)
         + _pad("표시", MARK_WIDTH)
-        + _pad(ALONE, alone_width)
         + _pad(HIT, hit_width)
         + _pad(NEAR, NEAR_WIDTH)
         + _pad(MISS, MISS_WIDTH)
@@ -1495,26 +1415,22 @@ def _print_table(entries, outcomes: dict, alones: dict, runs: int) -> None:
     groups = _groups(entries)
     grand = Counter()
     grand_runs = 0
-    grand_alone = [0, 0, 0]
     imperfect = []
 
     for label, group in groups:
-        total, total_runs, alone, group_imperfect = _print_rows(
-            group, outcomes, alones, (alone_width, hit_width, detail_column)
+        total, total_runs, group_imperfect = _print_rows(
+            group, outcomes, (hit_width, detail_column)
         )
         if total_runs == 0:  # 그 묶음이 아직 한 번도 안 돌았다
             continue
-        _print_sum(label, total, total_runs, alone, (alone_width, hit_width, hit_column))
+        _print_sum(label, total, total_runs, (hit_width, hit_column))
         grand.update(total)
         grand_runs += total_runs
-        grand_alone = [a + b for a, b in zip(grand_alone, alone)]
         imperfect += group_imperfect
 
     if len(groups) > 1 and grand_runs:
         print()
-        _print_sum(
-            "합계", grand, grand_runs, tuple(grand_alone), (alone_width, hit_width, hit_column)
-        )
+        _print_sum("합계", grand, grand_runs, (hit_width, hit_column))
 
     # 넷을 더하면 시행 횟수여야 한다. 아니면 _grade 에 구멍이 난 것이다.
     counted = grand[HIT] + grand[NEAR] + grand[MISS] + grand[UNATTACHED]
@@ -1627,105 +1543,6 @@ def _print_candidates(entries, tallies: dict) -> None:
             )
 
 
-# 검산 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
-# LLM 이 CLARIFY 로 아홉 개를 늘어놓는 발화가 있다(6번). 그것이 한 줄에 들어가야
-# 무엇을 골랐는지 보인다 — 잘라 놓으면 검산이 무엇을 걷어냈는지 못 읽는다.
-ALONE_SET_WIDTH = 48
-FINAL_SET_WIDTH = 24
-CHANGE_WIDTH = 22
-
-# 검산이 답을 바꾼 자리의 세 갈래. 파일 맨 위 주석의 세 갈래와 짝이다.
-COVERED = "★ 맞는 답을 덮었다"
-RESCUED = "검산이 살렸다"
-NEUTRAL = "바꿨지만 판정은 같다"
-
-
-def _print_verdict_changes(entries, alones: dict) -> None:
-    """LLM 이 쓴 것과 최종 후보가 갈린 자리 전부.
-
-    입력  발화 목록 · {번호: (LLM 단독 후보, 최종 후보, status) Counter}
-    규칙  후보 집합이 달라진 회차만 찍음. 같으면 갈린 일이 없음
-          바꾼 것이 좋게였는지 나쁘게였는지를 기대값으로 가름
-          LLM 이 아무것도 안 쓴 회차(단독이 None)도 바뀐 것으로 셈
-    제약  무엇이 맞는 배선인지 정하지 않는다. 바뀐 자리를 늘어놓을 뿐임
-    이력  2026-08-24 에 검산이 답을 바꾼 자리를 보려고 더함.
-          ★ 2026-09-04 에 검산을 걷어 지금 가르는 것은 문맥 거르개
-          (resolve_service._without_dropped)뿐임. --context both 면 뺄 것이
-          없어 이 표가 빈 채로 나옴
-    """
-    rows_by_number = {}
-    for number, _utterance, expected, _default in entries:
-        counter = alones.get(number)
-        if not counter:
-            continue
-        rows = []
-        for (alone, found, status), count in counter.items():
-            if alone is not None and set(alone) == set(found):
-                continue  # 검산이 한 일이 없다
-            alone_hit = alone is not None and set(alone) == expected
-            final_hit = _grade(found, status, expected) == HIT
-            if alone_hit and not final_hit:
-                change = COVERED
-            elif final_hit and not alone_hit:
-                change = RESCUED
-            else:
-                change = NEUTRAL
-            rows.append((alone, found, status, change, count))
-        if rows:
-            rows_by_number[number] = sorted(rows, key=lambda row: -row[4])
-
-    print()
-    if not rows_by_number:
-        print("  검산이 답을 바꾼 자리 : 없다 — LLM 단독과 최종이 회차마다 같았다")
-        return
-
-    print(
-        "  "
-        + _pad("#", 3)
-        + _pad("발화", UTTERANCE_WIDTH + 4)
-        + _pad(ALONE, ALONE_SET_WIDTH)
-        + _pad("최종", FINAL_SET_WIDTH)
-        + _pad("status", STATUS_WIDTH)
-        + _pad("검산이 한 일", CHANGE_WIDTH)
-        + "횟수"
-    )
-
-    tally = Counter()
-    for number, utterance, _expected, _default in entries:
-        rows = rows_by_number.get(number)
-        if not rows:
-            continue
-        head = (
-            "  "
-            + _pad(str(number), 3)
-            + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
-        )
-        for index, (alone, found, status, change, count) in enumerate(rows):
-            tally[change] += count
-            prefix = head if index == 0 else " " * _width(head)
-            print(
-                prefix
-                + _pad(
-                    "없음" if alone is None else _clip(_short(alone), ALONE_SET_WIDTH - 2),
-                    ALONE_SET_WIDTH,
-                )
-                + _pad(_clip(_short(found), FINAL_SET_WIDTH - 2), FINAL_SET_WIDTH)
-                + _pad(status, STATUS_WIDTH)
-                + _pad(change, CHANGE_WIDTH)
-                + f"{count}회"
-            )
-
-    print()
-    print(
-        "  검산이 바꾼 회차 "
-        + " · ".join(
-            f"{label} {tally[label]}회" for label in (RESCUED, COVERED, NEUTRAL) if tally[label]
-        )
-    )
-    if tally[COVERED]:
-        print("  ★ 맞는 답을 덮은 자리가 있다 — 문맥 거르개가 무엇을 뺐는지 본다")
-
-
 # ── 시간 ────────────────────────────────────────────────────────────
 #
 # /resolve 한 번이 몇 초인가. 뜻은 파일 맨 위 주석에 있다.
@@ -1768,7 +1585,7 @@ def _print_execution(entries, executions: dict, measured_on: str) -> None:
     입력  발화 목록 · executions · 잰 날짜 문자열
     규칙  묶음을 갈라 찍음. 적중 표와 같은 차례로 읽히게 하려는 것임
           묶음마다 ✓ 몇 · ✗ 몇 · ? 몇 을 셈. 백분율을 안 냄 — 관문이 아니고
-          저쪽 데이터가 늘면 바뀌는 값임
+          Gateway 쪽 데이터가 늘면 바뀌는 값임
           되묻기를 지나 고른 자리는 「왜」 칸에 밝힘. 곧장 실행된 자리와
           같은 것으로 읽히면 안 됨
     제약  적중 표의 숫자를 여기서 다시 내지 않는다.
@@ -1811,7 +1628,7 @@ def _print_execution(entries, executions: dict, measured_on: str) -> None:
         print()
 
     print("  ✓ 답이 나온다 · ✗ 기대 recipe 가 돌았는데 안 나온다 · ? 기대 recipe 를 안 지났다")
-    print("  ★ 실행 칸은 관문이 아니다. 저쪽 데이터가 늘면 바뀌고 Gateway 가 꺼지면 전부 실패한다")
+    print("  ★ 실행 칸은 관문이 아니다. Gateway 쪽 데이터가 늘면 바뀌고 Gateway 가 꺼지면 전부 실패한다")
 
 
 def _recipe_state() -> str:
@@ -1853,18 +1670,16 @@ def _selfcheck() -> None:
     time_row = {"elapsed": 1.0}
 
     def _fake(entries):
-        outcomes, axes, tallies, alones, times, executions = {}, {}, {}, {}, {}, {}
+        outcomes, axes, tallies, times, executions = {}, {}, {}, {}, {}
         for number, _u, expected, _d in entries:
             found = frozenset(expected)
             outcomes[number] = Counter({(found, "OK"): 1})
             axes[number] = Counter({argument: 1})
             # LLM 후보 수는 실제로 문자열이다 ("-" 또는 str(n))
             tallies[number] = Counter({("1", "OK"): 1})
-            # LLM 이 쓴 것과 최종이 갈린 회차 — _print_verdict_changes 가 볼 줄
-            alones[number] = Counter({(None, found, "OK"): 1})
             times[number] = [dict(time_row)]
             executions[number] = ("OK", "", picked)
-        return outcomes, axes, tallies, alones, times, executions
+        return outcomes, axes, tallies, times, executions
 
     groups = _groups(UTTERANCES)
     subsets = []
@@ -1873,12 +1688,11 @@ def _selfcheck() -> None:
 
     for subset in subsets:
         entries = [entry for _label, group in subset for entry in group]
-        outcomes, axes, tallies, alones, times, executions = _fake(entries)
+        outcomes, axes, tallies, times, executions = _fake(entries)
         with contextlib.redirect_stdout(io.StringIO()):
-            _print_table(entries, outcomes, alones, 1)
+            _print_table(entries, outcomes, 1)
             _print_arguments(entries, axes)
             _print_candidates(entries, tallies)
-            _print_verdict_changes(entries, alones)
             _print_times(entries, times)
             _print_execution(entries, executions, "1970-01-01")
 
@@ -1900,7 +1714,7 @@ def main() -> int:
         "--context",
         choices=(CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH),
         default=CONTEXT_BOTH,
-        help="지도 문맥을 얼마나 실을지. 기본은 both — 저쪽에서 우클릭한 뒤와 같다",
+        help="실행(--execute)에 실을 지도 문맥. 기본은 both — 우클릭한 뒤와 같다",
     )
     args = parser.parse_args()
 
@@ -1926,10 +1740,10 @@ def main() -> int:
     )
     print()
 
-    outcomes, axes, tallies, alones, times, note, status = {}, {}, {}, {}, {}, "", 0
+    outcomes, axes, tallies, times, note, status = {}, {}, {}, {}, "", 0
     executions = {}
     try:
-        _measure(entries, args.runs, outcomes, axes, tallies, alones, args.model, times)
+        _measure(entries, args.runs, outcomes, axes, tallies, args.model, times)
         if args.execute:
             print()
             print("  실행까지 부른다 (발화마다 한 번)")
@@ -1942,13 +1756,11 @@ def main() -> int:
         note = "(중단됨 — 여기까지의 결과)"
 
     if any(outcomes.values()):
-        _print_table(entries, outcomes, alones, args.runs)
+        _print_table(entries, outcomes, args.runs)
     if any(axes.values()):
         _print_arguments(entries, axes)
     if any(tallies.values()):
         _print_candidates(entries, tallies)
-    if any(alones.values()):
-        _print_verdict_changes(entries, alones)
     if any(times.values()):
         _print_times(entries, times)
     if executions:

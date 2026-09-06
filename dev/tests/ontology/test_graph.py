@@ -4,11 +4,15 @@
 말한다 — hasOutput 이 있으면 실행할 수 있고, about 의 대상으로 등장하면 대상
 (그룹)이고, 둘 다 아니면 오가는 데이터다.
 
-관계는 넷뿐이고 저마다 읽는 곳이 있다.
+지금 지원하는 관계는 넷이고 저마다 읽는 곳이 있다. 아는 목록은
+graph.SUPPORTED_PREDICATES 가 갖는다.
   is-a       경로 생성의 타입 매칭 (상위 타입만 적어도 하위 타입을 받는다)
-  about      대상(그룹) 판정 · 말이 안 되는 경로 차단 · 화면 점선
+  about      대상(그룹) 판정 · group 호환성 계산 · 화면 점선
   hasInput   경로 생성
   hasOutput  경로 생성 · 실행 가능 판정
+
+새 관계는 그것을 실제로 읽는 로직과 함께 더한다. 넷이라는 수 자체가
+불변식인 것은 아니다.
 
 화면의 선도 원천이 둘이다.
   실선 — recipe 에 실제로 이어져 있는 노드 쌍. "이렇게 실행할 수 있다"
@@ -24,9 +28,8 @@ import paths
 from ontology import store
 from ontology.graph import (
     ABOUT,
-    HAS_INPUT,
-    HAS_OUTPUT,
     IS_A,
+    SUPPORTED_PREDICATES,
     about_of,
     ancestors,
     can_connect,
@@ -66,9 +69,17 @@ def test_a_node_carries_only_a_name_and_a_description():
         assert set(node) == {"name", "description"}, node_id
         assert node["name"] and node["description"], node_id
 
-    # 관계는 넷뿐이다. 늘리려면 "읽어서 무엇을 하는가" 에 답할 수 있어야 한다.
+    # 파일에 적힌 관계는 전부 시스템이 지원한다고 선언한 것이어야 한다.
+    # 관계를 늘리는 것 자체는 막지 않는다 — 늘리려면 SUPPORTED_PREDICATES 에
+    # 이름을 더해야 하고, 그 자리가 곧 "읽어서 무엇을 하는가" 에 답하는 자리다.
     predicates = {edge["predicate"] for edge in ontology["edges"]}
-    assert predicates == {IS_A, ABOUT, HAS_INPUT, HAS_OUTPUT}, predicates
+    unsupported = predicates - set(SUPPORTED_PREDICATES)
+    assert not unsupported, f"읽는 곳이 없는 관계다: {sorted(unsupported)}"
+
+    # 반대쪽도 본다. 선언만 해 두고 쓰이지 않는 관계는 뜻을 잃는다 —
+    # "읽는 곳이 없어진 관계는 지운다" 가 이 자리다.
+    unused = set(SUPPORTED_PREDICATES) - predicates
+    assert not unused, f"선언했지만 온톨로지가 안 쓰는 관계다: {sorted(unused)}"
 
     # 관계의 양끝은 전부 실재해야 한다. 없는 노드를 가리키면 그 관계는
     # 파일에는 있는데 화면에도 경로에도 나타나지 않는다.
@@ -237,11 +248,6 @@ def test_a_recipe_becomes_an_ordered_path():
 
     부르는 순서가 남아야 하고, recipe 에 루프가 생겨 같은 엣지를 두 번 지날
     때 집합은 그것을 하나로 뭉개버림.
-
-    ★ 2026-09-06 까지는 `graph.highlight_edges` 가 이 인접 쌍을 만들어 줬다.
-    그것을 부르는 제품 코드가 0 이 되어 지웠다 — 그리는 쪽은
-    `app/ui/graph/focus.path_edges` 가 같은 일을 하고, 그쪽은 recipe 파일이
-    아니라 이미 펼친 경로(steps)를 받는다.
     """
     groups = set(group_ids())
     assert groups, "그룹이 없으면 아래 검사가 무력하다"
@@ -273,7 +279,7 @@ def test_a_path_that_crosses_subjects_is_blocked():
     조용히 사라지므로 양쪽을 다 못 박음.
 
     지금 온톨로지에는 대상이 둘 붙은 노드가 없어 교집합은 "둘이 같은 대상"
-    으로만 잼. 여럿 붙는 경우는 tests/ontology/test_registry.py 의
+    으로만 잼. 여럿 붙는 경우는 dev/tests/registration/test_registry.py 의
     test_several_subjects_all_become_dotted_lines 가 등록으로 만들어 잼.
     """
     assert crosses_groups(

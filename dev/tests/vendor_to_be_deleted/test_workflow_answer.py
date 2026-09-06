@@ -9,7 +9,13 @@
 문자열뿐이라 그 계층의 구조가 바뀌어도 따라다니지 않는다.
 """
 
-from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer, step_failed
+from vendor_to_be_deleted.asap import workflow_answer
+from vendor_to_be_deleted.asap.workflow_answer import (
+    NO_PERMISSION_REASON,
+    NOT_APPLIED,
+    compose_workflow_answer,
+    step_failed,
+)
 
 # asap_probe_out/geo.geocode.osong.json 실물.
 OSONG = {
@@ -225,7 +231,7 @@ def test_a_successful_trace_keeps_its_shape():
 
 
 def test_an_empty_result_carries_its_reason():
-    """0건이 우리 배선 탓인지 저쪽 데이터 탓인지가 화면에서 갈려야 함.
+    """0건이 우리 배선 탓인지 Gateway 쪽 데이터 탓인지가 화면에서 갈려야 함.
 
     실측 : adminBoundary.findBoundaryByPoint 가 0건과 함께 warning 을 실어 보냄.
     이유가 응답에 이미 있는데 답에는 "0건" 까지만 나왔음.
@@ -740,7 +746,7 @@ def test_runs_of_whitespace_in_body_text_collapse_to_one():
 
 
 def test_the_path_is_never_shown():
-    """metadata.file_path 는 저쪽 컨테이너의 /tmp 경로임. 사람이 볼 것이 아님."""
+    """metadata.file_path 는 Gateway 컨테이너의 /tmp 경로임. 사람이 볼 것이 아님."""
     answer = compose_workflow_answer(
         {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
     )
@@ -1223,7 +1229,7 @@ NEIGHBOURS = {
 def test_one_points_hierarchy_is_answered_with_the_narrowest_level():
     """한 지점에 계층 셋이 오면 도가 아니라 읍면동을 보여줘야 함.
 
-    실측 2026-09-05 : 사람이 저쪽 UI 에서 여덟 자리를 눌렀는데 "여기 어느 동이야"
+    실측 2026-09-05 : 사람이 KRRI_ASAP UI 에서 여덟 자리를 눌렀는데 "여기 어느 동이야"
     에 예외 없이 "충청남도" · "전북특별자치도" 같은 시도가 나갔음. 3건 중 첫째가
     시도라서임. 뒤 단계(getAgeProfile)는 옥천군 · 전주시 완산구로 맞게 갔으므로
     틀린 것은 답 문구뿐이었음.
@@ -1270,3 +1276,145 @@ def test_the_hierarchy_rule_reads_a_field_never_a_name():
     )
 
     assert "충청북도" in answer
+
+
+# ── 도달권 · 경로 : 도형을 말로 바꾼다 ──────────────────────────────
+#
+# **도형은 지도가 그린다.** 말로 낼 것은 어떻게 · 몇 분 · 얼마나 넓은가다.
+# geojson 과 polyline 을 문자열에 담으면 raw JSON 이 화면에 샌다.
+#
+# 이 둘은 execution 시험이 아니라 여기 있다 — 재는 것이 답 문구이고,
+# 도구 하나에만 붙는 특별 취급을 execution 쪽에 두지 않는다.
+
+# 의왕역 실측 좌표. probe_out/geo.geocode.query-의왕역-2026-08-27.json 의 값이다.
+UIWANG = (126.94821341201332, 37.32011340539614)
+
+# 오송역 → 조치원역 실측 응답의 뼈대. dev/tools/probe_out/otp_plan_trip.json 과
+# 같은 모양이고, 답 문구가 읽는 칸만 남겼다.
+LIVE_ROUTE = {
+    "ok": True,
+    "itinerary_count": 1,
+    "itineraries": [
+        {
+            "duration_sec": 1450,
+            "numberOfTransfers": 0,
+            "legs": [
+                {"mode": "WALK", "geometry_polyline": "sko~EsrchWEIf@m@"},
+                {"mode": "RAIL", "geometry_polyline": "qjo~EktchWbvBbeE"},
+                {"mode": "WALK", "geometry_polyline": "qcn}EugwhWDlAv@ED"},
+            ],
+        }
+    ],
+}
+
+
+def test_a_gateway_permission_refusal_comes_out_as_a_reason_not_a_crash():
+    """권한이 없는 것은 잠깐 터진 것과 다름. 사용자가 알아야 할 사실임.
+
+    Gateway 원문을 그대로 내보내지 않는다.
+    """
+    거부 = f"MCP tool 'r5-server/compute_isochrone' {NOT_APPLIED}."
+    trace = [{
+        "id": "s2",
+        "tool": "compute_isochrone",
+        "status": "error",
+        "error": "s2 단계 도구 호출 실패",
+        "error_detail": 거부,
+    }]
+
+    answer = compose_workflow_answer({"answer_instruction": "도달권을 계산했습니다."}, trace)
+
+    assert NO_PERMISSION_REASON in answer
+    assert NOT_APPLIED not in answer
+
+
+def test_the_isochrone_answer_says_how_far_and_never_carries_the_shape():
+    """features 를 문자열에 담으면 raw JSON 이 화면에 샌다 — geojson 이 새던 자리와 같음.
+
+    아래 응답 모양은 의왕역 실측이다.
+    """
+    trace = [{
+        "id": "s2",
+        "tool": "compute_isochrone",
+        "status": "success",
+        "input": {"origin_lon": UIWANG[0], "origin_lat": UIWANG[1]},
+        "result": {
+            "status": "success",
+            "origin": {"lon": UIWANG[0], "lat": UIWANG[1]},
+            "max_minutes": 30,
+            "cutoffs_minutes": [30],
+            "mode": "WALK",
+            "smoothing": "kde",
+            "reachable_cell_count": 140,
+            "elapsed_ms": 259,
+            "feature_collections": {
+                "polygons": {"type": "FeatureCollection", "features": [
+                    {"type": "Feature",
+                     "geometry": {"type": "MultiPolygon", "coordinates": [[[[126.943, 37.307]]]]},
+                     "properties": {"cutoff_min": 30}}]},
+                "lines": {"type": "FeatureCollection", "features": []},
+            },
+        },
+    }]
+
+    answer = compose_workflow_answer({"answer_instruction": "의왕역 도달권을 계산했습니다."}, trace)
+
+    assert "걸어서" in answer
+    assert "30분" in answer
+    assert "140" in answer
+    assert "MultiPolygon" not in answer
+    assert "coordinates" not in answer
+    assert "126.943" not in answer
+
+
+def test_an_unknown_travel_mode_drops_the_word_from_the_isochrone_answer():
+    """모르는 값이 오면 수단을 빼고 나머지만 냄. 영어를 그대로 안 내보냄."""
+    trace = [{
+        "id": "s1",
+        "tool": "compute_isochrone",
+        "status": "success",
+        "input": {},
+        "result": {
+            "mode": "SCOOTER",
+            "max_minutes": 15,
+            "reachable_cell_count": 7,
+            "feature_collections": {"polygons": {"type": "FeatureCollection", "features": []}},
+        },
+    }]
+
+    answer = compose_workflow_answer({"answer_instruction": "도달권을 계산했습니다."}, trace)
+
+    assert "SCOOTER" not in answer
+    assert "15분" in answer
+
+
+def test_the_route_summary_says_how_long_and_never_carries_the_shape():
+    """길은 지도가 그림. 말로 낼 것은 시간 · 갈아타기 · 무엇을 타는가 셋임."""
+    한마디 = workflow_answer.summarize({}, LIVE_ROUTE)
+
+    assert "24분 걸림" in 한마디
+    assert "갈아타지 않음" in 한마디
+    assert "도보 → 열차 → 도보" in 한마디
+    assert "sko~E" not in 한마디
+    assert "polyline" not in 한마디
+
+
+def test_an_unknown_leg_mode_is_dropped_from_the_route_summary():
+    """모르는 이동 수단이 오면 그 구간을 뺌. 답에 영어를 안 섞음."""
+    응답 = {
+        "itineraries": [
+            {"duration_sec": 600, "numberOfTransfers": 0,
+             "legs": [{"mode": "FUNICULAR"}, {"mode": "WALK"}]}
+        ]
+    }
+
+    한마디 = workflow_answer.summarize({}, 응답)
+
+    assert "FUNICULAR" not in 한마디
+    assert "도보" in 한마디
+
+
+def test_a_response_without_legs_is_not_read_as_a_route():
+    """itineraries 라는 이름만 보고 경로로 읽으면 딴 도구의 답을 잘못 요약함."""
+    assert workflow_answer._route_line({"itineraries": [{"duration_sec": 60}]}) == ""
+    assert workflow_answer._route_line({"itineraries": []}) == ""

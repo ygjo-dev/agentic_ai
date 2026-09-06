@@ -189,11 +189,10 @@ def test_a_malformed_llm_answer_is_rejected():
         with pytest.raises(InvalidInference):
             infer_node(FORM, llm_client=stub(answer))
 
-    from orchestrator.route_resolver import RouteResolutionError
-
-    with pytest.raises(RouteResolutionError):
+    # 계약을 어긴 응답도 등록 도메인의 예외로 나온다. 공용 해석 층을 안 지난다.
+    with pytest.raises(InvalidInference):
         infer_node(FORM, llm_client=StubLLMClient("JSON 이 아니다"))
-    with pytest.raises(RouteResolutionError):
+    with pytest.raises(InvalidInference):
         infer_node(FORM, llm_client=StubLLMClient(json.dumps({"node_id": "x"})))
 
 

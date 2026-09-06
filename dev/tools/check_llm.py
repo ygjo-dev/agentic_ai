@@ -49,7 +49,6 @@ from dev.tools.check_resolve import (  # noqa: E402
     NEAR,
     UNATTACHED,
     UTTERANCES,
-    _context_payload,
     _grade,
 )
 from llm_engine.llm_selector import get_llm  # noqa: E402
@@ -58,7 +57,7 @@ from orchestrator import resolve_service  # noqa: E402
 
 
 def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
-         reason_max_length: int, context: dict | None, kind: str) -> dict:
+         reason_max_length: int, kind: str) -> dict:
     """발화 하나. 부르다 죽어도 판이 멈추지 않게 오류도 결과로 적는다.
 
     규칙  오류는 못 붙음으로 셈. _grade 가 frozenset 이 아닌 것을 그렇게 봄
@@ -71,7 +70,6 @@ def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
             utterance,
             llm_client=llm,
             reason_max_length=reason_max_length,
-            context=context,
         )
     except Exception as exc:  # noqa: BLE001 — 오류도 판정 대상이다
         error = f"{type(exc).__name__}: {exc}"
@@ -97,8 +95,6 @@ def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
         "status": status,
         "recipe_id": result.get("recipe_id"),
         "candidate_recipe_ids": result.get("candidate_recipe_ids"),
-        "llm_recipe_id": result.get("llm_recipe_id"),
-        "llm_candidate_recipe_ids": result.get("llm_candidate_recipe_ids"),
         "reason": result.get("reason"),
         "argument": result.get("argument"),
         "found": sorted(found) if isinstance(found, frozenset) else None,
@@ -108,18 +104,18 @@ def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
     }
 
 
-def _one_round(llm, run_no: int, reason_max_length: int, context: dict | None) -> tuple:
+def _one_round(llm, run_no: int, reason_max_length: int) -> tuple:
     """한 판 = 정답표 36 + 시연 9.
 
     제약  차례를 판마다 똑같이 지킨다.
           사이에 다른 요청을 끼우지 않는다
     """
     rows = [
-        _ask(llm, run_no, number, utterance, expected, reason_max_length, context, "utterance")
+        _ask(llm, run_no, number, utterance, expected, reason_max_length, "utterance")
         for number, utterance, expected, _flag in UTTERANCES
     ]
     demo_rows = [
-        _ask(llm, run_no, number, utterance, expected, reason_max_length, context, "demo")
+        _ask(llm, run_no, number, utterance, expected, reason_max_length, "demo")
         for number, utterance, expected in DEMO
     ]
     return rows, demo_rows
@@ -218,18 +214,17 @@ def main() -> int:
 
     config = get_model_config(args.model)
     llm = get_llm(args.model)
-    context = _context_payload()
     out = Path(args.out) if args.out else None
     if out:
         out.mkdir(parents=True, exist_ok=True)
 
     print(f"{config.model} · {config.provider} · timeout {config.timeout}초 · "
-          f"reason {config.reason_max_length}자 · 문맥 {'있음' if context else '없음'}")
+          f"reason {config.reason_max_length}자")
 
     all_runs, verdicts = [], []
     for run_no in range(1, args.runs + 1):
         started = time.perf_counter()
-        rows, demo_rows = _one_round(llm, run_no, config.reason_max_length, context)
+        rows, demo_rows = _one_round(llm, run_no, config.reason_max_length)
         elapsed = time.perf_counter() - started
         all_runs.append(rows + demo_rows)
 

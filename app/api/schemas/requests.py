@@ -14,9 +14,8 @@ from pydantic import BaseModel, Field
 class NodeRegisterRequest(BaseModel):
     """사람이 폼에 적는 것. node_id 와 properties 는 LLM 이 정한다.
 
-    이름 · 설명 · outputs 가 비면 등록을 시작하지 않는다. 예전에는 프론트엔드가
-    이 검사를 했지만, 계산을 백엔드로 옮겼으므로 검증도 여기 있어야 한다.
-    빈 이름으로 등록되면 그래프에 이름 없는 노드가 남는다.
+    이름 · 설명 · outputs 가 비면 등록을 시작하지 않는다. 빈 이름으로 등록되면
+    그래프에 이름 없는 노드가 남는다.
     """
 
     name: str = Field(min_length=1)
@@ -45,15 +44,10 @@ class ChatRequest(BaseModel):
     KRRI_ASAP 이 8000 번으로 보내던 것을 그대로 받는다.
 
     **안 읽는 칸은 선언하지 않는다.** pydantic 이 모르는 칸을 조용히 버리므로
-    저쪽이 더 보내도 안 깨진다. 반대로 칸을 남겨 두면 그것이 required 로
-    굳거나(저쪽이 안 보내는 날 422 가 난다) 「우리가 읽는다」로 읽힌다.
-
-    **sessionId 를 안 받는다** (2026-09-01). 2026-08-26 부터 되묻기를 세션마다
-    하나 기억해 두는 데 썼는데, 세션을 걷어내면서 읽을 데가 없어졌다.
-    저쪽(ASAP-web useChat)은 여전히 uuid 를 실어 보내고 그것은 버려진다.
-
-    **target_documents 도 안 받는다** (2026-09-06). 선언만 해두고 한 번도 안
-    읽었고, 앞으로도 해석하지 않기로 정했다. sessionId 와 같은 자리다.
+    KRRI_ASAP 이 더 보내도 안 깨진다. 반대로 칸을 남겨 두면 그것이 required 로
+    굳거나(안 보내는 날 422 가 난다) 「우리가 읽는다」로 읽힌다.
+    KRRI_ASAP(ASAP-web useChat)이 실어 보내는 sessionId 와 target_documents 가
+    그래서 여기 없다. 둘 다 버려진다.
 
     context 는 읽지 않고 vendor 참조 범위($context.…)로 넘기기만 한다.
     """

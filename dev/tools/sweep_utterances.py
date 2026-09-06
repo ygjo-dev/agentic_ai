@@ -173,12 +173,11 @@ def _one_run(utterance: str, model: str | None) -> dict:
     for attempt in range(2):
         try:
             started = time.monotonic()
-            final, status, argument, tally, alone = _call_resolve(utterance, model)
+            final, status, argument, tally, _timing = _call_resolve(utterance, model)
             llm_count, _status = tally
             return {
                 "ok": True,
                 "status": status,
-                "llm_candidates": sorted(alone) if alone else [],
                 "final": sorted(final),
                 "argument": argument,
                 "llm_count": llm_count,
@@ -203,7 +202,6 @@ def _summarise(runs: list) -> dict:
         return (
             run["status"],
             _short(run["final"]),
-            _short(run["llm_candidates"]),
             run["argument"],
         )
 

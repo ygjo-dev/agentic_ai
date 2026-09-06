@@ -1,7 +1,8 @@
 """Backend 와 통신하는 유일한 창구.
 
 프론트엔드는 도메인을 모른다 — 온톨로지도, 등록도, LLM 도 여기를 거쳐
-백엔드에 묻는다. 나중에 온톨로지가 그래프 DB 로 바뀌어도 이 파일은 그대로다.
+백엔드에 묻는다. 온톨로지를 직접 읽지 않으므로 저장소가 바뀌어도 여기가
+고쳐야 할 것은 응답 모양이 바뀔 때뿐이다.
 
 예외는 삼키지 않는다. requests 의 여러 예외를 ApiError 하나로 모으되,
 화면이 원인별로 다른 문장을 보여줘야 하므로 kind 를 남긴다.
@@ -97,28 +98,22 @@ def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> di
     )
 
 
-def resolve(utterance: str, context: dict | None = None) -> dict:
+def resolve(utterance: str) -> dict:
     """발화 → Recipe 선택. 경로(paths)까지 함께 옴.
 
-    입력  발화 · 지도 문맥(없으면 안 보냄)
-    규칙  문맥은 본문으로 보냄. 발화는 query 임 — 백엔드가 그렇게 받음
-          문맥이 있어야 화면 시작 데이터 둘이 후보에 남음. 무엇을 보내는지는
-          config.map_context 가 정함
-    제약  여기서 문맥을 만들지 않는다.
-          이 파일은 백엔드와 말하는 창구이고 무엇을 보고 있는 셈인지는
-          화면 설정이 정함
+    규칙  발화는 query 임. 백엔드가 그렇게 받음
+          지도 문맥을 안 보냄. 무엇을 고를지는 발화와 menu 만 보고 정해짐
     """
     return _call(
         "POST",
         "/resolve",
         timeout=RESOLVE_TIMEOUT,
         params={"utterance": utterance},
-        json=context,
     )
 
 
 def recent(since: int | None = None) -> dict:
-    """저쪽 화면에서 넣은 회차. 그 번호보다 큰 것만 옴.
+    """KRRI_ASAP 시스템에서 넣은 회차. 그 번호보다 큰 것만 옴.
 
     입력  마지막으로 본 회차 번호. 없으면 마지막 몇 회차
     출력  GET /recent 응답. seq 와 turns

@@ -20,7 +20,7 @@ dev/tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 
 
 **TOOL_OF 는 이제 「실행 수단」이다** (「마흔아홉째」). server_id · tool 대신
 command 를 적은 줄(show_facility)이 있고, 그 줄은 Gateway 도구가 아니라 지도
-명령이라 맞댈 inputSchema 가 없다 — 그 args 의 계약은 저쪽 화면(useChat)이다.
+명령이라 맞댈 inputSchema 가 없다 — 그 args 의 계약은 KRRI_ASAP 화면(useChat)이다.
 그래서 도구 줄과 갈라 「지도 명령 줄」로 따로 세고 표 끝에 몇 줄인지 적는다.
 이 갈래를 모르고 ["tool"] 을 읽다가 KeyError 로 죽어 있었다 (「쉰째」에서 발견,
 「쉰아홉째」에서 살림).

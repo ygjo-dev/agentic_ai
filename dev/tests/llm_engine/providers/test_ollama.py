@@ -4,8 +4,9 @@
 하나만 아는 객체로 이야기하고, 그 구현이 여기 있다. 모델을 바꾸려면
 이 폴더만 갈아끼운다.
 
-**응답을 파싱하지 않는다.** Ollama 응답 봉투에서 원문만 꺼내 그대로 넘긴다 —
-파싱과 계약 검증은 route_resolver 의 몫이라 두 곳에 흩어지면 안 된다.
+**응답을 파싱하지 않는다.** Ollama response JSON 에서 원문만 꺼내 그대로 넘긴다 —
+파싱과 계약 검증은 부르는 쪽(orchestrator · registration)의 몫이라 두 곳에
+흩어지면 안 된다.
 
 닿는지 확인하는 것도 여기 있다. 라우팅 계층이 HTTP 를 직접 던지면
 "LLM 호출을 한 곳에 가둔다" 는 약속이 깨진다.
@@ -32,7 +33,7 @@ from llm_engine.providers.ollama import (
 
 # ★ 기본 모델은 2026-09-06 부터 Solar(vLLM)다. Ollama 시험이 기본 모델을 타면
 # vLLM 쪽으로 새므로 여기서는 Ollama 모델을 이름으로 못박는다.
-OLLAMA_MODEL = "qwen3:32b"
+MODEL = "qwen3:32b"
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -82,7 +83,7 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     num_ctx 는 menu 전체가 들어갈 만큼이어야 함. 넘치면 응답이 잘려
     타임아웃처럼 보임.
     """
-    call_ollama("발화", RESPONSE_SCHEMA, config=config_for(OLLAMA_MODEL))
+    call_ollama("발화", RESPONSE_SCHEMA, config=config_for(MODEL))
 
     request = sent_request["request"]
     body = json.loads(request.data.decode("utf-8"))
@@ -91,29 +92,26 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     assert request.full_url == f"{OLLAMA_HOST}/api/generate"
     assert headers["content-type"] == "application/json"
 
-    assert body["model"] == OLLAMA_MODEL
+    assert body["model"] == MODEL
     assert body["prompt"] == "발화"
     assert body["stream"] is False
     assert body["format"] == RESPONSE_SCHEMA
     assert body["think"] is False
     assert body["options"]["temperature"] == 0
     assert body["options"]["seed"] == 0
-    assert body["options"]["num_ctx"] == config_for(OLLAMA_MODEL).num_ctx
+    assert body["options"]["num_ctx"] == config_for(MODEL).num_ctx
 
     # 시연 중 LLM 이 멎어도 화면이 영영 기다리면 안 된다.
     assert sent_request["kwargs"].get("timeout"), "타임아웃이 없다"
 
 
 def test_the_raw_answer_comes_back_untouched(sent_request):
-    """봉투에서 ["response"] 원문만 꺼냄. 파싱은 route_resolver 가 함.
+    """response JSON 의 ["response"] 원문만 꺼냄. 파싱은 부르는 쪽이 함.
 
     Stub 이 실물에서 흘러가면 registry · orchestrator 테스트가 실제와 다른
-    것을 검증하면서 통과함. 그래서 실물을 기준으로 Stub 을 맞춰 봄.
-
-    기준이 실물임. 예전에는 별도 Protocol 파일이 기준이었는데, 프로덕션
-    어디서도 import 되지 않아 강제되는 것이 없었음. 지우고 실물에 맞춤.
+    것을 검증하면서 통과함. 그래서 기준을 실물로 두고 Stub 을 맞춰 봄.
     """
-    설정 = config_for(OLLAMA_MODEL)
+    설정 = config_for(MODEL)
     assert call_ollama("발화", RESPONSE_SCHEMA, config=설정) == ANSWER
     assert OllamaProvider(설정).generate("발화", RESPONSE_SCHEMA) == ANSWER
     assert json.loads(sent_request["request"].data.decode("utf-8"))["prompt"] == "발화"
@@ -133,13 +131,12 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
 def test_the_model_can_be_swapped_without_restarting(sent_request):
     """모델을 바꾸는 데 프로세스를 다시 띄우지 않음.
 
-    ★ get_llm 을 지나 온다. 목록에 없는 Ollama 모델도 defaults 의
-    provider=ollama 를 따라 OllamaProvider 가 되어야 함.
-
     측정은 같은 발화를 모델만 바꿔 돌리는 일이라, 모델이 다른 클라이언트가
     한 프로세스에 동시에 살아 있어야 함. 전역 상수를 읽으면 그게 안 됨.
 
-    ★ 기본 모델은 이제 Solar 라 여기서 안 씀. 「인자를 안 주면 기본 모델」은
+    get_llm 을 지나 온다. 목록에 없는 Ollama 모델도 defaults 의
+    provider=ollama 를 따라 OllamaProvider 가 되어야 함.
+    ★ 기본 모델은 Solar 라 여기서 안 씀. 「인자를 안 주면 기본 모델」은
     test_llm_selector 가 봄.
     """
     def sent_body():
@@ -148,8 +145,8 @@ def test_the_model_can_be_swapped_without_restarting(sent_request):
     get_llm("qwen2.5:7b").generate("발화", RESPONSE_SCHEMA)
     assert sent_body()["model"] == "qwen2.5:7b", "목록에 없어도 defaults 로 Ollama 다"
 
-    get_llm(OLLAMA_MODEL).generate("발화", RESPONSE_SCHEMA)
-    assert sent_body()["model"] == OLLAMA_MODEL
+    get_llm(MODEL).generate("발화", RESPONSE_SCHEMA)
+    assert sent_body()["model"] == MODEL
 
     # 모델과 함께 움직이는 값도 호출마다 갈아끼울 수 있어야 한다 —
     # 큰 모델은 기본 타임아웃(180초)을 넘긴다.

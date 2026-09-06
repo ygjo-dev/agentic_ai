@@ -1,7 +1,6 @@
 """테스트 전역 상수 / Helper / Fixture.
 
-기능 단위 폴더(context_loading, route_resolution, llm_client, api_contract)가
-공통으로 쓰는 것만 둔다.
+폴더 여럿이 공통으로 쓰는 것만 둔다.
 """
 
 import builtins
@@ -43,7 +42,7 @@ def workspace_digest() -> str:
 
 # ------------------------------------------------------------ 공통 Helper
 def assert_route_contract(data):
-    """resolve_route() 결과가 계약된 형태인지 검증."""
+    """recipe 선택 결과가 계약된 형태인지 검증."""
     assert data["status"] in VALID_STATUSES
     assert data["recipe_id"] is None or isinstance(data["recipe_id"], str)
     assert isinstance(data["candidate_recipe_ids"], list)
@@ -107,17 +106,15 @@ def stub_llm_client():
 def isolated_workspace(monkeypatch, tmp_path):
     """등록이 건드리는 파일을 전부 임시 디렉터리 사본으로 바꿈.
 
-    등록 테스트는 원래 진짜 저장소에 쓰고 reset_to_init() 으로 되돌렸음.
-    동작에 버그는 없었지만, 리허설로 시연 상태를 만들어둔 뒤 누가 pytest 를
-    돌리면 등록해둔 노드가 전부 날아감. 시연 당일 사고가 될 수 있어 격리함.
+    격리를 안 하면 리허설로 시연 상태를 만들어 둔 뒤 누가 pytest 를 돌릴 때
+    등록해둔 노드가 전부 날아감.
 
     register_node 는 paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 됨.
     프롬프트 경로는 읽기만 하므로 그대로 둠.
 
-    **노드 좌표도 여기서 막는다.** reset_to_init() 이 좌표까지 되돌리게 되면서
-    (등록한 노드가 사라진 뒤에도 좌표가 남는 것을 막으려는 것) 격리를 안 하면
-    pytest 가 시연용 작업본을 _init 으로 덮어쓴다. 좌표는 paths 가 아니라
-    layout_store 가 들고 있으므로 그쪽 모듈 속성을 바꾼다.
+    **노드 좌표도 여기서 막는다.** reset_to_init() 이 좌표까지 되돌리므로
+    격리를 안 하면 pytest 가 시연용 작업본을 _init 으로 덮어쓴다. 좌표는
+    paths 가 아니라 layout_store 가 들고 있어 그쪽 모듈 속성을 바꾼다.
     """
     work = tmp_path / "work"
     init = tmp_path / "init"

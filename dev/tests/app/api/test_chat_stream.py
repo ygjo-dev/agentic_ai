@@ -1,26 +1,24 @@
 """`POST /chat/stream` 의 계약을 지킨다.
 
-**제품 창구가 이것 하나다.** 저쪽 화면(ASAP-web)도 dev/tools/check_resolve.py
---execute 도 이쪽을 부른다. 2026-09-06 에 평범한 `POST /chat` 을 지웠다 —
-같은 흐름(`app/api/main._chat_events`)에서 중간 이벤트만 버리는 창구였고,
-쓰는 데가 없어졌는데 「두 길이 같은 답을 내는가」를 지키는 값만 치렀다.
+**제품 창구가 이것 하나다.** KRRI_ASAP 화면(ASAP-web)도 dev/tools/check_resolve.py
+--execute 도 이쪽을 부른다.
 
 지키는 것은 다섯이다.
   이벤트 순서 — step_start · step_end 가 짝으로, 마지막이 result
   SSE 틀 — "data: " 접두어 · 이벤트마다 빈 줄 · 마지막 [DONE]
   content-type 이 text/event-stream 이다
   ensure_ascii 가 꺼져 한글이 그대로 나간다 (main.py 가 적은 제약이다)
-  모르는 칸이 와도 422 가 안 난다 — 저쪽이 sessionId · target_documents 를
+  모르는 칸이 와도 422 가 안 난다 — KRRI_ASAP 이 sessionId · target_documents 를
   여전히 보낸다
 
-**진짜 서버를 띄워 부르지 않는다.** 시연 중에 pytest 가 돌면 8000 을 쓰는 저쪽
-화면과 부딪히고, LLM 이 회차마다 다른 답을 내면 이 시험이 답의 내용에 흔들린다.
+**진짜 서버를 띄워 부르지 않는다.** 시연 중에 pytest 가 돌면 8000 을 쓰는
+KRRI_ASAP 화면과 부딪히고, LLM 이 회차마다 다른 답을 내면 이 시험이 답의 내용에 흔들린다.
 여기서 볼 것은 「창구가 계약을 지키는가」지 「답이 맞는가」가 아니다. 그래서
 TestClient(프로세스 안)로 진짜 창구 함수를 부르되 `_chat_events` 만 대역으로
 바꾼다 — SSE 직렬화는 진짜가 돌고 LLM · 온톨로지 · vendor 실행기는 안 돈다.
 
-이벤트 모양은 tests/app/api/test_recent.py 의 `executed()` 와 같은 것을 쓴다 —
-이미 있는 대역이고, 저쪽 화면이 읽는 흐름의 모양이 거기 적혀 있다.
+이벤트 모양은 dev/tests/app/api/test_recent.py 의 `executed()` 와 같은 것을 쓴다 —
+이미 있는 대역이고, KRRI_ASAP 화면이 읽는 흐름의 모양이 거기 적혀 있다.
 """
 
 import json
@@ -30,7 +28,7 @@ from fastapi.testclient import TestClient
 
 from app.api import main
 
-# 저쪽 화면이 읽는 흐름. test_recent.executed() 와 같은 모양이다.
+# KRRI_ASAP 화면이 읽는 흐름. test_recent.executed() 와 같은 모양이다.
 # **한글과 좌표를 일부러 담는다** — ensure_ascii 와 commands 를 함께 보려는 것이다.
 ANSWER = "\n".join(
     [
@@ -54,9 +52,9 @@ EVENTS = [
     {"type": "result", "answer": ANSWER, "commands": COMMANDS},
 ]
 
-# **모르는 칸을 일부러 남겨 둔다.** sessionId 는 2026-09-01 에,
-# target_documents 는 2026-09-06 에 ChatRequest 에서 지웠다. 저쪽 화면은 둘 다
-# 여전히 보내므로 그것이 와도 422 가 안 나는 것을 이 본문이 지킨다.
+# **모르는 칸을 일부러 남겨 둔다.** sessionId · target_documents 는 ChatRequest 에
+# 없는데 KRRI_ASAP 화면은 둘 다 여전히 보낸다. 그것이 와도 422 가 안 나는 것을
+# 이 본문이 지킨다.
 BODY = {
     "text": "오송역 CCTV 보여줘",
     "sessionId": "stream",
@@ -102,13 +100,13 @@ def sse_result(raw: str) -> dict:
 
 # ================================================================ 창구가 하나다
 def test_the_plain_chat_endpoint_is_gone(client):
-    """평범한 POST /chat 은 2026-09-06 에 지웠다. 되살아나면 여기가 잡는다."""
+    """창구를 /chat/stream 하나로 두기로 했다. 평범한 POST /chat 이 되살아나면 잡는다."""
     assert client.post("/chat", json=BODY).status_code == 404
 
 
 # ================================================================ 답
 def test_the_result_event_carries_the_answer(client):
-    """저쪽 화면이 읽는 두 칸이 마지막 이벤트에 그대로 실린다."""
+    """KRRI_ASAP 화면이 읽는 두 칸이 마지막 이벤트에 그대로 실린다."""
     result = sse_result(client.post("/chat/stream", json=BODY).text)
 
     assert result["answer"] == ANSWER
@@ -117,7 +115,7 @@ def test_the_result_event_carries_the_answer(client):
 
 # ================================================================ SSE 틀
 def test_step_events_flow_in_order_and_the_last_one_is_DONE(client):
-    """저쪽 화면이 진행 상황을 그리는 근거. 순서가 바뀌면 화면이 어긋난다."""
+    """KRRI_ASAP 화면이 진행 상황을 그리는 근거. 순서가 바뀌면 화면이 어긋난다."""
     raw = client.post("/chat/stream", json=BODY).text
     sse_result(raw)  # 틀 검사
 
@@ -139,7 +137,7 @@ def test_the_media_type_is_event_stream(client):
 
 
 def test_korean_goes_out_verbatim_without_escaping(client):
-    """main.py 의 제약이다 — ensure_ascii 를 켜면 저쪽 화면에서 안 읽힌다."""
+    """main.py 의 제약이다 — ensure_ascii 를 켜면 KRRI_ASAP 화면에서 안 읽힌다."""
     raw = client.post("/chat/stream", json=BODY).text
 
     assert "오송역 CCTV 를 조회했습니다." in raw
@@ -148,7 +146,7 @@ def test_korean_goes_out_verbatim_without_escaping(client):
 
 # ================================================================ 모르는 칸
 def test_unknown_fields_are_dropped_instead_of_rejected(client):
-    """저쪽이 sessionId · target_documents 를 보내도 422 가 아니어야 한다.
+    """KRRI_ASAP 이 sessionId · target_documents 를 보내도 422 가 아니어야 한다.
 
     ChatRequest 에 그 칸이 없다. pydantic 이 모르는 칸을 그냥 버리는 것이
     「안 읽는 칸은 선언하지 않는다」의 근거이므로 여기서 실제로 지킨다.

@@ -1,7 +1,13 @@
 # vendor_to_be_deleted/asap
 
-KRRI_ASAP 의 ASAP-orchestrator 에서 가져온 MCP 실행기다. **남의 코드다.**
-우리 코드와 섞지 않는다 — 저쪽이 갱신되면 무엇을 다시 가져와야 하는지
+KRRI_ASAP 의 ASAP-orchestrator 에서 가져온 MCP 실행기다.
+
+**이 폴더 전체가 KRRI_ASAP 원본인 것은 아니다.** 아래 「가져온 파일」 다섯만
+원본이고, 「우리가 새로 만든 파일」 넷은 agentic_ai 코드다. 그중
+`workflow_answer.py` 는 원본에 대응하는 파일이 없는 우리 것이고, 지금 답 문구를
+만드는 자리다 — 옮길 자리가 정해지면 vendor 밖으로 나간다.
+
+원본 다섯은 리팩터링하지 않는다. 원본이 갱신되면 무엇을 다시 가져와야 하는지
 알 수 있어야 한다.
 
 ## 출처
@@ -40,7 +46,7 @@ import 하지 않는 잎이라 그대로 가져왔다.
 |---|---|
 | `config.py` | 원본 `app/config.py` 자리. vendor 가 읽는 다섯 값만 둠 |
 | `schemas_chat.py` | 원본 `app/schemas/chat.py` 의 `Command` 만 옮김 |
-| `workflow_answer.py` | Gemini 로 답을 다듬던 자리를 대신함. 성공·빈 결과·오류 판정도 여기서 함 |
+| `workflow_answer.py` | **agentic_ai 코드다.** Gemini 로 답을 다듬던 자리를 대신함. 성공·빈 결과·오류 판정도 여기서 함 |
 | `__init__.py` | 패키지 표시 |
 
 ## 고친 곳 — 이것 말고는 한 줄도 안 고쳤다
@@ -69,13 +75,12 @@ _compose_answer           도구를 하나만 부르는 경로(execute_generic_m
 _compose_workflow_answer  아래 3번으로 통째로 대체됨
 ```
 
-★ **2026-09-06 에 앞엣것을 통째로 지웠다.** 한동안은 원본을 그대로 두고
-`config.py` 가 `GEMINI_API_KEY = None` 으로 고정해 그 코드에 안 닿게 했는데,
-직접 도구 호출 길 자체를 안 쓰기로 정하면서 그 길의 함수 열다섯을 걷었다.
-`_compose_answer` 가 그중 하나다. `config.py` 의 `GEMINI_API_KEY` ·
-`GEMINI_MODEL` 두 칸도 읽는 데가 없어져 함께 사라졌다.
+앞엣것은 통째로 지웠다. 직접 도구 호출 길(`execute_generic_mcp`)을 안 쓰기로
+정하면서 그 길의 함수 열다섯을 함께 걷었고 `_compose_answer` 가 그중 하나다.
+`config.py` 의 `GEMINI_API_KEY` · `GEMINI_MODEL` 두 칸도 읽는 데가 없어져
+함께 사라졌다.
 
-**저쪽이 갱신되면 그 열다섯이 병합 충돌로 돌아온다.** 그때 다시 지운다 —
+**원본이 갱신되면 그 열다섯이 병합 충돌로 돌아온다.** 그때 다시 지운다 —
 무엇을 왜 지웠는지가 이 절이다.
 
 ### 3. `_compose_workflow_answer` 대체 — `generic_mcp_executor.py`
@@ -87,13 +92,13 @@ _compose_workflow_answer  아래 3번으로 통째로 대체됨
 
 본문은 `workflow_answer.compose_workflow_answer(intent, trace)` 한 줄이 되었다.
 성공한 실행의 첫 줄은 `intent["answer_instruction"]` 을 그대로 쓴다 — 우리 쪽
-`app/api/services/step_service.py` 의 `STEP_OF` 가 노드마다 적어 넣는다.
+`execution/wiring.yaml` 의 `tool_of` 가 노드마다 적어 넣는다.
 
 원본 `_fallback_workflow_answer` 는 지우지 않았다. 다른 곳에서 쓰이지 않지만
 지우면 병합할 것이 늘어난다.
 
 **`compose_workflow_answer` 를 부르는 자리는 둘이다.** 여기가 하나이고, 우리 쪽
-`app/api/services/execute_service.run` 이 또 하나다. vendor 는 실패하면
+`execution/execute_service.run` 이 또 하나다. vendor 는 실패하면
 `_failed_workflow_result` 로 **여기까지 오지 않고** 자기 문구를 `answer_draft` 에
 담아 돌아간다. 그 문구가 사용자 화면에 나가면 안 되는 것을 담고 있어(실측 :
 HTTP 오류 문장 · `http://localhost:3000/api/tools/execute` · Gateway 응답 본문

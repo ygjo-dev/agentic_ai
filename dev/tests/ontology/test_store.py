@@ -1,7 +1,8 @@
 """대상 : ontology/store.py — 온톨로지 저장소와 맞닿는 유일한 파일
 
-지금은 `ontology.yaml` 을 읽고 쓴다. 나중에 그래프DB 로 바뀌면 여기만 교체하면
-되고 `graph.py` · `registry.py` · `app/` 는 그대로다.
+지금은 `ontology.yaml` 을 읽고 쓴다. 저장소를 바꿀 때 고칠 곳을 이 경계에
+모으려는 것이다 — `graph.py` · `registry.py` · `app/` 이 파일 형식을 모르게
+두는 것이 여기의 일이다.
 
 여기서 지키는 것은 **파일 형식 보존**이다. `yaml.dump` 로 다시 쓰면 파일 상단의
 구조 원칙 주석과 손으로 맞춘 들여쓰기가 통째로 날아간다. 사람이 읽는 문서이자
@@ -72,10 +73,7 @@ def test_adding_a_node_preserves_the_existing_file(ontology_file):
     """상단 구조 원칙 주석 · 기존 본문 · edges 블록 · 들여쓰기가 그대로여야 함.
 
     yaml.dump 로 다시 쓰면 주석과 손으로 맞춘 들여쓰기가 통째로 날아감.
-
-    새 노드는 edges 앞에 끼워 넣음. 예전에는 nodes: 가 파일 마지막이라
-    그냥 끝에 붙였는데, edges: 가 뒤에 생기면서 그 전제가 깨졌음. 그대로 두면
-    새 노드가 edge 목록의 일부로 읽힘.
+    새 노드는 edges 앞에 끼워 넣음. 끝에 붙이면 edge 목록의 일부로 읽힘.
     """
     before = ontology_file.read_text(encoding="utf-8")
     head = before[: before.index("version:")]

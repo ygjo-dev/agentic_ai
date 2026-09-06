@@ -1,8 +1,8 @@
 """노드 등록 / 초기화. registry 호출 → DTO.
 
-온톨로지는 screen_service 에게 묻는다. 예전에는 ontology.graph 를 직접
-불렀는데, 그러면 "온톨로지를 읽는 유일한 지점" 이라는 screen_service 의 약속이
-깨지고 그래프DB 로 갈 때 고칠 곳이 둘이 된다.
+온톨로지는 screen_service 에게 묻는다. ontology.graph 를 직접 부르면
+"온톨로지를 읽는 유일한 지점" 이라는 screen_service 의 약속이 깨지고
+도메인을 읽는 자리가 둘이 된다.
 
 등록은 한 번에 끝난다. 노드와 관계를 쓰고, 대상이 어긋나지 않는 경로만 recipe 와
 menu 로 만든다. 어긋나는 경로는 registry 가 버리고 여기까지 오지 않는다.
@@ -22,16 +22,14 @@ def _edges():
 def register(form: dict, llm_client) -> dict:
     """노드를 등록하고 그로 인해 무엇이 늘었는지까지.
 
-    입력  노드 폼 · LLM 클라이언트
     출력  node_id · node · groups · reason · recipe_ids ·
           new_solid_edges · new_dotted_edges
     규칙  new_solid_edges / new_dotted_edges 는 등록 직전과 직후의 차집합.
           registry 가 알려주지 않으므로 앞뒤로 한 번씩 조회해 직접 계산함
     제약  llm_client 를 여기서 import 하지 않는다. 이유는 resolve_service 와 같음
           화면이 안 읽는 키를 만들지 않는다.
-          2026-09-06 에 넷(paths · accepted · counts · version)을 뺐음.
           경로는 화면이 /render 로 다시 받고, 등록 장면인지는 화면이 이미
-          알고 넘김(mode="register"), 개수와 version 은 읽는 데가 0 이었음
+          알고 넘김(mode="register")
     """
     before_solid, before_dotted = _edges()
 

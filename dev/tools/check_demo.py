@@ -12,7 +12,7 @@
     .venv/bin/python dev/tools/check_demo.py --runs 3          발화마다 세 번
 
 **판정은 check_resolve 의 _grade 를 그대로 부른다.** 규칙을 베끼면 두 자가 조용히
-어긋난다. 지도 문맥도 그쪽 _context_payload 를 쓴다 — 기본은 both 이고, 정답표를
+어긋난다. 실행에 쓰는 지도 문맥도 그쪽 _context_payload 를 쓴다 — 기본은 both 이고, 정답표를
 재는 조건과 같아야 두 표를 나란히 읽을 수 있다.
 
 **시연에서 보는 것은 적중이 아니라 SELECT 다.** 후보가 하나로 좁혀져야 화면이
@@ -148,7 +148,7 @@ def main() -> int:
     for number, utterance, expected in entries:
         for _ in range(args.runs):
             try:
-                found, status, _argument, _tally, _alone, _times = _call_resolve(
+                found, status, _argument, _tally, _times = _call_resolve(
                     utterance, args.model or None
                 )
             except ServerDown as exc:

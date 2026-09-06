@@ -64,7 +64,7 @@ def test_not_found_is_recorded_apart_from_zero_hits():
 
 
 def test_a_missing_permission_is_recorded_apart_from_a_crash():
-    """저쪽에 도구를 열어 달라고 할 일이지 우리가 고칠 일이 아니다."""
+    """Gateway 쪽에 도구를 열어 달라고 할 일이지 우리가 고칠 일이 아니다."""
     turn = turn_of(
         [
             {
@@ -82,7 +82,7 @@ def test_a_missing_permission_is_recorded_apart_from_a_crash():
 
 
 def test_failing_to_extract_an_argument_means_no_tool_was_called():
-    """단계가 하나도 없다. 저쪽 데이터 탓이 아니라 우리 해석 탓이다."""
+    """단계가 하나도 없다. Gateway 쪽 데이터 탓이 아니라 우리 해석 탓이다."""
     from execution.execute_service import NO_ARGUMENT_ANSWER
 
     turn = {"answer": NO_ARGUMENT_ANSWER["spoken_place"], "steps": []}

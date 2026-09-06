@@ -4,7 +4,7 @@
 # 말하고 도구 이름을 모른다. 노드가 특정 MCP 서버에 묶이면 같은 일을 하는 도구로
 # 갈아끼울 때 도메인을 고쳐야 하고, 「노드에는 name 과 description 만」이라는
 # 원칙과 부딪히고, menu 가 온톨로지에서 만들어지므로 도구 이름이 프롬프트로 샐
-# 자리가 가까워진다. 그래서 ontology/ 안에 넣지 않고 models.yaml 옆에 둔다.
+# 자리가 가까워진다. 그래서 ontology/ 안에 넣지 않고 실행 계층(execution/)에 둔다.
 #
 # 왜 데이터로 뺐나. 노드를 등록하면 recipe 는 저절로 느는데 배선은 사람이 코드에
 # 적어야 했다. dev/tools/check_wiring.py 가 그 격차를 「C 부류」로 센다.
@@ -26,8 +26,7 @@
 # 값 판단의 자라 뜻이 코드에 있어야 한다.
 #
 # 줄마다의 실측 근거(응답 전문 · 몇 건이 나왔나 · 왜 이 칸인가)는 그 배선 줄
-# 곁에 있다. 1-b 에서 코드의 옛 표를 지우면서 step_service.py 의 주석을 그대로
-# 옮겨 왔다 — 문장을 다시 쓰지 않았다. 다듬다가 실측 값이 바뀌면 되찾을 데가 없다.
+# 곁에 있다. **다듬지 않는다** — 문장을 고치다 실측 값이 바뀌면 되찾을 데가 없다.
 
 
 # 되풀이되는 값. 한 곳에만 적고 아래에서 가리킨다 — 줄마다 베껴 적으면 한 곳만
@@ -38,7 +37,8 @@
 # 낱개를 안 묶으면 같은 문자열을 두 번 적게 된다.
 anchors:
 
-  # 마흔은 여기, web.search 하나만 다른 서버다. tools.json 의 serverId 가 근거다.
+  # 대부분 여기다. 아래 셋(r5-server · otp-router · web.search)만 다른 서버다.
+  # tools.json 의 serverId 가 근거다.
   server_id: &server_id "asap-mcp-core"
 
   # 도달권 계산 하나만 여기다. 다른 MCP 서버이고, 그 서버를 부르려면
@@ -74,7 +74,7 @@ anchors:
     level: "$prev.items.1.layerId"
     code: "$prev.items.1.code"
 
-  # 저쪽 화면이 발화와 함께 보내는 지도 문맥. @arg 도 $prev 도 아닌 셋째 자리다.
+  # KRRI_ASAP 화면이 발화와 함께 보내는 지도 문맥. @arg 도 $prev 도 아닌 셋째 자리다.
   view_min_lon: &view_min_lon "$context.view.minLon"
   view_min_lat: &view_min_lat "$context.view.minLat"
   view_max_lon: &view_max_lon "$context.view.maxLon"
@@ -265,7 +265,7 @@ tool_of:
 #
 #   input        그 도구가 받는 input. @arg 와 $prev 를 쓸 수 있다
 #   input_first  앞 단계가 없을 때의 input. 안 적으면 input 을 그대로 씀.
-#                **저쪽 화면의 지도 문맥이 들어오는 자리다** (2026-08-28) —
+#                **KRRI_ASAP 화면의 지도 문맥이 들어오는 자리다** (2026-08-28) —
 #                지도 범위와 지점 좌표를 받는 열다섯 줄이 이것을 적었다.
 #                그 자리에 오는 앞 노드는 보이는 범위 · 찍은 지점 둘뿐이고,
 #                문맥이 없으면 resolve 가 그 후보를 아예 안 내놓는다
@@ -279,13 +279,11 @@ tool_of:
 # 때문이다. 반대로 선언에는 있는데 줄이 없으면 그 자리는 unwired 다.
 # dev/tools/check_wiring.py 가 양쪽을 센다.
 #
-# 예전에는 노드당 한 줄이었다. 같은 노드가 두 자리에 오는데 받는 것이 달라서
-# 한 줄로는 못 적었다.
+# 키가 짝이라 같은 노드가 두 자리에 와도 갈린다. 노드당 한 줄이면 아래 둘을
+# 함께 적을 수 없다.
 #
 #   말한 장소 → 좌표 변환 → 전기차 충전소 검색     center 를 받아야 한다
 #   말한 키워드 →           전기차 충전소 검색     query 를 받아야 한다
-#
-# 그 탓에 recipe 012 · 013 은 발화에서 온 값을 통째로 버리고 전국을 검색했다.
 step_of:
 
   geocode_place:
@@ -306,8 +304,8 @@ step_of:
     #
     # road.getCctv 는 bbox 넷이 전부 required 라 vendor 가 어댑터를 저절로 건다.
     #
-    # 첫 자리(input_first)는 보이는 범위에서 곧장 온다. 저쪽 화면의
-    # current-view-cctv 가 하는 것과 같은 일이다 — 그쪽도
+    # 첫 자리(input_first)는 보이는 범위에서 곧장 온다. KRRI_ASAP 화면의
+    # current-view-cctv 가 하는 것과 같은 일이다 — 그것도
     # $context.view.bbox 네 칸을 road.getCctv 에 그대로 넣는다
     # (KRRI_ASAP/ASAP-orchestrator/plugins/current-view-cctv/plugin.md 의
     #  Tool Input. 읽기만 했다).
@@ -322,8 +320,8 @@ step_of:
         minLat: *view_min_lat
         maxLon: *view_max_lon
         maxLat: *view_max_lat
-    # 첫 자리는 찍은 지점에서 곧장 온다. 저쪽 cctv-around-point 와 같은 꼴이고
-    # (center + radiusMeters -> point_radius_to_bbox), 반경만 다르다 — 저쪽
+    # 첫 자리는 찍은 지점에서 곧장 온다. KRRI_ASAP 의 cctv-around-point 와 같은 꼴이고
+    # (center + radiusMeters -> point_radius_to_bbox), 반경만 다르다 — 그쪽
     # 기본값은 1000m 이지만 우리는 이미 재본 값 RADIUS_METERS 를 쓴다.
     # 재보지 않은 숫자를 새로 들이지 않는다.
     point:
@@ -335,10 +333,9 @@ step_of:
       input: {sectionName: *arg}
 
   get_railway_lines:
-    # 역명으로 볼지 노선명으로 볼지를 값이 정한다. 예전 주석은 "사람이 정할
-    # 일이다" 였고 그 일이 왔다 (2026-08-29 「쉰째」).
+    # 역명으로 볼지 노선명으로 볼지를 값이 정한다 (2026-08-29 「쉰째」).
     #
-    # 둘을 함께 보내는 길은 닫혀 있다 — 저쪽이 두 절을 AND 로 이어서 같은
+    # 둘을 함께 보내는 길은 닫혀 있다 — 도구가 두 절을 AND 로 이어서 같은
     # 값이면 0건이다 (2026-08-27 「서른다섯째」). 맞는 칸 하나만 보낸다.
     #
     # dev/tools/check_inputs.py 의 ★ 표에서 railwayName(S) 은 안 사라진다.
@@ -470,14 +467,11 @@ step_of:
     #   넷 다 optional 이다(ASAP-mcp/main.py:532). 모르는 칸이라 버려져
     #   범위를 아무리 좁혀도 전국 92,821건에서 상한 500건이 왔다.
     #
-    #   왜 어긋났나. a238b48 이 input_first 열다섯 줄을 한 번에 더하면서
-    #   **옆의 input 이 쓰는 모양을 그대로 베끼고 $prev 만 문맥으로 바꿨다.**
-    #   그 규칙이 나머지 열넷에는 맞았다 — 그 도구들의 input 이 이미
-    #   {"bbox": BBOX_FROM_PREVIOUS} 이거나(선거 계열 · 노선 · 행정경계 · 인구)
-    #   평평한 넷이었다(road.getCctv). 이 줄만 옆의 input 이
-    #   center + radiusMeters + 어댑터라 베낄 bbox 꼴이 없었고, 그래서 옆줄
-    #   대신 일반 관용구인 {"bbox": …} 로 적었다. 바로 위에 스키마를 옳게
-    #   적어 놓고도 줄이 그것을 안 따랐다.
+    #   왜 어긋났나. a238b48 이 input_first 열다섯 줄을 더하면서 **옆의 input 을
+    #   베끼고 $prev 만 문맥으로 바꿨다.** 나머지 열넷은 옆의 input 이 이미
+    #   {"bbox": …} 이거나 평평한 넷이라 그 규칙이 맞았다. 이 줄만 옆이
+    #   center + radiusMeters + 어댑터라 베낄 bbox 꼴이 없어 일반 관용구로 적었다.
+    #   바로 위에 스키마를 옳게 적어 놓고도 줄이 그것을 안 따랐다.
     #
     #   같은 자리 넷(get_railway_lines · search_admin_boundaries ·
     #   get_vworld_boundaries · search_population_statistics)은 **안 고쳤다.**
@@ -549,7 +543,7 @@ step_of:
   #   getAssemblyPledgeDistrict {name: "청주시 상당구"}  feature 1건
   #   getLocalPledgeSummary     {sidoName: "충청북도"}   0건 · featureCount 0
   #
-  # 0건인 것은 저쪽 데이터가 미적재여서다
+  # 0건인 것은 Gateway 쪽 데이터가 미적재여서다
   # (getLocalPledgeSummaryDatasetInfo 의 featureCount 0 · available false).
   # 배선이 없는 것과 데이터가 없는 것은 다르므로 그것만으로는 안 적을 이유가
   # 못 된다.
@@ -579,7 +573,7 @@ step_of:
   # 떼면서 그 경로가 사라졌다.
   #
   # 2026-08-24 에 {sidoCode: "43"} 을 눌렀다. query.sidoCode 로 되받았고
-  # status 는 not_found 인데 그것은 **저쪽 데이터가 미적재**여서다
+  # status 는 not_found 인데 그것은 **Gateway 쪽 데이터가 미적재**여서다
   # (dataset.available false · featureCount 0). 인자는 파싱됐다.
   #
   # 앞 단계는 adminBoundary.findBoundaryByPoint 의 items.0 이다.
@@ -593,13 +587,13 @@ step_of:
       input: {sidoCode: "$prev.items.0.code"}
 
   # 아래 둘은 배선이 맞는데 도구 쪽이 지금 비어 있거나 막혀 있다(2026-08-22
-  # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — 저쪽에
+  # 실측). 배선이 없는 것과 데이터가 없는 것은 다르므로 적어 둔다 — Gateway 에
   # 데이터가 들어오면 고칠 것 없이 그대로 돈다. 왜 비었는지는 각 줄 위에
   # 적었고 NOTES.md 「2026-08-22 (셋째)」 에 응답 전문 근거가 있다.
   #
   # election.searchLocalPledgeSummaries : 0건.
   #   "2026 지방선거 시도별 공약 요약 데이터를 조회하지 못했습니다."
-  #   같은 데이터셋의 getDatasetInfo 도 미적재라고 답한다. 저쪽 데이터다.
+  #   같은 데이터셋의 getDatasetInfo 도 미적재라고 답한다. Gateway 쪽 데이터다.
   search_local_pledge_summaries:
     keyword:
       input: {query: *arg}
@@ -632,13 +626,13 @@ step_of:
     keyword:
       input: {query: *arg}
 
-  # 이 input 은 도구 인자가 아니라 지도 명령의 args 다. 칸 이름은 저쪽
+  # 이 input 은 도구 인자가 아니라 지도 명령의 args 다. 칸 이름은 KRRI_ASAP
   # 화면이 읽는 이름 그대로여야 한다 (useChat.getFacilityName 이
   # args.facilityName 만 본다).
   #
-  # **발화에서 온 값을 그대로 넘긴다.** 저쪽은 skill.md 의 「Facility Aliases」
+  # **발화에서 온 값을 그대로 넘긴다.** KRRI_ASAP 은 skill.md 의 「Facility Aliases」
   # 표로 낱말을 시설물명으로 바꾼다("제3터널" -> "시험 제3터널"). 그 표는
-  # 저쪽 설정이고 우리 온톨로지에는 그것을 둘 자리가 없어 베끼지 않았다.
+  # KRRI_ASAP 설정이고 우리 온톨로지에는 그것을 둘 자리가 없어 베끼지 않았다.
   # NOTES.md 「마흔아홉째」에 남은 격차로 적었다.
   show_facility:
     place_name:
@@ -659,7 +653,3 @@ step_of:
 #   예전에는 {url: @arg} 라고 적혀 있었다. 발화에서 온 말을 URL 로 쓰는
 #   것이라 부르면 반드시 틀린다. 지어낸 배선이라 지웠다.
 #   recipe 050(말한 키워드 -> 웹 검색 -> 웹 문서 가져오기)이 여기 걸린다.
-#
-# 식별자 타입을 셋으로 쪼개기 전에는 여기에 "체계가 다른 식별자를 옮겨 적을
-# 수 없다" 는 항목이 있었다. 그것은 온톨로지가 고쳤다 — 이제 가짜 경로 자체가
-# 생기지 않는다.

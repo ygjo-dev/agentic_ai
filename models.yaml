@@ -1,13 +1,13 @@
 # 모델별 값. 왜 이 값인지는 NOTES.md 의 「건드리기 전에 읽을 것」 에 있다.
 #
 # num_ctx 32768 은 모델 크기만 갈라 재려고 모든 모델에 같게 둔 값이다.
-# 8192 는 Windows 장비의 메모리 제약이었고 이 장비는 VRAM 95GB x4 라 여유가 있다.
+# 이 장비는 VRAM 95GB x4 라 여유가 있다.
 #
 # 목록에 없는 모델도 --model 로 부를 수 있다. 그때는 defaults 를 그대로 쓴다.
 # 서버를 띄운 채로 고쳐도 다음 요청부터 반영된다.
 #
-# provider 는 그 모델이 어느 서버에 붙는가다. 적지 않으면 defaults 의 ollama 라
-# --model qwen2.5:7b 처럼 목록에 없는 Ollama 모델을 그대로 부를 수 있다.
+# provider 는 지금 배포에서 그 모델을 어느 backend 로 부르는가다. 모델마다
+# 적는 설정이고, 적지 않으면 defaults 의 ollama 다.
 # ★ 어디에 붙는가(OLLAMA_HOST · VLLM_HOST)는 기계마다 다르므로 .env 에 있다.
 
 # 기본 모델. 환경변수 LLM_MODEL 이 있으면 그것이 이긴다.

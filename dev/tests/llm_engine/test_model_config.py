@@ -25,7 +25,7 @@ models:
   "느린모델":
     timeout: 300
 
-  "저쪽서버모델":
+  "vllm모델":
     provider: vllm
 """
 
@@ -35,7 +35,6 @@ def models_file(monkeypatch, tmp_path):
     path = tmp_path / "models.yaml"
     path.write_text(DOCUMENT, encoding="utf-8", newline="\n")
     monkeypatch.setattr(paths, "MODELS_PATH", path)
-    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.delenv("LLM_MODEL", raising=False)
     return path
 
@@ -71,34 +70,35 @@ def test_the_default_model_comes_from_the_file_and_the_environment_wins(
     """
     assert get_model_config().model == "기본모델"
 
-    monkeypatch.setenv("OLLAMA_MODEL", "환경모델")
+    monkeypatch.setenv("LLM_MODEL", "환경모델")
     assert get_model_config().model == "환경모델"
     assert get_model_config("인자모델").model == "인자모델", "인자가 환경변수보다 앞선다"
 
 
-def test_llm_model_is_the_official_name_and_ollama_model_still_works(
+def test_the_model_name_is_chosen_in_one_order_and_llm_model_is_the_only_env_name(
     models_file, monkeypatch
 ):
-    """차례가 인자 > LLM_MODEL > OLLAMA_MODEL > 파일.
+    """차례가 인자 > LLM_MODEL > 파일의 default. 갈래가 셋뿐이어야 함.
 
-    OLLAMA_MODEL 은 Ollama 만 있던 시절 이름이라 provider 중립적이지 않음.
-    그래도 안 지움 — 그것만 적어 둔 기계가 조용히 기본 모델로 돌아가면
-    어느 모델로 잰 성적인지 모르게 됨.
+    모델 이름은 provider 와 상관없는 값이라 환경변수 이름도 하나다. provider
+    별 이름을 두면 어느 모델로 잰 것인지 응답만 보고는 못 가린다.
     """
-    monkeypatch.setenv("OLLAMA_MODEL", "옛이름모델")
-    assert get_model_config().model == "옛이름모델", "옛 이름만 있으면 그것을 씀"
-
-    monkeypatch.setenv("LLM_MODEL", "새이름모델")
-    assert get_model_config().model == "새이름모델", "둘 다 있으면 LLM_MODEL 이 이긴다"
+    monkeypatch.setenv("LLM_MODEL", "환경모델")
+    assert get_model_config().model == "환경모델", "환경변수만 있으면 그것"
     assert get_model_config("인자모델").model == "인자모델", "인자가 제일 앞선다"
 
     monkeypatch.delenv("LLM_MODEL")
+    assert get_model_config().model == "기본모델", "없으면 파일의 default"
+
+    # provider 별 옛 이름은 안 본다. 남겨 두면 그것만 적어 둔 기계가 조용히
+    # 다른 모델로 돌아도 아무 신호가 없다.
+    monkeypatch.setenv("OLLAMA_MODEL", "옛이름모델")
+    assert get_model_config().model == "기본모델"
     monkeypatch.delenv("OLLAMA_MODEL")
-    assert get_model_config().model == "기본모델", "둘 다 없으면 파일의 default"
 
 
-def test_the_provider_says_which_server_the_model_lives_on(models_file):
-    """provider 는 모델의 성질이라 파일이 안다. 적지 않으면 defaults 다.
+def test_the_provider_says_which_backend_this_deployment_calls(models_file):
+    """provider 는 지금 배포에서 그 모델을 어느 backend 로 부르는가다. 파일이 안다.
 
     적지 않은 모델이 Ollama 로 가야 --model 로 새 Ollama 모델을 바로 재볼 수
     있음. Solar 처럼 다른 서버에 붙는 모델만 제 항목에 적음.
@@ -107,8 +107,8 @@ def test_the_provider_says_which_server_the_model_lives_on(models_file):
     """
     assert get_model_config("느린모델").provider == OLLAMA, "안 적으면 defaults"
     assert get_model_config("처음보는모델").provider == OLLAMA
-    assert get_model_config("저쪽서버모델").provider == VLLM
+    assert get_model_config("vllm모델").provider == VLLM
 
     # provider 를 덮어써도 나머지 defaults 는 그대로다.
-    저쪽 = get_model_config("저쪽서버모델")
-    assert (저쪽.num_ctx, 저쪽.timeout, 저쪽.reason_max_length) == (8192, 180, 200)
+    vllm_쪽 = get_model_config("vllm모델")
+    assert (vllm_쪽.num_ctx, vllm_쪽.timeout, vllm_쪽.reason_max_length) == (8192, 180, 200)

@@ -8,11 +8,11 @@ ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣
 부르기만 하는 60줄이었다.
 
 **app/ 안에서 온톨로지를 읽는 유일한 지점이다.** 다른 서비스는 여기를 거친다 —
-그래프DB 로 바뀔 때 고칠 곳이 하나여야 하기 때문이다.
+도메인을 읽는 자리를 하나로 모아 두려는 것이다.
 
-이름에 graph 를 안 쓴다. 이 파일은 원래 graph_service 였는데 그리기 패키지와
-"graph" 의 뜻이 달라 헷갈렸고, 그 혼동 때문에 두 모듈이 비슷한 계층인 줄 알고
-역방향 import 가 생겼었다. 여기가 다루는 것은 화면이 받을 모양이다.
+**이름에 graph 를 안 쓴다.** 그리기 패키지와 "graph" 의 뜻이 달라 헷갈리고,
+그 혼동 때문에 두 모듈이 비슷한 계층인 줄 알고 역방향 import 가 생겼었다.
+여기가 다루는 것은 화면이 받을 모양이다.
 
 색만은 그리기 쪽에 묻는다. 팔레트의 주인이 거기이고, 화면은 그래프와
 같은 색으로 칩과 배지를 칠해야 한다 — 출처가 둘이면 조용히 어긋난다.
@@ -117,9 +117,8 @@ def domain_graph() -> tuple[dict, dict, dict]:
 
     출력  (nodes, solid, dotted). solid / dotted 는 튜플 키 dict
     규칙  온톨로지를 읽는 곳은 이 모듈 하나. 그리기 패키지는 여기서 받아 쓰기만 함
-    이력  JSON 은 튜플 키를 못 담아 screen_payload 는 리스트로 펴지만, 서버
-          안에서 그릴 때는 펼 이유가 없음. 예전에는 프론트엔드가 받아서 다시
-          튜플로 되돌렸음(to_build_dot_args). 그 왕복이 사라졌음
+          JSON 은 튜플 키를 못 담아 screen_payload 는 리스트로 펴지만, 서버
+          안에서 그릴 때는 펼 이유가 없음
     """
     return drawn_nodes(), solid_edges(), dotted_edges()
 
@@ -129,10 +128,8 @@ def screen_payload() -> dict:
 
     출력  colors  칩 테두리 · 배지 · 그래프 색. 팔레트의 주인은 dot.COLORS 하나
           types   등록 폼의 입출력 선택지
-    이력  2026-09-06 까지는 version · nodes · solid_edges · dotted_edges 도
-          함께 담았음. 서버가 그리게 된 뒤로 그 넷을 읽는 화면 코드가 0 이었음 —
-          노드 · 엣지 모형은 POST /render 의 network 가 좌표까지 함께 들고
-          가고, 화면 캐시 키로 쓰던 version 도 그쪽에 있음
+    규칙  노드 · 엣지 모형과 version 은 여기 없음. POST /render 의 network 가
+          좌표까지 함께 들고 감
     제약  화면이 안 읽는 키를 만들지 않는다.
           창구에 있는 키는 「누군가 이것을 읽는다」는 뜻이고, 안 읽히는 키는
           도메인이 바뀔 때 함께 고쳐야 하는지를 아무도 판단할 수 없음

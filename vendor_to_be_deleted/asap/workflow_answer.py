@@ -26,7 +26,7 @@ raw JSON 으로 새던 자리가 _preview 하나였고 지웠다. 모르는 결�
 
 **trace 가 아예 없는 자리도 여기서 답한다** (2026-08-29). 사람이 읽는 문구를
 한 파일에 모아 두려는 것이다 — 실행이 돌았을 때와 안 돌았을 때의 말투가
-갈리면 화면에서 그 둘이 다른 시스템처럼 보인다. 그 자리가 둘이고, 저쪽
+갈리면 화면에서 그 둘이 다른 시스템처럼 보인다. 그 자리가 둘이고, KRRI_ASAP
 plugin 셋이 하는 일이 그것이다. 아래 「도구가 안 돈 자리」 절을 본다.
 """
 
@@ -384,7 +384,7 @@ PAGE_FORMAT = "{page}쪽"
 #
 # 상태 낱말을 우리가 짓지 않는다. 응답이 충전기마다 statusLabel 을 함께
 # 준다 ("충전대기" · "충전중" · "점검중"). 그것이 없는 응답이 오면 그때만
-# 코드값(status)을 그대로 적는다 — 코드 뜻을 이 파일에 베껴 두면 저쪽이
+# 코드값(status)을 그대로 적는다 — 코드 뜻을 이 파일에 베껴 두면 Gateway 가
 # 코드를 늘렸을 때 조용히 거짓이 된다.
 #
 # CHARGER_KEY         충전기 목록 칸. 이 칸이 있어야 이 길로 온다
@@ -832,7 +832,7 @@ def _failure_reason(item: Dict[str, Any]) -> str:
           필드 이름밖에 없어 그대로 보여도 안전함. 앞의 "{step_id} 단계 "
           접두만 뗌. 사람에게 step id 는 뜻이 없음
     제약  vendor 의 한국어 문구를 문자열로 보지 않는다.
-          저쪽이 문구를 갱신하면 조용히 깨진다. 항목의 구조로 가른다
+          Gateway 가 문구를 갱신하면 조용히 깨진다. 항목의 구조로 가른다
     """
     detail = item.get("error_detail")
     if detail:
@@ -1472,7 +1472,7 @@ def _lon_lat(value: Any):
 #   지도 명령만 낸 실행     부를 도구가 없는 노드가 경로의 전부였다
 #   부를 것이 없는 발화     온톨로지에 맞는 경로가 없다 (NO_MATCH)
 #
-# 저쪽 plugin 셋이 그 자리다. 아홉 개 plugin 에는 다 있는 `## Run` 절이
+# KRRI_ASAP 의 plugin 셋이 그 자리다. 아홉 개 plugin 에는 다 있는 `## Run` 절이
 # show-facility · system-chat · unsupported-request 셋에만 없다
 # (KRRI_ASAP/ASAP-orchestrator/plugins/. 읽기만 했다).
 #
@@ -1493,7 +1493,7 @@ NO_MATCH_HEADLINE = "지금 할 수 있는 일 중에 맞는 것이 없습니다
 # 그 뒤에 붙는 안내 두 줄.
 #
 # **낱말은 온톨로지가 댄다.** 여기는 틀만 갖는다 — 노드를 등록하면 안내도 함께
-# 늘고, 두 곳이 어긋날 자리가 없다. 저쪽 unsupported-request 의 답은 고정 문구
+# 늘고, 두 곳이 어긋날 자리가 없다. KRRI_ASAP 의 unsupported-request 답은 고정 문구
 # 한 줄이라("죄송합니다. 현재 지원하지 않는 요청입니다") 무엇을 대신 말해야
 # 할지는 안 알려준다.
 NO_MATCH_TOPICS = "제가 다루는 것은 {topics}입니다."

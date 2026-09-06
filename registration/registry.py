@@ -1,17 +1,20 @@
 """노드 등록. 온톨로지 · recipe · menu 를 갱신.
 
 온톨로지 읽기와 쓰기는 store 에게 맡긴다. 이 파일은 ontology.yaml 을 직접
-열지 않는다 — 저장소가 그래프DB 로 바뀌어도 등록 규칙은 그대로여야 한다.
+열지 않는다 — 저장소를 바꿀 때 고칠 곳을 store 경계에 모으려는 것이다.
 recipe 와 menu 는 아직 store 가 맡는 자산이 아니라 여기서 직접 쓴다.
+
+**LLM 추론도 여기 것이다.** 등록이 LLM 에 무엇을 묻고 어떤 응답을 받아야
+하는지는 등록만 아는 계약이라 발화 해석과 공용 층을 나눠 쓰지 않는다.
 """
 
+import json
 import re
 import shutil
 
 import paths
 from ontology import graph, store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
-from orchestrator.route_resolver import resolve_route
 
 
 def group_ids() -> list[str]:
@@ -64,11 +67,14 @@ def add_node(node_id: str, node: dict, path=None) -> None:
 
 
 def check_types(type_ids, path=None) -> None:
-    """받고 내놓는 타입이 실재하는지.
+    """받고 내놓는다고 적은 id 가 온톨로지에 있는지.
 
     입력  타입 id 목록 · 온톨로지 경로(없으면 기본)
     규칙  온톨로지에 없는 id 가 있으면 UnknownType. 파일을 건드리기 전에 막음
-    제약  없는 타입을 가리키는 노드를 만들지 않는다.
+          보는 것은 존재뿐임. 그 노드가 타입 노드인지(그룹이나 실행 노드가
+          아닌지)까지는 안 봄. 종류를 나누는 필드가 없어 관계로 판정해야 하고,
+          지금 폼의 선택지를 화면이 이미 타입으로만 채움
+    제약  없는 id 를 가리키는 노드를 만들지 않는다.
           아무와도 이어지지 않아 화면에는 떠 있는데 경로가 하나도 안 생김
     """
     known = set(store.nodes(path))
@@ -98,7 +104,32 @@ NODE_ID_PATTERN = re.compile(r"^[a-z]+(_[a-z]+)*$")
 
 
 class InvalidInference(ValueError):
-    """LLM 이 쓸 수 없는 값을 돌려줬다."""
+    """LLM 이 쓸 수 없는 값을 돌려줬다. 계약을 어긴 응답도 여기로 온다."""
+
+
+def _inferred(prompt: str, variables: dict, llm_client) -> dict:
+    """등록 프롬프트를 채워 LLM 을 한 번 부르고 계약된 key 만 남김.
+
+    출력  NODE_REGISTRATION_SCHEMA 의 required 에 적힌 key 만.
+          LLM 이 덧붙인 것은 버림
+    제약  계약을 어긴 응답을 조용히 넘기지 않는다.
+          빈 결과가 화면에 뜨면 원인을 못 찾음. 원문을 붙여 예외로 올림
+    """
+    raw = llm_client.generate(prompt.format(**variables), NODE_REGISTRATION_SCHEMA)
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise InvalidInference(
+            f"LLM 응답을 JSON 으로 파싱할 수 없다: {raw!r}"
+        ) from exc
+
+    try:
+        return {key: data[key] for key in NODE_REGISTRATION_SCHEMA["required"]}
+    except (KeyError, TypeError) as exc:
+        raise InvalidInference(
+            f"LLM 응답에 필요한 key 가 없다: {data!r}"
+        ) from exc
 
 
 def infer_node(form: dict, llm_client, path=None) -> dict:
@@ -112,8 +143,8 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
           예 : 승강장 CCTV 영상은 승강장에 관한 것이자 CCTV 에 관한 것임
           빈 목록 허용. 어느 대상에도 안 매인 범용 노드(형식만 바꾸는 생성
           노드 등)가 그렇고, 억지로 고르는 것보다 나음
-          InvalidInference      형식에 맞지 않거나 쓸 수 없는 값을 돌려줌
-          RouteResolutionError  응답이 JSON 이 아니거나 필수 key 가 없음
+          InvalidInference  형식에 맞지 않거나 쓸 수 없는 값을 돌려줌.
+                            응답이 JSON 이 아니거나 필수 key 가 없는 것도 같음
     제약  대상을 자유 문자열로 받지 않는다.
           예전 subject 값이 그랬는데 "궤도" 대신 "선로" 라고 쓰면 아무와도
           안 이어졌음
@@ -121,14 +152,13 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
     nodes = store.nodes(path)
     choices = group_ids()
 
-    result = resolve_route(
+    result = _inferred(
         prompt=paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8"),
         variables={
             "existing_nodes": _describe(nodes, _group_of(store.edges(path))),
             "new_node": _describe_form(form),
             "groups": _describe_groups(nodes, choices),
         },
-        response_schema=NODE_REGISTRATION_SCHEMA,
         llm_client=llm_client,
     )
 
@@ -212,22 +242,20 @@ def _describe_form(form: dict) -> str:
     )
 
 
-# 경로 한 개의 최대 노드 수. **데이터 노드가 한 칸을 차지한다** — 예전에는
-# 불러오기 · 분석 · 생성 세 기능이 3칸이었는데, 이제 데이터 · 추출 · 분석 · 생성
-# 이 4칸이다. 그래서 3 -> 4 다.
+# 경로 한 개의 최대 노드 수. **데이터 노드가 한 칸을 차지한다** — 데이터 ·
+# 추출 · 분석 · 생성이 4칸이다.
 #
-# 5 로 올리면 안 된다. 등록 한 번에 경로가 44~52개 생기고 menu 가 5764~6923자가
-# 되어 MENU_BUDGET(6000자)을 **한 번의 등록으로 넘긴다**. 4 에서는 14~20개 ·
-# 2299~2772자다. menu 가 커지면 LLM context 를 넘겨 타임아웃한다.
+# 5 로 올리면 등록 한 번이 MENU_BUDGET 을 넘긴다. 아래는 그때 잰 표이고
+# **재던 때의 온톨로지 기준**이라 지금 값과는 다를 수 있다.
 #
-#   MAX_STEPS   경로 수      등록 후 menu
-#         3      4~ 8        1193~1514자
-#         4     14~20        2299~2772자   <- 여기
-#         5     44~52        5764~6923자   <- 예산 초과
+#   MAX_STEPS   등록 한 번의 경로 수   등록 후 menu
+#         3            4~ 8           1193~1514자
+#         4           14~20           2299~2772자   <- 여기
+#         5           44~52           5764~6923자   <- 예산 초과
 #
 # **임시방편이다.** 경로 길이가 문제인 것이 아니라 말이 안 되는 조합이 섞이는
-# 것이 문제이고, 그것은 about 차단(crosses_groups)이 푼다. 온톨로지가 촘촘해지고
-# 범용 노드가 줄면 이 상수는 의미가 없어진다.
+# 것이 문제다. 온톨로지가 촘촘해지고 범용 노드가 줄면 이 상수는 의미가 없어진다.
+# ★ 이 값을 무엇으로 정할지는 아직 확정되지 않았다.
 MAX_STEPS = 4
 
 
@@ -340,10 +368,14 @@ def _step_block(node: dict, node_id: str) -> str:
     return f"  - node: {node_id}"
 
 
-# menu.yaml 크기 상한. 넘으면 models.yaml 의 num_ctx 를 넘겨 LLM 이 타임아웃한다.
-# tests/context_loading 의 상한과 같은 값이다.
-# 프로덕션에서 부르는 곳은 없다. 등록 뒤 menu 가 이 선을 넘지 않는지
-# tests/node_registration/test_append_menu.py 가 보는 기준값이라 남긴다.
+# menu.yaml 자수 상한. 넘으면 num_ctx 를 넘겨 LLM 이 타임아웃한다.
+#
+# **프로덕션에서 부르는 곳이 없다.** 등록 뒤 menu 가 이 선을 넘지 않는지
+# dev/tests/registration 이 보는 기준값이고 dev/tools/rebuild_init.py 가 여유를
+# 찍는 데 쓴다.
+#
+# ★ 이 값을 어떻게 정할지는 아직 확정되지 않았다. 지금 자수는 코드가 아니라
+#   재서 안다 — 파일에 박아 두면 요구사항이 바뀔 때 함께 안 바뀐다.
 MENU_BUDGET = 6000
 
 

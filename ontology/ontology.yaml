@@ -5,15 +5,17 @@
 #   hasOutput 이 있으면 실행해서 무언가를 내놓는 노드이고,
 #   about 의 대상으로 등장하면 대상(그룹) 노드다.
 #
-# - 관계는 넷뿐이다.
+# - 지금 지원하는 관계는 넷이다. 아는 목록은 ontology/graph.py 의
+#   SUPPORTED_PREDICATES 가 갖는다.
 #     is-a       A 는 B 의 한 종류다      (rdfs:subClassOf)   경로 생성의 타입 매칭
-#     about      A 는 B 에 관한 것이다     (dcterms:subject)   후보 분류 · 화면 점선
+#     about      A 는 B 에 관한 것이다     (dcterms:subject)   대상 판정 · 화면 점선
 #     hasInput   A 는 B 를 받는다         (OWL-S 계열)        경로 생성
 #     hasOutput  A 는 B 를 내놓는다       (OWL-S 계열)        경로 생성
 #
-#   **새 관계를 만들려면 "그것을 읽어서 무엇을 하는가" 에 답할 수 있어야 한다.**
-#   답할 수 없으면 만들지 않는다. 읽는 곳이 없는 관계는 파일만 무겁게 하고,
-#   나중에 그것이 맞는지 틀린지 확인할 방법도 없다.
+#   **새 관계는 그것을 실제로 읽는 로직과 함께 더한다.** "그것을 읽어서 무엇을
+#   하는가" 에 답할 수 있으면 SUPPORTED_PREDICATES 에 더하고 읽는 곳을 만든다.
+#   읽는 곳이 없는 관계는 파일만 무겁게 하고, 나중에 그것이 맞는지 틀린지
+#   확인할 방법도 없다.
 #
 # - is-a 는 형식 계층이고 about 은 대상이다. 두 축은 직교한다.
 #   is-a 에 대상 구분을 시키지 않는다 — 그건 about 의 일이다.
@@ -23,21 +25,22 @@
 # - 실행 순서(실선)는 edges 가 아니라 recipe 가 정한다.
 #   두 곳에 적으면 진실의 원천이 둘이 되고, 어긋났을 때 어느 쪽이 맞는지 알 수 없다.
 #
-# - about 은 차단하지 않는다. 경로가 대상을 넘나드는지 표시할 뿐이고 판단은 사람이 한다.
-#   대상이 다른 두 기능을 한 경로에 세우면 타입상 이어져도 실제로는 실행할 수 없다.
-#   그것을 막는 것은 온톨로지가 아니라 사람이다.
+# - about 은 노드가 무엇에 관한 것인지를 말한다. 경로가 대상을 넘나드는지는
+#   graph.crosses_groups 가 이 관계로 계산한다.
+#   ★ 그 계산을 recipe 생성 정책에서 최종적으로 어떻게 쓸지는 아직 확정되지
+#     않았다. 지금 registration 구현은 넘나드는 경로를 recipe 로 만들지 않는다.
 #
 # - 불러오기 노드가 없다. 데이터가 노드로 있으므로 "불러오기" 라는 동사가 따로
 #   필요 없다. recipe 는 데이터 노드에서 시작한다.
 #
 # ---------------------------------------------------------------------------
-# 이 온톨로지가 담은 것 : Gateway catalog 의 MCP 도구 38개
+# 이 온톨로지가 담은 것 : Gateway catalog 의 MCP 도구
 #
-# catalog 는 42개다. 그중 셋(knowledge.deleteDoc · bim.updateModel ·
+# **catalog 를 통째로 담지 않았다.** 셋(knowledge.deleteDoc · bim.updateModel ·
 # bim.deleteModel)은 데이터를 지우거나 바꾸는 도구라 넣지 않았다. 시연에서
 # 눌리면 되돌릴 곳이 없다.
 #
-# 넷째로 `ev.searchChargers` 를 뺐다(2026-08-26). **저쪽이 폐기 예정이라고
+# 넷째로 `ev.searchChargers` 를 뺐다(2026-08-26). **Gateway 가 폐기 예정이라고
 # 도구 설명에 적어 둔 것이다** — "기존 호출 호환용 전기차 충전소 조회.
 # 신규 목록·지도 조회는 ev.searchStations 사용 권장". 같은 일을 하는 도구
 # 둘을 대등하게 두니 전기차 후보가 늘 두 배였고(012/013 · 032/033 ·
@@ -103,8 +106,8 @@
 # 자료실 셋(문서 검색 · 문서 목록 조회 · 3D 모델 목록 조회)은 원래 group_document
 # 라는 대상에 매여 있었다. 그것 하나만 성격이 달랐다 — 교통 · 선거 · 인구 ·
 # 전기차 충전은 주제인데 자료실은 그릇이다. "철도 안전 문서" 의 대상은 교통이지
-# 자료실이 아니므로 문서 검색이 shortlist 에서 걸러졌다. 대상에서 빼 범용으로
-# 돌렸다 (2026-08-23. 판정 61~62/90 -> 80/90. NOTES 「열한째」).
+# 자료실이 아니어서 문서 검색이 걸러졌다. 대상에서 빼 범용으로 돌렸다
+# (2026-08-23. 판정 61~62/90 -> 80/90. NOTES 「열한째」).
 # about 이 붙은 노드가 경로에 하나뿐이면 crosses_groups 는 거짓이므로
 # "범용 -> 특정분야" 경로가 살아남는다. 말한 장소 -> 장소 좌표 변환 -> CCTV 조회가
 # 그것이다.
@@ -130,9 +133,9 @@
 #                                  충전소 상세 조회 노드는 남는다. 전기차 충전소
 #                                  검색 뒤에 붙는 경로 둘이 그것을 쓴다
 #
-#   찍은 지점     is-a 지점 좌표   저쪽 화면이 우클릭으로 찍은 한 점.
+#   찍은 지점     is-a 지점 좌표   KRRI_ASAP 화면이 우클릭으로 찍은 한 점.
 #                                  context.selectedLocation 이 그것이다
-#   보이는 범위   is-a 지도 범위   저쪽 화면이 지금 비추고 있는 사각형.
+#   보이는 범위   is-a 지도 범위   KRRI_ASAP 화면이 지금 비추고 있는 사각형.
 #                                  context.view.bbox 가 그것이다
 #
 # **위 둘은 성격이 다르다. 발화가 아니라 화면에서 온다.** 앞의 셋은 사람이
@@ -148,8 +151,8 @@
 # 갈라야 할 것을 붙이는 셈이었다 (2026-08-28 실측).
 # "값이 다르면 타입도 다르다" 는 위 「받는 것 (8)」 의 판단과도 같은 줄기다.
 #
-# **대가를 미리 적어 둔다.** recipe 40 -> 59개, menu 3321 -> 4833자(실측),
-# given 축 선택지 3 -> 5개다. 판정이 흔들리는지는 NOTES.md 「마흔여섯째」에 있다.
+# **대가를 미리 적어 뒀다.** recipe 40 -> 59개, menu 3321 -> 4833자(실측).
+# 판정이 흔들리는지는 NOTES.md 「마흔여섯째」에 있다.
 #
 # **hasInput 이 하나도 없는 도구는 recipe 가 될 수 없다.** getDatasetInfo 아홉과
 # knowledge.listDocs · bim.listModels 는 인자를 안 받아서 can_connect 가 누구
@@ -237,12 +240,12 @@ nodes:
   # 못 선다(can_connect). 경계 도형 · 통계와 같은 자리이고, 다른 점은 조회해서
   # 받는 자료가 아니라 화면이 바뀌는 것이라는 것뿐이다.
   #
-  # 이 설명 문장은 축 선택지(want)로 발화 해석 프롬프트에 그대로 실린다
-  # (ontology/shortlist.py 의 _describe). 「목록」과 갈리는 말이 여기 있어야 한다.
+  # 이 설명 문장은 menu 문장의 재료라 발화 해석 프롬프트에 실린다.
+  # 「목록」과 갈리는 말이 여기 있어야 한다.
   #
   # **이 한 문장이 「전」과의 차이 열둘 중 셋을 갈랐다** (2026-08-29 실측,
   # NOTES.md 「마흔아홉째」). "화면에 표시하는 것" 이라 적었더니 "오송역 위치
-  # 보여줘" 가 좌표(point)를 버리고 이쪽을 골라 적중 3회를 잃었다 — 저쪽도 같은
+  # 보여줘" 가 좌표(point)를 버리고 이쪽을 골라 적중 3회를 잃었다 — KRRI_ASAP 도 같은
   # 자리를 낱말로 막아 두었다(show-facility 의 `Do Not Use When` 이 "오송역
   # 보여줘 · 오송역 이동 · 의왕역 가줘" 다).
   #
@@ -270,9 +273,8 @@ nodes:
 
   # ------------------------------------------- 시작 데이터 : 화면에서 온 값
   #
-  # 설명 문장이 곧 판단이 서는 자리다. 이 문장은 축 선택지로 발화 해석
-  # 프롬프트에 그대로 실린다(ontology/shortlist.py 의 _describe). 우리는
-  # 프롬프트 파일을 못 고치므로, "언제 이것을 고르는가" 를 적을 데가 여기뿐이다.
+  # 설명 문장이 곧 판단이 서는 자리다. 이 문장은 menu 를 거쳐 발화 해석
+  # 프롬프트에 실리고, "언제 이것을 고르는가" 를 적을 데가 여기뿐이다.
   # 그래서 앞의 셋과 달리 문장이 두 마디다 — 무엇이 왔는가, 그리고 언제 쓰는가.
 
   picked_point:
@@ -309,7 +311,7 @@ nodes:
 
   # **about 을 안 붙였다.** 지금 대상 넷은 교통(도로·철도·현장 영상) · 선거 ·
   # 인구 · 전기차 충전인데, 한 지점에서 걷거나 차로 닿는 범위는 그 넷 중
-  # 어느 것에 관한 것도 아니다. 걸어서든 대중교통으로든 같은 계산이라
+  # 어느 것에 관한 것도 아니다. 어느 이동수단으로든 같은 계산이라
   # 교통에 넣으면 「도로와 철도」라고 적힌 그 대상의 뜻이 흐려진다.
   # 좌표를 받아 도형을 내놓는 범용 계산이라 장소 좌표 변환과 같은 자리에 둔다.
   # 대상을 새로 만들지도 않았다 — 대상 하나에 기능 하나면 그 대상이 하는 일이
@@ -496,18 +498,18 @@ nodes:
   # 하나가 곧 실행이다.
   #
   # **온톨로지는 그것을 모른다.** 여기 적힌 것은 "장소 이름을 받아 시설물 화면을
-  # 내놓는다" 뿐이고, 그것을 무엇으로 수행하는지는 예나 지금이나 배선표
-  # (app/api/services/step_service.py 의 TOOL_OF)가 안다. 도구 이름을 온톨로지에
-  # 안 적기로 한 규칙이 여기서 값을 한다 — 노드가 도구가 아닌 것에 묶여도
-  # 온톨로지는 한 글자도 안 달라진다.
+  # 내놓는다" 뿐이고, 그것을 무엇으로 수행하는지는 배선표
+  # (execution/wiring.yaml 의 tool_of)가 안다. 도구 이름을 온톨로지에 안 적기로
+  # 한 규칙이 여기서 값을 한다 — 노드가 도구가 아닌 것에 묶여도 온톨로지는
+  # 한 글자도 안 달라진다.
   #
-  # 저쪽 plugin 에도 실행 단계가 없다. 아홉 개 plugin 에는 다 있는 `## Run` 절이
+  # KRRI_ASAP 의 plugin 에도 실행 단계가 없다. 아홉 개 plugin 에는 다 있는 `## Run` 절이
   # show-facility · system-chat · unsupported-request 셋에만 없고, show-facility 는
   # `## Map` 의 `show_facility $facilityName` 한 줄이 전부다
   # (KRRI_ASAP/ASAP-orchestrator/plugins/show-facility/plugin.md. 읽기만 했다).
   #
   # **맨 뒤에 둔 것은 recipe 번호를 덜 밀려는 것이다.** 경로 생성이 nodes 에 적힌
-  # 차례를 따르므로(ontology/registry.py 의 all_recipes) 여기 두면 새 recipe 가
+  # 차례를 따르므로(registration/registry.py 의 all_recipes) 여기 두면 새 recipe 가
   # 「말한 장소」 2단 사슬의 맨 끝에 들어간다.
 
   show_facility:
@@ -532,9 +534,10 @@ edges:
   - { from: geocode_place, to: point,      predicate: hasOutput }
   - { from: geocode_place, to: map_extent, predicate: hasOutput }
 
-  # 좌표 하나만 받는다. 분 · 이동수단은 도구의 기본값이 있어 안 보낸다
-  # (max_minutes 30 · mode WALK). required 는 origin_lon · origin_lat 둘뿐이다
+  # 좌표 하나만 받는다. required 도 origin_lon · origin_lat 둘뿐이다
   # (실측 2026-09-06 · Gateway /api/tools 의 inputSchema).
+  # 분과 이동수단은 관계가 아니라 배선이 정한다 — wiring.yaml 이 max_minutes 30 ·
+  # mode TRANSIT 을 명시로 보낸다. 도구 기본값(30 · WALK)에 기대지 않는다.
   - { from: compute_isochrone, to: point,          predicate: hasInput }
   - { from: compute_isochrone, to: reachable_area, predicate: hasOutput }
 
@@ -685,9 +688,8 @@ edges:
   - { from: find_cctv,           to: group_transport, predicate: about }
   - { from: get_railway_section, to: group_transport, predicate: about }
   - { from: get_railway_lines,   to: group_transport, predicate: about }
-  # 오송 테스트트랙은 철도 시험선이다. 대상을 안 붙이면 발화가 대상을 「교통」
-  # 이라고 짚었을 때 shortlist.candidates 의 첫 단에서 걸러진다 — 범용 recipe 는
-  # 짚은 대상에 맞는 것이 하나도 없을 때만 남기 때문이다.
+  # 오송 테스트트랙은 철도 시험선이다. 대상을 붙여 두면 이 노드가 지나는 경로가
+  # 교통 계열 노드와 한 자리에 서도 crosses_groups 에 안 걸린다.
   - { from: show_facility,       to: group_transport, predicate: about }
 
   - { from: election_district_dataset_info,         to: group_election, predicate: about }

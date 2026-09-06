@@ -53,7 +53,7 @@ LLM 이 뽑은 값만 재면 0건이 나왔을 때 **인자 탓인지 데이터�
 
 표를 옮겨 적지 않는다. 발화 목록은 check_resolve 에서, 배선은 step_service 에서,
 user_context 는 execute_service 에서 그대로 가져온다. 여기에 베껴 적으면
-저쪽을 고쳤을 때 이 도구가 세는 숫자를 믿을 수 없게 된다.
+KRRI_ASAP 을 고쳤을 때 이 도구가 세는 숫자를 믿을 수 없게 된다.
 
 Gateway 주소만은 여기서 직접 환경변수를 읽는다. 제품 코드에 그것만 하는
 모듈(execution/gateway_client)이 있었는데 제품에서 부르는 데가 0 이 되어
@@ -358,7 +358,7 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
         picked, errors = {}, 0
         for _ in range(runs):
             try:
-                # _call_resolve 는 다섯을 돌려준다. LLM 단독 칸을 더한 뒤
+                # _call_resolve 가 돌려주는 것 중 앞의 셋만 쓴다. 나머지가
                 # (4dd552a) 여기 언팩이 넷이라 매 호출이 ValueError 로 떨어져
                 # 전부 "!" 가 됐다. 뒤에 무엇이 더 붙어도 안 깨지게 받는다.
                 found, status, argument, *_rest = _call_resolve(utterance, model)

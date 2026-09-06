@@ -27,17 +27,17 @@ LAYOUT = {
     "viewport_height": 1282,
 }
 
-# 저쪽 화면을 따라 볼 때 GET /recent 를 다시 묻는 주기(초).
+# KRRI_ASAP 화면을 따라 볼 때 GET /recent 를 다시 묻는 주기(초).
 #
 # 3 이다. 시연장에서 바꿀 수 있게 한 곳에 둔다.
 #
 # 아래가 값을 고른 근거다.
-#   저쪽 회차 하나가 LLM 해석 + 도구 호출이라 10초대다. 그보다 촘촘히 물어도
-#   새 것이 없다 — 늦게 따라오는 값은 주기가 아니라 저쪽의 응답 시간이다
+#   회차 하나가 LLM 해석 + 도구 호출이라 10초대다. 그보다 촘촘히 물어도
+#   새 것이 없다 — 늦게 따라오는 값은 주기가 아니라 그 응답 시간이다
 #   번호가 그대로면 화면을 다시 안 그리므로 헛되이 도는 값은 요청 하나뿐이다.
 #   3초면 분당 20회이고 같은 기계의 FastAPI 라 부담이 없다
 #   2초로 줄여도 사람 눈에 달라지는 것이 없고 요청만 1.5배가 된다.
-#   5초는 저쪽에서 답이 나온 뒤 화면이 멈춰 있는 구간이 길어 시연에서 걸린다
+#   5초는 KRRI_ASAP 에서 답이 나온 뒤 화면이 멈춰 있는 구간이 길어 시연에서 걸린다
 FOLLOW_INTERVAL_SECONDS = 3
 
 # 색은 여기 없다. app/ui/graph/dot.py 가 정해 /screen 응답으로 내려보내고 theme.py 가 받는다 —
@@ -113,34 +113,3 @@ def layout_ratios() -> dict:
                 ratios[field] = value
 
     return ratios
-
-
-# ── 지도가 없는 화면이 보내는 고정 문맥 ─────────────────────────────
-#
-# ★ 고정값이다. 이 화면에는 지도가 없어서 실제로 보고 있는 범위라는 것이 없다.
-#
-# 그런데도 보내는 것은, 저쪽 화면과 같은 발화에 같은 경로를 골라야 하기
-# 때문이다. 백엔드는 문맥이 오면 화면 시작 데이터 둘(찍은 지점 · 보이는 범위)을
-# 살리고 안 오면 죽인다. 안 보내면 이 화면만 다른 후보를 보게 된다.
-#
-# 모양은 저쪽 평상시와 같다 — bbox 는 있고 selectedLocation 은 null 이다
-# (KRRI_ASAP 의 useChat 이 우클릭 전에 그렇게 보낸다).
-#
-# 값은 오송역(127.3277, 36.6200)에서 반경 15km 다. 지어낸 값이 아니라
-# step_service.RADIUS_METERS 로 만든 상자이고, road.getCctv 가 실제로 그 넷을
-# 받은 적이 있다(dev/tests/vendor_to_be_deleted/test_workflow_answer.py 의 minLon 127.15983…).
-# 시연이 오송·청주에서 도므로 그 일대를 보고 있다고 두는 것이다.
-FIXED_VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
-
-# 화면에 적을 한 줄. 고정값이라는 것이 시연장에서 보여야 한다.
-FIXED_VIEW_LABEL = "지도 문맥 고정 · 오송역 반경 15km (이 화면에는 지도가 없다)"
-
-
-def map_context() -> dict:
-    """이 화면이 /resolve 에 실어 보내는 지도 문맥.
-
-    출력  저쪽 ChatRequest.context 와 같은 모양. view.bbox 와 selectedLocation
-    규칙  selectedLocation 은 늘 None. 찍을 지도가 없음
-          저쪽 평상시(우클릭 전)와 같은 모양임
-    """
-    return {"view": {"bbox": FIXED_VIEW_BBOX}, "selectedLocation": None}

@@ -24,7 +24,7 @@ defaults:
   reason_max_length: 200
 
 models:
-  "저쪽서버모델":
+  "vllm모델":
     provider: vllm
     timeout: 300
 
@@ -38,7 +38,6 @@ def models_file(monkeypatch, tmp_path):
     path = tmp_path / "models.yaml"
     path.write_text(DOCUMENT, encoding="utf-8", newline="\n")
     monkeypatch.setattr(paths, "MODELS_PATH", path)
-    monkeypatch.delenv("OLLAMA_MODEL", raising=False)
     monkeypatch.delenv("LLM_MODEL", raising=False)
     return path
 
@@ -49,7 +48,7 @@ def test_the_provider_in_the_file_decides_which_client_comes_back(models_file):
     부르는 쪽은 provider 이름을 안 적음. 모델 이름만 대면 됨 — 그래야
     같은 발화를 모델만 바꿔 재는 데 부르는 코드가 안 바뀜.
     """
-    assert isinstance(get_llm("저쪽서버모델"), VllmProvider)
+    assert isinstance(get_llm("vllm모델"), VllmProvider)
     assert isinstance(get_llm("기본모델"), OllamaProvider)
 
 
@@ -69,9 +68,9 @@ def test_the_chosen_model_reaches_the_client(models_file):
     모델이 다른 객체가 한 프로세스에 여럿 살아야 함. 전역 상수를 읽으면
     그게 안 됨.
     """
-    저쪽 = get_llm("저쪽서버모델")
-    assert 저쪽.config.model == "저쪽서버모델"
-    assert 저쪽.config.timeout == 300, "모델 항목이 defaults 를 덮음"
+    vllm_쪽 = get_llm("vllm모델")
+    assert vllm_쪽.config.model == "vllm모델"
+    assert vllm_쪽.config.timeout == 300, "모델 항목이 defaults 를 덮음"
 
     이쪽 = get_llm("처음보는모델")
     assert (이쪽.config.model, 이쪽.config.num_ctx) == ("처음보는모델", 8192)
@@ -81,7 +80,7 @@ def test_an_unknown_provider_is_an_error_not_a_silent_fallback(models_file):
     """모르는 provider 를 Ollama 로 떨어뜨리지 않음.
 
     오타 하나가 조용히 딴 서버를 부르면 측정이 어느 길로 갔는지 모르게 됨.
-    성적표가 거짓말을 하느니 부르다 죽는 것이 나음.
+    측정 결과가 거짓말을 하느니 부르다 죽는 것이 나음.
     """
     with pytest.raises(UnknownProvider) as 터짐:
         get_llm("엉뚱한모델")
@@ -100,7 +99,7 @@ def test_both_providers_answer_to_the_same_call(models_file):
     def signature(instance):
         return inspect.signature(instance.generate)
 
-    assert signature(get_llm("기본모델")) == signature(get_llm("저쪽서버모델"))
+    assert signature(get_llm("기본모델")) == signature(get_llm("vllm모델"))
 
 
 def test_the_file_is_read_once_per_call(models_file, monkeypatch):
@@ -116,5 +115,5 @@ def test_the_file_is_read_once_per_call(models_file, monkeypatch):
     monkeypatch.setattr(model_config, "_document",
                         lambda: (reads.append(1), real())[1])
 
-    get_llm("저쪽서버모델")
+    get_llm("vllm모델")
     assert len(reads) == 1, f"models.yaml 을 {len(reads)}번 읽었다"

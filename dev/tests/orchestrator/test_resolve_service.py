@@ -1,16 +1,16 @@
-"""대상 : orchestrator/ — 발화를 실행 경로(Recipe)로 해석한다
+"""대상 : orchestrator/resolve_service.py — 발화를 recipe 로 해석한다
 
-해석 엔진은 도메인을 모른다. **무엇을 고를지는 전부 Context 로 들어온다** —
-지금은 menu.yaml(실행 가능한 recipe 목록)이고, 나중에 그래프DB 로 바뀌어도
-엔진은 그대로다.
+**무엇을 고를지는 menu 원문과 발화로만 들어온다.** 고르는 것은 LLM 하나이고,
+고른 것을 문맥이나 온톨로지로 다시 거르지 않는다. 실행에 무엇이 필요한지는
+execution 이 실행 직전에 본다.
 
 응답은 세 상태다.
   SELECT   — 하나로 정해졌다
   CLARIFY  — 후보가 여럿이라 되물어야 한다
   NO_MATCH — 할 수 있는 것이 없다
 
-LLM 은 호출하지 않는다(Stub). 여기서 검증하는 것은 엔진의 계약이지
-LLM 의 판단력이 아니다.
+LLM 은 호출하지 않는다(Stub). 여기서 검증하는 것은 계약이지 LLM 의 판단력이
+아니다.
 """
 
 import json
@@ -19,15 +19,13 @@ import pytest
 
 import paths
 from conftest import CLARIFY, NO_MATCH, SELECT, assert_route_contract, menu_was_read
-from orchestrator.route_resolver import RouteResolutionError, resolve_route
+from orchestrator import resolve_service
+from orchestrator.resolve_service import RouteResolutionError
 from orchestrator.schemas.response_schema import recipe_selection_schema
 
 # 상한 값 자체는 이 테스트의 관심이 아니다. 모델별 값은 models.yaml 에 있다.
 #
 # argument 는 선택지가 없다. 발화에서 그대로 떼어 온 값이라 닫힌 목록이 아니다.
-#
-# ★ 2026-09-04 에 축 세 칸(given · want · about)이 스키마에서 빠졌다.
-# 엔진이 도메인을 모른다는 것은 그대로다 — 무엇을 고를지는 여전히 menu 로만 온다.
 SCHEMA = recipe_selection_schema(200)
 
 from workflows.static.menu.load import load_menu
@@ -36,8 +34,9 @@ UTTERANCE = "기상 관측값으로 결빙 위험도를 분석해줘"
 
 
 def resolve(stub_llm_client, raw: str, utterance: str = UTTERANCE):
+    """계약 부분만 본다. paths 조립은 아래 test_the_result_carries_the_paths 가 봄."""
     client = stub_llm_client(raw)
-    result = resolve_route(
+    result = resolve_service._selected(
         prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
         variables={"menu": load_menu(), "utterance": utterance},
         response_schema=SCHEMA,
@@ -145,3 +144,94 @@ def test_a_broken_answer_raises_with_the_original_text(
     error = error_info.value
     assert isinstance(error.__cause__, cause), f"__cause__ 가 없다: {error.__cause__!r}"
     assert fragment in str(error), f"원문이 안 남았다: {error}"
+
+
+# ── LLM 이 고른 것을 그대로 쓴다 ────────────────────────────────────
+
+
+def answer(**overrides) -> str:
+    """LLM 이 냈다고 칠 응답 한 벌."""
+    return json.dumps({
+        "reason": "하는 일이 같다.",
+        "argument": "오송역",
+        "candidate_recipe_ids": [],
+        "status": SELECT,
+        "recipe_id": None,
+        **overrides,
+    })
+
+
+def resolved(stub_llm_client, **overrides) -> dict:
+    return resolve_service.resolve(
+        UTTERANCE, llm_client=stub_llm_client(answer(**overrides)), reason_max_length=200
+    )
+
+
+def test_the_chosen_recipe_comes_first_in_the_candidates(stub_llm_client):
+    """고른 것을 앞에 두고 중복은 접음. 화면과 실행이 그 차례를 그대로 읽음."""
+    result = resolved(
+        stub_llm_client,
+        recipe_id="recipe_002",
+        candidate_recipe_ids=["recipe_004", "recipe_002"],
+    )
+
+    assert result["candidate_recipe_ids"] == ["recipe_002", "recipe_004"]
+
+
+def test_a_recipe_reading_the_screen_context_is_not_dropped_from_the_candidates(
+    stub_llm_client,
+):
+    """**고르는 것과 부를 수 있는 것을 가른다.**
+
+    화면 문맥에서 값을 받는 recipe 를 LLM 이 골랐을 때, 해석은 그것을 그대로
+    돌려준다. 문맥이 실제로 왔는지는 execution 이 실행 직전에 보는 것이고
+    (execute_service 의 실행 전제), 여기서 미리 빼면 「무엇을 골랐는가」와
+    「지금 부를 수 있는가」가 한 값에 섞인다.
+    """
+    from execution import step_service
+
+    screen = next(
+        recipe_id
+        for recipe_id in _recipe_ids()
+        if step_service.context_needs(recipe_id)
+    )
+    result = resolved(stub_llm_client, recipe_id=screen, candidate_recipe_ids=[screen])
+
+    assert result["recipe_id"] == screen
+    assert result["candidate_recipe_ids"] == [screen]
+
+
+def test_the_result_carries_the_paths_of_the_candidates(stub_llm_client):
+    """프론트엔드가 recipe 파일을 직접 안 읽게 경로를 함께 냄."""
+    result = resolved(
+        stub_llm_client, recipe_id="recipe_002", candidate_recipe_ids=["recipe_004"]
+    )
+
+    assert set(result["paths"]) == {"recipe_002", "recipe_004"}
+    assert all(entry["node_id"] for entry in result["paths"]["recipe_002"])
+
+
+def test_no_match_carries_no_paths(stub_llm_client):
+    """고른 것이 없으면 그릴 경로도 없음."""
+    result = resolved(stub_llm_client, status=NO_MATCH, argument=None)
+
+    assert result["candidate_recipe_ids"] == []
+    assert result["paths"] == {}
+
+
+def test_the_legacy_pre_filter_fields_are_gone(stub_llm_client):
+    """문맥 거르개를 걷으면서 그 전후를 견주던 두 key 도 함께 없앴음.
+
+    남겨 두면 「거르기 전」이라는 것이 아직 있다는 뜻으로 읽히고, 계기판이
+    같은 값을 두 번 세게 된다.
+    """
+    result = resolved(stub_llm_client, recipe_id="recipe_002")
+
+    assert "llm_recipe_id" not in result
+    assert "llm_candidate_recipe_ids" not in result
+
+
+def _recipe_ids():
+    from ontology import graph
+
+    return graph.recipe_ids()

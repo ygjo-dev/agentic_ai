@@ -1,21 +1,21 @@
 """vLLM (OpenAI 호환) 구현체.
 
-Solar Open2 250B 가 이 길로 간다. 요청 모양은 지어낸 것이 아니라
-35/36 을 낸 그 요청이다 — 근거는 NOTES 의 Solar 측정 기록(「백열한째」)이고
-지금 그 요청을 내는 것은 `dev/tools/check_llm.py` 다.
+Solar Open2 250B 가 이 길로 간다. **요청 모양을 지어내지 않았다** — benchmark 로
+검증된 request contract 그대로다 (근거는 NOTES 「백열한째」).
 
 **Ollama 와 다른 세 가지는 전부 이 파일 안에만 있다.**
 
     think 끄기   Ollama 는 body 의 think=False, 여기는 reasoning_effort="none"
-    schema 강제  Ollama 는 format=schema, 여기는 response_format 봉투 + strict
+    schema 강제  Ollama 는 format=schema, 여기는 response_format.json_schema
+                 + strict
     컨텍스트     Ollama 는 요청마다 num_ctx, 여기는 서버가 --max-model-len 으로
                  정해 둠. 그래서 body 에 안 실음
 
 keep_alive 도 안 만든다. vLLM 은 모델을 이미 올려 둔 서버라 요청 단위로
 붙들 개념이 없다.
 
-★ /v1/completions 는 쓰지 않는다. 2026-09-05 실측에서 맨 prompt 로는 같은
-response_format 을 보내도 JSON 이 안 나왔다. CHAT 한 길만 둔다.
+★ /v1/completions 는 쓰지 않는다. 맨 prompt 로는 같은 response_format 을 보내도
+JSON 이 안 나왔다(실측). CHAT 한 길만 둔다.
 """
 
 import json
@@ -35,7 +35,7 @@ MAX_TOKENS = 1024
 class VllmConfig:
     """호출 한 번이 쓰는 설정.
 
-    num_ctx 가 없다. 컨텍스트는 서버가 뜰 때 --max-model-len 으로 정해지고
+    num_ctx 가 없음. 컨텍스트는 서버가 뜰 때 --max-model-len 으로 정해지고
     요청이 바꿀 수 있는 값이 아님.
     """
 
@@ -69,18 +69,19 @@ def call_vllm(
     *,
     config: VllmConfig | None = None,
 ) -> str:
-    """CHAT 한 건.
+    """CHAT 한 건 처리.
 
-    입력  프롬프트 전문 · 저장소가 준 응답 스키마 · 호출 설정
     출력  choices[0].message.content 원문 문자열
-    규칙  프롬프트를 user 한 통에 통째로 실음. system 으로 안 가름 —
-          측정이 그 모양이었고 제품이 달라지면 성적을 못 견줌
-          받은 스키마를 감싸기만 함. 한 글자도 안 고침
+    규칙  프롬프트를 user 한 통에 통째로 실음. system 으로 안 가름. benchmark 를
+          그 모양으로 쟀고 요청이 달라지면 그 측정과 못 견줌
+          받은 스키마를 response_format.json_schema 로 감싸기만 함. 한 글자도
+          안 고침
           reasoning_effort="none" 이 Ollama 의 think=False 자리임
     제약  응답을 파싱하지 않는다.
-          파싱과 계약 검증은 route_resolver 의 몫이고 두 곳에 흩어지면 안 됨
+          provider 는 HTTP request · response envelope 까지만 앎. JSON 파싱과
+          계약 검증은 부르는 쪽(orchestrator · registration)의 몫임
           /v1/completions 를 부르지 않는다.
-          맨 prompt 로는 JSON 강제가 안 걸림 (2026-09-05 실측)
+          맨 prompt 로는 JSON 강제가 안 걸림(실측)
     """
     config = config or config_for()
 
@@ -110,7 +111,7 @@ def call_vllm(
         headers={
             "Content-Type": "application/json",
             # vLLM 은 인증을 안 걸었지만 OpenAI 호환 클라이언트가 늘 보내는
-            # 자리라 측정 때와 같은 요청이 되게 그대로 둔다.
+            # 자리라 검증된 request contract 그대로 둔다.
             "Authorization": "Bearer EMPTY",
         },
     )

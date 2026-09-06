@@ -1,4 +1,4 @@
-"""저쪽 회차 하나를 화면이 아는 장면으로 바꾸는 것.
+"""KRRI_ASAP 회차 하나를 화면이 아는 장면으로 바꾸는 것.
 
 Streamlit 을 안 띄운다. 순수 함수 셋만 본다 — 그리는 것은 화면을 보면 알고,
 **화면을 봐도 모르는 것은 raw JSON 이 샜는지다.** 그것을 여기서 막는다.
@@ -130,5 +130,5 @@ def test_the_timestamp_comes_out_in_a_readable_shape():
 
 
 def test_an_empty_timestamp_field_does_not_blow_up():
-    """저쪽 회차가 어떤 모양이어도 화면이 죽으면 안 된다."""
+    """KRRI_ASAP 회차가 어떤 모양이어도 화면이 죽으면 안 된다."""
     assert isinstance(follow_panel.at_text({}), str)

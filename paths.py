@@ -9,11 +9,8 @@ MODELS_PATH = REPO_ROOT / "models.yaml"
 
 # 배선표. 노드를 무엇으로 실행하고 input 을 어떻게 채우는지.
 #
-# **온톨로지 밖이다.** ontology/ 안에 두지 않는다 — 노드가 특정 MCP 서버에
-# 묶이면 도구를 갈아 끼울 때 도메인을 고쳐야 하고, 「노드에는 name 과
-# description 만」이라는 원칙과 부딪히고, menu 가 온톨로지에서 만들어지므로
-# 도구 이름이 프롬프트로 샐 자리가 가까워진다. 까닭 전문은
-# execution/step_service.py 머리말에 있다.
+# **온톨로지 밖이다.** 노드가 MCP 서버에 묶이면 도구를 갈아 끼울 때 도메인을
+# 고쳐야 하고, menu 가 온톨로지에서 만들어지므로 도구 이름이 프롬프트로 샌다.
 WIRING_PATH = REPO_ROOT / "execution" / "wiring.yaml"
 
 # 노드 등록. 온톨로지와 배선을 자동으로 만든다.
@@ -31,9 +28,9 @@ RECIPES_DIR = STATIC_DIR / "recipes"
 RECIPE_SELECTION_PROMPT_PATH = PROMPTS_DIR / "recipe_selection.md"
 NODE_REGISTRATION_PROMPT_PATH = REGISTRATION_DIR / "node_registration.md"
 
-# 초기화 원본. 웹UI 에서 노드를 등록하면 위 자산이 바뀌므로 되돌릴 곳이 필요하다.
-# 코드가 자동으로 다시 만들지 않는다 — 사람이 명시적으로 다시 뜨기 전까지 고정이다.
-# 자동 재생성하면 등록된 노드가 섞인 상태가 원본이 되어 되돌릴 수 없다.
+# 초기화 원본. 등록으로 위 자산이 바뀌므로 되돌릴 곳이 필요하다.
+# 코드가 자동으로 다시 만들지 않는다 — 재생성하면 등록된 노드가 섞인 상태가
+# 원본이 되어 되돌릴 수 없다.
 INIT_ONTOLOGY_PATH = REPO_ROOT / "ontology" / "_init" / "ontology.yaml"
 
 INIT_STATIC_DIR = STATIC_DIR / "_init"
