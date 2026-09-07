@@ -7,10 +7,10 @@
 발화마다 여러 번 돌려 무엇이 나왔는지 표로 찍는다. 표를 보고 사람이 발화를
 고치고, 다시 돌리고, 확정한다.
 
-    python dev/tools/check_resolve.py                   1~36번 × 5회
+    python dev/tools/check_resolve.py                   전체 정답표 × 5회
     python dev/tools/check_resolve.py --runs 3          지금 쓰는 회차. 왜 3 인지는 아래
     python dev/tools/check_resolve.py --only 2          고친 발화만 다시
-    python dev/tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   기준선 아홉만
+    python dev/tools/check_resolve.py --only 1,2,3,4,5,6,7,8,9   적은 번호만
     python dev/tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
     python dev/tools/check_resolve.py --context bbox    실행에 실을 문맥을 우클릭 전 모양으로
     python dev/tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
@@ -51,9 +51,9 @@
 **옛 기록의 `--context` 값과 지금 값의 뜻이 다르다.** 「쉰다섯째」까지의 숫자는
 문맥이 후보를 거르던 때의 것이라 지금 판정과 같은 자로 견줄 수 없다.
 
-## 세 묶음 — 스물아홉과 일곱과 아홉을 갈라 찍는다
+## 세 묶음 — 말한 것과 찍은 지점과 보이는 범위를 갈라 찍는다
 
-발화가 마흔다섯이다. **한 백분율로 합치지 않는다.**
+정답표 발화를 **한 백분율로 합치지 않는다.**
 
     말한 것        발화만으로 닿는다                     ~BASELINE_LAST
     찍은 지점      실행에 우클릭한 지점이 있어야 닿는다   ~EXTENSION_LAST
@@ -68,7 +68,7 @@
 것인데 새 마흔다섯은 만든 날이 하루라 그 기준이 뜻을 잃었다. 새 셋은
 **시작 데이터**로 가르고, 그것이 곧 **잴 수 있는 조건**이다.
 
-★ **새 마흔다섯은 recipe 하나에 발화 하나다.** 살아 있는 recipe 쉰하나 중
+★ **정답표는 recipe 하나에 발화 하나다.** 살아 있는 recipe 쉰하나 중
 여섯(007 · 011 · 023 · 030 · 043 · 051)은 부르면 반드시 0건이라 뺐다.
 까닭과 되살리는 법은 UTTERANCES 위 주석과 NOTES.md 「열린 과제」에 있다.
 
@@ -548,7 +548,7 @@ UTTERANCES = [
     # 위 스물셋은 글자 하나 안 고쳤다 — 새 자와 옛 자를 발화 단위로 맞대려면
     # 그래야 한다
     #
-    # 말한 장소 → 좌표 → 도달권 계산. **다른 서른여섯 어느 것도 「몇 분 안에
+    # 말한 장소 → 좌표 → 도달권 계산. **정답표의 다른 어느 것도 「몇 분 안에
     # 어디까지」를 답하지 않는다** — 좌표(001) · 인구(045) · CCTV(036) 는 그
     # 자리에 놓을 수 있는 답이 아니다. 「걸어서 30분」이 이동 수단과 시간을 함께
     # 대는 말이고 그 둘을 받는 도구가 compute_isochrone 하나다.
@@ -690,9 +690,9 @@ def _mark(number: int) -> str:
 # 때문이다 — 뒤의 둘은 지도 문맥이 와야 닿고, 앞의 하나는 --context none
 # 으로도 닿는다. 묶음을 섞으면 「화면 발화가 지금 어떤가」를 물을 자가 없어진다.
 #
-#   말한 것 스물아홉   1~29 번   spoken_place · spoken_keyword · spoken_identifier
-#   찍은 지점 일곱     30~36 번  picked_point
-#   보이는 범위 아홉   37~45 번  visible_extent
+#   말한 것      ~BASELINE_LAST   spoken_place · spoken_keyword · spoken_identifier
+#   찍은 지점    ~EXTENSION_LAST  picked_point
+#   보이는 범위  그 위            visible_extent
 #
 # ★ **이름만 바꾼 것이 아니라 경계값도 바꿨다.** 변수 이름(BASELINE_LAST ·
 # EXTENSION_LAST)은 그대로 뒀다 — 이 파일 안에서 여섯 곳이 그 이름을 부르고,
@@ -713,9 +713,9 @@ def _mark(number: int) -> str:
 # 빠졌다. 찍은 지점 일곱은 안 움직였다. 변수 이름은 이번에도 안 바꿨다.
 BASELINE_LAST = 24
 EXTENSION_LAST = 32
-BASELINE_LABEL = "말한 것 스물넷"
-EXTENSION_LABEL = "찍은 지점 일곱"
-SCREEN_LABEL = "보이는 범위 여섯"
+BASELINE_LABEL = "말한 것"
+EXTENSION_LABEL = "찍은 지점"
+SCREEN_LABEL = "보이는 범위"
 
 
 def _groups(entries) -> list:
