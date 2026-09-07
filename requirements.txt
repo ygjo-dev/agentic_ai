@@ -4,21 +4,24 @@
 #   ollama serve
 #   ollama pull qwen3:14b
 #
+# vLLM 쪽(llm_engine/providers/vllm.py)은 이 목록에 없다 — OpenAI 호환 HTTP 를
+# 표준 urllib 로 부르므로 클라이언트 패키지가 필요 없다. 서버는 저장소 밖이다.
+#
 # 설치
 #   pip install -r requirements.txt
 
 # --- 런타임 ---
 PyYAML>=6.0.3          # 온톨로지 / Recipe / Policy YAML 파싱
-fastapi>=0.100.0       # Backend API (backend/main.py)
+fastapi>=0.100.0       # Backend API (app/api/main.py)
 uvicorn>=0.24.0        # FastAPI 서버 실행
-streamlit>=1.60.0      # 데모 UI (frontend/main.py)
+streamlit>=1.60.0      # 데모 UI (app/ui/main.py)
 pyvis==0.3.2           # 온톨로지 그래프를 그리는 interactive graph library (vis-network).
                        # 제 패키지 안에 JS 를 들고 있어 cdn_resources="in_line" 이면
                        # 인터넷 없이 뜬다. Graphviz(dot/neato)는 여전히 필요하다 —
-                       # 좌표를 잡는 것과 dev/tools/export_graph.py 의 정지 그림이 그것이다
+                       # 좌표를 잡는 자리(app/ui/graph/layout_store.py)가 그것이다
 requests>=2.31.0       # Frontend에서 Backend 호출
 python-dotenv>=1.0.0   # .env 로드. 진입점에서만 부른다
 
 # --- 개발 / 테스트 ---
-pytest>=9.1.1          # tests/ · 실행은 python -m pytest (저장소 루트가 sys.path 에 필요)
-httpx>=0.27.0          # fastapi TestClient (tests/api_contract)
+pytest>=9.1.1          # dev/tests/ · 실행은 python -m pytest (저장소 루트가 sys.path 에 필요)
+httpx>=0.27.0          # fastapi TestClient (dev/tests/app/api/)

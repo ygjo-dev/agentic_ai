@@ -10,7 +10,7 @@
 dev/tools/check_resolve.py · dev/tools/probe_tools.py 와 같은 성격이라 그 파일들의
 짜임새를 따른다 — 파일 하나에 담고 저장소의 다른 곳을 건드리지 않는다.
 
-**표를 복사하지 않는다.** STEP_OF 와 unwired 를 app/api/services/step_service
+**표를 복사하지 않는다.** STEP_OF 와 unwired 를 execution/step_service
 에서 그대로 import 한다. 여기에 옮겨 적으면 배선을 고칠 때 두 곳이 조용히
 어긋나고, 그러면 이 도구가 세는 숫자를 믿을 수 없게 된다. @arg · $prev 도
 문자열로 박지 않고 SPOKEN_VALUE · PREVIOUS_STEP 을 쓴다.

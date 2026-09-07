@@ -46,7 +46,7 @@ def restore_from_init(path: Path | None = None, init_path: Path | None = None) -
     """_init 사본을 작업본으로 되돌림.
 
     입력  작업본 경로 · _init 사본 경로(없으면 기본값)
-    규칙  ontology.registry.reset_to_init 이 부름. 온톨로지 · recipe · menu 와
+    규칙  registration.registry.reset_to_init 이 부름. 온톨로지 · recipe · menu 와
           함께 좌표도 첫 배치로 돌아감
           못 되돌려도 예외를 안 올림. 작업본이 그대로 남거나 다시 계산됨
     제약  _init 사본 자체를 건드리지 않는다. 망가지면 되돌릴 곳이 없음

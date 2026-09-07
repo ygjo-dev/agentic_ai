@@ -575,8 +575,9 @@ def reset_to_init() -> None:
           그 좌표가 남아, 시연을 두 번 하면 두 번째가 첫 배치가 아님
     제약  _init 사본 자체를 건드리지 않는다. 망가지면 되돌릴 곳이 없음
           좌표를 위에서 import 하지 않는다.
-          좌표는 그리기(demo/)의 자산이고 핵심이 시연 계층을 의존하면 안 됨.
-          여기서 함수 안에 두면 demo/ 가 사라질 때 이 줄만 조용히 건너뜀
+          좌표는 그리기(app/ui/graph/)의 자산이고 핵심이 서비스 계층을
+          의존하면 안 됨. 함수 안에 두면 app/ 이 사라질 때 이 줄만
+          조용히 건너뜀
     """
     store.restore_from_init()
     shutil.copy2(paths.INIT_MENU_YAML_PATH, paths.MENU_YAML_PATH)

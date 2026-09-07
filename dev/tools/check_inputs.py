@@ -15,7 +15,7 @@ dev/tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 
     python dev/tools/check_inputs.py --tools /tmp/tools.json
     python dev/tools/check_inputs.py --refresh           Gateway 에서 다시 받아 파일을 갱신
 
-**표를 복사하지 않는다.** STEP_OF · TOOL_OF 를 app/api/services/step_service 에서
+**표를 복사하지 않는다.** STEP_OF · TOOL_OF 를 execution/step_service 에서
 그대로 import 한다. 읽기만 한다 — 이 파일은 배선도 온톨로지도 안 고친다.
 
 **TOOL_OF 는 이제 「실행 수단」이다** (「마흔아홉째」). server_id · tool 대신
@@ -37,6 +37,11 @@ command 를 적은 줄(show_facility)이 있고, 그 줄은 Gateway 도구가 �
 dev/tools/probe_out/tools.json 에 남기고 다음부터는 그것을 읽는다. 그 파일이 있으면
 Gateway 없이 돈다. 없을 때만 Gateway 를 부르고 상한은 --timeout (기본 120초)다.
 둘 다 안 되면 무엇이 없는지 말하고 멈춘다 — 조용히 빈 표를 내지 않는다.
+
+★ **새로 clone 하면 그 파일이 없다.** `dev/tools/probe_out/` 은 .gitignore 다 —
+Gateway 응답 전문은 기계마다 다른 실측 산출물이라 저장소에 담지 않는다. 그래서
+fresh clone 의 첫 실행은 반드시 Gateway 를 한 번 부른다. Gateway 도 없으면 이
+도구는 돌지 않는다. 배선 자체를 서버 없이 보려면 dev/tools/check_wiring.py 다.
 
 r5-server 처럼 꺼진 서버의 도구는 /api/tools 에 아예 안 실린다. 배선이 가리키는
 도구가 스키마 목록에 없으면 그 줄은 「스키마를 못 받았다」로 적고 넘어간다.
@@ -104,7 +109,7 @@ check_argument 가 나흘간 ValueError 로 죽어 있던 전례가 있다 (NOTE
 보고 **진짜 표는 한 줄도 안 읽었기** 때문이다. 그래서 「TOOL_OF · STEP_OF 의
 모든 줄을 한 번씩 읽어 본다」를 더했다 — 빈 스키마로 rows_of 를 끝까지 돌린다.
 서버가 없어도 돌고, 표의 모양이 바뀌면(이번처럼 command 줄이 생기면) 여기서
-죽는다. pytest 쪽에는 dev/tests/tools/test_check_inputs_selfcheck.py 하나가
+죽는다. pytest 쪽에는 dev/tests/tools/test_dashboard_selfchecks.py 가
 _selfcheck 를 부른다 — 이 도구는 어쩌다 한 번 돌지만 배선표는 커밋마다 바뀌고,
 커밋마다 도는 것은 pytest 다. check_argument 나흘 · check_inputs 하루가 그렇게
 새어 나갔다.
@@ -112,6 +117,7 @@ _selfcheck 를 부른다 — 이 도구는 어쩌다 한 번 돌지만 배선표
 
 import argparse
 import json
+import os
 import re
 import sys
 import unicodedata
@@ -129,7 +135,9 @@ from execution.step_service import (  # noqa: E402
     TOOL_OF,
 )
 
-GATEWAY_URL = "http://localhost:3000"
+# 다른 도구(probe_tools · check_argument)와 vendor 의 config 가 읽는 것과 같은
+# 환경변수다. 여기만 안 읽으면 .env 를 고쳐도 이 도구만 딴 주소를 본다.
+GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:3000").rstrip("/")
 TOOLS_PATH_ENV = "/api/tools"
 DEFAULT_TIMEOUT = 120
 # dev/tools/probe_out/ 은 .gitignore 다. 실측 자산은 전부 거기 둔다.
@@ -560,7 +568,10 @@ def main() -> int:
                 print(f"Gateway 실패({error}). 파일 {path} 로 대신 돈다")
             else:
                 print(f"스키마가 없다. Gateway 도 실패({error}) · 파일도 없음({path})")
-                print("  curl -s http://localhost:3000/api/tools -o dev/tools/probe_out/tools.json")
+                print("  probe_out/ 은 .gitignore 라 clone 에 안 딸려온다. 둘 중 하나가 필요하다:")
+                print(f"    Gateway 를 띄우고 다시 → --gateway {args.gateway}")
+                print("    받아 둔 것이 있으면    → --tools <tools.json 경로>")
+                print("  서버 없이 배선만 보려면 dev/tools/check_wiring.py")
                 return 2
     else:
         print(f"스키마: {path} (서버 안 씀. 다시 받으려면 --refresh)")

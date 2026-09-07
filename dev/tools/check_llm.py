@@ -16,6 +16,21 @@
     python dev/tools/check_llm.py                              기본 모델 한 판
     python dev/tools/check_llm.py --model qwen3:32b --runs 3   모델을 골라 세 판
     python dev/tools/check_llm.py --out /tmp/여기               자세한 결과를 파일로
+    python dev/tools/check_llm.py --dry-run                    안 재고 지금 무엇에 붙는지만
+
+## --dry-run 이 답하는 것
+
+재기 전에 사람이 늘 확인하던 셋이다 — 어느 모델인가 · 어느 backend 인가 ·
+그 서버가 떠 있는가. 그동안은 한 판(수 분)을 시작해 봐야 알았고, 안 떠 있으면
+발화마다 타임아웃을 기다린 뒤에야 알았다.
+
+    모델 고르는 차례   --model > LLM_MODEL > models.yaml 의 default
+    provider          models.yaml 이 모델마다 적는다 (ollama · vllm)
+    host              기계마다 다르므로 환경변수다 (OLLAMA_HOST · VLLM_HOST).
+                      안 적혀 있으면 provider 모듈의 코드 기본값이고,
+                      --dry-run 이 둘 중 어느 쪽인지 함께 적는다
+
+**서버를 띄우지도 내리지도 않는다.** 닿는지만 보고 말한다.
 
 ## 판마다 차례가 같다
 
@@ -30,14 +45,24 @@
 
 import argparse
 import json
+import os
 import sys
 import time
+import urllib.error
+import urllib.request
 from collections import Counter
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+from dotenv import load_dotenv  # noqa: E402
+
+# 프로젝트 모듈보다 먼저 읽는다. providers 가 import 시점에 OLLAMA_HOST ·
+# VLLM_HOST 를 읽어 굳히므로, 뒤에 읽으면 .env 가 안 먹는다.
+# (app/api/main.py 가 같은 까닭으로 같은 자리에 둔다)
+load_dotenv(REPO_ROOT / ".env")
 
 import paths  # noqa: E402
 from dev.tools.check_demo import DEMO, SELECT  # noqa: E402
@@ -52,8 +77,67 @@ from dev.tools.check_resolve import (  # noqa: E402
     _grade,
 )
 from llm_engine.llm_selector import get_llm  # noqa: E402
-from llm_engine.model_config import get_model_config  # noqa: E402
+from llm_engine.model_config import OLLAMA, VLLM, get_model_config  # noqa: E402
+from llm_engine.providers import ollama, vllm  # noqa: E402
 from orchestrator import resolve_service  # noqa: E402
+
+# provider -> (host 를 담은 환경변수 이름, 살아 있는지 물어볼 경로).
+# 값 자체는 provider 모듈이 이미 읽어 두었으므로 여기서 기본값을 다시 적지 않는다.
+PROBE = {
+    OLLAMA: ("OLLAMA_HOST", ollama.OLLAMA_HOST, "/api/tags"),
+    VLLM: ("VLLM_HOST", vllm.VLLM_HOST, "/v1/models"),
+}
+
+
+def _reachable(url: str, timeout: float = 3) -> str:
+    """그 주소가 답하는가.
+
+    출력  사람이 읽을 한 마디. 못 닿는 까닭도 적음
+    규칙  상한 3초. 오래 걸리는 점검은 점검이 아님
+    제약  예외를 올리지 않는다. 못 닿는다는 사실 자체가 답임
+    """
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as response:
+            return f"떠 있다 (HTTP {response.status})"
+    except urllib.error.HTTPError as error:
+        # 응답이 왔으니 서버는 떠 있다. 그 경로가 없을 뿐이다.
+        return f"떠 있다 (HTTP {error.code})"
+    except Exception as error:  # noqa: BLE001 — 거부 · 타임아웃 · DNS 가 같은 답이다
+        return f"못 닿는다 ({type(error).__name__})"
+
+
+def _dry_run(config, model_arg: str | None) -> int:
+    """안 재고 지금 무엇에 붙는지만 찍음.
+
+    출력  0 이면 그 backend 에 닿음. 1 이면 못 닿거나 모르는 provider
+    규칙  값마다 어디서 왔는지를 함께 적음. 「왜 저 모델이 떴지」가 이 도구에
+          물어볼 질문이라 출처가 없으면 답이 안 됨
+    제약  서버를 띄우거나 내리지 않는다. 닿는지만 봄
+    """
+    if model_arg:
+        source = "--model"
+    elif os.environ.get("LLM_MODEL"):
+        source = "환경변수 LLM_MODEL"
+    else:
+        source = f"{paths.MODELS_PATH.name} 의 default"
+
+    print(f"모델      {config.model}   ({source})")
+    print(f"provider  {config.provider}   ({paths.MODELS_PATH.name})")
+
+    probe = PROBE.get(config.provider)
+    if probe is None:
+        print(f"host      모르는 provider 다. 아는 것은 {OLLAMA} · {VLLM} 뿐이다")
+        return 1
+
+    env_name, host, path = probe
+    origin = f"{env_name}" if os.environ.get(env_name) else "코드 기본값"
+    print(f"host      {host}   ({origin})")
+    print(f"timeout {config.timeout}초 · reason {config.reason_max_length}자")
+    print()
+
+    verdict = _reachable(f"{host}{path}")
+    print(f"{host}{path}  ->  {verdict}")
+    return 0 if verdict.startswith("떠 있다") else 1
 
 
 def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
@@ -210,9 +294,14 @@ def main() -> int:
     parser.add_argument("--model", default=None, help="쓸 모델. 없으면 기본 모델")
     parser.add_argument("--runs", type=int, default=1, help="몇 판 (기본 1)")
     parser.add_argument("--out", default="", help="자세한 결과를 남길 디렉터리")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="안 재고 지금 무엇에 붙는지와 그 서버가 떠 있는지만")
     args = parser.parse_args()
 
     config = get_model_config(args.model)
+    if args.dry_run:
+        return _dry_run(config, args.model)
+
     llm = get_llm(args.model)
     out = Path(args.out) if args.out else None
     if out:

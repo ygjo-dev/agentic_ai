@@ -2,7 +2,7 @@
 
 [theme]
 base = "dark"
-primaryColor = "#14B8A6"          # frontend/config.py 의 HIGHLIGHT_COLOR 와 같다
+primaryColor = "#14B8A6"          # app/ui/config.py 의 HIGHLIGHT_COLOR 와 같다
 backgroundColor = "#0E1117"
 secondaryBackgroundColor = "#171B26"
 textColor = "#E6E8EB"
