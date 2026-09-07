@@ -372,13 +372,20 @@ step_of:
   # 1,345셀 · CAR 15분 1,377셀 · TRANSIT 45분 2,491셀). enum 밖의 값은
   # HTTP 500 "Input should be 'WALK', 'BICYCLE', 'CAR' or 'TRANSIT'" 이다.
   #
-  # input_first 가 없다. 찍은 지점에서 곧장 오는 recipe 가 아직 없고, 쓰는 데가
-  # 없는 줄은 check_inputs 가 「맞다」로 세는데 실제로는 한 번도 안 불린다.
+  # 첫 자리(input_first)는 찍은 지점에서 곧장 온다(recipe_063). 앞 단계에서
+  # 오든 문맥에서 오든 받는 모양은 좌표 둘로 같고 값의 출처만 다르다.
+  # 칸 이름이 lon · lat 이 아니라 origin_lon · origin_lat 이라 위
+  # point_from_context 앵커를 여기서도 못 쓴다.
   compute_isochrone:
     point:
       input:
         origin_lon: "$prev.lon"
         origin_lat: "$prev.lat"
+        cutoffs_minutes: "@minutes"
+        mode: "@travel_mode"
+      input_first:
+        origin_lon: "$context.selectedLocation.lon"
+        origin_lat: "$context.selectedLocation.lat"
         cutoffs_minutes: "@minutes"
         mode: "@travel_mode"
       options:

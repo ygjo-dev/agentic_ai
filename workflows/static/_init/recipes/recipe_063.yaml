@@ -1,0 +1,5 @@
+steps:
+
+  - node: picked_point
+
+  - node: compute_isochrone
