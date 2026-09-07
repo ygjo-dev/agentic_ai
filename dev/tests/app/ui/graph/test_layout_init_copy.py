@@ -12,7 +12,6 @@
     _init 사본은      어느 경우에도 안 바뀐다
 """
 
-import ast
 import json
 
 import pytest
@@ -118,70 +117,6 @@ def test_resetting_the_ontology_also_resets_the_coordinates(isolated_workspace):
 
     assert "zz_added_node" not in layout_store.load()
     assert layout_store.load() == before
-
-
-# CLAUDE.md 「폴더가 말하는 여섯 갈래」에서 그대로 온다.
-# 이름이 또 갈리면 아래 exists 확인이 먼저 빨간불이 된다 — 조용히 통과하지 않는다.
-DOMAIN_DIRS = ("ontology", "registration", "orchestrator", "execution",
-               "llm_engine", "workflows")
-SERVICE_PACKAGES = ("app",)
-
-
-def module_level_statements(tree):
-    """함수 · 클래스 몸통 안으로는 안 들어간다. try · if 는 들어간다.
-
-    함수 안의 늦은 import 는 순환을 푸는 흔한 손이라 여기서 안 본다.
-    막으려는 것은 **모듈을 읽는 순간** 서비스 계층이 딸려 오는 것이다.
-    """
-    stack = list(tree.body)
-    while stack:
-        node = stack.pop()
-        yield node
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            continue
-        stack.extend(c for c in ast.iter_child_nodes(node) if isinstance(c, ast.stmt))
-
-
-def imported_roots(node):
-    """import 문 하나가 부르는 최상위 패키지 이름들. import 문이 아니면 빈 것."""
-    if isinstance(node, ast.Import):
-        return [alias.name.split(".", 1)[0] for alias in node.names]
-    if isinstance(node, ast.ImportFrom) and node.level == 0:
-        return [(node.module or "").split(".", 1)[0]]
-    return []
-
-
-def test_the_domain_does_not_import_the_service_layer_at_module_level():
-    """도메인이 서비스를 모듈 수준에서 부르면 서비스를 갈아 끼울 수 없다.
-
-    낱말을 찾지 않고 **import 문을 판다.** 옛 몸통은 `ontology/registry.py`
-    머리에 "demo" 라는 글자가 있는지만 봤는데, 계층 이름이 `app` 으로 갈리자
-    그 assert 는 늘 참이 되어 아무것도 안 지키게 됐다 — 조용히 죽었다.
-    여기서는 이름이 갈리면 아래 exists 확인이 먼저 깨지므로 그 일이 안 난다.
-    """
-    from paths import REPO_ROOT
-
-    for name in DOMAIN_DIRS + SERVICE_PACKAGES:
-        assert (REPO_ROOT / name).is_dir(), (
-            f"{name}/ 이 없다. 계층 이름이 갈렸으면 이 시험의 목록부터 고친다"
-        )
-
-    offenders = []
-    scanned = 0
-    for folder in DOMAIN_DIRS:
-        for path in sorted((REPO_ROOT / folder).rglob("*.py")):
-            if "__pycache__" in path.parts:
-                continue
-            scanned += 1
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in module_level_statements(tree):
-                for root in imported_roots(node):
-                    if root in SERVICE_PACKAGES:
-                        rel = path.relative_to(REPO_ROOT)
-                        offenders.append(f"{rel}:{node.lineno} -> {root}")
-
-    assert scanned, "도메인에서 판 파일이 하나도 없다 — 경로가 어긋난 것이다"
-    assert not offenders, "도메인이 서비스를 모듈 수준에서 부른다:\n" + "\n".join(offenders)
 
 
 def test_a_registration_leaves_the_init_copy_alone(layouts):

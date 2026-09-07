@@ -149,45 +149,22 @@ def test_every_active_recipe_is_fully_wired():
     assert 붙지_않은_것 == {}, f"배선이 빈 recipe 가 있다: {붙지_않은_것}"
 
 
-def test_every_server_a_recipe_calls_is_inside_the_permission_scope():
-    """refs 에 없는 서버를 부르는 recipe 는 늘 실패한다.
+def _permitted_servers():
+    """refs 가 열어 준 서버. 「무엇을 왜 열었나」의 원천이다."""
+    return {
+        ref.split("/", 1)[0]
+        for ref in execute_service.USER_CONTEXT["selected_mcp_tool_refs"]
+    }
 
-    실측 — 없으면 HTTP 500 "MCP tool '<서버>/<도구>' is not applied for this
-    user." 이고 refs 에 더하면 곧바로 200 이다. 노드를 더할 때 배선만 적고
-    권한을 잊는 것이 실제로 걸린 자리다.
+
+def _servers_recipes_call():
+    """지금 recipe 가 실제로 지나는 서버.
 
     **배선 전체가 아니라 recipe 가 지나는 것만 본다.** 부를 수 없는 서버의
     배선이 남아 있는 것은 권한이 열리면 되살릴 자리라는 뜻이지 지금 부른다는
     뜻이 아니다.
     """
-    허용 = {
-        ref.split("/", 1)[0]
-        for ref in execute_service.USER_CONTEXT["selected_mcp_tool_refs"]
-    }
-
-    쓰는_것 = set()
-    for recipe_id in graph.recipe_ids():
-        for entry in graph.path_of(recipe_id):
-            row = step_service.TOOL_OF.get(entry["node_id"], {})
-            if "server_id" in row:
-                쓰는_것.add(row["server_id"])
-
-    assert 쓰는_것, "recipe 가 도구를 하나도 안 부른다 — 이 검사가 무력하다"
-    assert 쓰는_것 <= 허용, f"권한 밖 서버를 부른다: {sorted(쓰는_것 - 허용)}"
-
-
-def test_the_permission_scope_holds_no_server_no_recipe_calls():
-    """부를 것이 없는 서버를 미리 열지 않는다.
-
-    「무엇을 왜 열었나」가 refs 만 보고 읽혀야 한다. 지키는 것은 「몇 개를
-    넓혔나」가 아니라 「부르는 것만 열려 있나」다 — 서버가 늘어도 그대로다.
-    """
-    허용 = {
-        ref.split("/", 1)[0]
-        for ref in execute_service.USER_CONTEXT["selected_mcp_tool_refs"]
-    }
-
-    쓰는_것 = {
+    return {
         row["server_id"]
         for recipe_id in graph.recipe_ids()
         for entry in graph.path_of(recipe_id)
@@ -195,7 +172,33 @@ def test_the_permission_scope_holds_no_server_no_recipe_calls():
         if "server_id" in row
     }
 
-    assert 허용 <= 쓰는_것, f"부를 것이 없는데 열려 있다: {sorted(허용 - 쓰는_것)}"
+
+def test_every_server_a_recipe_calls_is_inside_the_permission_scope():
+    """refs 에 없는 서버를 부르는 recipe 는 늘 실패한다.
+
+    실측 — 없으면 HTTP 500 "MCP tool '<서버>/<도구>' is not applied for this
+    user." 이고 refs 에 더하면 곧바로 200 이다. 노드를 더할 때 배선만 적고
+    권한을 잊는 것이 실제로 걸린 자리다.
+    """
+    쓰는_것 = _servers_recipes_call()
+
+    assert 쓰는_것, "recipe 가 도구를 하나도 안 부른다 — 이 검사가 무력하다"
+    assert 쓰는_것 <= _permitted_servers(), (
+        f"권한 밖 서버를 부른다: {sorted(쓰는_것 - _permitted_servers())}"
+    )
+
+
+def test_the_permission_scope_holds_no_server_no_recipe_calls():
+    """부를 것이 없는 서버를 미리 열지 않는다.
+
+    지키는 것은 「몇 개를 넓혔나」가 아니라 「부르는 것만 열려 있나」다 —
+    서버가 늘어도 그대로다.
+    """
+    허용 = _permitted_servers()
+
+    assert 허용 <= _servers_recipes_call(), (
+        f"부를 것이 없는데 열려 있다: {sorted(허용 - _servers_recipes_call())}"
+    )
 
 
 # ── 보내는 칸이 도구 스키마에 있는가 ────────────────────────────────

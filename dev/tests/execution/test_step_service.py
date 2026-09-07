@@ -124,74 +124,53 @@ def test_names_in_yaml_become_values_from_code():
     assert wiring["adapter"] == step_service.POINT_RADIUS_TO_BBOX
 
 
-def test_unknown_name_raises(tmp_path, monkeypatch, restore_tables):
-    """모르는 이름은 조용히 안 넘어간다.
-
-    그대로 두면 "<RADIUS_METRES>" 라는 문자열이 도구에 실려 나가고, 0건이
-    오지 오류가 오지 않는다.
-    """
-    path = tmp_path / "wiring.yaml"
-    path.write_text(
+# 믿을 수 없는 배선 파일은 전부 터진다. **빈 표로 도는 길이 없어야 한다** —
+# 계기판이 TOOL_OF · STEP_OF 를 곧장 읽으므로 빈 표는 「배선 0줄」이라는
+# 멀쩡해 보이는 출력이 된다. 각 줄이 막는 실제 고장을 옆에 적었다.
+UNTRUSTWORTHY_WIRING = [
+    # 모르는 이름을 그대로 두면 "<RADIUS_METRES>" 가 도구에 실려 나가고
+    # 오류가 아니라 0건이 온다.
+    pytest.param(
         "tool_of: {}\n"
         "step_of:\n"
         "  find_cctv:\n"
         "    point:\n"
         '      input: {radiusMeters: "<RADIUS_METRES>"}\n',
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(paths, "WIRING_PATH", path)
-
-    with pytest.raises(ValueError, match="RADIUS_METRES"):
-        step_service._load_wiring()
-
-
-def test_unknown_wiring_field_raises(tmp_path, monkeypatch, restore_tables):
-    """모르는 칸 이름도 터진다.
-
-    input_frist 같은 오타가 넘어가면 화면 문맥에서 시작하는 자리가 소리 없이
-    사라진다.
-    """
-    path = tmp_path / "wiring.yaml"
-    path.write_text(
+        ValueError, "RADIUS_METRES", id="unknown_name",
+    ),
+    # input_frist 같은 오타가 넘어가면 화면 문맥에서 시작하는 자리가
+    # 소리 없이 사라진다.
+    pytest.param(
         "tool_of: {}\n"
         "step_of:\n"
         "  find_cctv:\n"
         "    point:\n"
         "      input: {lon: 1}\n"
         "      input_frist: {lon: 2}\n",
-        encoding="utf-8",
-    )
-    monkeypatch.setattr(paths, "WIRING_PATH", path)
-
-    with pytest.raises(ValueError, match="input_frist"):
-        step_service._load_wiring()
-
-
-def test_missing_file_raises(tmp_path, monkeypatch, restore_tables):
-    """파일이 없으면 빈 표로 돌지 않고 터진다."""
-    monkeypatch.setattr(paths, "WIRING_PATH", tmp_path / "없다.yaml")
-
-    with pytest.raises(FileNotFoundError):
-        step_service._load_wiring()
+        ValueError, "input_frist", id="unknown_field",
+    ),
+    # 오타 난 절은 조용히 빈 표가 된다.
+    pytest.param(
+        "tool_of: {}\nstep_of: {}\ntool_off: {}\n",
+        ValueError, "tool_off", id="unknown_section",
+    ),
+    pytest.param("tool_of: {\n  깨진다\n", Exception, None, id="broken_syntax"),
+    # 파일이 아예 없는 경우. text 가 None 이면 파일을 안 만든다.
+    pytest.param(None, FileNotFoundError, None, id="missing_file"),
+]
 
 
-def test_broken_yaml_raises(tmp_path, monkeypatch, restore_tables):
-    """문법이 깨져도 터진다."""
+@pytest.mark.parametrize("text, raised, fragment", UNTRUSTWORTHY_WIRING)
+def test_a_wiring_file_that_cannot_be_trusted_raises(
+    tmp_path, monkeypatch, restore_tables, text, raised, fragment
+):
+    """믿을 수 없는 배선 파일은 빈 표로 돌지 않고 터진다."""
     path = tmp_path / "wiring.yaml"
-    path.write_text("tool_of: {\n  깨진다\n", encoding="utf-8")
+    if text is not None:
+        path.write_text(text, encoding="utf-8")
     monkeypatch.setattr(paths, "WIRING_PATH", path)
 
-    with pytest.raises(Exception):
-        step_service._load_wiring()
-
-
-def test_unknown_section_raises(tmp_path, monkeypatch, restore_tables):
-    """모르는 절도 터진다. 오타 난 절은 조용히 빈 표가 된다."""
-    path = tmp_path / "wiring.yaml"
-    path.write_text("tool_of: {}\nstep_of: {}\ntool_off: {}\n", encoding="utf-8")
-    monkeypatch.setattr(paths, "WIRING_PATH", path)
-
-    with pytest.raises(ValueError, match="tool_off"):
+    with pytest.raises(raised, match=fragment):
         step_service._load_wiring()
 
 
@@ -392,52 +371,29 @@ def test_arg_and_prev_mixed_each_become_their_own_value(monkeypatch):
 # ★ 이 heuristic 을 언제 걷어낼지는 아직 정해지지 않았다.
 
 
-def test_a_railway_line_name_goes_to_railwayName(monkeypatch):
-    """"…선" 으로 끝나면 노선 이름임. stationName 으로 보내면 0건임."""
+# **보내는 칸 전체를 못 박는다.** 도구가 두 절을 AND 로 이으므로 railwayName 과
+# stationName 을 함께 보내면 같은 값일 때 0건이 온다 — 한 칸만 나가야 한다.
+@pytest.mark.parametrize(
+    "argument, sent",
+    [
+        # "…선" 으로 끝나면 노선 이름. stationName 으로 보내면 0건이다.
+        ("경부선", {"railwayName": "경부선"}),
+        # 이 줄이 원래 하던 일. 깨지면 되던 발화가 0건이 된다.
+        ("오송역", {"stationName": "오송역"}),
+        # "청주" 는 railwayName 으로 0건이고 stationName 으로 9건이다(실측).
+        # 자를 "…역" 으로 끝나는 것만으로 좁히지 않은 이유가 이것이다.
+        ("청주", {"stationName": "청주"}),
+        # 빈 값은 어떤 어미로도 안 끝난다. 두 칸 다 안 보내는 길은 여기 없다.
+        ("", {"stationName": ""}),
+    ],
+    ids=["railway_line", "station", "neither", "empty"],
+)
+def test_the_value_decides_which_field_carries_the_argument(monkeypatch, argument, sent):
     wire(monkeypatch, ["spoken_place", "get_railway_lines"])
 
-    plan = step_service.plan("recipe_003", "경부선")
+    plan = step_service.plan("recipe_003", argument)
 
-    assert plan["steps"][0]["input"] == {"railwayName": "경부선"}
-
-
-def test_a_station_name_stays_on_stationName(monkeypatch):
-    """이 줄이 원래 하던 일임. 깨지면 되던 발화가 0건이 됨."""
-    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
-
-    plan = step_service.plan("recipe_003", "오송역")
-
-    assert plan["steps"][0]["input"] == {"stationName": "오송역"}
-
-
-def test_a_value_that_is_neither_is_not_moved(monkeypatch):
-    """"청주" 는 railwayName 으로 0건이고 stationName 으로 9건임(실측).
-
-    자를 "…역" 으로 끝나는 것만으로 좁히지 않은 이유가 이것임.
-    """
-    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
-
-    plan = step_service.plan("recipe_003", "청주")
-
-    assert plan["steps"][0]["input"] == {"stationName": "청주"}
-
-
-def test_an_empty_argument_leaves_the_field_unchanged(monkeypatch):
-    """빈 값은 어떤 어미로도 안 끝남. 두 칸 다 안 보내는 길은 여기 없음."""
-    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
-
-    plan = step_service.plan("recipe_003", "")
-
-    assert list(plan["steps"][0]["input"]) == ["stationName"]
-
-
-def test_only_one_field_is_sent(monkeypatch):
-    """도구가 두 절을 AND 로 이어서 둘 다 보내면 같은 값일 때 0건임."""
-    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
-
-    for argument in ("경부선", "오송역"):
-        sent = step_service.plan("recipe_003", argument)["steps"][0]["input"]
-        assert len(sent) == 1
+    assert plan["steps"][0]["input"] == sent
 
 
 def test_a_wiring_line_without_arg_field_is_unchanged(monkeypatch):
@@ -510,36 +466,17 @@ def test_a_non_overlapping_argument_is_still_prefixed(monkeypatch):
 # ── $prev — 앞 단계가 없을 때 ───────────────────────────────────────
 #
 # 같은 노드가 두 자리에 쓰이므로 $prev 칸이 첫 step 에 놓이는 자리가 생길 수
-# 있다. 그때 "빼고 부른다" 는 사람이 정한 규칙이고 아래 넷이 그것을 본다.
+# 있다. 그때 "빼고 부른다" 는 사람이 정한 규칙이고 아래가 그것을 본다.
 
 
-def test_with_no_previous_step_the_prev_field_is_dropped_from_the_call(monkeypatch):
-    """멈추지 않고 그 칸만 빠져야 함.
+def test_with_no_previous_step_the_prev_field_and_its_adapter_both_drop_out(monkeypatch):
+    """멈추지 않고 그 칸만 빠져야 함. 어댑터도 함께 빠져야 함.
 
     값을 지어내는 것보다 안 보내는 것이 낫다는 규칙이다. 그 칸이 required 면
     도구가 거부하고 그것은 배선이 틀린 것이다.
-    """
-    wire(
-        monkeypatch,
-        ["start", "lonely"],
-        rows={("lonely", FAKE_TYPE): {
-            "input": {"center": "$prev.location", "radiusMeters": 15000},
-            "adapter": step_service.POINT_RADIUS_TO_BBOX,
-        }},
-        handed={"start": [FAKE_TYPE]},
-        tools={"lonely": fake_tool("x.lonely")},
-    )
 
-    plan = step_service.plan("recipe_x", "오송역")
-
-    assert plan["steps"][0]["input"] == {"radiusMeters": 15000}
-    assert "center" not in plan["steps"][0]["input"]
-
-
-def test_with_no_previous_step_the_inputAdapter_is_not_carried_either(monkeypatch):
-    """걸 중심 좌표가 사라졌음. 그대로 걸면 vendor 어댑터가 ValueError 를 올림.
-
-    _point_radius_to_bbox_input 이 center/location 을 못 찾으면 예외다.
+    어댑터를 남기면 안 되는 까닭은 걸 중심 좌표가 이미 사라졌기 때문이다 —
+    _point_radius_to_bbox_input 이 center/location 을 못 찾으면 ValueError 다.
     배선에 adapter 가 적혀 있어도 실을 수 없는 자리가 있다.
     """
     wire(
@@ -555,6 +492,7 @@ def test_with_no_previous_step_the_inputAdapter_is_not_carried_either(monkeypatc
 
     plan = step_service.plan("recipe_x", "오송역")
 
+    assert plan["steps"][0]["input"] == {"radiusMeters": 15000}
     assert "inputAdapter" not in plan["steps"][0]
 
 

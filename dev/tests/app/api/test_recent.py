@@ -304,43 +304,36 @@ def test_the_preamble_runs_up_to_the_first_step_line():
     assert recent_service.since()["turns"][-1]["head"] == "철도안전법 문서를 조회했습니다."
 
 
-def test_with_no_steps_the_whole_answer_is_the_preamble():
-    """되묻기 회차의 후보 목록이 잘려 나가면 무엇을 고를지가 안 보인다."""
+def test_a_clarify_answer_has_no_step_lines_so_it_is_all_preamble():
+    """번호가 붙어 있어도 도구를 부른 것이 아니다.
+
+    후보 줄을 단계로 읽으면 머리말이 첫 줄에서 잘려 무엇을 고를지가 안 보인다.
+    """
     turn_of(
         "오송역 인구 구성 알려줘",
         [{"type": "result", "answer": CLARIFY_ANSWER, "commands": []}],
         resolve=resolved(status="CLARIFY", recipe_id=None),
     )
 
-    assert recent_service.since()["turns"][-1]["head"] == CLARIFY_ANSWER
+    turn = recent_service.since()["turns"][-1]
 
-
-def test_candidate_lines_in_a_clarify_answer_are_not_steps():
-    """번호가 붙어 있어도 도구를 부른 것이 아니다."""
-    turn_of(
-        "오송역 인구 구성 알려줘",
-        [{"type": "result", "answer": CLARIFY_ANSWER, "commands": []}],
-        resolve=resolved(status="CLARIFY", recipe_id=None),
-    )
-
-    assert recent_service.since()["turns"][-1]["steps"] == []
+    assert turn["steps"] == []
+    assert turn["head"] == CLARIFY_ANSWER
 
 
 # ================================================================ raw JSON
-def test_geojson_never_leaks_even_in_a_turn_holding_coordinate_arrays():
-    """commands 를 아예 안 읽는다. 이 저장소의 계약이다."""
-    turn_of("오송역 CCTV 보여줘", executed(commands=GEOJSON_COMMANDS), resolve=resolved())
+def test_geojson_never_leaks_because_commands_are_not_kept_at_all():
+    """commands 를 아예 안 읽는다. 이 저장소의 계약이다.
 
-    body = json.dumps(recent_service.since(0), ensure_ascii=False)
-
-    for leaked in ("geojson", "coordinates", "geometry", "FeatureCollection", "rtsp://"):
-        assert leaked not in body
-
-
-def test_a_turn_has_no_commands_field_at_all():
+    칸이 없는 것이 곧 안 새는 까닭이라 둘을 함께 본다.
+    """
     turn_of("오송역 CCTV 보여줘", executed(commands=GEOJSON_COMMANDS), resolve=resolved())
 
     assert "commands" not in recent_service.since()["turns"][-1]
+
+    body = json.dumps(recent_service.since(0), ensure_ascii=False)
+    for leaked in ("geojson", "coordinates", "geometry", "FeatureCollection", "rtsp://"):
+        assert leaked not in body
 
 
 # ================================================================ 엔드포인트

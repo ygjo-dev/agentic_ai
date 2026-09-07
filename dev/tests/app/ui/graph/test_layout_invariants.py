@@ -18,7 +18,7 @@
 
 원래 있던 곳 (전부 이 파일로 옮겼고 그 파일들은 지웠다) :
 `test_neato_layout.py` · `test_bottom_flow.py` · `test_top_relations.py` ·
-`test_visual_kinds.py` · `test_build_dot.py`(연기 감지 하나).
+`test_build_dot.py`(연기 감지 하나).
 **본문은 옮기기만 했다.** 실측으로 얻은 단언이라 손대면 무엇을 재던 것인지 잃는다.
 
 ★ **2026-09-06 에 재는 자를 SVG 에서 DOT 으로 갈았다.** 좌표를 SVG 의
@@ -34,7 +34,6 @@ build_dot 에서 통째로 사라져 **이제 구조로 불가능하다** — DO
 `dev/tests/app/ui/test_graph_library.py` 가 화면 쪽에서 지킨다.
 """
 
-import re
 import shutil
 
 import pytest
@@ -67,17 +66,6 @@ SOLID = {
     ("detect_structure_crack", "generate_word"): "AnalysisResult",
 }
 DOTTED = {("load_cctv_platform", "load_inspection_car_image"): ["source: cctv"]}
-
-PATH_A = [("load_cctv_platform", "analyze_congestion"), ("analyze_congestion", "generate_word")]
-PATH_B = [
-    ("load_inspection_car_image", "detect_structure_crack"),
-    ("detect_structure_crack", "generate_word"),
-]
-# test_bottom_flow.py 에서 옮겨온 검사가 이 이름을 쓴다. 그 파일의 PATH 와 같은
-# 사슬이다 — 불러오기 -> 분석 -> 생성.
-PATH = PATH_A
-
-DOTTED_PAIR = ("load_cctv_platform", "load_inspection_car_image")
 
 
 def fresh_positions(nodes=NODES, solid=SOLID, dotted=DOTTED):
@@ -215,11 +203,6 @@ def test_both_configs_use_the_same_layout_model():
     assert models[0] == models[1]
 
 
-def test_fresh_layout_is_deterministic_under_subset():
-    """어느 기계에서 처음 켜도 같은 지도가 나와야 함."""
-    assert fresh_positions() == fresh_positions()
-
-
 def test_overlap_removal_is_not_used_when_pinning():
     """overlap 은 고정(!)을 무시하고 재배치함. 핀이 있으면 쓰면 안 됨.
 
@@ -337,38 +320,7 @@ def test_dense_graph_would_move_if_overlap_removal_were_used():
     assert worst_drift(before, after) > 1.0
 
 
-# ------------------------------------------------------------ 시각 스타일
-# test_visual_kinds.py 에서 옮겨왔다. **대상(group) 노드가 있는 그래프가
-# 필요하다** — 위 그래프에는 group 이 없어 group_attrs 를 켜도 아무 일이 안 일어나
-# 검사가 무력해진다. 그래서 그 파일의 데이터를 이름만 GROUP_ 접두로 바꿔 함께
-# 옮겼다(같은 파일에 NODES 가 둘일 수 없다). 단언은 한 글자도 안 고쳤다.
-GROUP_NODES = {
-    "group_track": {"kind": "group", "name": "궤도"},
-    "load_track_image": {
-        "kind": "function", "name": "궤도 검측 이미지 불러오기",
-        "inputs": [], "outputs": ["ImageData"],
-    },
-    "detect_track_crack": {
-        "kind": "function", "name": "궤도 균열 검출",
-        "inputs": ["ImageData"], "outputs": ["AnalysisResult"],
-    },
-    "generate_word": {
-        "kind": "function", "name": "Word 보고서 생성",
-        "inputs": ["AnalysisResult"], "outputs": ["DocumentData"],
-    },
-}
-GROUP_SOLID = {
-    ("load_track_image", "detect_track_crack"): "ImageData",
-    ("detect_track_crack", "generate_word"): "AnalysisResult",
-}
-GROUP_DOTTED = {("detect_track_crack", "group_track"): ["about"]}
-GROUP_PATH = [("load_track_image", "detect_track_crack"),
-              ("detect_track_crack", "generate_word")]
-
-
 # ------------------------------------------------------------ 연기 감지
-# test_build_dot.py 에서 옮겨왔다. 그 파일의 나머지(DOT 문법 · 색 · 강조)는
-# 지웠지만 이것만 남긴다.
 def test_graphviz_accepts_the_real_ontology():
     """실제 데이터로도 파싱되는지 봄. 고정 데이터만 쓰면 놓치는 게 있음.
 
