@@ -17,7 +17,7 @@ dev/tools/check_resolve.py 와 같은 성격이라 그 파일의 짜임새를 �
 200 + {"error": ...} 는 실패고 200 + [] 는 0건일 뿐이다.
 
 **user_context 를 반드시 싣는다.** 빠뜨리면 요청마다 새 guest 가 만들어지고
-adminBoundary 셋 말고는 전부 거부된다(실측). app/api/services/execute_service
+adminBoundary 셋 말고는 전부 거부된다(실측). execution/execute_service
 의 USER_CONTEXT 를 그대로 쓴다 — 두 곳에 적으면 갈린다.
 
 표에는 건수만 찍힌다. 배선을 적을 때는 필드 이름을 봐야 하므로 응답 전문을

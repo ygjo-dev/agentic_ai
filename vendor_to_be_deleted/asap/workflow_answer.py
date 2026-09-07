@@ -1486,8 +1486,8 @@ NOTHING_RAN = "화면에 표시했습니다."
 
 # 맞는 경로가 없을 때의 첫 줄.
 #
-# **문구를 안 바꿨다.** app/api/services/execute_service.py 의 NO_MATCH_ANSWER
-# 에 있던 것을 글자 그대로 옮겼다.
+# **문구를 안 바꿨다.** 옛 execute_service 의 NO_MATCH_ANSWER 에 있던 것을
+# 글자 그대로 옮겼다. 그 상수는 이리로 오면서 저쪽에서 없어졌으므로 찾지 않는다.
 NO_MATCH_HEADLINE = "지금 할 수 있는 일 중에 맞는 것이 없습니다."
 
 # 그 뒤에 붙는 안내 두 줄.

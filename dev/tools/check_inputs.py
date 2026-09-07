@@ -127,6 +127,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from dotenv import load_dotenv  # noqa: E402
 from execution.step_service import (  # noqa: E402
     CENTER_KEYS,
     POINT_RADIUS_TO_BBOX,
@@ -135,8 +136,12 @@ from execution.step_service import (  # noqa: E402
     TOOL_OF,
 )
 
+# GATEWAY_URL 을 읽기 전에 부른다. probe_tools · check_resolve · check_llm 과
+# 같은 자리다. 이 줄이 뒤로 가면 .env 를 고쳐도 이 도구만 못 본다.
+load_dotenv(REPO_ROOT / ".env")
+
 # 다른 도구(probe_tools · check_argument)와 vendor 의 config 가 읽는 것과 같은
-# 환경변수다. 여기만 안 읽으면 .env 를 고쳐도 이 도구만 딴 주소를 본다.
+# 환경변수다. shell 에 있으면 그것이 이기고, 없으면 .env, 둘 다 없으면 아래 기본값이다.
 GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:3000").rstrip("/")
 TOOLS_PATH_ENV = "/api/tools"
 DEFAULT_TIMEOUT = 120
