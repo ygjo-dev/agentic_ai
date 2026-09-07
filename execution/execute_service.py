@@ -35,6 +35,7 @@ from collections import Counter
 from execution import step_service
 from ontology import graph, store
 from orchestrator import resolve_service
+from orchestrator.schemas.response_schema import SPOKEN_OPTIONS
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 from vendor_to_be_deleted.asap.workflow_answer import (
     command_answer,
@@ -325,9 +326,17 @@ def _commands(executed: dict) -> list[dict]:
 
 # ── 실행 ───────────────────────────────────────────────────────
 
-async def run(recipe_id: str, argument: str, text: str = "", context: dict | None = None):
+async def run(
+    recipe_id: str,
+    argument: str,
+    text: str = "",
+    context: dict | None = None,
+    options: dict | None = None,
+):
     """recipe 의 노드 순서대로 도구를 부름. 이벤트를 차례로 냄.
 
+    입력  recipe id · 발화 인자 · 발화 원문 · 화면 문맥 ·
+          발화 해석이 함께 내놓은 이름 있는 값(options). 안 주면 배선 기본값
     출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
           step_start / step_end 는 실제로 불린 단계마다 한 쌍
     규칙  경로에 도구가 안 붙은 노드가 있으면 하나도 안 부르고 그렇다고 답함.
@@ -359,7 +368,7 @@ async def run(recipe_id: str, argument: str, text: str = "", context: dict | Non
         yield _result(_no_context_answer(absent), [])
         return
 
-    plan = step_service.plan(recipe_id, argument)
+    plan = step_service.plan(recipe_id, argument, options)
     if not plan["steps"] and not plan["commands"]:
         yield _result("부를 도구가 없습니다.", [])
         return
@@ -424,6 +433,8 @@ async def chat(
           배선이 발화에서 온 값을 안 쓰는 recipe 는 인자가 없어도 부름.
           "지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없고 조회할 곳은 이미
           문맥이 말했음. 그 판정은 step_service.spoken_needed 가 함
+          이름 있는 값(SPOKEN_OPTIONS)은 그대로 run 에 넘김. 말하지 않아 null
+          인 것을 여기서 채우지 않음. 무엇이 기본인가는 배선표가 앎
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
           상태를 두지 않는다.
@@ -452,5 +463,11 @@ async def chat(
         yield _result(_no_argument_answer(recipe_id), [])
         return
 
-    async for payload in run(recipe_id, argument, text=text, context=context):
+    async for payload in run(
+        recipe_id,
+        argument,
+        text=text,
+        context=context,
+        options={name: resolved.get(name) for name in SPOKEN_OPTIONS},
+    ):
         yield payload

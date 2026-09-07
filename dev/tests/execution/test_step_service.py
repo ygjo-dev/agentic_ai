@@ -675,6 +675,13 @@ def test_an_unknown_runtime_field_is_not_passed_through_silently():
 # test_wiring_contract.py 가 generic 하게 본다.
 
 
+ISOCHRONE_CHAIN = ["spoken_place", "geocode_place", "compute_isochrone"]
+
+
+def isochrone_input(options=None):
+    return step_service.plan(recipe_of(ISOCHRONE_CHAIN), "의왕역", options)["steps"][-1]["input"]
+
+
 def test_the_previous_coordinates_are_split_into_the_origin_fields():
     """칸 이름이 lon · lat 이 아니라 origin_lon · origin_lat 인 자리.
 
@@ -683,16 +690,54 @@ def test_the_previous_coordinates_are_split_into_the_origin_fields():
     분과 이동수단도 명시로 보낸다 — 도구 기본값(30 · WALK)에 기대면 무엇으로
     계산한 답인지가 배선에 안 남고, 그 값이 바뀌어도 우리 쪽에 신호가 없다.
     """
-    sent = step_service.plan(
-        recipe_of(["spoken_place", "geocode_place", "compute_isochrone"]), "의왕역"
-    )["steps"][-1]["input"]
-
-    assert sent == {
+    assert isochrone_input() == {
         "origin_lon": "$s1.lon",
         "origin_lat": "$s1.lat",
-        "max_minutes": 30,
+        "cutoffs_minutes": [30],
         "mode": "TRANSIT",
     }
+
+
+def test_the_spoken_mode_and_minutes_reach_the_tool():
+    """사람이 말한 이동수단과 시간이 실제 호출 인자가 되는 자리.
+
+    사람은 「도보」라고 말하고 도구는 WALK 를 받는다. 그 대응이 배선표에
+    있어야 발화 해석 프롬프트에 도구가 쓰는 말이 안 샌다.
+    """
+    sent = isochrone_input({"travel_mode": "도보", "minutes": [20]})
+
+    assert sent["mode"] == "WALK"
+    assert sent["cutoffs_minutes"] == [20]
+
+
+def test_several_spoken_minutes_go_into_one_field():
+    """겹을 여러 개 말해도 배선이 갈라지지 않는 자리.
+
+    cutoffs_minutes 는 목록을 받으므로 한 겹과 여러 겹이 같은 줄로 간다.
+    한 겹을 max_minutes 로 보내던 것과 답이 같다(2026-09-08 실측).
+    """
+    assert isochrone_input({"minutes": [15, 30, 60]})["cutoffs_minutes"] == [15, 30, 60]
+
+
+def test_a_value_the_wiring_does_not_know_falls_back_to_the_default():
+    """응답 schema 의 enum 이 이미 막지만 그것이 유일한 자물쇠면 provider 를
+    갈 때 조용히 샌다. 모르는 말은 기본값으로 간다.
+    """
+    assert isochrone_input({"travel_mode": "비행기"})["mode"] == "TRANSIT"
+
+
+def test_an_option_the_wiring_does_not_declare_is_not_passed_through_silently():
+    """options 에 없는 "@이름" 을 그대로 두면 그 문자열이 도구에 실려 나가고
+    0건이 오지 오류가 오지 않는다.
+    """
+    with pytest.raises(ValueError):
+        step_service._filled(
+            "@nowhere",
+            "의왕역",
+            None,
+            datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Seoul")),
+            {},
+        )
 
 
 def test_the_origin_comes_from_the_screen_and_the_destination_from_the_utterance():

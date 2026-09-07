@@ -53,9 +53,10 @@ def no_execution(monkeypatch):
     """run 을 가로챔. vendor 실행기와 Gateway 를 안 부름. 받은 것만 남김."""
     seen = {}
 
-    async def fake_run(recipe_id, argument, text="", context=None):
+    async def fake_run(recipe_id, argument, text="", context=None, options=None):
         seen["recipe_id"], seen["argument"] = recipe_id, argument
         seen["context"] = context
+        seen["options"] = options
         yield {"type": "result", "answer": "", "commands": []}
 
     monkeypatch.setattr(execute_service, "run", fake_run)

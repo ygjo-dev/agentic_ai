@@ -40,10 +40,24 @@ from orchestrator.schemas.response_schema import recipe_selection_schema
 # LLM 이 채울 수 있는 칸 전부. **이 목록이 곧 「LLM 이 정하는 것」의 범위다.**
 #   status · recipe_id · candidate_recipe_ids  어느 recipe 인가
 #   argument                                    발화에서 그대로 떼어 온 값
+#   travel_mode · minutes                       발화에서 떼어 온 값 중 이름이 있는 것
 #   reason                                      왜 그렇게 골랐나
 # argument 는 실행 인자가 아니다 — 어느 도구의 어느 칸에 실릴지는 배선표가 정하고
 # (execution/wiring.yaml 의 arg_field), LLM 은 그것을 모른다.
-SELECTION_FIELDS = {"reason", "argument", "candidate_recipe_ids", "status", "recipe_id"}
+#
+# travel_mode · minutes 도 같은 자리다. 사람이 말한 값을 이름을 붙여 떼어 온
+# 것일 뿐이고, 그 값이 어느 도구의 어느 칸에 어떤 말로 실릴지는 배선표의
+# options 절이 정한다 — 「도보」가 WALK 가 되는 것을 LLM 은 모른다.
+# **도구 순서를 적을 칸은 여전히 없다.** 이 목록이 그것을 지킨다.
+SELECTION_FIELDS = {
+    "reason",
+    "argument",
+    "travel_mode",
+    "minutes",
+    "candidate_recipe_ids",
+    "status",
+    "recipe_id",
+}
 
 
 def test_the_llm_is_asked_to_choose_a_recipe_not_a_tool_sequence():

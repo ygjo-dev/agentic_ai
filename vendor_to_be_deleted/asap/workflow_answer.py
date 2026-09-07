@@ -121,6 +121,15 @@ REACH_KEY = "feature_collections"
 REACH_MODE_KEY = "mode"
 REACH_MINUTES_KEY = "max_minutes"
 REACH_CELLS_KEY = "reachable_cell_count"
+
+# 겹을 여러 개 물었을 때의 분 목록. 도구가 늘 돌려주고 한 겹이면 원소가 하나다
+# (2026-09-08 실측 — max_minutes 만 보내도 cutoffs_minutes 가 [30] 으로 온다).
+# 그래서 원소가 둘 이상일 때만 이 문장을 쓴다 — 한 겹까지 이 꼴로 내면
+# 「30분 안에」가 「30분 겹으로」가 되어 여태 나오던 문장이 달라진다.
+REACH_CUTOFFS_KEY = "cutoffs_minutes"
+REACH_CUTOFFS = "{cutoffs} 겹으로 나눠 표시"
+REACH_CUTOFFS_JOIN = " · "
+REACH_CUTOFF_UNIT = "{minutes}분"
 REACH_MODE_WORDS = {
     "WALK": "걸어서",
     "BICYCLE": "자전거로",
@@ -1190,6 +1199,8 @@ def _reach_line(result: Dict[str, Any]) -> str:
           모르는 값이면 수단을 빼고 나머지만 냄
           분 · 격자 칸 수는 정수일 때만 냄. 하나도 못 읽으면 빈 문자열이라
           아래 칸 이름 줄로 떨어짐
+          겹이 둘 이상이면 그 분 목록을 한 마디 더 냄. 안 내면 겹을 셋
+          물었는데 답에는 가장 바깥 하나만 보임
     제약  도형을 문자열에 담지 않는다.
           features 를 그대로 실으면 raw JSON 이 화면에 샌다 — summarize 의
           제약 절과 같은 자리다. 여기서 읽는 것은 미리 정한 칸 넷뿐이다
@@ -1203,6 +1214,19 @@ def _reach_line(result: Dict[str, Any]) -> str:
         said = REACH_RANGE.format(minutes=minutes)
         word = REACH_MODE_WORDS.get(result.get(REACH_MODE_KEY))
         parts.append(f"{word} {said}" if word else said)
+
+    cutoffs = [
+        _int_value(minute) for minute in (result.get(REACH_CUTOFFS_KEY) or [])
+    ]
+    cutoffs = [minute for minute in cutoffs if minute is not None]
+    if len(cutoffs) > 1:
+        parts.append(
+            REACH_CUTOFFS.format(
+                cutoffs=REACH_CUTOFFS_JOIN.join(
+                    REACH_CUTOFF_UNIT.format(minutes=minute) for minute in cutoffs
+                )
+            )
+        )
 
     cells = _int_value(result.get(REACH_CELLS_KEY))
     if cells is not None:

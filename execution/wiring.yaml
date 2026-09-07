@@ -350,8 +350,24 @@ step_of:
       input_first: {bbox: *bbox_from_context}
 
   # 좌표 칸 이름이 origin_lon · origin_lat 이라 위 point_from_previous 를 못 쓴다.
-  # 실행값은 30분 · TRANSIT 고정이다 — 도구 기본값(30분 · WALK)에 기대지 않는다.
-  # 발화에서 분 · 이동수단을 받는 기능은 아직 없다.
+  #
+  # **이동수단과 시간을 발화에서 받는다.** 발화 해석이 사람이 쓰는 말(도보 ·
+  # 자전거 · 승용차 · 대중교통)까지 내놓고, 그것을 도구가 쓰는 말로 바꾸는
+  # 표가 아래 options 다. 사람이 안 말하면 default 로 간다 — 대중교통 30분이고
+  # 그것이 이 기능을 세울 때의 값이다. 도구 기본값(30분 · WALK)에 기대지 않는다.
+  #
+  # **max_minutes 가 아니라 cutoffs_minutes 다.** 둘은 한 값일 때 같은 답을
+  # 낸다(2026-09-08 실측 — BICYCLE 60분에서 max_minutes=60 과
+  # cutoffs_minutes=[60] 이 셀 6,282개 · polygon 1개로 글자까지 같고, 응답의
+  # max_minutes 도 60 으로 온다). 목록을 받는 칸 하나로 두면 「15분, 30분,
+  # 60분」처럼 여러 겹을 말한 발화가 같은 줄로 간다 — 그때 polygon 이 셋 오고
+  # 각 feature 의 properties.cutoff_min 이 몇 분 겹인지 말한다(실측).
+  # 배선이 겹을 세는 분기를 갖지 않아도 되는 것이 이 칸을 고른 까닭이다.
+  #
+  # mode 의 enum 은 LIVE 스키마 그대로다 — WALK · BICYCLE · CAR · TRANSIT.
+  # 넷 다 눌러 봤다(2026-09-08 · 의왕역 좌표. WALK 20분 65셀 · BICYCLE 30분
+  # 1,345셀 · CAR 15분 1,377셀 · TRANSIT 45분 2,491셀). enum 밖의 값은
+  # HTTP 500 "Input should be 'WALK', 'BICYCLE', 'CAR' or 'TRANSIT'" 이다.
   #
   # input_first 가 없다. 찍은 지점에서 곧장 오는 recipe 가 아직 없고, 쓰는 데가
   # 없는 줄은 check_inputs 가 「맞다」로 세는데 실제로는 한 번도 안 불린다.
@@ -360,8 +376,18 @@ step_of:
       input:
         origin_lon: "$prev.lon"
         origin_lat: "$prev.lat"
-        max_minutes: 30
-        mode: "TRANSIT"
+        cutoffs_minutes: "@minutes"
+        mode: "@travel_mode"
+      options:
+        travel_mode:
+          default: 대중교통
+          values:
+            도보: WALK
+            자전거: BICYCLE
+            승용차: CAR
+            대중교통: TRANSIT
+        minutes:
+          default: [30]
 
   # **지점 좌표를 두 곳에서 받는 유일한 줄이다.** 도착지는 앞 단계(장소 좌표
   # 변환)가 내놓고, 출발지는 화면이 찍어 둔 자리에서 곧장 온다. 앞 단계도

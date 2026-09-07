@@ -21,9 +21,11 @@ input 을 어떻게 채우는지는 온톨로지에 없다 — wiring.yaml 이 �
 타입은 온톨로지의 hasInput 선언과 1:1 이다. 어느 줄을 쓸지는 wiring_at 이 앞
 단계가 내놓는 타입을 보고 고른다.
 
-**input 에 들어가는 표시가 넷이다.** 값이 어디서 오는지가 그 넷을 가른다.
+**input 에 들어가는 표시가 다섯이다.** 값이 어디서 오는지가 그 다섯을 가른다.
 
     @arg       사람이 발화에서 말한 값. 발화 해석 LLM 이 argument 로 내놓는다
+    @<이름>    발화에서 말한 값 중 이름이 있는 것(@travel_mode · @minutes).
+               그 줄의 options 절이 기본값과 도구가 쓰는 말로의 대응을 갖는다
     $prev      앞 단계가 내놓은 값. 실제 step id 로 바꿔서 vendor 에 넘긴다
     $context   화면이 발화와 함께 보낸 값. **여기서 안 채운다** — vendor 가
                단계마다 품고 있다가 제자리에서 푼다
@@ -57,6 +59,18 @@ RADIUS_METERS = 15000
 # 값을 넣는다. 그 값이 장소인지 키워드인지 식별자인지는 경로의 시작 데이터
 # 노드가 말하고, 여기는 그것을 구분하지 않는다.
 SPOKEN_VALUE = "@arg"
+
+# 발화에서 온 값 중 **이름이 있는 것**의 표시. "@travel_mode" 처럼 쓴다.
+#
+# **@arg 와 자리가 다르다.** @arg 는 이름이 없어 한 경로에 하나뿐이고 무엇을
+# 뽑을지는 시작 데이터 노드가 말한다. 이 표시는 이름이 여럿이고, 그 이름과
+# 기본값 · 도구가 쓰는 말로의 대응을 배선 줄의 options 절이 갖는다.
+#
+# **왜 배선표가 대응을 갖나.** 사람은 「걸어서」라고 말하고 도구는 WALK 를
+# 받는다. 그 대응은 도구의 말이라 온톨로지에도 프롬프트에도 둘 수 없다 —
+# 발화 해석이 내놓는 것은 사람이 쓰는 말(도보 · 자전거 · 승용차 · 대중교통)
+# 까지이고, 그것을 도구의 말로 바꾸는 것이 실행 계층의 일이다.
+SPOKEN_OPTION_PATTERN = re.compile(r"^@([a-z][a-z0-9_]*)$")
 
 # 발화에서 온 값이 노선 이름인지 가르는 어미.
 #
@@ -157,7 +171,7 @@ _SECTIONS = ("anchors", "tool_of", "step_of")
 
 # 배선 한 줄이 가질 수 있는 칸. input_frist 같은 오타가 조용히 넘어가면 화면
 # 문맥에서 시작하는 자리가 소리 없이 사라진다.
-_WIRING_FIELDS = ("input", "input_first", "adapter", "arg_field")
+_WIRING_FIELDS = ("input", "input_first", "adapter", "arg_field", "options")
 
 # **밖에서 이 두 이름을 import 한다** — dev/tools/check_wiring.py ·
 # dev/tools/check_inputs.py · 시험들. 그래서 다시 읽을 때 객체를 갈아 끼우지
@@ -212,7 +226,59 @@ def _wiring_row(node_id: str, type_id: str, row) -> dict:
     wiring = _resolved(row)
     if "arg_field" in wiring:
         wiring["arg_field"] = tuple(wiring["arg_field"])
+    _check_options(node_id, type_id, wiring)
     return wiring
+
+
+def _check_options(node_id: str, type_id: str, wiring: dict) -> None:
+    """options 절이 말이 되는지 파일을 읽을 때 한 번 본다.
+
+    규칙  이름마다 default 가 있어야 함. 말하지 않은 발화가 그 값으로 감
+          values 가 있으면 default 도 그 표의 key 여야 함. default 를 사람이
+          쓰는 말로 적게 해 표에 두 가지 말이 섞이지 않게 함
+          input · input_first 가 쓰는 "@이름" 이 전부 여기 적혀 있어야 함
+    제약  모르는 이름을 조용히 넘기지 않는다.
+          그대로 두면 "@travel_mode" 라는 문자열이 도구에 실려 나가고,
+          0건이 오지 오류가 오지 않는다
+    """
+    where = f"{paths.WIRING_PATH.name}: {node_id} × {type_id}"
+    options = wiring.get("options") or {}
+    if not isinstance(options, dict):
+        raise ValueError(f"{where} 의 options 가 dict 가 아니다")
+
+    for name, spec in options.items():
+        if not isinstance(spec, dict) or "default" not in spec:
+            raise ValueError(f"{where} 의 options {name} 에 default 가 없다")
+        values = spec.get("values")
+        if values is not None and spec["default"] not in values:
+            raise ValueError(f"{where} 의 options {name} 의 default 가 values 에 없다")
+
+    used = set()
+    for variant in ("input", "input_first"):
+        _option_names(wiring.get(variant), used)
+    unknown = sorted(used - set(options))
+    if unknown:
+        raise ValueError(f"{where} 에 options 없는 표시 {unknown}")
+
+
+def _option_names(value, found: set) -> None:
+    """input 조각에 든 "@이름" 을 모음. 중첩된 dict · list 까지.
+
+    규칙  "@arg" 는 이름이 아니라 따로 있는 표시라 안 담음
+    """
+    if isinstance(value, dict):
+        for item in value.values():
+            _option_names(item, found)
+        return
+    if isinstance(value, list):
+        for item in value:
+            _option_names(item, found)
+        return
+    if not isinstance(value, str) or value == SPOKEN_VALUE:
+        return
+    match = SPOKEN_OPTION_PATTERN.fullmatch(value)
+    if match:
+        found.add(match.group(1))
 
 
 def _load_wiring() -> None:
@@ -363,6 +429,34 @@ def input_of(wiring: dict, first: bool) -> dict:
 
 # ── 고른 줄의 input 을 실제 값으로 ─────────────────────────────
 
+def options_of(wiring: dict, spoken: dict | None) -> dict:
+    """그 배선 줄의 "@이름" 이 실제로 가질 값.
+
+    입력  STEP_OF 한 줄 · 발화 해석이 내놓은 {이름: 값}. 없으면 전부 기본값
+    출력  {이름: 도구에 실을 값}. options 절이 없는 줄은 빈 것
+    규칙  사람이 말하지 않은 값(None · 빈 것)은 그 줄의 default 로 감
+          values 가 있으면 사람이 쓰는 말을 도구가 쓰는 말로 바꿈.
+          values 가 없으면 말한 값을 그대로 씀(분처럼 수가 그대로 가는 자리)
+          values 에 없는 말이 오면 default 로 감. 응답 schema 의 enum 이 이미
+          막지만 그것이 유일한 자물쇠면 provider 를 갈 때 조용히 샘
+    제약  기본값을 여기 적지 않는다. 무엇이 기본인가는 줄마다 다르고
+          배선표가 그 자리에서 말함
+    """
+    options = wiring.get("options") or {}
+    spoken = spoken or {}
+
+    resolved = {}
+    for name, spec in options.items():
+        said = spoken.get(name)
+        chosen = said if said not in (None, "", [], {}) else spec["default"]
+        values = spec.get("values")
+        if values is None:
+            resolved[name] = chosen
+        else:
+            resolved[name] = values.get(chosen, values[spec["default"]])
+    return resolved
+
+
 def _by_argument(wiring: dict, tool_input: dict, argument: str) -> dict:
     """발화에서 온 값을 보고 @arg 가 든 칸의 이름을 고름.
 
@@ -439,12 +533,22 @@ def _now_field(reference: str, now: datetime.datetime) -> str:
     return now.strftime(RUNTIME_FIELDS[field])
 
 
-def _filled(value, argument: str, previous_id: str | None, now: datetime.datetime):
-    """input 안의 @arg · $prev · $now 를 실제 값으로. 중첩된 것까지.
+def _filled(
+    value,
+    argument: str,
+    previous_id: str | None,
+    now: datetime.datetime,
+    options: dict | None = None,
+):
+    """input 안의 @arg · @<이름> · $prev · $now 를 실제 값으로. 중첩된 것까지.
 
+    입력  input 조각 · 발화 인자 · 앞 step id · 부르는 순간 ·
+          options_of 가 이미 푼 {이름: 값}
     출력  같은 모양에 표시만 바뀐 것. 앞 단계가 없어 채울 수 없던 칸은 빠짐
     규칙  "@arg" 는 어절 전체가 표시일 때만 바꿈. 값의 타입이 바뀌므로
           문자열 안에 섞어 쓰지 않음
+          "@이름" 은 options 에서 값을 꺼냄. 값이 수나 목록일 수 있어 여기도
+          어절 전체일 때만 바꿈
           "$prev" 로 시작하면 뒤의 경로는 그대로 두고 앞만 바꿈
           앞 단계가 없으면 그 칸을 DROP 으로 표시하고 dict · list 에서 뺌
           "$now" 로 시작하면 여기서 값으로 바꿔 내보냄. vendor 에 넘기지 않음 —
@@ -452,6 +556,9 @@ def _filled(value, argument: str, previous_id: str | None, now: datetime.datetim
           "$context" 는 안 건드림. 그것은 vendor 가 단계마다 품
     제약  값을 지어내지 않는다. 앞 단계가 없을 때 좌표를 만들어 넣지 않고
           칸을 통째로 뺀다
+          options 에 없는 "@이름" 을 조용히 넘기지 않는다.
+          그대로 두면 그 문자열이 도구에 실려 나가고 0건이 오지 오류가
+          오지 않음. 파일을 읽을 때 _check_options 도 같은 것을 봄
           앞 단계 없는 $prev 에서 멈추지 않는다.
           같은 노드가 두 자리에 쓰이면(search_ev_stations 가 키워드 뒤에도
           geocode 뒤에도 옴) 첫 자리에서 무조건 멈춤. 빼고 부르기로 한 것은
@@ -462,15 +569,20 @@ def _filled(value, argument: str, previous_id: str | None, now: datetime.datetim
     """
     if isinstance(value, dict):
         filled = {
-            key: _filled(item, argument, previous_id, now)
+            key: _filled(item, argument, previous_id, now, options)
             for key, item in value.items()
         }
         return {key: item for key, item in filled.items() if item is not DROP}
     if isinstance(value, list):
-        filled = [_filled(item, argument, previous_id, now) for item in value]
+        filled = [_filled(item, argument, previous_id, now, options) for item in value]
         return [item for item in filled if item is not DROP]
     if value == SPOKEN_VALUE:
         return argument
+    if isinstance(value, str) and SPOKEN_OPTION_PATTERN.fullmatch(value):
+        name = value[1:]
+        if name not in (options or {}):
+            raise ValueError(f"{paths.WIRING_PATH.name}: options 에 없는 표시 {value}")
+        return options[name]
     if isinstance(value, str) and value.startswith(RUNTIME_NOW):
         return _now_field(value, now)
     if isinstance(value, str) and value.startswith(PREVIOUS_STEP):
@@ -600,11 +712,13 @@ def unwired(recipe_id: str) -> list[str]:
 
 # ── 실행 계획 ──────────────────────────────────────────────────
 
-def plan(recipe_id: str, argument: str) -> dict:
+def plan(recipe_id: str, argument: str, options: dict | None = None) -> dict:
     """recipe 한 벌을 vendor 가 받는 실행 계획으로.
 
     입력  recipe id · 발화에서 뽑은 인자. 장소인지 키워드인지 식별자인지는
           여기서 안 가름
+          options 는 발화 해석이 함께 내놓은 이름 있는 값이다. 안 주면 배선
+          줄의 기본값만 씀
     출력  steps  vendor 의 intent["steps"] 에 그대로 들어갈 배열
           nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
           commands  도구를 안 부르고 곧장 내는 지도 명령
@@ -616,6 +730,8 @@ def plan(recipe_id: str, argument: str) -> dict:
           $prev 로 가리킬 것이 없음
           어느 배선 줄을 쓸지는 wiring_at 이 정함. 맞는 줄이 없는 노드는 step 을
           안 만듦. 데이터 노드(spoken_place)도 부를 것이 없어 빠짐
+          "@이름" 은 그 줄의 options 절이 값을 정함. 사람이 말하지 않은 것은
+          기본값으로 가므로 recipe 마다 값이 없어도 부를 수 있음
           adapter 가 적힌 줄만 inputAdapter 칸이 생김. 없는 것은 vendor 가 도구
           스키마를 보고 스스로 정함
           앞 단계가 없어 중심 좌표 칸이 빠졌으면 inputAdapter 도 안 실음.
@@ -652,6 +768,7 @@ def plan(recipe_id: str, argument: str) -> dict:
             argument,
             previous_id,
             now,
+            options_of(wiring, options),
         )
         headline = _headline(tool["headline"], argument)
 

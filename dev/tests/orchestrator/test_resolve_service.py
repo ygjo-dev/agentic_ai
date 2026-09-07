@@ -61,6 +61,8 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
     _, client = resolve(stub_llm_client, json.dumps({
         "reason": "결빙 위험도 분석과 하는 일이 같다.",
         "argument": "기상 관측값",
+        "travel_mode": None,
+        "minutes": None,
         "candidate_recipe_ids": ["recipe_004"],
         "status": SELECT,
         "recipe_id": "recipe_004",
@@ -78,6 +80,8 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         (
             {"reason": "하는 일이 같다.",
              "argument": "기상 관측값",
+             "travel_mode": None,
+             "minutes": None,
              "candidate_recipe_ids": ["recipe_004"],
              "status": SELECT, "recipe_id": "recipe_004"},
             SELECT, "recipe_004", ["recipe_004"],
@@ -85,6 +89,8 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         (
             {"reason": "Word 인지 PPT 인지 발화에 없다.",
              "argument": "기상 관측값",
+             "travel_mode": None,
+             "minutes": None,
              "candidate_recipe_ids": ["recipe_012", "recipe_013"],
              "status": CLARIFY, "recipe_id": None},
             CLARIFY, None, ["recipe_012", "recipe_013"],
@@ -92,6 +98,8 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         (
             {"reason": "menu 에 없는 기능이다.",
              "argument": None,
+             "travel_mode": None,
+             "minutes": None,
              "candidate_recipe_ids": [],
              "status": NO_MATCH, "recipe_id": None},
             NO_MATCH, None, [],
@@ -154,6 +162,8 @@ def answer(**overrides) -> str:
     return json.dumps({
         "reason": "하는 일이 같다.",
         "argument": "오송역",
+        "travel_mode": None,
+        "minutes": None,
         "candidate_recipe_ids": [],
         "status": SELECT,
         "recipe_id": None,
