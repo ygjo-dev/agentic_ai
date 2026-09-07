@@ -40,7 +40,7 @@ from orchestrator.schemas.response_schema import recipe_selection_schema
 # LLM 이 채울 수 있는 칸 전부. **이 목록이 곧 「LLM 이 정하는 것」의 범위다.**
 #   status · recipe_id · candidate_recipe_ids  어느 recipe 인가
 #   argument                                    발화에서 그대로 떼어 온 값
-#   travel_mode · minutes                       발화에서 떼어 온 값 중 이름이 있는 것
+#   travel_mode · minutes · admin_level         발화에서 떼어 온 값 중 이름이 있는 것
 #   reason                                      왜 그렇게 골랐나
 # argument 는 실행 인자가 아니다 — 어느 도구의 어느 칸에 실릴지는 배선표가 정하고
 # (execution/wiring.yaml 의 arg_field), LLM 은 그것을 모른다.
@@ -54,6 +54,7 @@ SELECTION_FIELDS = {
     "argument",
     "travel_mode",
     "minutes",
+    "admin_level",
     "candidate_recipe_ids",
     "status",
     "recipe_id",

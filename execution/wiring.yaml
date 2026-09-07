@@ -70,9 +70,12 @@ anchors:
     lon: "$prev.lon"
     lat: "$prev.lat"
   location_from_previous: &location_from_previous "$prev.location"
+  # 지점 행정구역 판별이 층위 하나만 돌려주므로 items 는 늘 한 칸이다.
+  # 몇째 칸인지를 세던 자리였고 그 셈이 시군구에 고정돼 있었다 — 왜 갈렸는지는
+  # find_admin_boundary_by_point 의 layer 줄에 있다.
   admin_level_from_previous: &admin_level_from_previous
-    level: "$prev.items.1.layerId"
-    code: "$prev.items.1.code"
+    level: "$prev.items.0.layerId"
+    code: "$prev.items.0.code"
 
   # KRRI_ASAP 화면이 발화와 함께 보내는 지도 문맥. @arg 도 $prev 도 아닌 셋째 자리다.
   view_min_lon: &view_min_lon "$context.view.minLon"
@@ -417,10 +420,44 @@ step_of:
 
   # 첫 자리는 찍은 지점에서 곧장 온다. 앞 단계에서 오든 문맥에서 오든
   # 받는 모양은 lon · lat 로 같고 값의 출처만 다르다.
+  #
+  # **층위를 발화에서 받는다. 앵커를 안 쓰는 까닭이다** — 옆의 지점 판별 다섯
+  # (선거 넷 · 지방선거 하나)은 layer 라는 칸이 없어 같은 모양을 못 쓴다.
+  #
+  # 안 보내면 시도 · 시군구 · 읍면동 세 칸이 한꺼번에 온다(실측). 그때
+  # 뒤에 오는 인구 도구는 몇째 칸을 쓸지 배선이 골라야 했고 그것이 items.1 로
+  # 시군구에 박혀 있었다 — 「충청북도 연령대별 인구」가 청주시 상당구
+  # 193,079명을 답하던 자리다(2026-09-08 실측). 사람이 시도를 말해도 시군구가
+  # 나왔다.
+  #
+  # layer 를 보내면 그 층위 한 칸만 온다(실측 2026-09-08 · 충청북도 좌표에서
+  # sido -> 43 충청북도 · sigungu -> 43111 청주시 상당구 · emd -> 43111102
+  # 북문로1가). 그래서 뒤 단계는 items.0 하나만 보면 된다.
+  #
+  # **칸을 고르는 것이 아니라 도구에게 물어보는 것이다.** 응답의 몇째 칸을
+  # 셀지 배선이 정하면 그 셈이 응답 모양에 매이는데, layer 는 도구가 그
+  # 뜻으로 가진 칸이라 응답이 늘어도 안 어긋난다.
+  #
+  # 기본값은 시군구다. 발화가 층위를 안 말했을 때 여태 나오던 값이고,
+  # 「부산역이 무슨 구에 있어」처럼 층위를 말한 발화는 그것이 실제 조회 층위가
+  # 된다.
   find_admin_boundary_by_point:
     point:
-      input: *point_from_previous
-      input_first: *point_from_context
+      input:
+        lon: "$prev.lon"
+        lat: "$prev.lat"
+        layer: "@admin_level"
+      input_first:
+        lon: "$context.selectedLocation.lon"
+        lat: "$context.selectedLocation.lat"
+        layer: "@admin_level"
+      options:
+        admin_level:
+          default: 시군구
+          values:
+            시도: sido
+            시군구: sigungu
+            읍면동: emd
 
   find_election_district_by_point:
     point:
@@ -468,6 +505,10 @@ step_of:
   # 없다 — 사람이 "43113" 이라고 말하지 않아 온톨로지에서
   # `말한 식별자 is-a 행정구역 코드` 를 뗐다. 그래서 level 이 발화에 없어
   # 못 적던 것이 풀린다. 받는 모양의 근거는 ADMIN_LEVEL_FROM_PREVIOUS 에 있다.
+  #
+  # **어느 층위인가는 여기서 안 정한다.** 앞 단계가 layer 로 이미 한 층위만
+  # 받아 오므로 여기는 그 한 칸을 그대로 쓴다. 두 곳이 층위를 정하면 발화가
+  # 시도를 말했는데 여기가 시군구를 집는 어긋남이 다시 생긴다.
   get_age_profile:
     admin_code:
       input: *admin_level_from_previous

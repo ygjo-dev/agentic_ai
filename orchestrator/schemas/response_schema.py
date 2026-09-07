@@ -22,6 +22,10 @@ SPOKEN_OPTIONS = {
         "type": ["array", "null"],
         "items": {"type": "integer"},
     },
+    "admin_level": {
+        "type": ["string", "null"],
+        "enum": ["시도", "시군구", "읍면동", None],
+    },
 }
 
 REQUIRED = [

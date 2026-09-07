@@ -740,6 +740,30 @@ def test_an_option_the_wiring_does_not_declare_is_not_passed_through_silently():
         )
 
 
+AGE_CHAIN = ["spoken_place", "geocode_place", "find_admin_boundary_by_point", "get_age_profile"]
+
+
+def age_inputs(options=None):
+    return [step["input"] for step in step_service.plan(recipe_of(AGE_CHAIN), "충청북도", options)["steps"]]
+
+
+def test_the_spoken_administrative_level_becomes_the_layer_of_the_lookup():
+    """층위를 앞 단계에 물어보는 자리. 응답의 몇째 칸을 세지 않는다.
+
+    layer 를 안 보내면 시도 · 시군구 · 읍면동 세 칸이 함께 오고, 그때 뒤
+    단계가 몇째를 쓸지 골라야 했다. 그 셈이 시군구에 박혀 있어 「충청북도
+    연령대별 인구」가 청주시 상당구를 답했다.
+    """
+    said = age_inputs({"admin_level": "시도"})
+    assert said[1]["layer"] == "sido"
+    assert said[2] == {"level": "$s2.items.0.layerId", "code": "$s2.items.0.code"}
+
+
+def test_the_level_the_utterance_did_not_say_stays_at_the_district():
+    """층위를 안 말한 발화가 여태 나오던 값 그대로 가는지."""
+    assert age_inputs()[1]["layer"] == "sigungu"
+
+
 def test_the_origin_comes_from_the_screen_and_the_destination_from_the_utterance():
     """뒤바뀌면 반대 방향 길이 나오고 도구는 아무 오류도 안 냄.
 
