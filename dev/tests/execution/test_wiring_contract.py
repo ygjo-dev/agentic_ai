@@ -253,12 +253,18 @@ def test_a_tool_whose_schema_really_takes_a_bbox_array_gets_one_field(node, tool
 
     ev.searchStations 를 고치면서 같이 고치면 안 되는 것을 확인하고 안 고쳤다.
     그 확인을 여기 박아 둔다.
+
+    줄 전체를 못 박지 않는다. 같은 줄에 bbox 말고 다른 칸이 함께 갈 수 있고
+    (행정구역 조회의 layer 가 그것이다) 그것은 이 시험이 보는 것이 아니다.
+    보는 것은 **좌표가 한 칸으로 가느냐 넷으로 흩어지느냐** 하나다.
     """
     wiring = step_service.STEP_OF[(node, "map_extent")]
 
     assert "bbox" in _props(tool)
-    assert wiring["input_first"] == {"bbox": BBOX_FROM_CONTEXT}
-    assert wiring["input"] == {"bbox": BBOX_FROM_PREVIOUS}
+    assert wiring["input_first"]["bbox"] == BBOX_FROM_CONTEXT
+    assert wiring["input"]["bbox"] == BBOX_FROM_PREVIOUS
+    for variant in ("input", "input_first"):
+        assert not set(BBOX_FIELDS) & set(wiring[variant]), "좌표가 넷으로 흩어졌다"
 
 
 def test_a_tool_without_a_bbox_field_gets_the_flat_four():

@@ -77,6 +77,20 @@ anchors:
     level: "$prev.items.0.layerId"
     code: "$prev.items.0.code"
 
+  # 발화가 가리킨 행정구역 층위. 세 줄이 같은 표를 쓰므로 한 곳에만 적는다 —
+  # 줄마다 베껴 적으면 한 곳만 고쳤을 때 조용히 어긋난다.
+  #
+  # 사람이 쓰는 말(시도 · 시군구 · 읍면동)을 도구가 쓰는 말(sido · sigungu ·
+  # emd)로 바꾸는 표다. 기본값은 시군구인데 그것이 세 도구의 스키마 기본값과
+  # 같아서, 층위를 안 말한 발화는 여태 나오던 값 그대로 간다.
+  admin_level_option: &admin_level_option
+    admin_level:
+      default: 시군구
+      values:
+        시도: sido
+        시군구: sigungu
+        읍면동: emd
+
   # KRRI_ASAP 화면이 발화와 함께 보내는 지도 문맥. @arg 도 $prev 도 아닌 셋째 자리다.
   view_min_lon: &view_min_lon "$context.view.minLon"
   view_min_lat: &view_min_lat "$context.view.minLat"
@@ -458,13 +472,7 @@ step_of:
         lon: "$context.selectedLocation.lon"
         lat: "$context.selectedLocation.lat"
         layer: "@admin_level"
-      options:
-        admin_level:
-          default: 시군구
-          values:
-            시도: sido
-            시군구: sigungu
-            읍면동: emd
+      options: *admin_level_option
 
   find_election_district_by_point:
     point:
@@ -486,12 +494,28 @@ step_of:
       input: *point_from_previous
       input_first: *point_from_context
 
+  # **층위를 발화에서 받는다.** 안 보내면 도구가 스키마 기본값 sigungu 로
+  # 읽어서, 시도나 읍면동 이름을 말한 발화가 조용히 0건이 된다
+  # (2026-09-08 실측 — query="충청북도" 0건 · query="오송읍" 0건 ·
+  #  query="논산" 1건 · query="강남구" 1건. 시군구 이름만 걸렸다).
+  # layer 를 맞춰 보내면 query="충청북도" + layer=sido 가 1건이다.
+  #
+  # 지도 범위 쪽은 층위가 곧 「무슨 경계를 그릴까」다 — 같은 화면 bbox 에서
+  # sido 4건 · sigungu 8건 · emd 20건이 온다(실측). recipe_024 의 보기
+  # 「지금 화면에 든 시군구 경계선」이 그 자리이고, 이제 읍면동도 물을 수 있다.
+  #
+  # ★ query 와 layer 는 함께 좁힌다. 이름이 그 층위에 없으면 0건이다
+  #   (query="논산" + layer=emd 0건). 그래서 층위를 잘못 뽑으면 0건이 되는데,
+  #   그것은 이름과 층위가 실제로 안 맞는 것이라 조용한 sigungu 기본값보다
+  #   낫다 — 사람이 말한 것을 그대로 물어본 결과다.
   search_admin_boundaries:
     keyword:
-      input: {query: *arg}
+      input: {query: *arg, layer: "@admin_level"}
+      options: *admin_level_option
     map_extent:
-      input: {bbox: *bbox_from_previous}
-      input_first: {bbox: *bbox_from_context}
+      input: {bbox: *bbox_from_previous, layer: "@admin_level"}
+      input_first: {bbox: *bbox_from_context, layer: "@admin_level"}
+      options: *admin_level_option
 
   get_vworld_boundaries:
     keyword:
