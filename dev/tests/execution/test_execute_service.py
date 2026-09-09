@@ -122,8 +122,12 @@ def test_a_status_that_is_not_select_calls_no_tool(monkeypatch, no_execution, st
 # ── 인자가 있는가 ───────────────────────────────────────────────────
 
 
-def test_the_argument_the_LLM_gave_is_used_first(monkeypatch, no_execution):
-    """정규식이 못 잡는 발화도 이것으로 돎. "충북대" 는 끝 글자가 안 맞음."""
+def test_the_argument_comes_from_the_llm_and_reaches_execution(monkeypatch, no_execution):
+    """LLM 이 뽑은 인자가 그대로 실행까지 감.
+
+    "충북대" 처럼 끝 글자가 장소답지 않은 말도 그대로 감 — 발화에서 무엇이
+    인자인지는 문자열 모양이 아니라 발화 해석 LLM 이 안다.
+    """
     resolved(monkeypatch, argument="충북대")
 
     collect(execute_service.chat("충북대 근처 CCTV 보여줘", None, 200))
@@ -131,16 +135,41 @@ def test_the_argument_the_LLM_gave_is_used_first(monkeypatch, no_execution):
     assert no_execution["argument"] == "충북대"
 
 
-def test_place_in_runs_instead_when_argument_is_absent(monkeypatch, no_execution):
-    """대비책. LLM 이 인자를 빠뜨려도 장소 발화만은 여전히 돌아야 함.
+def test_a_null_argument_stops_the_call_instead_of_being_re_extracted(
+    monkeypatch, no_execution
+):
+    """**LLM 이 인자를 null 로 냈으면 파이썬이 발화를 다시 훑지 않는다.**
 
-    ★ 이 정규식 fallback 을 남길지는 아직 정해지지 않았다.
+    예전에는 정규식 대비책(place_in)이 "오송역" 을 집어 실행을 살렸음. 그
+    자리를 걷었다 — 두 곳이 인자를 뽑으면 어느 값이 어디서 왔는지 표에서 안
+    갈리고, 정규식은 "충북대 근처" 를 못 잡으면서 "지금 화면에 든 읍면동
+    경계" 의 「읍면동」은 장소로 집었다(실측).
+
+    발화에 장소가 또렷이 있어도 마찬가지다. 그것이 이 시험의 뜻이다.
     """
     resolved(monkeypatch, argument=None)
 
-    collect(execute_service.chat("오송역 위치 보여줘", None, 200))
+    events = collect(execute_service.chat("오송역 위치 보여줘", None, 200))
 
-    assert no_execution["argument"] == "오송역"
+    assert not no_execution, "인자가 없는데 도구를 불렀다"
+    assert events[-1]["type"] == "result"
+
+
+def test_a_context_only_recipe_still_runs_without_a_spoken_argument(
+    monkeypatch, no_execution
+):
+    """발화에서 뽑을 말이 없는 recipe 는 인자가 null 이어도 그대로 돎.
+
+    "지금 보이는 곳 CCTV" 에는 뽑을 말이 없고 조회할 곳은 이미 문맥이 말했음.
+    판정은 step_service.spoken_needed 의 일반 규칙이 하고, recipe id 를 여기
+    적지 않는다.
+    """
+    resolved(monkeypatch, recipe_id="recipe_026", argument=None)
+
+    collect(execute_service.chat("지금 보이는 데 CCTV 다 띄워줘", None, 200))
+
+    assert no_execution, "문맥으로 도는 recipe 인데 안 불렀다"
+    assert no_execution["argument"] is None, "없는 인자를 지어내지 않는다"
 
 
 @pytest.mark.parametrize(

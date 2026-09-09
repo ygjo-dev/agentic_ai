@@ -426,8 +426,9 @@ async def chat(
           정하고, 문맥이 실제로 왔는지는 run 이 실행 직전에 봄
           SELECT 가 아니면 도구를 하나도 안 부름. CLARIFY 는 무엇을 부를지
           정해지지 않았고 NO_MATCH 는 부를 것이 없음
-          인자는 LLM 이 argument 로 준 것을 먼저 씀. 그것이 없을 때만 place_in
-          이 장소를 뽑음. 정규식은 장소 어절 하나밖에 못 봄
+          인자는 LLM 이 argument 로 준 것 하나뿐임. **발화에서 인자를 뽑는
+          자리는 발화 해석 LLM 한 곳임** — 파이썬이 문자열을 다시 훑어
+          되살리면 어느 값이 어디서 왔는지 표에서 안 갈림
           인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
           배선이 발화에서 온 값을 안 쓰는 recipe 는 인자가 없어도 부름.
@@ -458,7 +459,7 @@ async def chat(
         yield _result(_no_recipe_answer(resolved), [])
         return
 
-    argument = resolved.get("argument") or step_service.place_in(text)
+    argument = resolved.get("argument")
     if not argument and step_service.spoken_needed(recipe_id):
         yield _result(_no_argument_answer(recipe_id), [])
         return

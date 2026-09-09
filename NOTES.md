@@ -1666,8 +1666,10 @@ dev/tools/rebuild_init.py 를 돌리면          _init 이 작업본을 덮어�
      쓰기  8  wiring_at · input_of · unwired · plan · _by_argument ·
               _headline · _has_center · _filled
 
-  ㉡ 발화를 아는 것            4
-              RAILWAY_LINE_SUFFIX · PLACE_SUFFIXES · PLACE_PATTERN · place_in
+  ㉡ 발화를 아는 것            1
+              RAILWAY_LINE_SUFFIX
+              ★ 넷이었다. PLACE_SUFFIXES · PLACE_PATTERN · place_in 은 걷었다 —
+                발화에서 인자를 뽑는 자리를 발화 해석 LLM 한 곳으로 모았다.
 
   ㉢ 화면 문맥을 아는 것       7
               CONTEXT_VALUE · SELECTED_LOCATION · POINT_FROM_CONTEXT ·

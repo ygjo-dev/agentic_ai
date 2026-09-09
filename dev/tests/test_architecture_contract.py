@@ -177,3 +177,39 @@ def test_the_domain_does_not_import_the_service_layer_at_module_level():
 
     assert scanned, "도메인에서 판 파일이 하나도 없다 — 경로가 어긋난 것이다"
     assert not offenders, "도메인이 서비스를 모듈 수준에서 부른다:\n" + "\n".join(offenders)
+
+
+# ── 발화에서 인자를 뽑는 곳은 하나다 ────────────────────────────────
+
+
+def test_the_utterance_argument_is_extracted_only_by_the_llm():
+    """**실행 경로가 발화 문자열을 다시 훑어 인자를 만들지 않는다.**
+
+    인자는 발화 해석 LLM 이 argument 로 내놓는 것 하나뿐이다. 파이썬 정규식
+    대비책이 있으면 같은 발화의 인자가 두 곳에서 나오고, 어느 값이 어디서
+    왔는지 표에서 안 갈린다. 실제로 그 대비책은 "충북대 근처" 를 못 잡으면서
+    "지금 화면에 든 읍면동 경계" 의 「읍면동」을 장소로 집었다.
+
+    낱말을 찾지 않고 **정규식 리터럴을 판다.** 이름을 바꿔 되살리는 것을
+    막으려는 것이라 함수 이름으로 보면 안 걸린다. 한글 음절 범위를 담은
+    패턴이 실행 계층에 새로 생기면 여기가 먼저 빨개진다.
+    """
+    from paths import REPO_ROOT
+
+    offenders = []
+    scanned = 0
+    for path in sorted((REPO_ROOT / "execution").rglob("*.py")):
+        if "__pycache__" in path.parts:
+            continue
+        scanned += 1
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if "가-힣" in node.value:
+                    rel = path.relative_to(REPO_ROOT)
+                    offenders.append(f"{rel}:{node.lineno} -> {node.value!r}")
+
+    assert scanned, "execution 에서 판 파일이 하나도 없다 — 경로가 어긋난 것이다"
+    assert not offenders, (
+        "발화에서 인자를 뽑는 정규식이 실행 계층에 있다:\n" + "\n".join(offenders)
+    )
