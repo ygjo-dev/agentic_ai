@@ -531,7 +531,34 @@ UTTERANCES = [
     # WALK 30분 · 셀 140개 · MultiPolygon 을 받았다 (2026-09-06 실측).
     (24, "의왕역에서 걸어서 30분이면 어디까지 갈 수 있어", {"recipe_061"}, True),
 
-    # ── 찍은 지점 여덟 (25~32) ────────────────────────────────────────
+    # ★ **2026-09-08 correction 에서 다섯(25~29)이 이 묶음 끝에 붙었다.**
+    # 위 스물넷은 글자 하나 안 고쳤다. 사람이 KRRI_ASAP 화면에서 눌러 보고
+    # 어긋난 자리를 그대로 옮긴 것이라 **앞의 것과 기대 recipe 가 겹친다** —
+    # 「recipe 하나에 발화 하나」가 여기서 처음 깨진다. 그래도 넣은 까닭은
+    # 이 셋이 재는 것이 recipe 가 아니라 **경계**이기 때문이다.
+    # 앞의 서른아홉과 점수를 맞댈 때는 이 아홉
+    # (25 · 26 · 27 · 28 · 29 · 39 · 40 · 47 · 48)을 뺀다.
+    #
+    # 24번과 짝이다. 24번은 이동수단·시간을 말했고 이것은 안 말했다.
+    # 안 말한 자리가 기본값(대중교통 30분)으로 가는지를 지키는 줄이고,
+    # 37번(찍은 지점 · 안 말함)과 한 마디로 갈린다 — 출발지를 말했나.
+    (25, "의왕역에서 도달권 보여줘", {"recipe_061"}, True),
+    # 겹을 여럿 말한 자리. recipe 는 24 · 25 와 같고 재는 것은 minutes 가
+    # 목록으로 오는가다. cutoffs_minutes=[15,30,60] 로 polygon 셋을 받았다(실측).
+    (26, "의왕역에서 자전거로 15분, 30분, 60분 도달권 보여줘", {"recipe_061"}, True),
+    # 5번(논산)과 같은 recipe 인데 재는 것이 다르다. 「오송읍」은 행정구역
+    # 이름이면서 동시에 장소로도 읽힌다 — 005(이름으로 바로 조회)와
+    # 033(좌표를 찾아 그 둘레)이 갈리는 자리다.
+    # adminBoundary.searchBoundaries(query=오송읍, layer=emd) 1건(실측).
+    (27, "오송읍 행정경계 보여줘", {"recipe_005"}, True),
+    # 26번의 반대쪽. 「부산역」은 행정구역이 아니고 「주변」이 좌표를 부른다.
+    (28, "부산역 주변 행정경계 보여줘", {"recipe_033"}, True),
+    # 21번(전주시 · 시군구)과 짝이고 층위만 다르다. **사람이 화면에서 확인한
+    # 자리다** — 충청북도는 sido code 43 으로 1,600,787명이 온다(실측).
+    # 층위를 안 뽑으면 기본값 시군구로 떨어져 청주시 상당구 193,079명이 된다.
+    (29, "충청북도 연령대별 인구 알려줘", {"recipe_058"}, True),
+
+    # ── 찍은 지점 열하나 (30~40) ──────────────────────────────────────
     #
     # 시작 데이터가 picked_point 인 것. **--context both 라야 닿는다** —
     # bbox 뿐이면 값이 안 와서 resolve_service 가 후보에서 뺀다.
@@ -545,20 +572,20 @@ UTTERANCES = [
     # 걷기 전 판과 견주는 자이고, 말투를 고치는 것은 사람이 정할 일이다.
     # ★ 023(지방선거 공약 요약)을 지워 여덟에서 일곱이 됐다.
 
-    (25, "여기 어느 동이야", {"recipe_018"}, True),  # 찍은 지점 → 지점 행정구역 판별
-    (26, "여기 CCTV 띄워줘", {"recipe_019"}, True),  # 함께 걸림 026. 「여기」가 지점인지 화면인지 발화에 답이 없다
-    (27, "여기 선거구 이름 뭐야", {"recipe_020"}, True),  # 「이름」만 물어 021 · 022 에서 갈린다
-    (28, "여기 국회의원 누구야", {"recipe_021"}, True),  # 찍은 지점 → 지점 전체 선거구 판별
-    (29, "여기 의원 공약 보여줘", {"recipe_022"}, True),  # 찍은 지점 → 지점 선거구 공약
-    (30, "여기 연령대별 인구 알려줘", {"recipe_054"}, True),  # 사슬 셋 — 찍은 지점에서 출발하는 3단을 이 줄이 지킨다
-    (31, "여기 인구 변화 알려줘", {"recipe_055"}, True),  # 사슬 셋 — 마지막이 인구 추세
+    (30, "여기 어느 동이야", {"recipe_018"}, True),  # 찍은 지점 → 지점 행정구역 판별
+    (31, "여기 CCTV 띄워줘", {"recipe_019"}, True),  # 함께 걸림 026. 「여기」가 지점인지 화면인지 발화에 답이 없다
+    (32, "여기 선거구 이름 뭐야", {"recipe_020"}, True),  # 「이름」만 물어 021 · 022 에서 갈린다
+    (33, "여기 국회의원 누구야", {"recipe_021"}, True),  # 찍은 지점 → 지점 전체 선거구 판별
+    (34, "여기 의원 공약 보여줘", {"recipe_022"}, True),  # 찍은 지점 → 지점 선거구 공약
+    (35, "여기 연령대별 인구 알려줘", {"recipe_054"}, True),  # 사슬 셋 — 찍은 지점에서 출발하는 3단을 이 줄이 지킨다
+    (36, "여기 인구 변화 알려줘", {"recipe_055"}, True),  # 사슬 셋 — 마지막이 인구 추세
     # ★ 이 묶음에서 **유일하게 시작 데이터가 picked_point 가 아니다.** 경로가
     # 「말한 장소 → 좌표 → 경로 탐색」이라 첫 칸은 spoken_place 이고, 찍은 지점은
     # 둘째 단계가 출발지로 읽는다. 그래도 --context both 라야 닿는 것은 위 일곱과
     # 같아서 여기 둔다 — 이 묶음을 가르는 것은 재는 조건이다.
     # 오송역(찍은 지점) → 조치원역을 실제로 눌러 경로 3개를 받았다
     # (2026-09-06 실측 · 7분 · 갈아타지 않음 · 열차 → 도보).
-    (32, "여기서 조치원역까지 어떻게 가", {"recipe_062"}, True),
+    (37, "여기서 조치원역까지 어떻게 가", {"recipe_062"}, True),
     # ★ **2026-09-08 에 33번(찍은 지점 도달권)이 이 묶음 끝에 붙어 아홉이 됐다.**
     # 위 여덟은 글자 하나 안 고쳤다 — 24번을 붙일 때와 같은 규칙이다.
     #
@@ -567,9 +594,17 @@ UTTERANCES = [
     # 그쪽은 도착지를 말하고 이쪽은 안 말한다.
     # 오송역(찍은 지점)에서 실제로 눌러 WALK 20분 · 셀 65개를 받았다
     # (2026-09-08 실측).
-    (33, "여기서 걸어서 20분이면 어디까지 갈 수 있어", {"recipe_063"}, True),
+    (38, "여기서 걸어서 20분이면 어디까지 갈 수 있어", {"recipe_063"}, True),
+    # ★ 2026-09-08 correction 에서 둘(39 · 40)이 붙었다.
+    #
+    # 36번과 짝이고 이동수단·시간을 안 말했다. **사람이 화면에서 눌러
+    # 어긋난 것을 본 자리다** — CLARIFY {061, 063} 이 나왔다. 발화에 장소
+    # 이름이 없는데 061(말한 장소)이 후보로 남았다.
+    (39, "여기서 도달권 보여줘", {"recipe_063"}, True),
+    # 37번과 같은 뜻을 다른 말투로. 「여기서」 하나에만 기대지 않으려는 줄이다.
+    (40, "선택한 지점에서 도달권 보여줘", {"recipe_063"}, True),
 
-    # ── 보이는 범위 여섯 (34~39) ──────────────────────────────────────
+    # ── 보이는 범위 여덟 (41~48) ──────────────────────────────────────
     #
     # 시작 데이터가 visible_extent 인 것. 지도 문맥이 와야 닿는다.
     #
@@ -580,14 +615,73 @@ UTTERANCES = [
     # ★ 그 갈래도 2026-09-04 에 걷었다. 글자는 그대로 둔다.
     # ★ 025 · 028 · 030 셋을 지워 열에서 일곱이 됐다.
 
-    (34, "지금 보이는 범위 행정경계 그려줘", {"recipe_024"}, True),  # 옛 상대 025 를 지워 이제 겹치는 상대가 없다
-    (35, "지금 보이는 데 CCTV 다 띄워줘", {"recipe_026"}, True),  # 보이는 범위 → CCTV
-    (36, "지금 보이는 데 철도 노선 뭐뭐 있어", {"recipe_027"}, True),  # 003 은 이름을 대야 하고 여기는 화면이라 갈린다
-    (37, "지금 보이는 데 의원 공약 검색해줘", {"recipe_029"}, True),  # 옛 상대 028 을 지워 이제 겹치는 상대가 없다
-    (38, "현재 화면 인구 알려줘", {"recipe_031"}, True),  # 보이는 범위 → 인구 통계
-    (39, "지금 보이는 데 충전소 충전기 비었는지 알려줘", {"recipe_056"}, True),  # 함께 걸림 052. 사슬 셋
+    (41, "지금 보이는 범위 행정경계 그려줘", {"recipe_024"}, True),  # 옛 상대 025 를 지워 이제 겹치는 상대가 없다
+    (42, "지금 보이는 데 CCTV 다 띄워줘", {"recipe_026"}, True),  # 보이는 범위 → CCTV
+    (43, "지금 보이는 데 철도 노선 뭐뭐 있어", {"recipe_027"}, True),  # 003 은 이름을 대야 하고 여기는 화면이라 갈린다
+    (44, "지금 보이는 데 의원 공약 검색해줘", {"recipe_029"}, True),  # 옛 상대 028 을 지워 이제 겹치는 상대가 없다
+    (45, "현재 화면 인구 알려줘", {"recipe_031"}, True),  # 보이는 범위 → 인구 통계
+    (46, "지금 보이는 데 충전소 충전기 비었는지 알려줘", {"recipe_056"}, True),  # 함께 걸림 052. 사슬 셋
     # ★ 032 가 겹치던 상대였는데 2026-09-05 에 지웠다
+    # ★ 2026-09-08 correction 에서 47 · 48 이 붙었다. 47 은 41번과 끝말만 다르다
+    # (그려줘 / 보여줘). recipe 는 같고 재는 것은 **층위를 안 말한 발화가
+    # admin_level 을 null 로 두는가** 다 — 사람이 화면에서 눌렀을 때 이 말투에서
+    # 「시도」가 나왔다. 아래 SPOKEN_VALUES 가 그것을 지킨다.
+    (47, "지금 보이는 범위 행정경계 보여줘", {"recipe_024"}, True),
+    # 47번과 짝이다. 이쪽은 층위를 말했고 저쪽은 안 말했다. 같은 recipe 로
+    # 가면서 admin_level 만 갈리는지를 두 줄이 함께 지킨다.
+    # 화면 bbox 에서 layer=emd 20건 · layer=sigungu 9건이 온다(실측).
+    (48, "지금 화면에 든 읍면동 경계 표시해줘", {"recipe_024"}, True),
 ]
+
+# ── 이름 있는 값의 정답표 ───────────────────────────────────────────
+#
+# 2차 작업으로 /resolve 응답이 **발화에서 뽑은 값 넷**을 낸다.
+#
+#   argument     장소 · 키워드 · 식별자. 이름이 없는 하나
+#   travel_ mode 이동수단              도보 · 자전거 · 승용차 · 대중교통
+#   minutes      도달 시간(분)          정수 배열
+#   admin_level  행정구역 층위          시도 · 시군구 · 읍면동
+#
+# recipe 가 맞아도 이 값들이 어긋나면 사용자가 받는 답이 달라진다. 그래서
+# recipe 만 대조하던 자 옆에 이 표를 둔다.
+#
+# **null 은 실패가 아니다.** 사람이 말하지 않은 값을 LLM 이 지어내지 않았다는
+# 뜻이고, 기본값을 넣는 것은 execution/wiring.yaml 의 options 다. 그래서
+# 여기 기대값 None 은 「null 이어야 한다」는 요구다 — 「아무거나 좋다」가 아니다.
+#
+# **적는 칸만 본다.** dict 에 없는 이름은 이 표가 안 본다. 발화마다 무엇이
+# 걸린 자리인지가 다르므로 넷을 다 적으면 표가 무엇을 지키는지 흐려진다.
+#
+# key 는 발화 번호다. 번호가 밀리면 UTTERANCES 와 함께 민다 —
+# _selfcheck 가 없는 번호를 잡는다.
+SPOKEN_VALUES = {
+    # R5 — 말한 장소에서 출발
+    24: {"travel_mode": "도보", "minutes": [30]},
+    25: {"travel_mode": None, "minutes": None},
+    26: {"travel_mode": "자전거", "minutes": [15, 30, 60]},
+    # R5 — 찍은 지점에서 출발
+    38: {"travel_mode": "도보", "minutes": [20]},
+    39: {"travel_mode": None, "minutes": None},
+    40: {"travel_mode": None, "minutes": None},
+    # 행정구역 층위 — 말했을 때
+    21: {"admin_level": "시군구"},
+    22: {"admin_level": "시군구"},
+    27: {"admin_level": "읍면동"},
+    29: {"admin_level": "시도"},
+    30: {"admin_level": "읍면동"},
+    48: {"admin_level": "읍면동"},
+    # 행정구역 층위 — 안 말했을 때. **null 이 정답이다**
+    41: {"admin_level": None},
+    47: {"admin_level": None},
+}
+
+# 그 표가 보는 이름의 차례. 표를 찍는 차례이기도 하다.
+SPOKEN_VALUE_NAMES = ("argument", "travel_mode", "minutes", "admin_level")
+
+# 값이 없다는 것을 표에 어떻게 적나. "-" 는 이미 인자 표가 쓰는 글자라
+# **null 을 그것과 갈라 적는다** — 사람이 말 안 한 것과 못 뽑은 것이 다르다.
+NULL_MARK = "null"
+
 
 # ── 표시 ────────────────────────────────────────────────────────────
 #
@@ -697,8 +791,11 @@ def _mark(number: int) -> str:
 # ★ **2026-09-08 에 EXTENSION_LAST 만 32 -> 33 으로 옮겼다.** 찍은 지점에
 # 도달권(recipe_063)이 하나 붙어 여덟에서 아홉이 됐다. BASELINE_LAST 는 안
 # 움직였다 — 말한 것 묶음은 글자 하나 안 달라졌다.
-BASELINE_LAST = 24
-EXTENSION_LAST = 33
+# ★ **같은 날 correction 에서 둘 다 옮겼다** — 24 -> 29 · 33 -> 40.
+# 사람이 화면에서 찾은 경계 발화 아홉이 세 묶음에 다섯 · 둘 · 둘로 나뉘어
+# 붙었다. 묶음의 뜻(시작 데이터로 가른다)은 그대로다.
+BASELINE_LAST = 29
+EXTENSION_LAST = 40
 BASELINE_LABEL = "말한 것"
 EXTENSION_LABEL = "찍은 지점"
 SCREEN_LABEL = "보이는 범위"
@@ -853,6 +950,58 @@ def _argument_of(result: dict) -> str:
     return result.get("argument") or "-"
 
 
+def _spoken_values_of(result: dict) -> tuple:
+    """응답이 발화에서 뽑은 이름 있는 값들. Counter 의 key 라 튜플로 둠.
+
+    출력  ((이름, 값 글자), ...). SPOKEN_VALUE_NAMES 차례
+    규칙  값이 null 이면 NULL_MARK. 못 뽑은 것과 안 말한 것을 안 섞음 —
+          이 계약에서는 안 말한 것이 정답인 자리가 있음
+          목록은 대괄호 없이 이어 적음. Counter 의 key 라 해시가 돼야 함
+    """
+    rows = []
+    for name in SPOKEN_VALUE_NAMES:
+        value = result.get(name)
+        if value is None:
+            said = NULL_MARK
+        elif isinstance(value, list):
+            said = ",".join(str(item) for item in value)
+        else:
+            said = str(value)
+        rows.append((name, said))
+    return tuple(rows)
+
+
+def _spoken_value_verdict(number: int, seen: Counter) -> tuple:
+    """그 발화의 이름 있는 값이 정답표와 맞나.
+
+    입력  발화 번호 · 회차마다 나온 _spoken_values_of 결과의 Counter
+    출력  (맞은 회수, 전체 회수, [어긋난 칸 설명]). 정답표에 없는 번호면 None
+    규칙  SPOKEN_VALUES 에 적은 이름만 봄. 안 적은 이름은 무엇이 와도 넘어감
+          기대값 None 은 NULL_MARK 와 맞대는 것임. 「안 말한 것을 안 지어냈나」
+          회차가 갈리면 맞은 회수로 셈. 흔들리는 자리를 표에서 바로 읽게 함
+    """
+    wanted = SPOKEN_VALUES.get(number)
+    if wanted is None:
+        return None
+
+    hits, total, wrong = 0, 0, Counter()
+    for rows, count in seen.items():
+        total += count
+        said = dict(rows)
+        bad = [
+            f"{name}={said.get(name, '-')}"
+            for name, value in wanted.items()
+            if said.get(name) != (NULL_MARK if value is None else
+                                  ",".join(str(item) for item in value)
+                                  if isinstance(value, list) else str(value))
+        ]
+        if bad:
+            wrong[" · ".join(bad)] += count
+        else:
+            hits += count
+    return hits, total, [f"{text} ({count}회)" for text, count in wrong.most_common()]
+
+
 def _tally(result: dict) -> tuple:
     """응답의 후보 수와 status. 후보 표에 한 줄로 찍을 형태.
 
@@ -878,8 +1027,10 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     """POST /resolve 한 번.
 
     입력  발화 · 모델 이름(없으면 서버 기본 모델)
-    출력  (후보 집합, status, 인자, 후보 수와 조회 후보 집합, 시간 칸).
+    출력  (후보 집합, status, 인자, 후보 수와 조회 후보 집합, 시간 칸,
+          이름 있는 값들).
           후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
+          맨 뒤에만 덧붙인다 — check_argument 가 앞의 셋만 받아 쓴다
           시간 칸은 이 도구가 잰 /resolve 한 번의 시간(elapsed) 하나뿐인 dict
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
           모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
@@ -911,6 +1062,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
         _argument_of(result),
         _tally(result),
         {"elapsed": elapsed},
+        _spoken_values_of(result),
     )
 
 
@@ -920,6 +1072,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
 def _measure(
     entries, runs: int, outcomes: dict, axes: dict, tallies: dict,
     model: str | None = None, times: dict | None = None,
+    spoken: dict | None = None,
 ) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
@@ -929,6 +1082,7 @@ def _measure(
           적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
           axes[번호] 에 나온 argument 의 Counter 를 쌓음
           tallies[번호] 에 나온 (LLM 후보 수, status) 의 Counter 를 쌓음
+          spoken[번호] 에 나온 이름 있는 값들의 Counter 를 쌓음. 값 표가 씀
           실행 하나가 끝날 때마다 점 하나를 찍음. 20회면 몇 분 걸려서
           아무것도 안 나오면 멈춘 줄 앎
           오류도 결과의 하나로 Counter 에 남김. 그때 인자와 후보 수는
@@ -942,20 +1096,26 @@ def _measure(
         counter = Counter()
         axis_counter = Counter()
         tally_counter = Counter()
+        spoken_counter = Counter()
         time_rows = []
         outcomes[number] = counter
         axes[number] = axis_counter
         tallies[number] = tally_counter
         if times is not None:
             times[number] = time_rows
+        if spoken is not None:
+            spoken[number] = spoken_counter
         sys.stdout.write(f"  {number} ")
         sys.stdout.flush()
         for _ in range(runs):
             try:
-                found, status, axis, tally, timing = _call_resolve(utterance, model)
+                found, status, axis, tally, timing, values = _call_resolve(
+                    utterance, model
+                )
                 counter[(found, status)] += 1
                 axis_counter[axis] += 1
                 tally_counter[tally] += 1
+                spoken_counter[values] += 1
                 time_rows.append(timing)
                 sys.stdout.write(".")
             except ServerDown:
@@ -1470,6 +1630,65 @@ def _print_arguments(entries, axes: dict) -> None:
             )
 
 
+# 값 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
+WANTED_WIDTH = 34
+SAID_WIDTH = 34
+
+
+def _print_spoken_values(entries, spoken: dict) -> None:
+    """이름 있는 값이 정답표와 맞나. 적는 칸이 있는 발화만 찍는다.
+
+    입력  발화 목록 · {번호: 이름 있는 값 Counter}
+    규칙  SPOKEN_VALUES 에 없는 번호는 건너뜀. 그 발화는 이 표가 볼 것이 없음
+          기대값 None 은 "null" 로 찍음. **안 말한 것이 정답인 자리다**
+          어긋나면 무엇이 어떻게 나왔는지 옆에 적음. recipe 는 맞는데 값만
+          흔들리는 자리를 여기서 봄
+    제약  기대값을 나온 값에 맞춰 고치지 않는다.
+          이 표는 사람이 화면에서 확인한 계약이고, 자를 결과에 맞추면
+          자가 아무것도 안 지킴
+    """
+    rows = [entry for entry in entries if entry[0] in SPOKEN_VALUES]
+    if not rows:
+        return
+
+    print()
+    print(
+        "  "
+        + _pad("#", 3)
+        + _pad("발화", UTTERANCE_WIDTH + 4)
+        + _pad("기대한 값", WANTED_WIDTH)
+        + _pad("적중", 8)
+        + "어긋난 것"
+    )
+
+    hit_total, run_total, missed = 0, 0, []
+    for number, utterance, _expected, _default in rows:
+        verdict = _spoken_value_verdict(number, spoken.get(number) or Counter())
+        if verdict is None:
+            continue
+        hits, total, wrong = verdict
+        hit_total += hits
+        run_total += total
+        if wrong:
+            missed.append(number)
+        wanted = " · ".join(
+            f"{name}={NULL_MARK if value is None else value}"
+            for name, value in SPOKEN_VALUES[number].items()
+        )
+        print(
+            "  "
+            + _pad(str(number), 3)
+            + _pad(_clip(utterance, UTTERANCE_WIDTH), UTTERANCE_WIDTH + 4)
+            + _pad(_clip(wanted, WANTED_WIDTH - 2), WANTED_WIDTH)
+            + _pad(f"{hits}/{total}", 8)
+            + _clip(" · ".join(wrong), SAID_WIDTH * 2)
+        )
+
+    print()
+    print(f"  이름 있는 값  적중 {hit_total}/{run_total}"
+          + (f" · 어긋난 발화 {' · '.join(str(n) for n in missed)}" if missed else ""))
+
+
 # 후보 표의 칸 폭. 머리글보다 좁으면 표가 어긋난다.
 LLM_COUNT_WIDTH = 15
 STATUS_WIDTH = 12
@@ -1635,6 +1854,18 @@ def _selfcheck() -> None:
     labels = {label for label, _group in _groups(UTTERANCES)}
     assert labels == {BASELINE_LABEL, EXTENSION_LABEL, SCREEN_LABEL}, labels
 
+    # 이름 있는 값의 정답표가 없는 번호를 가리키면 그 줄은 영영 안 찍힌다.
+    numbers = {number for number, _u, _e, _d in UTTERANCES}
+    unknown = sorted(set(SPOKEN_VALUES) - numbers)
+    assert not unknown, f"SPOKEN_VALUES 에 없는 발화 번호 {unknown}"
+    unknown_names = sorted(
+        name
+        for wanted in SPOKEN_VALUES.values()
+        for name in wanted
+        if name not in SPOKEN_VALUE_NAMES
+    )
+    assert not unknown_names, f"SPOKEN_VALUES 에 모르는 칸 {unknown_names}"
+
     # 번호 → 이름이 _groups 의 경계와 어긋나면 없는 칸을 찾게 된다.
     for number, _u, _e, _d in UTTERANCES:
         assert _group_label(number) in labels, number
@@ -1647,7 +1878,7 @@ def _selfcheck() -> None:
     time_row = {"elapsed": 1.0}
 
     def _fake(entries):
-        outcomes, axes, tallies, times, executions = {}, {}, {}, {}, {}
+        outcomes, axes, tallies, times, executions, spoken = {}, {}, {}, {}, {}, {}
         for number, _u, expected, _d in entries:
             found = frozenset(expected)
             outcomes[number] = Counter({(found, "OK"): 1})
@@ -1656,7 +1887,8 @@ def _selfcheck() -> None:
             tallies[number] = Counter({("1", "OK"): 1})
             times[number] = [dict(time_row)]
             executions[number] = ("OK", "", picked)
-        return outcomes, axes, tallies, times, executions
+            spoken[number] = Counter({_spoken_values_of({}): 1})
+        return outcomes, axes, tallies, times, executions, spoken
 
     groups = _groups(UTTERANCES)
     subsets = []
@@ -1665,10 +1897,11 @@ def _selfcheck() -> None:
 
     for subset in subsets:
         entries = [entry for _label, group in subset for entry in group]
-        outcomes, axes, tallies, times, executions = _fake(entries)
+        outcomes, axes, tallies, times, executions, spoken = _fake(entries)
         with contextlib.redirect_stdout(io.StringIO()):
             _print_table(entries, outcomes, 1)
             _print_arguments(entries, axes)
+            _print_spoken_values(entries, spoken)
             _print_candidates(entries, tallies)
             _print_times(entries, times)
             _print_execution(entries, executions, "1970-01-01")
@@ -1718,9 +1951,11 @@ def main() -> int:
     print()
 
     outcomes, axes, tallies, times, note, status = {}, {}, {}, {}, "", 0
-    executions = {}
+    executions, spoken = {}, {}
     try:
-        _measure(entries, args.runs, outcomes, axes, tallies, args.model, times)
+        _measure(
+            entries, args.runs, outcomes, axes, tallies, args.model, times, spoken
+        )
         if args.execute:
             print()
             print("  실행까지 부른다 (발화마다 한 번)")
@@ -1736,6 +1971,8 @@ def main() -> int:
         _print_table(entries, outcomes, args.runs)
     if any(axes.values()):
         _print_arguments(entries, axes)
+    if any(spoken.values()):
+        _print_spoken_values(entries, spoken)
     if any(tallies.values()):
         _print_candidates(entries, tallies)
     if any(times.values()):

@@ -121,7 +121,10 @@ def main() -> int:
     for number, utterance, expected in entries:
         for _ in range(args.runs):
             try:
-                found, status, _argument, _tally, _times = _call_resolve(
+                # 앞의 둘만 쓴다. **뒤에 칸이 더 붙어도 안 깨지게 받는다** —
+                # check_argument.py 가 같은 규칙이고, 그쪽은 언팩 수가 어긋나
+                # 매 호출이 ValueError 로 떨어진 적이 있다(4dd552a).
+                found, status, *_rest = _call_resolve(
                     utterance, args.model or None
                 )
             except ServerDown as exc:

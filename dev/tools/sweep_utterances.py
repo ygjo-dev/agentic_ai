@@ -173,7 +173,7 @@ def _one_run(utterance: str, model: str | None) -> dict:
     for attempt in range(2):
         try:
             started = time.monotonic()
-            final, status, argument, tally, _timing = _call_resolve(utterance, model)
+            final, status, argument, tally, *_rest = _call_resolve(utterance, model)
             llm_count, _status = tally
             return {
                 "ok": True,

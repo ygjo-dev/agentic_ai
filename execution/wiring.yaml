@@ -196,15 +196,48 @@ tool_of:
     tool: population.searchStatistics
     headline: "{arg} 인구 통계를 조회했습니다."
 
+  # ── 인구 상세 둘 : 답 첫 줄에 {arg} 를 안 넣는다 ────────────────
+  #
+  # **말한 이름과 답한 구역이 늘 같지는 않다.** 이 둘은 앞 단계가 고른 행정구역
+  # 하나의 값을 낸다. 그 구역이 발화의 이름과 다를 수 있는데, {arg} 를 첫 줄에
+  # 넣으면 그 다른 구역의 수치가 발화의 이름으로 읽힌다.
+  #
+  # 실측 2026-09-08 — 전주시와 청주시가 그 자리다.
+  #
+  #   전주시 연령대별 인구  ->  geocode 가 완산구 안의 한 점을 주고
+  #                            지점 판별이 52111 전주시 완산구를 준다
+  #                            "전주시 연령대별 …" 313,529명 (완산구만)
+  #   청주시 연령대별 인구  ->  같은 꼴로 43111 청주시 상당구 193,079명
+  #
+  # **시 전체를 물을 길이 지금 Gateway 에 없다.** 인구 · 행정경계 데이터의
+  # 층위가 시도(2자리) · 시군구(5자리) · 읍면동(8자리) 셋뿐이고 그 사이에
+  # 시(市)가 없다. 전국 시군구 252개 중 「XX시 YY구」 꼴이 열둘이고
+  # (고양 · 부천 · 성남 · 수원 · 안산 · 안양 · 용인 · 전주 · 창원 · 천안 ·
+  #  청주 · 포항) 어느 것도 부모 시의 행이 없다.
+  #
+  #   adminBoundary.searchBoundaries(query=전주시)  전주시 완산구 · 전주시 덕진구
+  #   adminBoundary.searchBoundaries(code=5211)     같은 둘. 전주시 행은 없다
+  #   getAgeProfile(sigungu, 52110)                 "찾지 못했습니다"
+  #   getAgeProfile(sigungu, 5211)                  HTTP 500 "최소 5자리"
+  #   getAgeProfile(emd, 5211)                      HTTP 500 "최소 8자리"
+  #   getAgeProfile(sido, 5211)                     전북특별자치도 1,718,633명
+  #                                                 (층위가 하나 위로 튄다)
+  #
+  # 그래서 **없는 수치를 만들어 내지 않고 첫 줄에서 이름을 뗐다.** 어느 구역의
+  # 값인지는 단계 줄이 두 번 적는다 — 지점 판별이 「1건 · 전주시 완산구」,
+  # 인구 도구가 「전주시 완산구 313,529명」이다.
+  #
+  # 시 전체를 답하려면 도구를 구마다 한 번씩 불러 더해야 하는데, 그것은 한
+  # 단계가 한 번 부른다는 실행 계약을 깨는 일이라 여기서 하지 않는다.
   get_age_profile:
     server_id: *server_id
     tool: population.getAgeProfile
-    headline: "{arg} 연령대별 인구 구성을 조회했습니다."
+    headline: "연령대별 인구 구성을 조회했습니다."
 
   get_population_trend:
     server_id: *server_id
     tool: population.getTrend
-    headline: "{arg} 인구 변화 추이를 조회했습니다."
+    headline: "인구 변화 추이를 조회했습니다."
 
   search_ev_stations:
     server_id: *server_id
