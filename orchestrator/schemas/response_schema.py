@@ -30,11 +30,11 @@ SPOKEN_OPTIONS = {
 
 REQUIRED = [
     "reason",
-    "argument",
-    *SPOKEN_OPTIONS,
     "candidate_recipe_ids",
     "status",
     "recipe_id",
+    "argument",
+    *SPOKEN_OPTIONS,
 ]
 
 
@@ -45,6 +45,10 @@ def recipe_selection_schema(reason_max_length: int) -> dict:
     출력  provider 가 문법으로 강제하는 JSON schema
     규칙  properties 순서대로 생성됨. reason 을 맨 앞에 두어 무엇을 비교했는지
           먼저 쓰고 그다음에 고르게 함
+          고르는 칸(candidate_recipe_ids · status · recipe_id)이 발화에서 값을
+          뽑는 칸보다 앞에 옴. 두 일을 한 응답이 하므로 앞선 칸이 뒤 칸의
+          조건이 됨 — 뽑는 칸이 앞에 있으면 뽑기 규칙만 고쳐도 고르기가 함께
+          흔들림
           argument 는 발화에서 그대로 떼어 온 값이라 닫힌 목록이 아니고
           enum 이 없음. 무엇을 떼어 올지는 프롬프트가 말함
           SPOKEN_OPTIONS 는 argument 바로 뒤에 옴. 발화에서 값을 뽑는 칸끼리
@@ -53,6 +57,8 @@ def recipe_selection_schema(reason_max_length: int) -> dict:
           무엇이 기본인가는 배선표가 아는 실행 쪽 값임
     제약  상한을 상수로 되돌리지 않는다.
           모델이 바뀌면 함께 바뀌는 값이라 한 모델만 표현하게 됨
+          뽑는 칸을 고르는 칸 앞으로 되돌리지 않는다.
+          프롬프트의 차례 서술과 어긋나고, 위 규칙의 흔들림이 그대로 돌아옴
           argument 를 장소 · 키워드 · 식별자 세 칸으로 나누지 않는다.
           칸을 나누면 프롬프트가 그만큼 길어짐
           SPOKEN_OPTIONS 의 enum 에 도구가 쓰는 말을 적지 않는다.
@@ -62,11 +68,11 @@ def recipe_selection_schema(reason_max_length: int) -> dict:
         "type": "object",
         "properties": {
             "reason": {"type": "string", "maxLength": reason_max_length},
-            "argument": {"type": ["string", "null"]},
-            **{name: dict(field) for name, field in SPOKEN_OPTIONS.items()},
             "candidate_recipe_ids": {"type": "array", "items": {"type": "string"}},
             "status": {"type": "string", "enum": [SELECT, CLARIFY, NO_MATCH]},
             "recipe_id": {"type": ["string", "null"]},
+            "argument": {"type": ["string", "null"]},
+            **{name: dict(field) for name, field in SPOKEN_OPTIONS.items()},
         },
         "required": REQUIRED,
     }
