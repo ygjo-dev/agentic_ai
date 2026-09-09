@@ -64,7 +64,6 @@ Gateway 주소만은 여기서 직접 환경변수를 읽는다. 제품 코드�
 
 import argparse
 import json
-import os
 import sys
 from pathlib import Path
 
@@ -73,6 +72,7 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import endpoints  # noqa: E402
 from execution import step_service  # noqa: E402
 from execution.execute_service import USER_CONTEXT  # noqa: E402
 # check_resolve 의 밑줄 이름을 그대로 가져온다. 발화 목록과 /resolve 부르는
@@ -206,14 +206,13 @@ LIST_KEYS = ("items", "features", "results", "documents", "rows", "data", "hits"
 
 GATEWAY_TIMEOUT = 120
 
-# Gateway 주소. **부를 때마다 환경변수를 읽는다** — import 시점에 굳히면
-# .env 를 고치고 이 도구를 다시 띄워야 한다.
-DEFAULT_GATEWAY_URL = "http://localhost:3000"
-
-
 def _gateway_url() -> str:
-    """Gateway 주소. 끝의 / 를 뗀다."""
-    return os.environ.get("GATEWAY_URL", DEFAULT_GATEWAY_URL).rstrip("/")
+    """Gateway 주소(ASAP_GATEWAY_URL).
+
+    규칙  부를 때마다 읽음. import 시점에 굳히면 .env 를 고치고 이 도구를
+          다시 띄워야 함
+    """
+    return endpoints.asap_gateway_url()
 
 
 # 표 칸 폭.

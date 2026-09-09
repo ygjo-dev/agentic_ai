@@ -26,9 +26,9 @@
 
     모델 고르는 차례   --model > LLM_MODEL > models.yaml 의 default
     provider          models.yaml 이 모델마다 적는다 (ollama · vllm)
-    host              기계마다 다르므로 환경변수다 (OLLAMA_HOST · VLLM_HOST).
-                      안 적혀 있으면 provider 모듈의 코드 기본값이고,
-                      --dry-run 이 둘 중 어느 쪽인지 함께 적는다
+    host              기계마다 다르므로 환경변수다 (OLLAMA_URL · VLLM_URL).
+                      기본값이 없다. 안 적혀 있으면 --dry-run 이 무엇이
+                      비었는지 말하고 멈춘다
 
 **서버를 띄우지도 내리지도 않는다.** 닿는지만 보고 말한다.
 
@@ -59,11 +59,12 @@ if str(REPO_ROOT) not in sys.path:
 
 from dotenv import load_dotenv  # noqa: E402
 
-# 프로젝트 모듈보다 먼저 읽는다. providers 가 import 시점에 OLLAMA_HOST ·
-# VLLM_HOST 를 읽어 굳히므로, 뒤에 읽으면 .env 가 안 먹는다.
+# 프로젝트 모듈보다 먼저 읽는다. vendor 가 import 시점에 ASAP_GATEWAY_URL 을
+# 읽으므로, 뒤에 읽으면 .env 가 안 먹는다.
 # (app/api/main.py 가 같은 까닭으로 같은 자리에 둔다)
 load_dotenv(REPO_ROOT / ".env")
 
+import endpoints  # noqa: E402
 import paths  # noqa: E402
 from dev.tools.check_demo import DEMO, SELECT  # noqa: E402
 from dev.tools.check_resolve import (  # noqa: E402
@@ -78,14 +79,13 @@ from dev.tools.check_resolve import (  # noqa: E402
 )
 from llm_engine.llm_selector import get_llm  # noqa: E402
 from llm_engine.model_config import OLLAMA, VLLM, get_model_config  # noqa: E402
-from llm_engine.providers import ollama, vllm  # noqa: E402
 from orchestrator import resolve_service  # noqa: E402
 
-# provider -> (host 를 담은 환경변수 이름, 살아 있는지 물어볼 경로).
-# 값 자체는 provider 모듈이 이미 읽어 두었으므로 여기서 기본값을 다시 적지 않는다.
+# provider -> (주소를 담은 환경변수 이름, 그 주소를 읽는 자, 살아 있는지 물어볼 경로).
+# 주소를 여기서 다시 적지 않는다. 읽는 곳이 둘이 되면 한쪽만 고쳐도 표가 거짓말을 한다.
 PROBE = {
-    OLLAMA: ("OLLAMA_HOST", ollama.OLLAMA_HOST, "/api/tags"),
-    VLLM: ("VLLM_HOST", vllm.VLLM_HOST, "/v1/models"),
+    OLLAMA: ("OLLAMA_URL", endpoints.ollama_url, "/api/tags"),
+    VLLM: ("VLLM_URL", endpoints.vllm_url, "/v1/models"),
 }
 
 
@@ -129,9 +129,13 @@ def _dry_run(config, model_arg: str | None) -> int:
         print(f"host      모르는 provider 다. 아는 것은 {OLLAMA} · {VLLM} 뿐이다")
         return 1
 
-    env_name, host, path = probe
-    origin = f"{env_name}" if os.environ.get(env_name) else "코드 기본값"
-    print(f"host      {host}   ({origin})")
+    env_name, read_url, path = probe
+    try:
+        host = read_url()
+    except endpoints.EndpointError as error:
+        print(f"host      {env_name} 을 못 읽는다 — {error}")
+        return 1
+    print(f"host      {host}   ({env_name})")
     print(f"timeout {config.timeout}초 · reason {config.reason_max_length}자")
     print()
 

@@ -243,12 +243,39 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 ```
 모델 고르는 차례   명시한 이름 > 환경변수 LLM_MODEL > models.yaml 의 default
 provider          models.yaml 이 모델마다 적는다 (ollama · vllm)
-host              기계마다 다르므로 환경변수다 (OLLAMA_HOST · VLLM_HOST)
+host              기계마다 다르므로 환경변수다 (OLLAMA_URL · VLLM_URL)
 ```
 
 **모델마다 다른 값은 `models.yaml`, 기계마다 다른 값은 `.env` 다.** 측정으로
 얻은 값(provider · num_ctx · timeout · reason 길이 상한)은 저장소에 남아야
 하고, 어디에 붙는지는 저장소가 알 일이 아니다. `.env.example` 이 후자의 목록이다.
+
+---
+
+## 서비스 주소
+
+주소를 읽는 유일한 곳이 `endpoints.py` 다. 이름에 **누가 누구를 부르는가**가
+적혀 있다.
+
+```
+OLLAMA_URL         agentic_ai  ->  Ollama
+VLLM_URL           agentic_ai  ->  vLLM
+ASAP_GATEWAY_URL   agentic_ai  ->  KRRI_ASAP Gateway
+AGENTIC_API_URL    화면 · 계기판  ->  agentic_ai API
+```
+
+- **기본값을 두지 않는다.** 안 적으면 localhost 로 돌아가지 않고 멈춘다.
+  조용히 loopback 을 부르면 서비스를 다른 기계로 나눴을 때 무엇이 안 보이는지
+  아무도 못 찾는다. `localhost` · `127.0.0.0/8` · `::1` 은 값으로도 안 받는다
+- **부를 때 읽는다.** import 시점에 넷을 다 읽지 않는다 — Ollama 를 안 쓰는
+  배포가 `OLLAMA_URL` 이 없다고 통째로 못 뜨면 안 된다
+- **주소와 bind 를 섞지 않는다.** 서버가 어느 인터페이스에 귀를 여는가는
+  띄우는 명령이 정한다 (`uvicorn … --host 0.0.0.0 --port 8000`). 그래서
+  `0.0.0.0` 은 서비스 주소로 안 받고, 앱은 제 bind 주소를 읽지 않는다
+- **계기판도 같은 계약을 쓴다.** dev/tools 라고 localhost 대비책을 두지 않는다 —
+  배포와 다른 주소를 재면 표를 믿을 수 없다
+- 주소를 `models.yaml` 에 적지 않는다. 저쪽은 모델마다 다른 값이고 이쪽은
+  배포마다 다른 값이다
 
 지금 무엇에 붙는지와 그 서버가 떠 있는지는 재기 전에 이것으로 본다.
 

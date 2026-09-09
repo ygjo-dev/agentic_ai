@@ -353,7 +353,7 @@ async def run(
     제약  실패 문구를 vendor 에서 가져오지 않는다.
           vendor 의 answer_draft 가 HTTP 오류 원문 · 내부 URL · Gateway 응답
           본문을 그대로 담음(실측 : "… Server error '500 Internal Server Error'
-          for url 'http://localhost:3000/api/tools/execute' … Response body: …").
+          for url '<ASAP_GATEWAY_URL>/api/tools/execute' … Response body: …").
           무엇이 비었는지만 trace 로 다시 만들어 씀
     """
     missing = step_service.unwired(recipe_id)

@@ -20,10 +20,9 @@ import urllib.request
 
 import pytest
 
-from conftest import StubLLMClient
+from conftest import TEST_ENDPOINTS, StubLLMClient
 from llm_engine.llm_selector import get_llm
 from llm_engine.providers.ollama import (
-    OLLAMA_HOST,
     OllamaConfig,
     OllamaProvider,
     call_ollama,
@@ -89,7 +88,7 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     body = json.loads(request.data.decode("utf-8"))
     headers = {key.lower(): value for key, value in request.headers.items()}
 
-    assert request.full_url == f"{OLLAMA_HOST}/api/generate"
+    assert request.full_url == f"{TEST_ENDPOINTS['OLLAMA_URL']}/api/generate"
     assert headers["content-type"] == "application/json"
 
     assert body["model"] == MODEL
@@ -153,7 +152,12 @@ def test_the_model_can_be_swapped_without_restarting(sent_request):
     call_ollama(
         "발화",
         RESPONSE_SCHEMA,
-        config=OllamaConfig(model="아무거나", timeout=1, num_ctx=512),
+        config=OllamaConfig(
+            model="아무거나",
+            timeout=1,
+            num_ctx=512,
+            host=TEST_ENDPOINTS["OLLAMA_URL"],
+        ),
     )
     assert sent_request["kwargs"]["timeout"] == 1
     assert sent_body()["options"]["num_ctx"] == 512
@@ -176,7 +180,7 @@ def test_reachability_is_checked_without_raising(monkeypatch):
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
     assert ping() is True
-    assert calls["url"].startswith(OLLAMA_HOST)
+    assert calls["url"].startswith(TEST_ENDPOINTS["OLLAMA_URL"])
     assert 0 < calls["timeout"] <= 5, "점검이 오래 걸리면 점검이 아니다"
 
     for boom in (ConnectionError("연결 거부"), TimeoutError("시간 초과")):

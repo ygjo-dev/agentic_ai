@@ -36,7 +36,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 # _call_resolve 만 가져온다. 정답표(UTTERANCES)는 쓰지 않는다.
-from tools.check_resolve import BASE_URL, ServerDown, _call_resolve  # noqa: E402
+from tools.check_resolve import ServerDown, _base_url, _call_resolve  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent / "sweep_out"
 
@@ -253,7 +253,7 @@ def _render(model_label: str, runs: int, records: list, started_at: str, elapsed
         "발화 쓸기 — 나온 것만 적는다",
         "",
         f"모델      {model_label}",
-        f"서버      {BASE_URL}",
+        f"서버      {_base_url()}",
         f"회차      발화마다 {runs}회",
         f"발화      {len(records)}개",
         f"시작      {started_at}",
@@ -383,7 +383,7 @@ def _sweep(model: str | None, runs: int, only: set, stamp: str) -> int:
         elapsed = f"{(time.monotonic() - began) / 60:.1f}분"
         json_path.write_text(json.dumps({
             "model": model_label, "runs": runs, "started_at": started_at,
-            "elapsed": elapsed, "base_url": BASE_URL, "records": records,
+            "elapsed": elapsed, "base_url": _base_url(), "records": records,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
         txt_path.write_text(_render(model_label, runs, records, started_at, elapsed),
                             encoding="utf-8")

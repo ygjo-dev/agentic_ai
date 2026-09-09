@@ -27,7 +27,6 @@ dev/tools/probe_out/<도구이름>.json 으로 남긴다. probe_out 은 실측 �
 
 import argparse
 import json
-import os
 import sys
 import unicodedata
 from collections import Counter
@@ -38,6 +37,7 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 from execution.execute_service import USER_CONTEXT  # noqa: E402
 
@@ -46,8 +46,18 @@ load_dotenv(REPO_ROOT / ".env")
 # 도구 목록. 이 저장소 밖이라 --tools 로 바꿀 수 있게 둔다.
 DEFAULT_TOOLS_PATH = REPO_ROOT.parent / "KRRI_ASAP" / "tools.json"
 
-# 화면(vendor_to_be_deleted/asap/mcp_client)이 부르는 주소와 같아야 표를 믿을 수 있다.
-GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:3000").rstrip("/")
+
+
+def gateway_url() -> str:
+    """Gateway 주소(ASAP_GATEWAY_URL).
+
+    규칙  화면(vendor_to_be_deleted/asap/mcp_client)이 부르는 주소와 같아야
+          표를 믿을 수 있으므로 같은 환경변수를 봄
+          부를 때마다 읽음. import 시점에 굳히면 이 모듈을 빌려 쓰는 자
+          (probe_shapes)까지 주소를 요구하게 됨
+    """
+    return endpoints.asap_gateway_url()
+
 EXECUTE_PATH = "/api/tools/execute"
 
 # 도구 하나당 상한. 목록 조회 /api/tools 가 21.1초 걸린 전례가 있어 넉넉히 둔다.
@@ -303,7 +313,7 @@ def _probe(tool: dict, timeout: int = TIMEOUT) -> dict:
 
     try:
         response = requests.post(
-            f"{GATEWAY_URL}{EXECUTE_PATH}", json=body, timeout=timeout
+            f"{gateway_url()}{EXECUTE_PATH}", json=body, timeout=timeout
         )
     except requests.exceptions.ConnectionError as exc:
         raise GatewayDown(str(exc)) from exc
@@ -457,7 +467,7 @@ def main() -> int:
     if args.dry_run:
         return _print_dry_run(tools)
 
-    print(f"도구 {len(tools)}개 · {GATEWAY_URL}{EXECUTE_PATH} · 도구당 {args.timeout}초")
+    print(f"도구 {len(tools)}개 · {gateway_url()}{EXECUTE_PATH} · 도구당 {args.timeout}초")
 
     results, note, status = [], "", 0
     try:

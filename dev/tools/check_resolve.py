@@ -143,7 +143,6 @@ import argparse
 import contextlib
 import io
 import itertools
-import os
 import sys
 import time
 import unicodedata
@@ -157,6 +156,8 @@ from dotenv import load_dotenv
 # 못 찾는다 (check_wiring.py 와 같은 방식이다).
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
+
+import endpoints  # noqa: E402
 
 # (번호, 발화, 기대 recipe 집합, 기본 실행 여부)
 #
@@ -846,8 +847,17 @@ def _group_label(number: int) -> str:
 
 load_dotenv(REPO_ROOT / ".env")
 
-# 화면이 부르는 주소와 같아야 표를 믿을 수 있다. 그래서 같은 환경변수를 본다.
-BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+
+
+def _base_url() -> str:
+    """창구 주소(AGENTIC_API_URL).
+
+    규칙  화면이 부르는 주소와 같아야 표를 믿을 수 있으므로 같은 환경변수를 봄
+          부를 때마다 읽음. import 시점에 굳히면 이 파일의 발화 목록만 빌려
+          쓰는 자(check_llm)까지 주소를 요구하게 됨
+    """
+    return endpoints.agentic_api_url()
+
 # models.yaml 의 가장 큰 timeout(qwen3:32b 900) 보다 짧으면 큰 모델을 잴 때
 # 서버가 답하기 전에 여기서 끊겨 표가 오류로만 찬다. 화면(app/ui/api_client.
 # RESOLVE_TIMEOUT 180)과 달리 이 도구는 큰 모델도 재므로 값을 따로 둔다.
@@ -1045,7 +1055,7 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
     started = time.perf_counter()
     try:
         response = requests.post(
-            f"{BASE_URL}/resolve",
+            f"{_base_url()}/resolve",
             params=params,
             timeout=TIMEOUT,
         )
@@ -1232,7 +1242,7 @@ PICKED_MARK = "되묻기→고름"
 
 def _recent_seq() -> int:
     """지금 회차 번호. 이 뒤에 생긴 회차만 읽으려고 먼저 물어 둔다."""
-    response = requests.get(f"{BASE_URL}/recent", timeout=TIMEOUT)
+    response = requests.get(f"{_base_url()}/recent", timeout=TIMEOUT)
     response.raise_for_status()
     return response.json().get("seq") or 0
 
@@ -1255,7 +1265,7 @@ def _chat_turn(text: str, since: int) -> tuple:
     """
     try:
         with requests.post(
-            f"{BASE_URL}/chat/stream",
+            f"{_base_url()}/chat/stream",
             json={"text": text, "context": _context_payload()},
             timeout=TIMEOUT,
             stream=True,
@@ -1267,7 +1277,7 @@ def _chat_turn(text: str, since: int) -> tuple:
         raise ServerDown(str(exc)) from exc
 
     recent = requests.get(
-        f"{BASE_URL}/recent", params={"since": since}, timeout=TIMEOUT
+        f"{_base_url()}/recent", params={"since": since}, timeout=TIMEOUT
     ).json()
     turns = recent.get("turns") or []
     return (turns[-1] if turns else None), (recent.get("seq") or since)

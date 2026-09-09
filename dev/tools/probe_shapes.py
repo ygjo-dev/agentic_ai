@@ -24,7 +24,7 @@ ARGUMENT_RULES · REFUSED_TOOLS · 한글 폭 함수는 probe_tools 에서 impor
 
 도구 목록은 저장소 밖이라 --tools 로 받는다. Gateway 에서 직접 받아도 된다.
 
-    curl -s http://localhost:3000/api/tools -o /tmp/tools.json
+    curl -s "$ASAP_GATEWAY_URL/api/tools" -o /tmp/tools.json
 """
 
 import argparse
@@ -43,7 +43,7 @@ from tools.probe_tools import (  # noqa: E402
     ARGUMENT_RULES,
     DEFAULT_TOOLS_PATH,
     EXECUTE_PATH,
-    GATEWAY_URL,
+    gateway_url,
     NO_ARGUMENT,
     OUT_DIR,
     PREVIEW_LENGTH,
@@ -407,7 +407,7 @@ def probe(tool: dict, timeout: int = TIMEOUT) -> dict:
 
     try:
         response = requests.post(
-            f"{GATEWAY_URL}{EXECUTE_PATH}", json=body, timeout=timeout
+            f"{gateway_url()}{EXECUTE_PATH}", json=body, timeout=timeout
         )
     except requests.exceptions.ConnectionError as exc:
         raise GatewayDown(str(exc)) from exc
@@ -595,7 +595,7 @@ def main() -> int:
     tools_path = Path(args.tools)
     if not tools_path.is_file():
         print(f"도구 목록이 없습니다 : {tools_path}")
-        print(f"curl -s {GATEWAY_URL}/api/tools -o /tmp/tools.json 으로 받아 --tools 로 알려주세요.")
+        print(f"curl -s {gateway_url()}/api/tools -o /tmp/tools.json 으로 받아 --tools 로 알려주세요.")
         return 2
 
     tools = load_tools(tools_path)
@@ -607,7 +607,7 @@ def main() -> int:
             print(f"목록에 없는 도구 : {missing}")
             return 2
 
-    print(f"도구 {len(tools)}개 · {GATEWAY_URL}{EXECUTE_PATH} · 도구당 {args.timeout}초")
+    print(f"도구 {len(tools)}개 · {gateway_url()}{EXECUTE_PATH} · 도구당 {args.timeout}초")
 
     results, note, status = [], "", 0
     try:

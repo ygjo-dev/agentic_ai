@@ -6,13 +6,11 @@ response JSON 에서 content 원문만 꺼낸다. 그 문자열을 파싱하고 
 """
 
 import json
-import os
 import urllib.request
 from dataclasses import dataclass
 
+import endpoints
 from llm_engine.model_config import get_model_config
-
-OLLAMA_HOST = os.environ.get("OLLAMA_HOST", "http://localhost:11434")
 
 
 @dataclass(frozen=True)
@@ -22,7 +20,7 @@ class OllamaConfig:
     model: str
     num_ctx: int          # menu.yaml 길이가 길수록 ↑
     timeout: float        # 호출 하나의 상한(초)
-    host: str = OLLAMA_HOST
+    host: str             # OLLAMA_URL. 기본값을 두지 않는다 — endpoints 를 본다
 
 
 def config_for(model: str | None = None, *, found=None) -> OllamaConfig:
@@ -32,10 +30,15 @@ def config_for(model: str | None = None, *, found=None) -> OllamaConfig:
     출력  OllamaConfig
     규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴.
           어디에 붙는가는 기계마다 다르고, 어떻게 부르는가는 모델마다 다름
+          주소는 부를 설정을 만들 때 읽음. import 시점에 안 읽으므로
+          Ollama 를 안 쓰는 배포는 OLLAMA_URL 이 없어도 뜸
     """
     found = found or get_model_config(model)
     return OllamaConfig(
-        model=found.model, num_ctx=found.num_ctx, timeout=found.timeout
+        model=found.model,
+        num_ctx=found.num_ctx,
+        timeout=found.timeout,
+        host=endpoints.ollama_url(),
     )
 
 
@@ -52,12 +55,16 @@ def ping(timeout: float = 3) -> bool:
 
     입력  타임아웃 초. 기본 3. 오래 걸리는 점검은 점검이 아님
     출력  참이면 닿음. 못 닿는 이유는 묻지 않음
-    규칙  시연 직전 점검용
+    규칙  시연 직전 점검용.
+          주소를 못 읽는 것도 「못 닿는다」로 답함 — 설정이 비었는지 서버가
+          죽었는지는 check_llm 이 갈라 말함
     제약  예외를 올리지 않는다.
           못 닿는다는 사실 자체가 답이고, 점검하다 화면이 죽으면 점검이 아님
     """
     try:
-        with urllib.request.urlopen(f"{OLLAMA_HOST}/api/tags", timeout=timeout):
+        with urllib.request.urlopen(
+            f"{endpoints.ollama_url()}/api/tags", timeout=timeout
+        ):
             return True
     except Exception:  # noqa: BLE001 — 연결 거부 · 타임아웃 · DNS 전부 같은 답이다.
         return False

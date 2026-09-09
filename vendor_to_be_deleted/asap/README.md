@@ -101,7 +101,7 @@ _compose_workflow_answer  아래 3번으로 통째로 대체됨
 `execution/execute_service.run` 이 또 하나다. vendor 는 실패하면
 `_failed_workflow_result` 로 **여기까지 오지 않고** 자기 문구를 `answer_draft` 에
 담아 돌아간다. 그 문구가 사용자 화면에 나가면 안 되는 것을 담고 있어(실측 :
-HTTP 오류 문장 · `http://localhost:3000/api/tools/execute` · Gateway 응답 본문
+HTTP 오류 문장 · `<ASAP_GATEWAY_URL>/api/tools/execute` · Gateway 응답 본문
 원문) `execute_service` 가 `executed["errors"]` 를 보고 같은 함수를 trace 로 다시
 부른다. 문구를 두 벌 쓰지 않으려는 것이다.
 

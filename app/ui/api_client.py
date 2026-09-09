@@ -8,12 +8,10 @@
 화면이 원인별로 다른 문장을 보여줘야 하므로 kind 를 남긴다.
 """
 
-import os
-
 import requests
 import streamlit as st
 
-BASE_URL = os.environ.get("BACKEND_URL", "http://localhost:8000")
+import endpoints
 
 # 타임아웃은 하는 일에 맞춘다. LLM 이 끼는 호출만 길다.
 SCREEN_TIMEOUT = 10
@@ -47,7 +45,8 @@ def _detail_of(response) -> str:
 
 def _call(method: str, path: str, *, timeout: float, **kwargs) -> dict:
     try:
-        response = requests.request(method, f"{BASE_URL}{path}", timeout=timeout, **kwargs)
+        base = endpoints.agentic_api_url()
+        response = requests.request(method, f"{base}{path}", timeout=timeout, **kwargs)
     except requests.exceptions.ConnectionError as exc:
         raise ApiError(str(exc), kind="connection") from exc
     except requests.exceptions.Timeout as exc:

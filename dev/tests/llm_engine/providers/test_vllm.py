@@ -16,10 +16,9 @@ import urllib.request
 
 import pytest
 
-from conftest import StubLLMClient
+from conftest import TEST_ENDPOINTS, StubLLMClient
 from llm_engine.providers.vllm import (
     MAX_TOKENS,
-    VLLM_HOST,
     VllmConfig,
     VllmProvider,
     call_vllm,
@@ -88,7 +87,7 @@ def test_the_request_matches_the_verified_vllm_contract(sent_request):
     body = json.loads(request.data.decode("utf-8"))
     headers = {key.lower(): value for key, value in request.headers.items()}
 
-    assert request.full_url == f"{VLLM_HOST}/v1/chat/completions"
+    assert request.full_url == f"{TEST_ENDPOINTS['VLLM_URL']}/v1/chat/completions"
     assert headers["content-type"] == "application/json"
 
     assert body["model"] == config_for().model

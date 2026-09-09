@@ -5,6 +5,7 @@
 
 import builtins
 import hashlib
+import os
 import shutil
 from pathlib import Path
 
@@ -15,6 +16,33 @@ import paths
 SELECT = "SELECT"
 CLARIFY = "CLARIFY"
 NO_MATCH = "NO_MATCH"
+
+# 시험이 볼 서비스 주소. **이 기계의 .env 를 안 본다** — 개발자마다 다른 값이
+# 들어오면 같은 시험이 기계마다 다른 것을 재게 된다. 부를 일은 없고 요청이
+# 어느 주소로 갔는지만 대조한다.
+TEST_ENDPOINTS = {
+    "OLLAMA_URL": "http://ollama.test:11434",
+    "VLLM_URL": "http://vllm.test:18000",
+    "ASAP_GATEWAY_URL": "http://gateway.test:3000",
+    "AGENTIC_API_URL": "http://agentic.test:8000",
+}
+
+
+# **모으는 때에 이미 두어야 한다.** vendor 의 mcp_client 가 import 시점에
+# 전역 인스턴스를 만들며 주소를 읽으므로(KRRI_ASAP 원본이라 안 고친다),
+# fixture 만으로는 시험 파일을 읽는 순간 이미 늦는다.
+os.environ.update(TEST_ENDPOINTS)
+
+
+@pytest.fixture(autouse=True)
+def endpoints_env(monkeypatch):
+    """서비스 주소 넷을 시험마다 다시 시험용 값으로 둔다.
+
+    위에서 한 번 두었지만 시험이 지우거나 바꾼 것을 되돌릴 자리가 필요함.
+    주소에 기본값이 없으므로 이것이 없으면 이 기계의 .env 를 그대로 탐.
+    """
+    for name, value in TEST_ENDPOINTS.items():
+        monkeypatch.setenv(name, value)
 
 VALID_STATUSES = {SELECT, CLARIFY, NO_MATCH}
 

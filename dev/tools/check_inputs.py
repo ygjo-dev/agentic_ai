@@ -117,7 +117,6 @@ _selfcheck 를 부른다 — 이 도구는 어쩌다 한 번 돌지만 배선표
 
 import argparse
 import json
-import os
 import re
 import sys
 import unicodedata
@@ -127,6 +126,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 from execution.step_service import (  # noqa: E402
     CENTER_KEYS,
@@ -136,13 +136,14 @@ from execution.step_service import (  # noqa: E402
     TOOL_OF,
 )
 
-# GATEWAY_URL 을 읽기 전에 부른다. probe_tools · check_resolve · check_llm 과
-# 같은 자리다. 이 줄이 뒤로 가면 .env 를 고쳐도 이 도구만 못 본다.
+# 주소를 읽기 전에 부른다. probe_tools · check_resolve · check_llm 과 같은
+# 자리다. 이 줄이 뒤로 가면 .env 를 고쳐도 이 도구만 못 본다.
 load_dotenv(REPO_ROOT / ".env")
 
-# 다른 도구(probe_tools · check_argument)와 vendor 의 config 가 읽는 것과 같은
-# 환경변수다. shell 에 있으면 그것이 이기고, 없으면 .env, 둘 다 없으면 아래 기본값이다.
-GATEWAY_URL = os.environ.get("GATEWAY_URL", "http://localhost:3000").rstrip("/")
+# Gateway 주소는 --gateway 기본값을 만들 때 읽는다. 다른 도구(probe_tools ·
+# check_argument)와 vendor 의 config 가 읽는 것과 같은 환경변수
+# (ASAP_GATEWAY_URL)다. 계기판이라고 기본값으로 봐주지 않는다 — 배포와 다른
+# 주소를 재면 표를 믿을 수 없다.
 TOOLS_PATH_ENV = "/api/tools"
 DEFAULT_TIMEOUT = 120
 # dev/tools/probe_out/ 은 .gitignore 다. 실측 자산은 전부 거기 둔다.
@@ -555,7 +556,7 @@ def _print_total(rows: list, command_lines: list) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--tools", default=str(SCHEMA_PATH), help=f"tools.json (기본 {SCHEMA_PATH})")
-    parser.add_argument("--gateway", default=GATEWAY_URL)
+    parser.add_argument("--gateway", default=endpoints.asap_gateway_url())
     parser.add_argument("--timeout", type=int, default=DEFAULT_TIMEOUT, help="Gateway 상한 초")
     parser.add_argument("--refresh", action="store_true", help="파일이 있어도 Gateway 에서 다시 받는다")
     parser.add_argument("--json", help="행을 json 으로도 남길 경로")

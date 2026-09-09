@@ -7,7 +7,6 @@
 
 import json
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -20,8 +19,12 @@ REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-# 프로젝트 모듈보다 먼저 읽는다. llm_engine 이 import 시점에 OLLAMA_HOST 를
+# 프로젝트 모듈보다 먼저 읽는다. vendor 가 import 시점에 ASAP_GATEWAY_URL 을
 # 읽으므로, 뒤에 읽으면 .env 가 안 먹는다.
+#
+# **여기에 서버가 귀를 열 주소는 없다.** 어느 인터페이스의 몇 번 포트에 뜨는가는
+# 띄우는 명령이 정한다 (uvicorn app.api.main:app --host … --port …). 앱이 제
+# bind 주소를 읽으면 배포 방법이 코드에 박힌다.
 load_dotenv(Path(REPO_ROOT) / ".env")
 
 from app.api.schemas.requests import (
@@ -82,7 +85,7 @@ NAMED_ERROR_PATHS = ("/nodes",)
 # 예상 못 한 오류에서 client 로 나가는 문구. 원인은 서버 로그에만 남는다.
 #
 # **원문을 실어 보내지 않는다.** vendor 예외에는 Gateway 응답 본문 · 내부 URL
-# (http://localhost:3000/api/tools/execute) · 저장소 경로가 그대로 들어 있고,
+# (ASAP_GATEWAY_URL 의 /api/tools/execute) · 저장소 경로가 그대로 들어 있고,
 # 이 응답은 KRRI_ASAP 시스템까지 나간다.
 INTERNAL_ERROR_DETAIL = "서버 내부 오류입니다. 서버 로그를 확인하세요."
 
@@ -243,13 +246,3 @@ async def recent_endpoint(since: int | None = None) -> dict:
 async def reset_nodes_endpoint() -> dict:
     """_init 사본으로 되돌림. 등록한 노드와 recipe 가 모두 사라짐."""
     return node_service.reset()
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "app.api.main:app",
-        host=os.environ.get("API_HOST", "0.0.0.0"),
-        port=int(os.environ.get("API_PORT", "8000")),
-        reload=True,
-    )

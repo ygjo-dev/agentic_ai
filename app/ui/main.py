@@ -22,7 +22,9 @@ REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-# api_client 가 import 시점에 BACKEND_URL 을 읽으므로 그보다 먼저 읽는다.
+# api_client 가 AGENTIC_API_URL 로 백엔드를 찾으므로 그보다 먼저 읽는다.
+# **화면이 백엔드에서 아는 것은 그 주소 하나뿐이다** — 언제 다른 기계로
+# 나가도 여기 고칠 것이 없다.
 load_dotenv(Path(REPO_ROOT) / ".env")
 
 from app.ui import api_client, config, styles, theme

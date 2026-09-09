@@ -19,13 +19,11 @@ JSON 이 안 나왔다(실측). CHAT 한 길만 둔다.
 """
 
 import json
-import os
 import urllib.request
 from dataclasses import dataclass
 
+import endpoints
 from llm_engine.model_config import get_model_config
-
-VLLM_HOST = os.environ.get("VLLM_HOST", "http://127.0.0.1:18000")
 
 # reason 상한(200자)에 후보 몇 개면 100 토큰 언저리다. 넉넉하되 작은 상한.
 MAX_TOKENS = 1024
@@ -41,7 +39,7 @@ class VllmConfig:
 
     model: str
     timeout: float        # 호출 하나의 상한(초)
-    host: str = VLLM_HOST
+    host: str             # VLLM_URL. 기본값을 두지 않는다 — endpoints 를 본다
 
 
 def config_for(model: str | None = None, *, found=None) -> VllmConfig:
@@ -50,9 +48,13 @@ def config_for(model: str | None = None, *, found=None) -> VllmConfig:
     입력  모델 이름(None 이면 기본 모델) · 이미 읽어 둔 ModelConfig
     출력  VllmConfig
     규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴
+          주소는 부를 설정을 만들 때 읽음. import 시점에 안 읽으므로
+          vLLM 을 안 쓰는 배포는 VLLM_URL 이 없어도 뜸
     """
     found = found or get_model_config(model)
-    return VllmConfig(model=found.model, timeout=found.timeout)
+    return VllmConfig(
+        model=found.model, timeout=found.timeout, host=endpoints.vllm_url()
+    )
 
 
 class VllmProvider:
