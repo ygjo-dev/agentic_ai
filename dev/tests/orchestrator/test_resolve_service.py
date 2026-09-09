@@ -19,6 +19,7 @@ import pytest
 
 import paths
 from conftest import CLARIFY, NO_MATCH, SELECT, assert_route_contract, menu_was_read
+from llm_engine.model_config import RESOLVE, get_role_config
 from orchestrator import resolve_service
 from orchestrator.resolve_service import RouteResolutionError
 from orchestrator.schemas.response_schema import recipe_selection_schema
@@ -37,7 +38,7 @@ def resolve(stub_llm_client, raw: str, utterance: str = UTTERANCE):
     """계약 부분만 본다. paths 조립은 아래 test_the_result_carries_the_paths 가 봄."""
     client = stub_llm_client(raw)
     result = resolve_service._selected(
-        prompt=paths.RECIPE_SELECTION_PROMPT_PATH.read_text(encoding="utf-8"),
+        prompt=get_role_config(RESOLVE).prompt,
         variables={"menu": load_menu(), "utterance": utterance},
         response_schema=SCHEMA,
         llm_client=client,
@@ -180,6 +181,40 @@ def resolved(stub_llm_client, **overrides) -> dict:
     return resolve_service.resolve(
         UTTERANCE, llm_client=stub_llm_client(answer(**overrides)), reason_max_length=200
     )
+
+
+def test_resolving_an_utterance_calls_the_llm_exactly_once(stub_llm_client):
+    """발화 하나에 LLM 을 한 번만 부름.
+
+    **고르기와 발화에서 값 뽑기가 한 응답에서 나온다.** recipe 선택용 호출과
+    인자 추출용 호출로 나누면 발화마다 GPU 를 두 번 쓰고, 두 호출이 서로 다른
+    판단을 해서 「고른 recipe 와 뽑은 값이 안 맞는」 자리가 새로 생김.
+
+    쓰는 프롬프트는 resolve 역할 설정이 정함. 그것이 몇 번 불리는가는 이 줄이
+    지킴 — 역할을 나누는 리팩터링이 호출 횟수를 조용히 늘리면 여기가 먼저
+    빨개짐.
+    """
+    client = stub_llm_client(answer(recipe_id="recipe_002",
+                                    candidate_recipe_ids=["recipe_002"]))
+
+    resolve_service.resolve(UTTERANCE, llm_client=client, reason_max_length=200)
+
+    assert len(client.prompts) == 1, f"LLM 을 {len(client.prompts)}번 불렀다"
+
+
+def test_the_resolve_role_owns_the_prompt(stub_llm_client):
+    """프롬프트가 역할 설정에서 옴. 부르는 코드에 경로가 박혀 있지 않음.
+
+    models.yaml 의 roles.resolve.prompt 를 고치면 실제로 그 파일이 실림.
+    상수로 박아 두면 어느 역할이 무엇을 쓰는지 파일 하나로는 못 읽음.
+    """
+    client = stub_llm_client(answer())
+
+    resolve_service.resolve(UTTERANCE, llm_client=client, reason_max_length=200)
+
+    assert client.prompts[0].startswith(
+        get_role_config(RESOLVE).prompt.split("{", 1)[0]
+    ), "역할이 가리키는 프롬프트가 안 실렸다"
 
 
 def test_the_chosen_recipe_comes_first_in_the_candidates(stub_llm_client):

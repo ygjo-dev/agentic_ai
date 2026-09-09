@@ -77,8 +77,13 @@ from dev.tools.check_resolve import (  # noqa: E402
     UTTERANCES,
     _grade,
 )
-from llm_engine.llm_selector import get_llm  # noqa: E402
-from llm_engine.model_config import OLLAMA, VLLM, get_model_config  # noqa: E402
+from llm_engine.llm_selector import get_llm_for  # noqa: E402
+from llm_engine.model_config import (  # noqa: E402
+    OLLAMA,
+    RESOLVE,
+    VLLM,
+    get_role_config,
+)
 from orchestrator import resolve_service  # noqa: E402
 
 # provider -> (주소를 담은 환경변수 이름, 그 주소를 읽는 자, 살아 있는지 물어볼 경로).
@@ -119,8 +124,9 @@ def _dry_run(config, model_arg: str | None) -> int:
     elif os.environ.get("LLM_MODEL"):
         source = "환경변수 LLM_MODEL"
     else:
-        source = f"{paths.MODELS_PATH.name} 의 default"
+        source = f"{paths.MODELS_PATH.name} 의 {RESOLVE} 역할"
 
+    print(f"역할      {RESOLVE}   (이 자가 재는 것)")
     print(f"모델      {config.model}   ({source})")
     print(f"provider  {config.provider}   ({paths.MODELS_PATH.name})")
 
@@ -243,7 +249,7 @@ def _report(run_no, rows, demo_rows, elapsed, model, provider) -> str:
     lines = [
         f"# {model} ({provider}) · {run_no}판",
         "",
-        f"prompt {paths.RECIPE_SELECTION_PROMPT_PATH} · "
+        f"prompt {get_role_config(RESOLVE).prompt_path} · "
         f"menu {len(paths.MENU_YAML_PATH.read_text(encoding='utf-8'))}자 · {elapsed:.1f}초",
         "",
         f"적중 {summary['HIT']}/{summary['n']} · 근접 {summary['NEAR']} · "
@@ -302,11 +308,13 @@ def main() -> int:
                         help="안 재고 지금 무엇에 붙는지와 그 서버가 떠 있는지만")
     args = parser.parse_args()
 
-    config = get_model_config(args.model)
+    # 이 자가 재는 것은 resolve 역할이다. 역할이 정한 모델과 같은 모델로 재야
+    # 표가 배포를 말한다 — 여기서 물리 모델 이름을 따로 고르지 않는다.
+    config = get_role_config(RESOLVE, args.model).model
     if args.dry_run:
         return _dry_run(config, args.model)
 
-    llm = get_llm(args.model)
+    llm = get_llm_for(config)
     out = Path(args.out) if args.out else None
     if out:
         out.mkdir(parents=True, exist_ok=True)

@@ -22,11 +22,12 @@ STATIC_DIR = REPO_ROOT / "workflows" / "static"
 MENU_DIR = STATIC_DIR / "menu"
 MENU_MD_PATH = MENU_DIR / "menu.md"      # 사람이 읽는 문서.
 MENU_YAML_PATH = MENU_DIR / "menu.yaml"  # LLM 에 Context 로 전달하는 원문.
-PROMPTS_DIR = STATIC_DIR / "prompts"
 RECIPES_DIR = STATIC_DIR / "recipes"
 
-RECIPE_SELECTION_PROMPT_PATH = PROMPTS_DIR / "recipe_selection.md"
-NODE_REGISTRATION_PROMPT_PATH = REGISTRATION_DIR / "node_registration.md"
+# ★ 프롬프트 경로는 여기 없다. **어느 역할이 어느 프롬프트를 쓰는가**는
+#   models.yaml 의 roles 가 갖는다 — 여기에 두면 역할과 프롬프트의 연결이
+#   두 파일에 나뉘어 이 파일만 봐도 저 파일만 봐도 답이 안 나온다.
+#   읽는 곳은 llm_engine/model_config.py 의 get_role_config 하나다.
 
 # 초기화 원본. 등록으로 위 자산이 바뀌므로 되돌릴 곳이 필요하다.
 # 코드가 자동으로 다시 만들지 않는다 — 재생성하면 등록된 노드가 섞인 상태가

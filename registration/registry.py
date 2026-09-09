@@ -13,6 +13,7 @@ import re
 import shutil
 
 import paths
+from llm_engine.model_config import NODE_REGISTRATION, get_role_config
 from ontology import graph, store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
 
@@ -153,7 +154,7 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
     choices = group_ids()
 
     result = _inferred(
-        prompt=paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8"),
+        prompt=get_role_config(NODE_REGISTRATION).prompt,
         variables={
             "existing_nodes": _describe(nodes, _group_of(store.edges(path))),
             "new_node": _describe_form(form),

@@ -35,8 +35,8 @@ from app.api.schemas.requests import (
 from app.api.services.bridge import recent_service
 from app.api.services.streamlit import node_service, screen_service
 from app.api.services.streamlit.screen_service import UnknownRenderMode
-from llm_engine.llm_selector import get_llm
-from llm_engine.model_config import get_model_config
+from llm_engine.llm_selector import get_llm_for
+from llm_engine.model_config import NODE_REGISTRATION, RESOLVE, get_role_config
 from registration.registry import (
     DuplicateNode,
     InvalidInference,
@@ -156,11 +156,14 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
           직전에 보고, 실행은 /chat/stream 이 함
           model 은 측정용임. 같은 발화를 모델만 바꿔 재는 데 서버를 다시
           띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음
+          어느 모델로 갈지는 resolve 역할 설정이 정함(models.yaml 의 roles).
+          여기서 물리 모델 이름을 적지 않음
     """
+    role = get_role_config(RESOLVE, model)
     return resolve_service.resolve(
         utterance,
-        llm_client=get_llm(model),
-        reason_max_length=get_model_config(model).reason_max_length,
+        llm_client=get_llm_for(role.model),
+        reason_max_length=role.model.reason_max_length,
     )
 
 
@@ -178,7 +181,8 @@ async def register_node_endpoint(
           버린 경로를 응답에 담지 않는다.
           화면이 쓰지 않는 키를 만들지 않음
     """
-    return node_service.register(form.model_dump(), llm_client=get_llm(model))
+    role = get_role_config(NODE_REGISTRATION, model)
+    return node_service.register(form.model_dump(), llm_client=get_llm_for(role.model))
 
 
 def _chat_events(form: ChatRequest, model: str | None = None):
@@ -193,12 +197,13 @@ def _chat_events(form: ChatRequest, model: str | None = None):
           watched 는 받은 것을 그대로 다시 내는 껍데기임. KRRI_ASAP 시스템이
           읽는 흐름이라 한 건이라도 모양이 달라지면 시연이 깨짐
     """
+    role = get_role_config(RESOLVE, model)
     return recent_service.watched(
         form.text,
         execute_service.chat(
             form.text,
-            llm_client=get_llm(model),
-            reason_max_length=get_model_config(model).reason_max_length,
+            llm_client=get_llm_for(role.model),
+            reason_max_length=role.model.reason_max_length,
             context=form.context,
         ),
     )

@@ -8,6 +8,10 @@
       → config.provider              ollama | vllm
       → OllamaProvider | VllmProvider
 
+역할로 부르는 자리는 설정을 이미 읽어 두었으므로 get_llm_for 로 온다.
+같은 요청 안에서 models.yaml 을 두 번 읽으면 재는 중에 파일을 고쳤을 때
+앞뒤가 다른 값으로 도는 자리가 생긴다.
+
 registry 나 factory 틀을 만들지 않았다. provider 가 둘뿐이라 명시적인 분기가
 더 읽힌다.
 """
@@ -18,6 +22,25 @@ from llm_engine.providers import ollama, vllm
 
 class UnknownProvider(ValueError):
     """models.yaml 에 아는 provider 가 아닌 것이 적혔다."""
+
+
+def get_llm_for(config):
+    """이미 읽어 둔 ModelConfig 로 LLM 객체 가져옴.
+
+    입력  ModelConfig. 역할 설정(get_role_config)이 들고 있는 그것
+    출력  generate(prompt, response_schema) 를 가진 객체
+    제약  모르는 provider 를 Ollama 로 떨어뜨리지 않는다.
+          오타 하나가 조용히 딴 모델을 불러 측정이 어느 길로 갔는지 모르게 됨
+    """
+    if config.provider == OLLAMA:
+        return ollama.OllamaProvider(ollama.config_for(found=config))
+    if config.provider == VLLM:
+        return vllm.VllmProvider(vllm.config_for(found=config))
+
+    raise UnknownProvider(
+        f"models.yaml 의 provider 를 모른다: {config.provider!r} "
+        f"(모델 {config.model!r}). 아는 것은 {OLLAMA!r} · {VLLM!r} 뿐이다."
+    )
 
 
 def get_llm(model: str | None = None):
@@ -32,14 +55,4 @@ def get_llm(model: str | None = None):
     제약  모르는 provider 를 Ollama 로 떨어뜨리지 않는다.
           오타 하나가 조용히 딴 모델을 불러 측정이 어느 길로 갔는지 모르게 됨
     """
-    config = get_model_config(model)
-
-    if config.provider == OLLAMA:
-        return ollama.OllamaProvider(ollama.config_for(found=config))
-    if config.provider == VLLM:
-        return vllm.VllmProvider(vllm.config_for(found=config))
-
-    raise UnknownProvider(
-        f"models.yaml 의 provider 를 모른다: {config.provider!r} "
-        f"(모델 {config.model!r}). 아는 것은 {OLLAMA!r} · {VLLM!r} 뿐이다."
-    )
+    return get_llm_for(get_model_config(model))

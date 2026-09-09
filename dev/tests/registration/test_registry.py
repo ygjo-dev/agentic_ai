@@ -26,6 +26,7 @@ import yaml
 
 import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
+from llm_engine.model_config import NODE_REGISTRATION, get_role_config
 from ontology import store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
 from registration.registry import (
@@ -165,7 +166,7 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
 
     assert FORM["name"] in sent and FORM["description"] in sent
 
-    template = paths.NODE_REGISTRATION_PROMPT_PATH.read_text(encoding="utf-8")
+    template = get_role_config(NODE_REGISTRATION).prompt
     for placeholder in ("{existing_nodes}", "{new_node}", "{groups}"):
         assert placeholder in template, placeholder
 
