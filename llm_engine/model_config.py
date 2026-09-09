@@ -73,6 +73,10 @@ class UnknownRole(ValueError):
     """models.yaml 의 roles 에 없는 역할을 불렀다."""
 
 
+class MissingModel(ValueError):
+    """어느 모델을 부를지 아무도 말하지 않았다. 전역 기본 모델은 없다."""
+
+
 class InvalidRoleConfig(ValueError):
     """roles 항목이 쓸 수 없는 값을 담고 있다."""
 
@@ -82,8 +86,20 @@ def _document() -> dict:
 
 
 def _model_config(document: dict, model: str | None, fallback: str | None) -> ModelConfig:
-    """읽어 둔 문서에서 모델 하나의 설정. 파일을 다시 안 읽음."""
-    name = model or os.environ.get("LLM_MODEL") or fallback or document["default"]
+    """읽어 둔 문서에서 모델 하나의 설정. 파일을 다시 안 읽음.
+
+    규칙  이름 고르는 차례는 인자 > LLM_MODEL > 역할이 적은 model
+          셋 다 없으면 MissingModel. 전역 기본 모델로 메우지 않음
+    제약  코드에 모델 이름을 적지 않는다.
+          `model or "…"` 한 줄이 숨은 전역 기본이 됨
+    """
+    name = model or os.environ.get("LLM_MODEL") or fallback
+    if not name:
+        raise MissingModel(
+            "어느 모델을 부를지 아무도 말하지 않았다. "
+            "역할로 부르거나(get_role_config), 모델 이름을 대거나, "
+            "환경변수 LLM_MODEL 을 둔다. 전역 기본 모델은 없다."
+        )
     overrides = (document.get("models") or {}).get(name) or {}
     return ModelConfig(model=name, **{**document["defaults"], **overrides})
 
@@ -92,7 +108,7 @@ def get_model_config(model: str | None = None) -> ModelConfig:
     """모델 하나의 설정.
 
     출력  ModelConfig
-    규칙  고르는 차례는 인자 > LLM_MODEL > models.yaml 의 default
+    규칙  고르는 차례는 인자 > LLM_MODEL. 둘 다 없으면 MissingModel
           defaults 위에 그 모델 항목을 덮어씀. provider 도 그렇게 갈림
           목록에 없는 모델은 defaults 를 그대로 씀. 새 모델을 한 번 재보는 데
           파일을 안 고쳐도 됨
@@ -109,10 +125,11 @@ def get_role_config(role: str, model: str | None = None) -> RoleConfig:
 
     입력  역할 이름(RESOLVE · NODE_REGISTRATION) · 재보려는 모델(없으면 설정대로)
     출력  RoleConfig
-    규칙  고르는 차례는 인자 > LLM_MODEL > 역할의 model > models.yaml 의 default.
-          역할이 model 을 안 적으면 default 라 오늘 두 역할이 같은 모델로 감
-          역할이 model 을 적었으면 그 이름은 models 목록에 있어야 함. 오타가
-          조용히 defaults 로 떨어지면 어느 모델로 쟀는지 모르게 됨
+    규칙  고르는 차례는 인자 > LLM_MODEL > 역할의 model. 전역 기본 모델은 없음
+          역할은 model 을 반드시 적음. 안 적으면 InvalidRoleConfig —
+          한 줄로 모든 목적이 함께 움직이는 자리를 남기지 않으려는 것
+          그 이름은 models 목록에 있어야 함. 오타가 조용히 defaults 로
+          떨어지면 어느 모델로 쟀는지 모르게 됨
           prompt 는 저장소 뿌리에서 본 경로임. 파일이 없으면 여기서 멈춤
           문서를 한 번만 읽음. 한 호출 안에서 앞뒤가 다른 값으로 돌면 안 됨
     제약  부르지 않은 역할을 검사하지 않는다.
@@ -130,7 +147,12 @@ def get_role_config(role: str, model: str | None = None) -> RoleConfig:
         raise InvalidRoleConfig(f"roles.{role} 이 맵이 아니다: {entry!r}")
 
     written = entry.get("model")
-    if written is not None and written not in (document.get("models") or {}):
+    if not written:
+        raise InvalidRoleConfig(
+            f"roles.{role} 에 model 이 없다. 역할마다 어느 모델로 부르는지 "
+            "적는다 — 전역 기본 모델은 없다."
+        )
+    if written not in (document.get("models") or {}):
         raise InvalidRoleConfig(
             f"roles.{role}.model 이 models 목록에 없다: {written!r}. "
             "적어 둔 역할의 모델은 목록에 있어야 한다 — 오타가 조용히 "

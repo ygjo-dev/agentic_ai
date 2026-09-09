@@ -11,12 +11,12 @@ import pytest
 
 import paths
 from llm_engine.llm_selector import UnknownProvider, get_llm
+from llm_engine.model_config import MissingModel
 from llm_engine.providers.ollama import OllamaProvider
 from llm_engine.providers.vllm import VllmProvider
 
+# 전역 기본 모델이 없다. 부르는 쪽이 이름을 대거나 역할이 정한다.
 DOCUMENT = """
-default: "기본모델"
-
 defaults:
   provider: ollama
   num_ctx: 8192
@@ -49,7 +49,7 @@ def test_the_provider_in_the_file_decides_which_client_comes_back(models_file):
     같은 발화를 모델만 바꿔 재는 데 부르는 코드가 안 바뀜.
     """
     assert isinstance(get_llm("vllm모델"), VllmProvider)
-    assert isinstance(get_llm("기본모델"), OllamaProvider)
+    assert isinstance(get_llm("목록에없는모델"), OllamaProvider)
 
 
 def test_an_unlisted_model_still_goes_to_ollama(models_file):
@@ -59,7 +59,9 @@ def test_an_unlisted_model_still_goes_to_ollama(models_file):
     되는 동작임. provider 를 더하면서 이것이 깨지면 안 됨.
     """
     assert isinstance(get_llm("처음보는모델"), OllamaProvider)
-    assert isinstance(get_llm(), OllamaProvider), "인자가 없으면 파일의 default"
+
+    with pytest.raises(MissingModel):
+        get_llm()  # 전역 기본 모델이 없으므로 아무도 안 대면 멈춘다
 
 
 def test_the_chosen_model_reaches_the_client(models_file):
@@ -99,7 +101,7 @@ def test_both_providers_answer_to_the_same_call(models_file):
     def signature(instance):
         return inspect.signature(instance.generate)
 
-    assert signature(get_llm("기본모델")) == signature(get_llm("vllm모델"))
+    assert signature(get_llm("처음보는모델")) == signature(get_llm("vllm모델"))
 
 
 def test_the_file_is_read_once_per_call(models_file, monkeypatch):

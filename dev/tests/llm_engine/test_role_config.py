@@ -23,12 +23,11 @@ from llm_engine.model_config import (
 DOCUMENT = """
 roles:
   역할하나:
+    model: "느린모델"
     prompt: {하나}
   역할둘:
     model: "vllm모델"
     prompt: {둘}
-
-default: "기본모델"
 
 defaults:
   provider: ollama
@@ -37,6 +36,8 @@ defaults:
   reason_max_length: 200
 
 models:
+  "느린모델":
+    timeout: 900
   "vllm모델":
     provider: vllm
     timeout: 300
@@ -70,15 +71,16 @@ def test_a_role_carries_its_model_and_its_prompt(models_file):
     role = get_role_config("역할하나")
 
     assert role.role == "역할하나"
-    assert role.model.model == "기본모델", "model 을 안 적으면 default"
+    assert role.model.model == "느린모델", "역할이 적은 모델"
+    assert role.model.timeout == 900, "모델 항목이 defaults 를 덮는다"
     assert role.prompt == "프롬프트 하나"
 
 
-def test_a_role_may_pin_its_own_model(models_file):
-    """역할마다 다른 모델을 쓸 수 있음.
+def test_each_role_names_its_own_model(models_file):
+    """역할마다 제 모델을 적음. 한 역할을 옮겨도 다른 역할이 안 움직임.
 
-    오늘 둘이 같은 모델을 쓰는 것은 사실이지 규칙이 아님. 한 역할만 옮길 수
-    있어야 「역할과 모델이 갈렸다」가 참이 됨.
+    전역 기본 모델 한 줄이 있으면 그 줄을 고칠 때 모든 목적이 함께 움직이고,
+    어느 역할을 무엇으로 재고 있는지 파일만 보고는 알 수 없음.
     """
     role = get_role_config("역할둘")
 
@@ -91,8 +93,8 @@ def test_a_role_may_pin_its_own_model(models_file):
 def test_the_argument_and_the_environment_still_win(models_file, monkeypatch):
     """모델을 갈아 재는 길이 역할 때문에 막히지 않음.
 
-    차례는 인자 > LLM_MODEL > 역할의 model > default. 같은 발화를 모델만 바꿔
-    재는 것이 이 저장소 측정의 전부라 그 길이 살아 있어야 함.
+    차례는 인자 > LLM_MODEL > 역할의 model. 같은 발화를 모델만 바꿔 재는 것이
+    이 저장소 측정의 전부라 그 길이 살아 있어야 함.
     """
     assert get_role_config("역할둘", "인자모델").model.model == "인자모델"
 
@@ -132,6 +134,26 @@ def test_a_role_model_that_is_not_listed_is_an_error(models_file, tmp_path):
         get_role_config("역할둘")
 
     assert "오타모델" in str(터짐.value)
+
+
+def test_a_role_without_a_model_is_an_error(models_file, tmp_path):
+    """역할이 model 을 안 적으면 오류. 전역 기본으로 메우지 않음.
+
+    메워 주면 역할마다 무엇으로 재는지가 파일에서 사라지고, 한 줄을 고칠 때
+    모든 목적이 함께 움직인다.
+    """
+    (tmp_path / "models.yaml").write_text(
+        DOCUMENT.format(하나="하나.md", 둘="둘.md").replace(
+            '    model: "느린모델"\n', ""
+        ),
+        encoding="utf-8",
+        newline="\n",
+    )
+
+    with pytest.raises(InvalidRoleConfig) as 터짐:
+        get_role_config("역할하나")
+
+    assert "model" in str(터짐.value)
 
 
 def test_a_missing_prompt_file_is_an_error(models_file, tmp_path):
@@ -201,3 +223,23 @@ def test_the_live_roles_resolve():
         get_role_config(RESOLVE).prompt_path
         != get_role_config(NODE_REGISTRATION).prompt_path
     ), "목적이 다른 두 역할이 같은 프롬프트를 쓰면 한 역할로 합친 것과 같다"
+
+
+def test_every_live_role_names_its_own_model():
+    """실물 역할이 저마다 model 을 적고 있음.
+
+    **모델 이름을 단언하지 않는다.** 측정으로 바뀌는 값이라 못 박으면 모델을
+    옮길 때마다 상관없는 빨간불이 뜸. 보는 것은 「적혀 있는가」 하나다 —
+    안 적히면 get_role_config 가 이미 InvalidRoleConfig 로 멈추므로, 이 줄은
+    두 역할이 실제로 그 문을 지난다는 것을 지킨다.
+    """
+    import yaml
+
+    document = yaml.safe_load(paths.MODELS_PATH.read_text(encoding="utf-8"))
+
+    assert "default" not in document, (
+        "전역 기본 모델을 되살리지 않는다. 한 줄로 모든 목적이 함께 움직인다"
+    )
+    for role in (RESOLVE, NODE_REGISTRATION):
+        assert document["roles"][role].get("model"), f"{role} 에 model 이 없다"
+        assert get_role_config(role).model.model == document["roles"][role]["model"]

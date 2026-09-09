@@ -54,6 +54,17 @@ class FakeHTTPResponse:
         return json.dumps(self.payload).encode("utf-8")
 
 
+@pytest.fixture(autouse=True)
+def a_model_is_named(monkeypatch):
+    """모델 이름을 하나 못 박는다.
+
+    전역 기본 모델이 없으므로 아무도 이름을 안 대면 config_for 가 멈춤.
+    이 파일이 보는 것은 요청 모양이지 모델 고르기가 아니므로 이름만 준다 —
+    저장소의 실제 모델 이름을 적으면 모델을 옮길 때마다 여기가 빨개짐.
+    """
+    monkeypatch.setenv("LLM_MODEL", "시험모델")
+
+
 @pytest.fixture
 def sent_request(monkeypatch):
     """call_vllm() 이 보낸 urllib Request 를 가로챔."""

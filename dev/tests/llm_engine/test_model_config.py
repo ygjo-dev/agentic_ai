@@ -10,11 +10,11 @@ provider · num_ctx · timeout · reason 길이 상한은 모델이 바뀌면 �
 import pytest
 
 import paths
-from llm_engine.model_config import OLLAMA, VLLM, get_model_config
+from llm_engine.model_config import OLLAMA, VLLM, MissingModel, get_model_config
 
+# **전역 기본 모델이 없다.** 어느 모델을 부를지는 역할이 정하거나 부르는 쪽이
+# 이름을 댄다. 그래서 이 문서에도 default 가 없다.
 DOCUMENT = """
-default: "기본모델"
-
 defaults:
   provider: ollama
   num_ctx: 8192
@@ -60,15 +60,16 @@ def test_an_unlisted_model_still_runs_on_the_defaults(models_file):
     assert (unknown.num_ctx, unknown.timeout) == (8192, 180)
 
 
-def test_the_default_model_comes_from_the_file_and_the_environment_wins(
+def test_nobody_naming_a_model_is_an_error_not_a_hidden_default(
     models_file, monkeypatch
 ):
-    """인자가 없으면 파일의 default. 환경변수가 있으면 그것이 이김.
+    """아무도 모델을 안 대면 멈춤. 전역 기본으로 메우지 않음.
 
-    기계마다 다른 것(어느 모델이 받아져 있나)은 환경변수로, 저장소가 아는 것은
-    파일로 갈림.
+    한 줄짜리 기본 모델이 있으면 그 줄을 고칠 때 모든 목적이 함께 움직이고,
+    어느 역할을 무엇으로 재고 있는지 파일만 보고는 알 수 없게 됨.
     """
-    assert get_model_config().model == "기본모델"
+    with pytest.raises(MissingModel):
+        get_model_config()
 
     monkeypatch.setenv("LLM_MODEL", "환경모델")
     assert get_model_config().model == "환경모델"
@@ -78,7 +79,7 @@ def test_the_default_model_comes_from_the_file_and_the_environment_wins(
 def test_the_model_name_is_chosen_in_one_order_and_llm_model_is_the_only_env_name(
     models_file, monkeypatch
 ):
-    """차례가 인자 > LLM_MODEL > 파일의 default. 갈래가 셋뿐이어야 함.
+    """차례가 인자 > LLM_MODEL. 갈래가 둘뿐이어야 함.
 
     모델 이름은 provider 와 상관없는 값이라 환경변수 이름도 하나다. provider
     별 이름을 두면 어느 모델로 잰 것인지 응답만 보고는 못 가린다.
@@ -87,13 +88,12 @@ def test_the_model_name_is_chosen_in_one_order_and_llm_model_is_the_only_env_nam
     assert get_model_config().model == "환경모델", "환경변수만 있으면 그것"
     assert get_model_config("인자모델").model == "인자모델", "인자가 제일 앞선다"
 
-    monkeypatch.delenv("LLM_MODEL")
-    assert get_model_config().model == "기본모델", "없으면 파일의 default"
-
     # provider 별 옛 이름은 안 본다. 남겨 두면 그것만 적어 둔 기계가 조용히
     # 다른 모델로 돌아도 아무 신호가 없다.
+    monkeypatch.delenv("LLM_MODEL")
     monkeypatch.setenv("OLLAMA_MODEL", "옛이름모델")
-    assert get_model_config().model == "기본모델"
+    with pytest.raises(MissingModel):
+        get_model_config()
     monkeypatch.delenv("OLLAMA_MODEL")
 
 
