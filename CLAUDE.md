@@ -17,7 +17,7 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 → LLM 이 static recipe 를 고른다 (만들지 않는다)
 → recipe = 순서 있는 온톨로지 노드 목록
 → 온톨로지 관계가 이을 수 있는지 말한다
-→ 배선(execution/wiring.yaml)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
+→ 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
 → vendor / Gateway 실행
 → 답 · API · 화면
 ```
@@ -26,10 +26,10 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 
 ```
 1  LLM 은 MCP 도구 순서를 만들지 않는다. recipe 를 고른다
-2  recipe 는 노드만 적는다. 서버 · 도구 · 인자를 안 가진다
-3  온톨로지 관계와 실행 배선을 가른다.
-   온톨로지에 도구 이름을 적으면 노드가 특정 MCP 서버에 묶이고,
-   menu 가 온톨로지에서 만들어지므로 도구 이름이 프롬프트로 샌다
+2  recipe 는 노드만 적는다. 서버 · 도구 · 인자를 안 가진다 (사람이 적은 example 은 둔다)
+3  도구 식별과 입력 배선은 온톨로지 노드의 tool 에 둔다. 관계(hasInput)를 대신하지 않는다.
+   도구 이름은 tool 칸에만 있다 — name · description · source.description 은 menu
+   재료라 거기 적으면 프롬프트로 샌다. 주소 · 포트는 온톨로지에 두지 않는다
 4  resolve 는 고르기만 한다. 실행 문맥으로 후보를 다시 거르지 않는다
 5  실행 전제(배선이 있나 · 인자가 있나 · 화면 문맥이 왔나)는 실행이 본다
 6  문맥이 없다고 다른 recipe 로 갈아타지 않는다. 안 부르고 그렇다고 말한다
@@ -48,7 +48,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 도메인      오래 남는다
   ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
   orchestrator/      발화 해석
-  execution/         실행 배선. wiring.yaml 이 여기 있다
+  execution/         실행 계획. 노드의 tool 을 읽는다. wiring.yaml(답 첫 줄 · legacy
+                     응답 경로)이 여기 있다
   llm_engine/        LLM provider (ollama · vllm)
   workflows/static/  recipe · menu · prompt
 
@@ -113,14 +114,32 @@ agentic_ai 것 넷      config · schemas_chat · workflow_answer · __init__
 
 ## 온톨로지 설계
 
-노드에는 `name` 과 `description` 만 있다. `kind` · `inputs` · `outputs` 같은
-필드가 없다 — **노드는 그저 존재하고, 성격은 관계가 말한다.**
+노드에는 `name` 과 `description` 이 있고, 필요한 노드에만 `source` · `tool` 이 붙는다.
+`kind` · `inputs` · `outputs` 같은 필드가 없다 — **성격은 관계가 말한다.**
+
+```
+source   밖(발화 · 화면)에서 곧장 들어오는 자리. from 이 spoken.argument ·
+         context.selectedLocation · context.view.bbox 중 하나다.
+         source 가 있는 노드가 경로의 시작점이다. 유일한 생성원은 아니다
+         (지점 좌표는 화면에서도 오고 장소 좌표 변환도 내놓는다)
+tool     id          "<server_id>/<도구>" 논리 식별. 예약 namespace builtin/ · frontend/
+         parameters  도구 칸 -> 값. semantic 참조 · {from: spoken.<이름>, default, map} ·
+                     {from: context.<경로>} · runtime.now.<date|time> · 조건 · 상수
+```
+
+**값의 출처를 노드로 만들지 않는다.** 「말한 장소」 · 「찍은 지점」 같은 노드는 타입이
+아니라 출처라서 source 가 대신한다. 그런 노드를 is-a 로 매달면 is-a 가 형식 계층이
+아니라 출처를 말하게 된다.
+
+**tool 에 outputs · extract 를 두지 않는다 (아직).** 도구 응답에서 semantic 값을 읽는
+법은 `execution/wiring.yaml` 의 legacy 표와 vendor 참조 해석이 갖는다. 그것을 어디에
+어떤 모양으로 둘지는 따로 정한다.
 
 관계는 넷뿐이다. edge 필드는 `from` · `to` · `predicate` (RDF 삼항).
 
 | 관계 | 뜻 | 읽는 곳 |
 |---|---|---|
-| `is-a` | A는 B의 한 종류다 | 경로 생성의 타입 매칭 |
+| `is-a` | A는 B의 한 종류다 | 경로 생성의 타입 매칭 (지금 0줄. 읽는 곳은 둔다) |
 | `about` | A는 B에 관한 것이다 | 대상 판정 · 말이 안 되는 경로 차단 · 화면 점선 |
 | `hasInput` | A는 B를 받는다 | 경로 생성 |
 | `hasOutput` | A는 B를 내놓는다 | 경로 생성 · 실행 가능 판정 |
@@ -145,6 +164,13 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 `workflows/static/recipes/` 의 번호는 **다시 안 매긴다.** 밀리면 정답표
 기대값과 시험이 함께 움직이고, 다른 가지에서 recipe 를 다시 붙일 때 어긋난다.
 
+**recipe 파일이 사람의 판정 결과다.** 온톨로지는 후보를 만들 뿐이고
+(`registration.registry.candidate_recipes`), 그중 무엇을 서비스에 올릴지는 사람이
+정한다. 따로 목록 파일(catalog · whitelist)을 두지 않는다 — 원천이 둘이 된다.
+**후보를 한꺼번에 recipe 파일로 쓰지 않는다.** 사람이 지운 경로가 되살아나고 번호가
+흔들리고 사람이 쓴 example 이 사라진다. 대조는 `dev/tools/rebuild_init.py` 가 한다.
+example 은 온톨로지가 아니라 recipe 파일에 사람이 적는다.
+
 ★ **비어 있는 번호를 새 기능이 차지하지 않는다.** 그 자리는 지운 recipe 를
 되살릴 곳이라, 새 기능이 들어가면 되살릴 때 어긋난다.
 **새 기능은 지금 있는 가장 큰 번호 다음에 이어 붙인다.**
@@ -152,7 +178,8 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 무엇을 언제 왜 지웠는지와 되살리는 법은 `NOTES.md` 에 있다.
 
 ★ **recipe 하나를 되살리면 넷이 함께 움직인다** — `recipes/` 와
-`_init/recipes/` 의 파일, 그리고 두 `menu.yaml` · 두 `menu.md` 의 해당 줄.
+`_init/recipes/` 의 파일(example 까지), 그리고 두 `menu.yaml` · 두 `menu.md` 의 해당 줄.
+후보를 받아들이는 것도 이 절차다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
 `dev/tools/check_resolve.py` 의 `UTTERANCES` 이고, 발화를 더하면 묶음
@@ -177,8 +204,9 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
   복사한다. 좌표까지 함께 되돌린다 — 안 되돌리면 시연을 두 번 할 때 두 번째가
   첫 배치가 아니다
 - `_init` 을 코드가 자동으로 다시 만들지 않는다. 재생성하면 등록된 노드가 섞인
-  상태가 원본이 되어 되돌릴 수 없다. 다시 만드는 것은
-  `dev/tools/rebuild_init.py` 뿐이고 **기본이 미리보기다**
+  상태가 원본이 되어 되돌릴 수 없고, 온톨로지 후보로 다시 만들면 사람이 지운
+  recipe 가 되살아난다. `dev/tools/rebuild_init.py` 는 **후보와 받아들인 recipe ·
+  menu 를 대조만 하고 쓰지 않는다**
 - `_init/layout.json` 은 추적한다. 사람이 눈으로 골라 확정한 배치라 지우면 그
   선택이 사라진다. `.gitignore` 패턴에서 앞의 `/app/ui/graph/` 를 빼면 `_init`
   사본까지 함께 무시된다
@@ -295,7 +323,7 @@ streamlit run app/ui/main.py                   화면 (8501)
 계기판이 무엇을 요구하는지는 갈린다. **서버가 필요한 것과 아닌 것을 섞지 않는다.**
 
 ```
-아무것도 안 띄우고        check_wiring · rebuild_init(미리보기) · pytest
+아무것도 안 띄우고        check_wiring · rebuild_init(대조) · pytest
 Gateway 만               check_inputs(캐시 없을 때) · probe_tools · probe_shapes
 LLM 만                   check_llm  (창구를 안 지나고 resolve_service 를 직접 부른다)
 창구(8000) + LLM         check_resolve · check_demo
@@ -331,7 +359,7 @@ python -m pytest
 
 `dev/tools/` 에는 테스트를 두지 않는다. 대신 계기판마다 `_selfcheck()` 를
 자기 안에 두고 `dev/tests/tools/test_dashboard_selfchecks.py` 가 그것을 부른다 —
-계기판은 어쩌다 한 번 돌지만 배선표와 발화 목록은 커밋마다 바뀐다.
+계기판은 어쩌다 한 번 돌지만 온톨로지와 발화 목록은 커밋마다 바뀐다.
 
 ---
 

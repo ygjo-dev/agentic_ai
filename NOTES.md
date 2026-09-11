@@ -33,7 +33,7 @@
 | `workflows/static/menu/menu.yaml` | recipe 를 끝에 이어 붙임 | 대상별로 묶는 것을 재봤는데 모델에 따라 반대로 작용한다 |
 | `workflows/static/prompts/recipe_selection.md` 축 목록 | id + 이름 + 설명 734자 (문맥이 오면 922자) | 채운 프롬프트가 7648자다 (문맥이 오면 7836자). 2026-08-28 「마흔여섯째」에 다시 쟀다 — 화면 시작 노드 둘이 붙어 730 -> 734 · 7133 -> 7648 이 됐고, 는 것의 대부분은 축 목록이 아니라 menu(3321 -> 4833자)다. 문맥을 안 보내면 given 은 셋 그대로다. `num_ctx` 는 32768(토큰) 이라 지금도 여유가 있다 — 옛 근거(8192 · 6758자)는 2026-08-21 측정 기록 쪽에 날짜와 함께 남아 있다. 선택지를 늘릴 때 다시 재는 것은 그대로다 |
 | `ontology/registry.py` `MENU_BUDGET` | `6000` | 근거가 낡았다. `num_ctx` 8192 시절 값이고 지금은 32768 이다. 프로덕션에서 읽는 곳이 0 이고 테스트 하나가 보는 회귀 방지선이다 (`registry.py` 주석). 올릴 이유도 없다 — 진짜 제약은 컨텍스트 크기가 아니라 문장 변별력이다. menu 문장의 앞 30자가 23개나 같아서 shortlist 를 만들었다. 자수를 늘리면 오히려 나빠진다. 개편에서 잴 것은 자수가 아니라 "앞토막이 같은 문장 수" 다 |
-| `ontology/registry.py` `MAX_STEPS` | `4` | 같은 성격이다. `registry.py` 주석이 스스로 "임시방편이다. 경로 길이가 문제가 아니라 말이 안 되는 조합이 섞이는 것이 문제" 라고 적고 있고, 그 조합 문제는 온톨로지 개편이 푼다. 개편에서 다시 본다 |
+| `registration/registry.py` `MAX_STEPS` | `5` | 같은 성격이다. `registry.py` 주석이 스스로 "임시방편이다. 경로 길이가 문제가 아니라 말이 안 되는 조합이 섞이는 것이 문제" 라고 적고 있고, 그 조합 문제는 온톨로지 개편이 푼다. **2026-09-11 에 4 -> 5 로 올렸다** — 지점을 범위로 넓히는 계산이 노드(`point_to_map_extent`)로 드러나 recipe_060 이 다섯 칸이 됐다. 4 로 되돌리면 받아들인 recipe 하나를 후보가 못 만든다. **후보를 만들 때의 한도일 뿐이다.** 실행 안전 한도(vendor `_MAX_WORKFLOW_STEPS` 8)와 묶지 않는다. 후보 64 -> 85 (「리뷰 2 · 1차」) |
 | `app/ui/graph_svg/dot.py` `NODE_ATTRS` fontsize · `layout_store.py` `SPREAD_X` · `NEATO_SPREAD_ATTRS` 의 `sep` | `32` · `5.0` · `+12` | **셋이 한 덩어리다. 하나만 고치면 노드가 겹친다.** 화면 글씨는 `fontsize x 맞춤배율` 이고 맞춤배율은 캔버스가 정한다 — 글씨를 키우면 상자가 커져 붙고, 늘리기를 줄이면 캔버스가 커져 글씨가 작아진다. 지금 값에서 가장 가까운 쌍이 24pt 떨어져 있고 칸의 폭과 높이를 100%·98% 쓴다. **고친 뒤에는 좌표를 다시 만들어야 한다** — `layout.json` 을 지우고 서버를 켜면 다시 계산되고, 그 결과를 `_init/layout.json` 에 복사해야 커밋된다. `tests/app/ui/graph_svg/test_nodes_do_not_overlap.py` 를 돌린다. 후보 표는 2026-08-29 「쉰셋째」 |
 | `app/ui/graph_svg/layout_store.py` `DRAW_SCALE` | `1.0` | 그릴 때만 곱하는 배율이다. 지금은 1.0 이라 아무 일도 안 한다 — 배치가 처음부터 촘촘하게 놓이기 때문이다. **좌표를 다시 만들 수 없는 급한 자리에서만 임시로 쓴다.** 줄이면 간격만 줄고 노드 크기는 그대로라 원래 촘촘하던 곳이 먼저 붙는다 (0.64 에서 39쌍 · 0.4 에서 129쌍, 「쉰셋째」) |
 | `app/ui/graph_svg/_init/layout.json` | 추적한다 | 사람이 눈으로 골라 확정한 배치다. `layout.json`(작업본)은 `.gitignore` 다. `.gitignore` 패턴에서 앞의 `/app/ui/graph_svg/` 를 빼면 **_init 사본까지 함께 무시된다.** `reset_to_init()` 이 이 사본으로 좌표를 되돌린다 |
@@ -82,6 +82,32 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 ---
 
 ## 열린 과제
+
+### ★ 리뷰 2 후속 셋 — 서로 섞지 않는다 (2026-09-11 「리뷰 2 · 1차」)
+
+1차에서 도구 식별 · 입력 배선을 온톨로지 tool 로 옮겼다. 아래 셋은 **일부러 안 했다.**
+한 판에서 구조 이전과 동작 개선을 함께 하면 무엇 때문에 달라졌는지 못 가른다.
+
+```
+1 raw 도구 응답 -> semantic 값
+  지금       previous_result_paths(받는 노드 키 · items.0.code 같은 raw 경로)
+             + vendor _resolve_reference(lon · lat 을 location 에서, minLon … 을 bbox 에서)
+             + step_service.BUILTIN_ADAPTERS(어댑터가 만드는 평평한 네 칸)
+  정할 것    지점 좌표 · 지도 범위를 어떤 모양으로 건넬지(평평한 넷 / bbox 배열 한 칸),
+             그 읽는 법을 내놓는 노드 쪽에 둘지
+  풀리면     bbox 배열을 받는 도구 7 이 지점 주변 범위 변환 뒤에 이어진다
+             (지금은 unwired 로 셈 · 후보 85 중 실행 수단이 다 붙는 것 70)
+
+2 wiring.yaml 완전 제거
+  남은 것    headline(답 조합) · previous_result_paths · source_field_bases
+  순서       뒤 둘은 1 이 풀려야 걷힌다. runtime 이 온톨로지를 안 읽게(받아들인 recipe 를
+             실행형으로 굳히기) 하는 것도 1 다음이다
+
+3 default 단계적 제거
+  지금       tool.parameters 의 default — admin_level 시군구 · travel_mode 대중교통 · minutes [30]
+  순서       resolve 뽑기 재측정(22번 「군산시 인구 변화」가 admin_level null) → 안정 확인 →
+             하나씩 뺀다. step_service._check_expression 이 default 를 요구하므로 그 규칙도 함께 본다
+```
 
 ### ★ 노드를 하나 더 등록하면 겹친다 — 배치 기법의 한계 (2026-09-06 「백열다섯째」)
 
@@ -3199,6 +3225,72 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-11 (리뷰 2 · 1차) · 온톨로지 노드가 도구 id 와 입력 배선을 갖는다 — ★ 39 recipe 의 Gateway 입력이 한 칸도 안 달라졌다
+
+환경 solar-open2-250b (vLLM · resolve 역할) · Gateway localhost:3000 · recipe 39 · 시작 HEAD 186a4ff
+(review-feedback-1-ready). **menu · prompt · 응답 schema 는 한 글자도 안 바꿨다.**
+
+무엇을 옮겼나.
+
+```
+출처 노드 다섯 -> semantic 노드의 source
+  spoken_place -> place_name (spoken.argument)      picked_point   -> point      (context.selectedLocation)
+  spoken_keyword -> keyword (spoken.argument)       visible_extent -> map_extent (context.view.bbox)
+  spoken_identifier -> district_code (spoken.argument)
+  is-a 다섯이 함께 사라져 is-a 는 0줄 (읽는 곳 ancestors 는 남김)
+wiring.yaml tool_of (server_id · tool · command)                       -> 노드 tool.id
+wiring.yaml step_of (input · input_first · adapter · arg_field · options) -> 노드 tool.parameters
+point_radius_to_bbox 어댑터 -> point_to_map_extent 노드 (builtin/geo.pointRadiusToBbox · 15000m)
+  find_cctv hasInput point 를 뗌. 019 · 036 · 060 이 한 칸씩 늘었다
+MAX_STEPS 4 -> 5 (후보 생성만. vendor _MAX_WORKFLOW_STEPS 8 그대로)
+wiring.yaml 에 남은 것  headline 29 · previous_result_paths 5노드 · source_field_bases 1 (전부 응답 쪽)
+```
+
+동등성은 네 겹으로 쟀다.
+
+```
+정적      39 recipe × 인자 5 × 이름 있는 값 4 = 780 계획
+          vendor 의 _resolve_value · _apply_input_adapter 를 통과시킨 최종 Gateway 입력  차이 0
+          계획 문자열이 다른 곳 019 · 036 둘 — {location, radiusMeters} + 자동 어댑터
+          -> {center, radiusMeters} + 명시 어댑터. 같은 함수라 bbox 넷이 같다
+실행      대표 19건을 execute_service.run 으로 직접 (HEAD 사본 · 옮긴 뒤 각 1회, 실제 Gateway)
+          Gateway 입력 19/19 · 진행 이벤트 19/19 · 답 문장 19/19 같다
+          지도 commands 4건이 달랐다 — CCTV url 끝의 서명 토큰과 경로 탐색 시각(3,600,000ms).
+          계획이 HEAD 와 같은 026 도 똑같이 달라져 실시간 데이터 차이로 갈랐다
+resolve   check_resolve 48발화 × 1. 옮기기 전 48/48 · 이름 있는 값 13/14(22번)
+          옮긴 뒤 로그가 시간 줄 빼고 글자까지 같다
+E2E       check_resolve --execute 17발화 · ✓16 · ✗1 (19 충북선 따라 CCTV 0건 — HEAD 에서도 같은
+          입력으로 0건)
+```
+
+후보는 이렇게 움직였다.
+
+```
+경로 70 -> 91 · 대상이 어긋나 뺀 것 6 · 후보 64 -> 85 · 그중 실행 수단이 다 붙는 것 70
+받아들인 recipe 39/39 가 새 후보 안에 있다 · 미게시 후보 46
+사라진 후보 1   지점 좌표 -> CCTV 조회 (지점 주변 범위 변환을 거치는 꼴로 바뀜 = 019)
+새 후보 22     전부 지점 주변 범위 변환을 지난다. 둘은 그 변환에서 끝나 부를 도구가 없다
+```
+
+★ **실패한 첫 판.** builtin 을 뒤 단계에 얹기만 했더니 check_inputs 가 bbox 배열을 받는 도구 7 자리
+(행정구역 조회 · VWorld 경계 · 인구 통계 · 선거 검색 셋 · 철도 노선)에서 「없는 칸을 보낸다」를
+찍었다. 어댑터가 평평한 넷을 만들기 때문이다. 받아들인 recipe 는 해당 없지만(CCTV · 충전소
+검색은 평평한 넷을 받는다) 사람이 그 후보를 받아들이면 도구가 범위 없이 돈다. 어댑터가 만드는
+칸을 BUILTIN_ADAPTERS 옆에 적고, 그 칸을 그 이름으로 안 받는 노드는 builtin 뒤에서 unwired 로
+세게 했다. 그 뒤 check_inputs 없는 칸 0 · 안 보낸 required 0.
+
+★ **menu 를 만든 문장과 지금 문장이 같은 recipe 는 0/39 다.** 지금 menu 는 사람이 다듬어 판정을 잰
+문장이라 덮어쓰지 않았다. example 25 는 recipe 파일에 옮겨 적었고 menu 와 39/39 같다. 옛
+rebuild_init --write 로 돌렸다면 후보 85가 001 부터 새 번호로 쓰이고 menu 가 약 9941자
+(예산 6000 초과)였다 — 미리보기로만 확인했다.
+
+사용자에게 보이는 문자열이 바뀐 곳은 둘이다. NO_MATCH 안내의 시작 데이터 이름(말한 장소 ·
+말한 키워드 · 말한 식별자 -> 장소 이름 · 선거구 코드 · 키워드)과 Streamlit 경로 패널의 첫 칸
+이름이다. 39 recipe 의 답은 그대로다.
+
+pytest  HEAD 393 passed · 1 failed -> 398 passed · 1 failed
+        (둘 다 test_dense_graph_would_move_if_overlap_removal_were_used · Graphviz 음성 대조군)
 
 ### 2026-09-06 (백열일곱째) · legacy · dead code 전수 정리 — ★ SVG 를 통째로 걷었다
 
