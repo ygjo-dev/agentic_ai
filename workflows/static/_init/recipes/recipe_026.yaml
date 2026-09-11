@@ -3,3 +3,5 @@ steps:
   - node: map_extent
 
   - node: find_cctv
+
+example: 현재 화면에 걸린 CCTV 전부 띄워줘

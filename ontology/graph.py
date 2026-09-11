@@ -257,7 +257,7 @@ def crosses_groups(node_ids) -> bool:
                타입은 이어지나 화각이 안 맞아 실행 불가
           ★ 이 값을 recipe 생성 정책에서 최종적으로 어떻게 쓸지는 아직
             확정되지 않았음. 지금 registration 구현은 참인 경로를 recipe 로
-            만들지 않음(registry.register_node)
+            만들지 않음(registry.register_node · registry.candidate_recipes)
     제약  계산을 다른 데로 옮기지 않는다.
           about 을 읽는 곳이 여기뿐임. 정책이 바뀌어도 이 계산은 그대로 씀
     """

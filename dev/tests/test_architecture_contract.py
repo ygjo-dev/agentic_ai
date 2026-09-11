@@ -95,6 +95,9 @@ def test_a_recipe_is_only_an_ordered_list_of_ontology_nodes():
     갈아끼울 때 recipe 를 전부 함께 고쳐야 하고, 어긋났을 때 어느 쪽이
     맞는지 알 수 없다.
 
+    steps 말고 둘 수 있는 칸은 example 하나다. 사람이 그 recipe 를 받아들이며
+    적은 발화 예시라 실행이 아니다.
+
     개수를 안 센다. 「전부 그렇다」가 요구사항이고 recipe 가 늘어도 그대로다.
     """
     files = sorted(paths.RECIPES_DIR.glob("recipe_*.yaml"))
@@ -103,7 +106,10 @@ def test_a_recipe_is_only_an_ordered_list_of_ontology_nodes():
     nodes = set(graph.load_ontology()["nodes"])
     어긋난_것 = []
     for path in files:
-        steps = yaml.safe_load(path.read_text(encoding="utf-8"))["steps"]
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+        if not set(document) <= {"steps", "example"}:
+            어긋난_것.append(f"{path.stem}: 칸이 {sorted(document)} 이다")
+        steps = document["steps"]
         for index, step in enumerate(steps):
             if set(step) != {"node"}:
                 어긋난_것.append(f"{path.stem}[{index}]: 칸이 {sorted(step)} 이다")

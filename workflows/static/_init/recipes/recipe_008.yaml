@@ -3,3 +3,5 @@ steps:
   - node: keyword
 
   - node: search_election_districts
+
+example: 대전 지역구 목록 뽑아줘

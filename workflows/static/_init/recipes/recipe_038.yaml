@@ -5,3 +5,5 @@ steps:
   - node: geocode_place
 
   - node: find_election_district_by_point
+
+example: 대전역은 무슨 선거구에 들어가

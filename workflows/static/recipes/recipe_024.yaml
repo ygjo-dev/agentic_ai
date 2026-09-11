@@ -3,3 +3,5 @@ steps:
   - node: map_extent
 
   - node: search_admin_boundaries
+
+example: 지금 화면에 든 시군구 경계선 표시해줘

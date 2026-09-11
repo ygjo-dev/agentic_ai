@@ -3,3 +3,5 @@ steps:
   - node: keyword
 
   - node: search_admin_boundaries
+
+example: 논산시 경계 그려줘

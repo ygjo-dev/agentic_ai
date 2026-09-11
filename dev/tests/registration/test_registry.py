@@ -37,8 +37,10 @@ from registration.registry import (
     InvalidInference,
     UnknownType,
     _describe_groups,
+    accepted_recipes,
     add_node,
     all_recipes,
+    candidate_recipes,
     append_menu,
     append_recipes,
     check_types,
@@ -375,6 +377,9 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     파일 형식도 기존 것과 같아야 함. steps 아래 node 하나뿐. 무엇을
     주고받는지는 온톨로지의 hasInput / hasOutput 이 말하므로 여기 또 적으면
     진실의 원천이 둘이 됨.
+
+    사람이 받아들인 recipe 에는 example 이 붙을 수 있음. 사람이 쓴 발화 예시라
+    새로 만든 파일에는 없음.
     """
     nodes = nodes_now()
     chains = [["place_name", "geocode_place"]]
@@ -399,7 +404,8 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     new = yaml.safe_load(
         (paths.RECIPES_DIR / f"{created[0]}.yaml").read_text(encoding="utf-8")
     )
-    assert set(new) == set(old) == {"steps"}
+    assert set(new) == {"steps"}
+    assert set(old) <= {"steps", "example"}
     assert set(new["steps"][0]) == set(old["steps"][0]) == {"node"}
     assert [step["node"] for step in new["steps"]] == chains[0]
 
@@ -601,6 +607,31 @@ def test_a_menu_sentence_starts_from_where_the_value_comes_in():
 
     # menu 전체가 예산 안에 있어야 한다. 넘으면 LLM context 를 넘겨 타임아웃한다.
     assert len(paths.MENU_YAML_PATH.read_text(encoding="utf-8")) < MENU_BUDGET
+
+
+# ================================================================ 후보와 받아들인 것
+def test_candidates_are_shown_not_published_and_every_accepted_recipe_is_one():
+    """후보는 「온톨로지로 이을 수 있는가」이고 서비스에 올리는 것은 사람이다.
+
+    후보를 만드는 것이 recipe 파일을 쓰면 사람이 지운 경로가 되살아나고 번호가
+    흔들리고 사람이 쓴 example 이 사라진다. 그래서 후보는 계산만 한다.
+
+    반대쪽도 본다. 받아들인 recipe 가 후보로 안 만들어지면 온톨로지를 고치다가
+    지금 쓰는 경로를 잃은 것이다.
+    """
+    from ontology.graph import crosses_groups
+
+    before = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
+    nodes = nodes_now()
+
+    candidates = candidate_recipes(nodes)
+    accepted = accepted_recipes()
+
+    assert {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")} == before, "후보를 만들며 파일을 썼다"
+    assert accepted, "받아들인 recipe 가 없으면 이 검사가 무력하다"
+    assert {tuple(chain) for chain in accepted.values()} <= {tuple(chain) for chain in candidates}
+    assert len(candidates) > len(accepted), "사람이 안 올린 후보가 없으면 이 검사가 무력하다"
+    assert not [chain for chain in candidates if crosses_groups(chain)]
 
 
 # ================================================================ 등록 전체

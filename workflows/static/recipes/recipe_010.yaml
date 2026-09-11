@@ -3,3 +3,5 @@ steps:
   - node: keyword
 
   - node: search_assembly_pledge_districts
+
+example: 대중교통 공약 내놓은 의원 모아줘

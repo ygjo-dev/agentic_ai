@@ -5,3 +5,5 @@ steps:
   - node: geocode_place
 
   - node: search_population_statistics
+
+example: 대전역 주변에 사람 몇 명이나 사나

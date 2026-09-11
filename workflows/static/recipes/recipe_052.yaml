@@ -5,3 +5,5 @@ steps:
   - node: search_ev_stations
 
   - node: get_ev_station
+
+example: 한국전력 충전소 충전기 몇 대 남았는지까지 알려줘

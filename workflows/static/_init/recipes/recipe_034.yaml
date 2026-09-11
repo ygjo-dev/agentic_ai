@@ -5,3 +5,5 @@ steps:
   - node: geocode_place
 
   - node: find_admin_boundary_by_point
+
+example: 서대전역이 어느 동에 속하는지 알려줘

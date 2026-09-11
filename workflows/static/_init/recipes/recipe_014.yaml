@@ -3,3 +3,5 @@ steps:
   - node: keyword
 
   - node: search_documents
+
+example: 산업안전보건법 조문 원문 보여줘

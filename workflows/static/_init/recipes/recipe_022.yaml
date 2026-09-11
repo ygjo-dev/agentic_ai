@@ -3,3 +3,5 @@ steps:
   - node: point
 
   - node: find_assembly_pledge_district_by_point
+
+example: 이 위치 선거구가 내건 공약 쭉 보여줘

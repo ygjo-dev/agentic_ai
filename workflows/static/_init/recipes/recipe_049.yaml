@@ -5,3 +5,5 @@ steps:
   - node: get_railway_section
 
   - node: find_cctv
+
+example: 호남선 선로 따라 CCTV 띄워줘

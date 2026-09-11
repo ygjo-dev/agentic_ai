@@ -5,3 +5,5 @@ steps:
   - node: geocode_place
 
   - node: search_admin_boundaries
+
+example: 수원역 둘레 행정구역 경계 띄워줘

@@ -3,3 +3,5 @@ steps:
   - node: district_code
 
   - node: get_election_district
+
+example: 대전 서구갑 선거구 정보 줘

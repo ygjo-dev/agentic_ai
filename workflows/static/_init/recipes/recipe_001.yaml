@@ -3,3 +3,5 @@ steps:
   - node: place_name
 
   - node: geocode_place
+
+example: 천안역 위치 위경도로 짚어줘

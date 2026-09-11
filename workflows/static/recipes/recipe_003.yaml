@@ -3,3 +3,5 @@ steps:
   - node: place_name
 
   - node: get_railway_lines
+
+example: 대전역에 어떤 철도 노선이 들어와

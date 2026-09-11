@@ -1,46 +1,59 @@
-"""`_init` 의 recipe 와 menu 를 온톨로지에서 다시 만든다.
+"""온톨로지가 만드는 recipe 후보를 사람이 받아들인 recipe 와 대조한다. **쓰지 않는다.**
 
-    python dev/tools/rebuild_init.py            무엇이 바뀌는지 보여주고 멈춘다
-    python dev/tools/rebuild_init.py --write    실제로 쓴다
+    python dev/tools/rebuild_init.py            후보 표 · menu 문장 대조 · 요약
+    python dev/tools/rebuild_init.py --quiet    요약만
 
-**기본이 미리보기다.** 실수로 돌렸을 때 `_init` 이 날아가면 되돌릴 곳이 없다.
+## 후보와 받아들인 것은 다르다
 
-경로 생성 · 파일 형식 · menu 문장은 전부 `registration.registry` 의 함수를 쓴다.
-여기서 새로 짜지 않는다 — 등록으로 생기는 recipe 와 규칙이 갈리면
-"초기 recipe 는 되는데 등록한 건 안 되는" 상황이 나오고,
-menu 문장이 발화 매칭의 유일한 근거라 원인을 찾기도 어렵다.
+    온톨로지   「어떤 경로를 이을 수 있는가」   registry.candidate_recipes
+    사람       「그것을 서비스 recipe 로 올리는가」   workflows/static/recipes/ 의 파일
 
-이 파일이 직접 정하는 것은 "무엇을 거를 것인가"(crosses_groups · MIN_STEPS)뿐이다.
+**받아들인 recipe 파일 자체가 사람의 판정 결과다.** 따로 목록 파일을 두지 않는다 —
+두면 원천이 둘이 되고 어긋났을 때 어느 쪽이 맞는지 알 수 없다. 사람이 지운 후보는
+파일이 없으므로 여기서 「미게시」로 보이고, 다시 올라가지 않는다.
 
-**`_init` 만 만든다. 작업본은 안 건드린다.** 작업본은 화면의 초기화 버튼
-(`registry.reset_to_init`)이 `_init` 에서 복사한다. 도구가 작업본을 직접 쓰면
-리허설 중에 돌렸을 때 화면과 어긋난다.
+**그래서 이 도구는 후보를 파일로 쓰지 않는다.** 후보를 통째로 recipe 로 다시 쓰면
+사람이 지운 경로가 되살아나고, 번호가 흔들리고, recipe 파일에 사람이 적은 example
+이 사라진다. 후보 하나를 받아들이는 것은 사람이 한다 — CLAUDE.md 「recipe 번호」의
+되살리는 법(recipe 두 벌 · menu 두 벌 · 정답표 발화)이 그 절차다.
 
-`_init` 의 recipe 는 원래 손으로 골라 만든 것이었다. 그래서 온톨로지가 만들 수
-있는 경로 여덟 중 둘(데이터 → 프레임 추출)이 빠져 있었다. 그 둘을 넣어 봤다가
-발화 해석이 무너져 되돌렸다 — 아래 `MIN_STEPS` 를 본다.
+## menu 문장은 견주기만 한다
+
+`registry.function_for` 가 온톨로지(시작 노드의 source · 기능의 description ·
+경로)로 만든 문장과 지금 menu.yaml 에 실린 문장을 나란히 찍는다. **menu.yaml 을
+덮어쓰지 않는다** — 지금 문장은 사람이 다듬어 판정을 잰 것이라 한 글자만 바뀌어도
+이미 검증한 발화가 다른 recipe 로 갈 수 있다.
+
+example 은 온톨로지에 없다. 사람이 recipe 파일에 적은 값이고, menu 에 실린 example
+과 같은지를 여기서 본다.
+
+## 기준이 되는 두 값
+
+MIN_STEPS — recipe 로 삼을 경로의 최소 노드 수. 아래 주석이 그 역사다.
+대상이 어긋나는 경로(crosses_groups)는 후보에서 뺀다 — registry 가 한다.
+
+서버도 LLM 도 쓰지 않는다. 파일만 읽는다.
 """
 
 import argparse
-import shutil
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
+import yaml  # noqa: E402
+
 import paths  # noqa: E402
+from execution import step_service  # noqa: E402
 from ontology import store  # noqa: E402
-from ontology.graph import crosses_groups  # noqa: E402
 from registration.registry import (  # noqa: E402
+    MAX_STEPS,
     MENU_BUDGET,
+    accepted_recipes,
     all_recipes,
-    append_menu,
-    append_recipes,
+    candidate_recipes,
     function_for,
 )
-
-# menu.yaml 에서 항목 앞까지 남길 부분. 이 뒤를 잘라내고 append_menu 로 다시 채운다.
-MENU_YAML_HEAD_MARKER = "recipes:"
 
 # recipe 로 삼을 경로의 최소 노드 수.
 #
@@ -54,170 +67,128 @@ MENU_YAML_HEAD_MARKER = "recipes:"
 # **그 숫자는 그때의 온톨로지(철도 CCTV 14노드) 기준이다.** 지금 온톨로지에
 # 그대로 대입할 수 없다.
 #
-# 2 로 내렸다. 지금 2단은 말한 장소 → 장소 좌표 변환이고 그 끝점 map_extent 는
+# 2 로 내렸다. 지금 2단은 장소 이름 → 장소 좌표 변환이고 그 끝점 지점 좌표는
 # 재료가 아니라 사용자가 원하는 답이다 — "오송역 좌표 알려줘" 가 그 발화다.
 # 답에서 끝나는 경로를 길이 때문에 버리면 그 발화는 갈 곳이 없어진다.
 #
 # **앞토막 위험이 사라진 것은 아니다.** 2단은 여전히 3단의 앞토막이라
 # "오송역 좌표 알려줘" 와 "오송역 CCTV 보여줘" 의 끝점이 실제로 갈리는지는
-# 재봐야 안다. 아직 안 쟀다. 실행기를 붙인 화면에서 확인한다.
+# 판정 자(dev/tools/check_resolve.py)가 잰다.
 #
 # 온톨로지가 끝점을 스스로 말하게 하려면(deliverable 같은 타입) 이 조건은
 # 사라진다. 그때까지는 길이로 자른다.
 MIN_STEPS = 2
 
-# menu.md 에서 목차 표 머리까지 남길 부분. append_menu 는 이 표 끝에 행을 넣고
-# 본문 섹션은 "\n\n---\n\n# Recipe " 마커 앞을 갈라 붙인다 — 마커가 없으면 끝에
-# 붙으므로 표 머리까지만 남기면 된다.
-MENU_MD_HEAD_MARKER = "| --- | --- |"
+# 표에서 경로 칸 앞의 폭.
+STATUS_WIDTH = 12
 
 
-def _load_init_nodes() -> dict:
-    """_init/ontology.yaml 의 노드.
-
-    출력  {node_id: {name, description}}
-    규칙  _init 과 작업본이 다르면 SystemExit. 화면에서 초기화를 누르고 다시
-          돌리면 됨
-    제약  작업본과 다른 채로 진행하지 않는다.
-          경로 생성(all_recipes)은 graph 를 거쳐 작업본 ontology.yaml 을 읽음.
-          경로를 인자로 받지 않으므로 둘이 다르면 _init 이 아닌 것으로 recipe 를
-          만들게 됨
-    """
-    if store.raw_bytes(paths.INIT_ONTOLOGY_PATH) != store.raw_bytes():
-        raise SystemExit(
-            "★ ontology/ontology.yaml 이 _init 과 다르다.\n"
-            "  경로 생성은 작업본을 읽으므로 이대로는 _init 이 아닌 것으로 만들게 된다.\n"
-            "  화면에서 초기화를 누르거나 POST /nodes/reset 을 한 뒤 다시 돌린다."
-        )
-    return store.nodes(paths.INIT_ONTOLOGY_PATH)
+def _recipe_file(recipe_id: str) -> dict:
+    """recipe 파일 원문."""
+    return yaml.safe_load((paths.RECIPES_DIR / f"{recipe_id}.yaml").read_text(encoding="utf-8")) or {}
 
 
-def _head(text: str, marker: str) -> str:
-    """마커까지 남기고 그 뒤를 자름.
-
-    출력  머리말 문자열. 마커가 없으면 SystemExit
-    제약  손으로 쓴 머리말을 새로 짓지 않는다
-    """
-    head, found, _tail = text.partition(marker)
-    if not found:
-        raise SystemExit(f"★ 머리말 마커를 못 찾았다: {marker!r}")
-    return head + found
+def _menu() -> dict:
+    """지금 menu.yaml 의 recipes."""
+    return (yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8")) or {}).get("recipes") or {}
 
 
-def _current_chains(directory: Path) -> dict[str, tuple[str, ...]]:
-    """지금 _init 에 있는 recipe.
-
-    입력  recipe 디렉터리
-    출력  {recipe_id: 노드 사슬}
-    """
-    from ontology.graph import recipe_nodes
-
-    original = paths.RECIPES_DIR
-    paths.RECIPES_DIR = directory
-    try:
-        return {
-            path.stem: tuple(recipe_nodes(path.stem))
-            for path in sorted(directory.glob("recipe_*.yaml"))
-        }
-    finally:
-        paths.RECIPES_DIR = original
+def _tool_names() -> set[str]:
+    """온톨로지 tool 에 적힌 도구 이름 · 명령 이름. 문장에 샜는지 볼 때 씀."""
+    names = set()
+    for node_id in store.nodes():
+        binding = step_service.binding_of(node_id)
+        if binding is None:
+            continue
+        names.add(binding["id"])
+        names.add(binding.get("tool") or binding.get("command") or binding["id"].split("/", 1)[1])
+    return names
 
 
-def _table(before: dict[str, tuple[str, ...]], after: list[list[str]], nodes: dict) -> None:
-    """번호 대응표. GT(check_resolve · sample_picker)를 갈아끼우는 근거."""
-    was = {tuple(chain): recipe_id for recipe_id, chain in before.items()}
-
-    print()
-    print("  새 번호      현재         경로")
-    for index, chain in enumerate(after, start=1):
-        old = was.get(tuple(chain), "(새것)")
-        names = " → ".join(nodes[nid]["name"] for nid in chain)
-        print(f"  recipe_{index:03d}   {old:<12} {names}")
-
-    gone = [recipe_id for chain, recipe_id in was.items() if list(chain) not in after]
-    if gone:
-        print()
-        print("  ★ 사라진 recipe : " + " · ".join(sorted(gone)))
-
-
-def rebuild(write: bool) -> int:
-    nodes = _load_init_nodes()
-
+def review(quiet: bool) -> int:
+    nodes = store.nodes()
     every = all_recipes(nodes)
-    chains = [
-        chain for chain in every
-        if not crosses_groups(chain) and len(chain) >= MIN_STEPS
-    ]
+    candidates = [chain for chain in candidate_recipes(nodes) if len(chain) >= MIN_STEPS]
+    accepted = accepted_recipes()
+    by_chain = {tuple(chain): recipe_id for recipe_id, chain in accepted.items()}
 
-    before = _current_chains(paths.INIT_RECIPES_DIR)
-    _table(before, chains, nodes)
-
-    # ---------------------------------------------------------- 검증
-    crossing = [chain for chain in chains if crosses_groups(chain)]
-    print()
-    if crossing:
-        print(f"  ★★★ 대상이 어긋나는 경로가 {len(crossing)}개 남았다 — 필터가 안 걸렸다")
-        for chain in crossing:
-            print(f"        {chain}")
-    else:
-        short = sum(1 for chain in every if len(chain) < MIN_STEPS)
-        print(
-            f"  대상이 어긋나는 것 0개 "
-            f"(전체 {len(every)}개 중 {len(every) - len(chains)}개 버림"
-            f" — 그중 {short}개는 {MIN_STEPS}단 미만)"
-        )
-
-    sentences = [function_for(chain, nodes) for chain in chains]
-    # menu.yaml 은 "  recipe_00N:\n    function: <문장>\n" 한 덩어리씩이다.
-    body = sum(len(f"  recipe_{i:03d}:\n    function: {s}\n") for i, s in enumerate(sentences, 1))
-    head = len(_head(paths.INIT_MENU_YAML_PATH.read_text(encoding="utf-8"), MENU_YAML_HEAD_MARKER))
-    size = head + body + len(sentences)  # 덩어리 사이 빈 줄
-    print(f"  menu.yaml 약 {size}자 / MENU_BUDGET {MENU_BUDGET} — 여유 {MENU_BUDGET - size}자")
-
-    if not write:
+    # ---------------------------------------------------------- 후보 표
+    if not quiet:
         print()
-        print("  미리보기다. 실제로 쓰려면 --write 를 붙인다.")
-        return 0
+        print("## 후보 — 온톨로지로 이을 수 있는 경로")
+        print()
+        for index, chain in enumerate(candidates, start=1):
+            status = by_chain.get(tuple(chain), "미게시")
+            names = " → ".join(nodes[node_id]["name"] for node_id in chain)
+            missing = step_service.unwired_in(chain)
+            mark = f"   (실행 수단 없음: {' · '.join(missing)})" if missing else ""
+            print(f"  {index:>3}  {status:<{STATUS_WIDTH}} {names}{mark}")
 
-    # ---------------------------------------------------------- 쓰기
-    shutil.rmtree(paths.INIT_RECIPES_DIR)
-    paths.INIT_RECIPES_DIR.mkdir(parents=True)
-    recipe_ids = append_recipes(chains, nodes, directory=paths.INIT_RECIPES_DIR)
+    candidate_set = {tuple(chain) for chain in candidates}
+    stranded = [recipe_id for recipe_id, chain in accepted.items() if tuple(chain) not in candidate_set]
+    unwired = {recipe_id: step_service.unwired(recipe_id) for recipe_id in accepted}
+    unwired = {recipe_id: missing for recipe_id, missing in unwired.items() if missing}
 
-    for path, marker in (
-        (paths.INIT_MENU_YAML_PATH, MENU_YAML_HEAD_MARKER),
-        (paths.INIT_MENU_MD_PATH, MENU_MD_HEAD_MARKER),
-    ):
-        # append_menu 는 이어 붙이는 함수라 빈 파일에 못 쓴다. 머리말만 남긴다.
-        path.write_text(
-            _head(path.read_text(encoding="utf-8"), marker) + "\n",
-            encoding="utf-8",
-            newline="\n",
-        )
+    # ---------------------------------------------------------- menu 문장 대조
+    menu = _menu()
+    leaks = _tool_names()
+    same_function, same_example, rows = 0, 0, []
+    leaked = []
+    for recipe_id, chain in accepted.items():
+        generated = function_for(chain, nodes)
+        active = (menu.get(recipe_id) or {}).get("function", "")
+        example_file = _recipe_file(recipe_id).get("example")
+        example_menu = (menu.get(recipe_id) or {}).get("example")
+        same_function += generated == active
+        same_example += example_file == example_menu
+        leaked += [f"{recipe_id}: {name}" for name in leaks if name in generated]
+        rows.append((recipe_id, generated, active, example_file, example_menu))
 
-    append_menu(
-        recipe_ids,
-        chains,
-        nodes,
-        yaml_path=paths.INIT_MENU_YAML_PATH,
-        md_path=paths.INIT_MENU_MD_PATH,
-    )
+    if not quiet:
+        print()
+        print("## menu 문장 — 온톨로지로 만든 것 / 지금 menu.yaml 에 실린 것")
+        for recipe_id, generated, active, example_file, example_menu in rows:
+            print()
+            print(f"  {recipe_id}")
+            print(f"    만든 것   {generated}")
+            print(f"    지금 것   {active or '(menu 에 없음)'}")
+            if example_file or example_menu:
+                mark = "" if example_file == example_menu else "   ★ 어긋남"
+                print(f"    example   recipe={example_file!r} · menu={example_menu!r}{mark}")
 
-    written = len(paths.INIT_MENU_YAML_PATH.read_text(encoding="utf-8"))
+    # ---------------------------------------------------------- 요약
+    size = len(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))
+    crossing = len(every) - len(candidate_recipes(nodes))
     print()
-    print(f"  menu.yaml 실측 {written}자 — 여유 {MENU_BUDGET - written}자")
-    print(f"  썼다 : recipe {len(recipe_ids)}개 · menu.yaml · menu.md  (모두 _init)")
-    print("  화면에서 초기화를 눌러야 작업본에 반영된다.")
-    return 0
+    print("## 요약")
+    print()
+    runnable = sum(1 for chain in candidates if not step_service.unwired_in(chain))
+    print(f"  경로 {len(every)} · 대상이 어긋나 뺀 것 {crossing} · 후보 {len(candidates)} (MAX_STEPS {MAX_STEPS})"
+          f" · 그중 지금 실행 수단이 다 붙는 것 {runnable}")
+    print(f"  받아들인 recipe {len(accepted)} · 그중 후보로 만들 수 있는 것 {len(accepted) - len(stranded)}"
+          f" · 미게시 후보 {len(candidates) - (len(accepted) - len(stranded))}")
+    if stranded:
+        print("  ★ 온톨로지가 더는 못 만드는 recipe : " + " · ".join(stranded))
+    if unwired:
+        print("  ★ 실행 수단이 빈 recipe : " + " · ".join(f"{rid}({'·'.join(m)})" for rid, m in unwired.items()))
+    print(f"  menu 문장이 만든 것과 같은 recipe {same_function}/{len(accepted)}"
+          f" · example 이 recipe 파일과 menu 에서 같은 recipe {same_example}/{len(accepted)}"
+          f" · recipe 파일의 example {sum(1 for row in rows if row[3])}")
+    print(f"  menu.yaml {size}자 / MENU_BUDGET {MENU_BUDGET}")
+    if leaked:
+        print("  ★ 만든 문장에 도구 이름이 샜다 : " + " · ".join(leaked))
+    print()
+    print("  쓰지 않았다. 후보를 받아들이는 것은 사람이 한다 (CLAUDE.md 「recipe 번호」).")
+    return 1 if stranded or leaked else 0
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="_init 의 recipe 와 menu 를 온톨로지에서 다시 만든다."
+        description="온톨로지 후보를 받아들인 recipe · menu 와 대조한다. 쓰지 않는다."
     )
-    parser.add_argument("--write", action="store_true", help="실제로 쓴다 (기본은 미리보기)")
+    parser.add_argument("--quiet", action="store_true", help="요약만")
     args = parser.parse_args()
-    return rebuild(args.write)
+    return review(args.quiet)
 
 
 if __name__ == "__main__":

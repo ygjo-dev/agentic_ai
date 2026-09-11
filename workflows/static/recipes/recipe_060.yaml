@@ -9,3 +9,5 @@ steps:
   - node: search_ev_stations
 
   - node: get_ev_station
+
+example: 대전역 옆 충전소 충전기 몇 개 비었는지까지 줘

@@ -276,10 +276,10 @@ def all_recipes(nodes: dict) -> list[list[str]]:
           것을 뒤 노드가 받을 수 있으면 이어짐
           순서가 결정적. 짧은 것부터(BFS), 같은 길이 안에서는 start_ids 와
           nodes 의 순서를 따르고 그것은 ontology.yaml 에 적힌 순서임.
-          같은 온톨로지로 두 번 돌리면 같은 번호가 나오고
-          dev/tools/rebuild_init.py 가 그것에 기댐
+          같은 온톨로지로 두 번 돌리면 같은 차례가 나오고
+          dev/tools/rebuild_init.py 가 후보 표를 그 차례로 찍음
     제약  대상(about)이 어긋나는 것을 여기서 거르지 않는다.
-          거르는 것은 부르는 쪽의 일임(register_node · dev/tools/rebuild_init.py).
+          거르는 것은 부르는 쪽의 일임(register_node · candidate_recipes).
           그래야 "무엇이 만들어질 수 있는가" 와 "무엇을 남길 것인가" 가 갈림.
           여기서 함께 걸러 버리면 등록이 무엇을 버렸는지 셀 수 없어짐
           길이 1 을 만들지 않는다.
@@ -335,6 +335,31 @@ def new_recipes_for(node_id: str, nodes: dict) -> list[list[str]]:
         return []
 
     return [chain for chain in all_recipes(nodes) if node_id in chain]
+
+
+def candidate_recipes(nodes: dict) -> list[list[str]]:
+    """사람에게 보여줄 recipe 후보.
+
+    입력  노드 전체
+    출력  all_recipes 에서 대상이 어긋나는 경로를 뺀 것. 차례 그대로. 파일은 안 씀
+    규칙  후보는 「온톨로지로 이을 수 있는가」임. 서비스에 올릴지는 사람이 정함
+          사람이 받아들인 것만 workflows/static/recipes/ 에 파일로 있음.
+          그 파일 자체가 사람의 판정 결과라 따로 목록을 두지 않음
+          거르기는 register_node 가 파일로 쓰는 경로와 같음
+    제약  후보를 recipe 파일로 한꺼번에 쓰지 않는다.
+          사람이 지운 경로가 다시 올라가고, 번호가 흔들리고, 사람이 쓴 example 이
+          사라짐
+    """
+    return [chain for chain in all_recipes(nodes) if not graph.crosses_groups(chain)]
+
+
+def accepted_recipes() -> dict[str, list[str]]:
+    """사람이 받아들인 recipe.
+
+    출력  {recipe_id: 노드 사슬}. 번호 순
+    규칙  workflows/static/recipes/ 의 파일이 곧 받아들인 것임
+    """
+    return {recipe_id: graph.recipe_nodes(recipe_id) for recipe_id in graph.recipe_ids()}
 
 
 def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list[str]:
@@ -470,6 +495,8 @@ def function_for(chain: list[str], nodes: dict) -> str:
           시작하는 것이 같은 문장이 됨
           노드의 tool 을 읽지 않는다.
           이 문장은 발화 해석 프롬프트에 실리는 재료라 도구 이름이 새면 안 됨
+          지금 쓰는 menu.yaml 을 이 문장으로 덮어쓰지 않는다.
+          사람이 다듬어 판정을 잰 문장이 있음. 견주는 것은 dev/tools/rebuild_init.py 임
     """
     steps = [nid for nid in chain if graph.is_executable(nid)]
     sources = [nid for nid in chain if nid not in steps]

@@ -5,3 +5,5 @@ steps:
   - node: geocode_place
 
   - node: find_assembly_district_by_point
+
+example: 대전역 쪽 당선인이 누구지

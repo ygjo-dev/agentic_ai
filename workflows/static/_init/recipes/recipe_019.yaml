@@ -5,3 +5,5 @@ steps:
   - node: point_to_map_extent
 
   - node: find_cctv
+
+example: 이 위치 둘레 CCTV 보여줘

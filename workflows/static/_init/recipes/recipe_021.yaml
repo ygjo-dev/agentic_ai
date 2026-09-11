@@ -3,3 +3,5 @@ steps:
   - node: point
 
   - node: find_assembly_district_by_point
+
+example: 선택한 위치 당선인이랑 정당 알려줘

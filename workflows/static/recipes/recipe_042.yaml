@@ -5,3 +5,5 @@ steps:
   - node: geocode_place
 
   - node: find_assembly_pledge_district_by_point
+
+example: 대전역 지역 의원 공약 좀 훑어줘

@@ -3,3 +3,5 @@ steps:
   - node: keyword
 
   - node: search_population_statistics
+
+example: 시군구별 인구 순위 매겨줘

@@ -3,3 +3,5 @@ steps:
   - node: map_extent
 
   - node: search_assembly_pledge_districts
+
+example: 현재 화면 안 국민의힘 공약 검색해줘
