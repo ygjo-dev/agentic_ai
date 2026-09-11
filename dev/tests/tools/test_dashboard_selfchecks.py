@@ -25,7 +25,7 @@ import check_resolve  # noqa: E402
 def test_the_inputs_dashboard_can_read_the_wiring_table_even_when_it_changes():
     """스텁이 아니라 진짜 표를 읽음. 표의 모양이 바뀌면 여기서 빨간불이 남.
 
-    `_selfcheck` 가 「TOOL_OF · STEP_OF 의 모든 줄을 빈 스키마로 한 바퀴
+    `_selfcheck` 가 「tool 이 있는 노드의 모든 벌을 빈 스키마로 한 바퀴
     읽는」 검사를 품고 있어(「쉰아홉째」) 이 한 줄이 곧 전 줄 읽기다.
     """
     check_inputs._selfcheck()

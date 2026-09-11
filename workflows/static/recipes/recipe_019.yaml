@@ -1,5 +1,7 @@
 steps:
 
-  - node: picked_point
+  - node: point
+
+  - node: point_to_map_extent
 
   - node: find_cctv

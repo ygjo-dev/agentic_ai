@@ -1,7 +1,9 @@
 steps:
 
-  - node: spoken_place
+  - node: place_name
 
   - node: geocode_place
+
+  - node: point_to_map_extent
 
   - node: find_cctv

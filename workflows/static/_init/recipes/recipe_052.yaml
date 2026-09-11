@@ -1,6 +1,6 @@
 steps:
 
-  - node: spoken_keyword
+  - node: keyword
 
   - node: search_ev_stations
 

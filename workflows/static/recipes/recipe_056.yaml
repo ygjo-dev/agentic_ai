@@ -1,6 +1,6 @@
 steps:
 
-  - node: visible_extent
+  - node: map_extent
 
   - node: search_ev_stations
 

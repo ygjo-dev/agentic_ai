@@ -15,7 +15,7 @@
     국회의원 선거구 찾아줘      recipe_007 ✓  election.searchDistricts 0건
     청주시 인구 구성 알려줘     recipe_011    population.searchStatistics 0건
 
-배선은 셋 다 `{"query": @arg}` 다. 그러니 recipe 가 맞아도 `@arg` 에 들어간 값이
+배선은 셋 다 `{"query": 발화 인자}` 다. 그러니 recipe 가 맞아도 발화 인자에 들어간 값이
 도구에 안 통하면 답은 0건이다. **인자가 도구에 통하는지는 한 번도 안 쟀다.**
 "축이 89/90 동일" 은 안정적이라는 뜻이지 맞다는 뜻이 아니다.
 
@@ -24,7 +24,7 @@
     1  /resolve 를 발화마다 여러 번 불러 recipe 와 argument 를 받는다.
        check_resolve._call_resolve 를 그대로 쓴다 — 같은 경로여야 표를 믿을 수 있다
     2  그 recipe 의 첫 실행 노드 배선을 step_service.plan 에서 읽는다
-    3  @arg 자리에 뽑힌 인자를 넣고 Gateway 를 직접 부른다
+    3  발화 인자 자리에 뽑힌 인자를 넣고 Gateway 를 직접 부른다
     4  건수를 적는다
 
 ★ **축 셋(given · want · about)을 함께 찍던 칸이 2026-09-06 에 사라졌다.**
@@ -32,8 +32,8 @@
 변주(VARIATIONS, 2026-08-25)에서 어미가 무엇을 흔드는지는 이제 recipe 와 인자로
 여기서 갈린다.
 
-**첫 단계만 잰다.** `@arg` 를 쓰는 배선만 본다. `$prev` 만 쓰는 자리는 앞 단계가
-있어야 부를 수 있으므로 이번 범위 밖이다 — 그런 자리는 표에 "$prev" 로 적고
+**첫 단계만 잰다.** 발화 인자를 쓰는 배선만 본다. 앞 단계 참조만 쓰는 자리는 앞 단계가
+있어야 부를 수 있으므로 이번 범위 밖이다 — 그런 자리는 표에 「앞 단계 참조만 씀」으로 적고
 안 부른다. 그래서 **여기 건수는 사슬 끝의 답이 아니다.** 3번 CCTV 는 첫 단계가
 geo.geocode 라 여기서는 좌표 건수를 재고, CCTV 가 몇 건인지는 여기서 안 나온다.
 
@@ -186,11 +186,11 @@ ALIVE_ARGUMENT = {
     8: "",
 }
 
-# plan 에 넣어 @arg 자리를 찾는 표시. 어느 발화에서도 안 나올 값이어야 한다.
+# plan 에 넣어 발화 인자 자리를 찾는 표시. 어느 발화에서도 안 나올 값이어야 한다.
 PROBE = "@@ARG@@"
 
-# 첫 단계가 @arg 를 안 쓸 때 인자 칸에 적는 것.
-NO_SPOKEN = "$prev 만 씀"
+# 첫 단계가 발화 인자를 안 쓸 때 인자 칸에 적는 것.
+NO_SPOKEN = "앞 단계 참조만 씀"
 
 # 건수를 어디서 읽을지. 앞의 것부터 본다.
 #
@@ -235,13 +235,13 @@ STATUS_WIDTH = 9
 
 
 def _first_step(recipe_id: str) -> dict | None:
-    """그 recipe 의 첫 실행 단계. @arg 자리를 PROBE 로 표시한 채.
+    """그 recipe 의 첫 실행 단계. 발화 인자 자리를 PROBE 로 표시한 채.
 
     입력  recipe id
     출력  step_service.plan 이 만든 첫 step. 부를 것이 없으면 None
     규칙  plan 을 그대로 부름. 배선을 여기서 다시 읽지 않음 — 실행이 지나는
           것과 같은 자리를 봐야 표를 믿을 수 있음
-          인자 자리에 PROBE 를 넣어 두면 @arg 를 쓰는지 아닌지가 값으로 드러남
+          인자 자리에 PROBE 를 넣어 두면 발화 인자를 쓰는지 아닌지가 값으로 드러남
     """
     try:
         steps = step_service.plan(recipe_id, PROBE)["steps"]
@@ -255,7 +255,7 @@ def _spoken_fields(tool_input: dict) -> list[str]:
 
     입력  PROBE 를 넣어 만든 step 의 input
     출력  값이 PROBE 인 칸 이름 목록. 없으면 빈 목록
-    규칙  한 겹만 봄. 지금 배선의 @arg 는 전부 한 겹임
+    규칙  한 겹만 봄. 지금 배선의 발화 인자는 전부 한 겹임
     """
     return [key for key, value in tool_input.items() if value == PROBE]
 
@@ -299,7 +299,7 @@ def _count(body) -> str:
 def _execute(step: dict, argument: str) -> tuple:
     """Gateway 에 도구 하나를 직접 부름.
 
-    입력  첫 실행 단계 · @arg 자리에 넣을 인자
+    입력  첫 실행 단계 · 발화 인자 자리에 넣을 인자
     출력  (건수 문자열, 본문). 실패하면 ("오류", 사유 문자열)
     규칙  본문 모양은 vendor_to_be_deleted/asap/mcp_client.execute_tool 과 같음.
           **user_context 를 반드시 넣는다** — 빠뜨리면 요청마다 새 guest 가
@@ -414,7 +414,7 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
 def _one_call(picker, recipe_id, status, step, argument, count) -> dict:
     """한 줄. 부를 수 있으면 부르고, 아니면 왜 안 불렀는지 적음.
 
-    규칙  @arg 를 쓰는 배선만 부름. 첫 단계가 $prev 만 쓰면 안 부르고
+    규칙  발화 인자를 쓰는 배선만 부름. 첫 단계가 앞 단계 참조만 쓰면 안 부르고
           그 사실을 적음 — 앞 단계가 있어야 부를 수 있고 이번 범위 밖임
     """
     row = {
@@ -550,7 +550,7 @@ def _print_verdict(rows) -> None:
         if any(str(c["hits"]).startswith(("배선 없음", "부를 것 없음")) for c in llm):
             verdict = "안 잼 (" + str(llm[0]["hits"]) + " — 실행 자체가 안 됨)"
         elif any(c["hits"] == NO_SPOKEN for c in llm):
-            verdict = "안 잼 (첫 단계가 @arg 를 안 씀)"
+            verdict = "안 잼 (첫 단계가 발화 인자를 안 씀)"
         else:
             llm_max, human_max, alive_max = _best(llm), _best(human), _best(alive)
             if llm_max is None:

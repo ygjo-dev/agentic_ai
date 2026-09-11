@@ -296,7 +296,7 @@ def test_only_paths_through_the_new_node_are_created():
     # 닿을 수 없는 자리는 제외된다. 이 노드는 장소 이름만 받으므로 지도 범위를
     # 내놓는 노드 뒤에는 절대 붙지 않는다.
     assert not [c for c in chains if "geocode_place" in c]
-    assert [c for c in chains if c[0] == "spoken_place"]
+    assert [c for c in chains if c[0] == "place_name"]
 
     # 다른 노드를 넣으면 그 노드를 지나는 경로만 나온다. 새 노드가 안 낀 경로는
     # 이미 recipe 로 있으므로 다시 만들면 중복이다.
@@ -377,7 +377,7 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     진실의 원천이 둘이 됨.
     """
     nodes = nodes_now()
-    chains = [["spoken_place", "geocode_place"]]
+    chains = [["place_name", "geocode_place"]]
     before_files = {p.name: p.read_bytes() for p in paths.RECIPES_DIR.glob("*.yaml")}
     last = max(int(p.stem.split("_")[1]) for p in paths.RECIPES_DIR.glob("recipe_*.yaml"))
 
@@ -526,8 +526,8 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
     """
     nodes = nodes_now()
     chains = [
-        ["spoken_place", "geocode_place"],
-        ["spoken_place", "geocode_place", "find_cctv"],
+        ["place_name", "geocode_place"],
+        ["place_name", "geocode_place", "find_cctv"],
     ]
     new_ids = ["recipe_090", "recipe_091"]
     before = menu_now()
@@ -549,46 +549,55 @@ def test_menu_gains_sentences_without_touching_the_old_ones():
         assert recipe_id in md, recipe_id
 
 
-def test_a_menu_sentence_reads_as_one_korean_sentence():
-    """경로는 데이터 노드로 시작하는데 그 설명은 명사구.
+def test_a_menu_sentence_starts_from_where_the_value_comes_in():
+    """경로는 source 가 있는 시작 노드로 시작하는데 그 source 설명은 명사구.
 
     설명을 그냥 이어 붙이면 "...지목한 장소하고 좌표를 찾고" 가 됨.
-    데이터는 이름에 조사를 붙여 앞에 두고 기능 설명만 이음.
+    시작 노드는 source 설명의 첫 문장에 조사를 붙여 앞에 두고 기능 설명만 이음.
+    화면에서 오는 자리는 언제 그것을 쓰는지가 뒤 문장으로 붙음.
 
-    데이터 이름을 빼면 안 됨. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
+    시작 노드를 빼면 안 됨. 같은 기능을 쓰는 recipe 가 무엇으로 시작하는지
     구분할 근거가 사라져 LLM 이 고를 수 없음.
     """
     nodes = nodes_now()
 
-    one = function_for(["spoken_place", "geocode_place"], nodes)
-    two = function_for(["spoken_place", "geocode_place", "find_cctv"], nodes)
+    spoken = function_for(["place_name", "geocode_place"], nodes)
+    two = function_for(["place_name", "geocode_place", "find_admin_boundary_by_point"], nodes)
+    picked = function_for(["point", "find_admin_boundary_by_point"], nodes)
 
-    # 종결형이 문장 끝에만 있어야 한 문장으로 읽힌다.
-    for sentence in (one, two):
+    # 기능을 잇는 부분은 한 문장이다. 종결형이 그 끝에만 있다.
+    for sentence in (spoken, two):
         assert sentence.count("다.") == 1 and sentence.endswith("다."), sentence
-    assert "장소하고" not in one, "명사구를 억지로 연결형으로 바꿨다"
-    assert one != two
+    assert "장소하고" not in spoken, "명사구를 억지로 연결형으로 바꿨다"
+    assert spoken != two
 
-    # 데이터 이름이 실려야 시작점을 구분할 수 있다.
-    assert nodes["spoken_place"]["name"] in one
-    other = function_for(["place_name", "geocode_place"], nodes)
-    assert other != one, "시작 데이터가 다른데 같은 문장이 됐다"
+    # 어디서 들어온 값인지가 문장 앞에 실려야 시작점을 구분할 수 있다.
+    assert spoken.startswith(nodes["place_name"]["source"]["description"].rstrip("."))
+    assert picked.startswith(nodes["point"]["source"]["description"].split(". ")[0])
+    assert picked != function_for(["place_name", "find_admin_boundary_by_point"], nodes), (
+        "시작 노드가 다른데 같은 문장이 됐다"
+    )
+
+    # 화면에서 오는 자리는 언제 쓰는지가 뒤에 붙는다.
+    assert picked.count("다.") == 2 and picked.endswith("다."), picked
 
     # 중간 단계는 연결형이 된다. "찾는다" 는 "찾고" 다 —
     # 마지막 단계로만 재면 종결형 그대로라 이 규칙이 한 번도 안 불린다.
-    assert "조회하고 " not in two, "마지막 단계는 종결형이어야 한다"
-    assert "찾고 " in two, two
+    assert "찾고 " in two and two.endswith("찾는다."), two
 
-    # 조사가 받침을 따라간다. "장소 이름으로" 와 "말한 장소로" 가 갈린다 —
+    # 조사가 받침을 따라간다. "장소로" 와 "지점으로" 가 갈린다 —
     # 받침을 안 보면 시연 중에 사람이 먼저 알아챈다.
-    assert "장소 이름으로 " in other
-    assert "말한 장소로 " in one
+    assert "장소로 " in spoken
+    assert "지점으로 " in picked
+
+    # 도구 이름을 싣지 않는다. 이 문장은 발화 해석 프롬프트의 재료다.
+    assert "geo.geocode" not in spoken and "adminBoundary" not in picked
 
     # 실제 menu 문장도 서로 구별된다.
     sentences = [entry["function"] for entry in menu_now().values()]
     assert len(set(sentences)) == len(sentences), "같은 문장이 둘 이상이다"
     for sentence in sentences:
-        assert sentence.count("다.") == 1 and sentence.endswith("다."), sentence
+        assert sentence.endswith("다."), sentence
 
     # menu 전체가 예산 안에 있어야 한다. 넘으면 LLM context 를 넘겨 타임아웃한다.
     assert len(paths.MENU_YAML_PATH.read_text(encoding="utf-8")) < MENU_BUDGET

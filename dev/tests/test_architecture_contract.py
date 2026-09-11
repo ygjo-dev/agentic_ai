@@ -6,7 +6,7 @@
     → LLM 이 static recipe 를 **고른다** (만들지 않는다)
     → recipe = 순서 있는 온톨로지 노드 목록
     → 온톨로지 관계가 이어질 수 있는지 말한다
-    → 배선(wiring)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
+    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다
     → vendor/Gateway 실행
     → 답 · API · 화면
 
@@ -20,7 +20,7 @@
 
     고른 것을 문맥으로 안 거른다      dev/tests/orchestrator/test_resolve_service.py
     실행 전제는 실행이 본다            dev/tests/execution/test_execute_service.py
-    배선이 온톨로지 · 스키마와 맞나    dev/tests/execution/test_wiring_contract.py
+    tool 이 스키마 · 권한과 맞나      dev/tests/execution/test_wiring_contract.py
     온톨로지 관계가 무엇을 뜻하나      dev/tests/ontology/test_graph.py
 
 LLM 도 Gateway 도 부르지 않는다. 소스와 데이터 파일만 읽는다.
@@ -42,12 +42,12 @@ from orchestrator.schemas.response_schema import recipe_selection_schema
 #   argument                                    발화에서 그대로 떼어 온 값
 #   travel_mode · minutes · admin_level         발화에서 떼어 온 값 중 이름이 있는 것
 #   reason                                      왜 그렇게 골랐나
-# argument 는 실행 인자가 아니다 — 어느 도구의 어느 칸에 실릴지는 배선표가 정하고
-# (execution/wiring.yaml 의 arg_field), LLM 은 그것을 모른다.
+# argument 는 실행 인자가 아니다 — 어느 도구의 어느 칸에 실릴지는 온톨로지 노드의
+# tool.parameters 가 정하고, LLM 은 그것을 모른다.
 #
 # travel_mode · minutes 도 같은 자리다. 사람이 말한 값을 이름을 붙여 떼어 온
-# 것일 뿐이고, 그 값이 어느 도구의 어느 칸에 어떤 말로 실릴지는 배선표의
-# options 절이 정한다 — 「도보」가 WALK 가 되는 것을 LLM 은 모른다.
+# 것일 뿐이고, 그 값이 어느 도구의 어느 칸에 어떤 말로 실릴지는 tool.parameters
+# 의 map 이 정한다 — 「도보」가 WALK 가 되는 것을 LLM 은 모른다.
 # **도구 순서를 적을 칸은 여전히 없다.** 이 목록이 그것을 지킨다.
 SELECTION_FIELDS = {
     "reason",
@@ -89,7 +89,7 @@ def test_the_llm_is_asked_to_choose_a_recipe_not_a_tool_sequence():
 
 
 def test_a_recipe_is_only_an_ordered_list_of_ontology_nodes():
-    """**recipe 파일이 실행을 안 가진다.** 무엇으로 수행하는지는 배선표가 안다.
+    """**recipe 파일이 실행을 안 가진다.** 무엇으로 수행하는지는 온톨로지 노드의 tool 이 안다.
 
     recipe 에 서버 · 도구 · 인자를 적으면 진실의 원천이 둘이 된다 — 도구를
     갈아끼울 때 recipe 를 전부 함께 고쳐야 하고, 어긋났을 때 어느 쪽이

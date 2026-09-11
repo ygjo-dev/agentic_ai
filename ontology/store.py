@@ -46,8 +46,10 @@ def raw_bytes(path=None) -> bytes:
 def nodes(path=None) -> dict:
     """노드 dict.
 
-    출력  {node_id: {name, description}}
+    출력  {node_id: {name, description, source?, tool?}}
     규칙  종류를 나누는 필드가 없음. 성격은 관계가 말하고 판정은 graph.py 가 함
+          source · tool 은 그 노드 자신의 사실이라 노드에 붙음. 뜻은 graph.py 와
+          execution/step_service.py 가 읽음
     """
     return read(path)["nodes"]
 
@@ -126,6 +128,9 @@ def node_block(node_id: str, node: dict) -> str:
     출력  기존 파일과 같은 들여쓰기의 여러 줄 문자열. name 과 description 뿐
     제약  무엇을 받고 내놓는지 여기 적지 않는다.
           노드가 아니라 관계에 적힘. hasInput / hasOutput edge 로 따로 붙음
+          source · tool 을 여기서 적지 않는다.
+          등록 폼이 그 칸을 안 받음. 밖에서 들어오는 자리와 도구 식별은 사람이
+          파일에 적음
     """
     return "\n".join([
         f"  {node_id}:",

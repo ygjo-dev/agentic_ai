@@ -18,8 +18,8 @@ import yaml
 import paths
 from ontology import store
 
-# 노드에는 name 과 description 뿐이다. 무엇을 받고 내놓는지도, 무엇에 관한
-# 것인지도 관계라서 edges 에 적힌다.
+# 등록이 적는 노드는 name 과 description 뿐이다. 무엇을 받고 내놓는지도, 무엇에
+# 관한 것인지도 관계라서 edges 에 적힌다. source · tool 은 사람이 파일에 적는다.
 NEW = {
     "name": "궤도 결함 이력 요약",
     "description": "궤도 점검 보고서에서 결함이 어떻게 이어져 왔는지 요약한다.",
@@ -148,9 +148,10 @@ def test_an_added_node_reads_back_unchanged(ontology_file):
     assert nodes["analyze_crack_trend"] == NEW
     assert set(nodes["group_tunnel"]) == {"name", "description"}
 
-    # 기존 노드와 모양이 같다. 새로 적힌 것만 튀어 보이면 안 된다.
+    # 기존 노드와 같은 칸만 쓴다. 새로 적힌 것만 튀어 보이면 안 된다.
+    # 기존 노드에는 source · tool 이 붙을 수 있다 — 그 노드 자신의 사실이다.
     for node in nodes.values():
-        assert set(node) == {"name", "description"}
+        assert {"name", "description"} <= set(node) <= {"name", "description", "source", "tool"}
 
     # 두 번 이어 붙여도 기존 노드가 그대로다.
     assert len(nodes) == len(before) + 2

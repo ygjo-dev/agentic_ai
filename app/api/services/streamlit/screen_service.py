@@ -96,6 +96,8 @@ def drawn_nodes() -> dict:
           kind 를 파일에 되돌려 적지 않는다.
           화면에만 필요한 구분이라 파일에 적으면 관계와 어긋날 수 있는 자리가
           하나 늘어남
+          노드의 tool · source 를 화면에 넘기지 않는다.
+          그리는 데 안 쓰이고, 도구 이름이 화면 응답에 실리는 자리가 됨
     """
     nodes = load_ontology()["nodes"]
     groups = set(group_ids())
@@ -103,7 +105,11 @@ def drawn_nodes() -> dict:
     in_dotted = {node_id for pair in dotted_edges() for node_id in pair}
 
     return {
-        node_id: {**node, "kind": "group" if node_id in groups else "function"}
+        node_id: {
+            "name": node["name"],
+            "description": node["description"],
+            "kind": "group" if node_id in groups else "function",
+        }
         for node_id, node in nodes.items()
         if node_id in groups
         or node_id in in_paths

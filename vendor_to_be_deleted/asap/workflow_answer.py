@@ -52,9 +52,9 @@ ERROR = "error"
 
 # 빈 결과 · 오류일 때의 첫 줄. 이때는 headline 을 안 쓴다.
 #
-# headline 은 STEP_OF 가 "{arg} 행정구역을 조회했습니다." 처럼 완결된 한국어
+# headline 은 배선표(wiring.yaml 의 headline)가 "{arg} 행정구역을 조회했습니다." 처럼 완결된 한국어
 # 문장으로 갖고 있어 부정형으로 바꿀 수 없다. 어미를 문자열로 잘라 고치지
-# 않는다 — 문형이 하나 늘 때마다 자르는 규칙이 하나 는다. STEP_OF 를 명사형
+# 않는다 — 문형이 하나 늘 때마다 자르는 규칙이 하나 는다. headline 을 명사형
 # ("{arg} 행정구역")으로 바꾸면 세 문구를 한 틀로 합칠 수 있는데 48줄을 다시
 # 쓰는 일이라 이번 범위 밖이다 (NOTES.md).
 # 무엇을 조회하려던 것인지는 아래 단계 줄이 말한다.
@@ -535,7 +535,7 @@ def _input_pair(value: Any):
     """인자 값 하나의 (겹침을 볼 원문, 화면에 적을 것). 적을 수 없으면 None.
 
     규칙  bool 은 안 적음. 참·거짓만으로는 무엇을 물었는지 못 말하고 실측
-          배선(STEP_OF)에 bool 인자가 없음
+          입력 배선(온톨로지 tool.parameters)에 bool 인자가 없음
           실수는 COORD_DIGITS 자리까지. 배선의 실수는 전부 좌표임
           문자열은 한 줄로 붙이고 INPUT_VALUE_LIMIT 에서 자른 뒤 따옴표
           dict · list · None 은 None 을 냄
@@ -1504,7 +1504,7 @@ def _lon_lat(value: Any):
 
 # 지도 명령만 낸 실행의 답. headline 이 비었을 때만 쓴다.
 #
-# headline 은 배선표(step_service.TOOL_OF)가 갖고 있고 인자가 들어간 문장이라
+# headline 은 배선표(step_service.HEADLINE)가 갖고 있고 인자가 들어간 문장이라
 # ("오송 테스트트랙 시설물을 화면에 띄웠습니다") 이 자리보다 늘 낫다.
 NOTHING_RAN = "화면에 표시했습니다."
 

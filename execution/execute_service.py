@@ -15,7 +15,7 @@ recipe 로 갈아타지 않고 실행을 시작하지 않는다.
 vendor_to_be_deleted/asap/generic_mcp_executor 의 _execute_generic_mcp_workflow 가
 steps 배열 하나를 받아 참조 해석($s1.location) · 입력 어댑터 · 도구 호출 ·
 지도 commands 까지 한다. 도구가 늘어도 그쪽은 그대로고, 우리가 늘리는 것은
-wiring.yaml 한 줄이다.
+온톨로지 노드의 tool 한 벌이다.
 
 **step_start / step_end 는 실행이 끝난 뒤에 나간다.** vendor 는 steps 전부를
 한 번에 돌리고 trace 를 돌려주므로 중간에 끼어들 자리가 없다. 단계마다 한 쌍이
@@ -27,7 +27,7 @@ run 이 trace 로 다시 부른다. 같은 함수라 문구가 갈라지지 않�
 
 **vendor 를 아예 안 지나는 실행이 하나 있다.** 경로의 실행 노드가 전부
 「부를 도구가 없는」 것이면 넘길 steps 가 비고, vendor 는 빈 steps 를 실패로
-본다. 그때는 배선표가 만든 지도 명령을 그대로 내고 끝낸다.
+본다. 그때는 실행 계획이 만든 지도 명령을 그대로 내고 끝낸다.
 """
 
 from collections import Counter
@@ -74,29 +74,29 @@ NO_IDENTIFIER_ANSWER = (
     "어느 것인지 알 수 없습니다. '충북 제1선거구' 처럼 이름이나 코드를 함께 말씀해 주세요."
 )
 
-# 경로의 시작 데이터 노드 -> 안내 문구. key 는 온톨로지의 데이터 노드 id 다.
-# 여기 없는 노드로 시작하는 경로는 장소 문구로 떨어진다.
+# 경로의 시작 노드 -> 안내 문구. key 는 source 가 발화(spoken.argument)인 온톨로지
+# 노드 id 다. 여기 없는 노드로 시작하는 경로는 장소 문구로 떨어진다.
 #
-# **화면에서 온 둘(찍은 지점 · 보이는 범위)은 여기 없다.** 그 둘로 시작하는
-# 경로에서 사람이 더 말해 줄 것은 뒤 단계의 @arg 뿐이고, 그것은 대개 장소다
+# **화면에서 오는 둘(지점 좌표 · 지도 범위)은 여기 없다.** 그 둘로 시작하는
+# 경로에서 사람이 더 말해 줄 것은 뒤 단계의 발화 인자뿐이고, 그것은 대개 장소다
 # (경로 탐색의 도착지가 그 자리다).
 NO_ARGUMENT_ANSWER = {
-    "spoken_place": NO_PLACE_ANSWER,
-    "spoken_keyword": NO_KEYWORD_ANSWER,
-    "spoken_identifier": NO_IDENTIFIER_ANSWER,
+    "place_name": NO_PLACE_ANSWER,
+    "keyword": NO_KEYWORD_ANSWER,
+    "district_code": NO_IDENTIFIER_ANSWER,
 }
 
 # 도구가 아직 안 붙은 노드가 경로에 있을 때의 답. 이름을 적어 무엇이 없는지 알린다.
 UNWIRED_ANSWER = "{names} 기능이 아직 붙지 않아 실행할 수 없습니다."
 
-# 실행에 필요한 화면 문맥이 안 왔을 때의 안내. key 는 온톨로지의 데이터 노드
-# id 이고 step_service.CONTEXT_STARTS 와 같은 자리를 가리킨다.
+# 실행에 필요한 화면 문맥이 안 왔을 때의 안내. key 는 source 가 화면(context.…)인
+# 온톨로지 노드 id 이고 step_service.context_sources() 와 같은 자리를 가리킨다.
 #
 # **고른 것을 바꾸지 않고 실행만 멈춘다.** 무엇을 골랐는지는 LLM 이 정했고,
 # 지금 부를 수 있는지는 값이 왔는가의 문제라 사람에게 그대로 말한다.
 NO_CONTEXT_ANSWER = {
-    "picked_point": "지도에서 기준 지점을 먼저 찍어 주세요.",
-    "visible_extent": "지금 보고 있는 지도 범위가 필요합니다. 지도 화면에서 다시 말씀해 주세요.",
+    "point": "지도에서 기준 지점을 먼저 찍어 주세요.",
+    "map_extent": "지금 보고 있는 지도 범위가 필요합니다. 지도 화면에서 다시 말씀해 주세요.",
 }
 NO_CONTEXT_DEFAULT = "지도 화면에서 와야 하는 값이 없어 실행할 수 없습니다."
 
@@ -144,13 +144,14 @@ def _no_argument_answer(recipe_id: str) -> str:
 def _no_context_answer(absent: set[str]) -> str:
     """화면에서 와야 하는 값이 없을 때의 답.
 
-    입력  값을 못 받은 시작 데이터 노드 id 집합
+    입력  값을 못 받은 시작 노드 id 집합
     출력  무엇이 없는지 적은 문장. 여럿이면 줄바꿈으로 이음
-    규칙  차례는 CONTEXT_STARTS 를 따름. 집합 차례로 내면 요청마다 순서가 바뀜
+    규칙  차례는 step_service.context_sources() 를 따름. 집합 차례로 내면 요청마다
+          순서가 바뀜
     """
     return "\n".join(
         NO_CONTEXT_ANSWER.get(node_id, NO_CONTEXT_DEFAULT)
-        for node_id in step_service.CONTEXT_STARTS
+        for node_id in step_service.context_sources()
         if node_id in absent
     ) or NO_CONTEXT_DEFAULT
 
@@ -202,17 +203,18 @@ def _offer_names() -> tuple[list[str], list[str]]:
     규칙  대상은 about 의 대상으로 등장하는 노드. 시작 데이터는 경로가 시작할
           수 있는 노드에서 화면에서 오는 둘을 뺀 것
           화면에서 오는 둘을 빼는 것은 사람이 더 말해 줄 것이 없기 때문임.
-          어느 것이 그것인지는 step_service.CONTEXT_STARTS 가 앎
+          어느 것이 그것인지는 step_service.context_sources() 가 앎
           (NO_ARGUMENT_ANSWER 가 그 둘을 빼 둔 것과 같은 까닭임)
     제약  이름을 코드에 적지 않는다.
           노드를 등록하면 안내도 함께 늘어야 함
     """
     nodes = store.nodes()
     topics = [nodes[node_id]["name"] for node_id in graph.group_ids() if node_id in nodes]
+    from_screen = step_service.context_sources()
     starts = [
         nodes[node_id]["name"]
         for node_id in graph.start_ids()
-        if node_id in nodes and node_id not in step_service.CONTEXT_STARTS
+        if node_id in nodes and node_id not in from_screen
     ]
     return topics, starts
 
@@ -276,7 +278,7 @@ def _step_names(recipe_id: str, paths: dict) -> list[str]:
 
     입력  recipe id · 후보별 경로
     출력  실행 노드 이름 목록. 경로가 없으면 빈 목록
-    규칙  데이터 노드(말한 장소)는 뺌. 부를 것이 없고 모든 후보에 똑같이 들어
+    규칙  시작 데이터 노드(장소 이름)는 뺌. 부를 것이 없고 모든 후보에 똑같이 들어
           있어 후보를 가르는 데 쓸모가 없음
     """
     executable = set(graph.executable_in(recipe_id))
@@ -343,7 +345,7 @@ async def run(
           부르는 것만 부르면 반쪽 결과를 온전한 답인 것처럼 내놓게 됨
           배선이 실제로 읽는 화면 문맥이 안 왔으면 시작하지 않음. 없는 좌표로
           부르면 전국이 나오거나 required 가 빈 채로 도구가 거부함.
-          무엇을 읽는지는 step_service.context_needs 가 배선으로 셈
+          무엇을 읽는지는 step_service.context_needs 가 실행 계획으로 셈
           부를 도구가 없고 지도 명령만 있으면 vendor 를 안 지남. 빈 steps 를
           넘기면 vendor 가 실패로 봄
           지도 명령이 도구 단계와 함께 있으면 도구 응답에서 나온 명령 뒤에
@@ -431,11 +433,12 @@ async def chat(
           되살리면 어느 값이 어디서 왔는지 표에서 안 갈림
           인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
-          배선이 발화에서 온 값을 안 쓰는 recipe 는 인자가 없어도 부름.
+          실행 계획이 발화에서 온 값을 안 쓰는 recipe 는 인자가 없어도 부름.
           "지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없고 조회할 곳은 이미
           문맥이 말했음. 그 판정은 step_service.spoken_needed 가 함
           이름 있는 값(SPOKEN_OPTIONS)은 그대로 run 에 넘김. 말하지 않아 null
-          인 것을 여기서 채우지 않음. 무엇이 기본인가는 배선표가 앎
+          인 것을 여기서 채우지 않음. 무엇이 기본인가는 온톨로지 tool.parameters 의
+          default 가 앎
     제약  여기서 LLM 클라이언트를 만들지 않는다.
           app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
           상태를 두지 않는다.

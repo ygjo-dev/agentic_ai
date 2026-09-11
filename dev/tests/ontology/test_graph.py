@@ -1,8 +1,9 @@
 """대상 : ontology/graph.py — 온톨로지에서 그래프를 계산한다
 
-**노드에는 종류가 적혀 있지 않다.** name 과 description 뿐이고, 성격은 관계가
-말한다 — hasOutput 이 있으면 실행할 수 있고, about 의 대상으로 등장하면 대상
-(그룹)이고, 둘 다 아니면 오가는 데이터다.
+**노드에는 종류가 적혀 있지 않다.** 성격은 관계가 말한다 — hasOutput 이 있으면
+실행할 수 있고, about 의 대상으로 등장하면 대상(그룹)이고, 둘 다 아니면 오가는
+데이터다. 노드 자신이 말하는 것은 name · description 과 source(밖에서 곧장
+들어오는 자리) · tool(무엇으로 실행하는가)뿐이다.
 
 지금 지원하는 관계는 넷이고 저마다 읽는 곳이 있다. 아는 목록은
 graph.SUPPORTED_PREDICATES 가 갖는다.
@@ -51,22 +52,24 @@ def recipe_ids() -> list[str]:
     return sorted(path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml"))
 
 
-def test_a_node_carries_only_a_name_and_a_description():
-    """노드에 종류를 적지 않음.
+def test_a_node_carries_no_kind_and_no_relation():
+    """노드에 종류를 적지 않음. 받고 내놓는 것도 적지 않음.
 
     kind 를 적으면 관계가 이미 말하고 있는 것을 노드에 또 적는 셈이라 둘이
     조용히 어긋날 수 있음. about 이 붙은 노드에 kind: function 이 적혀 있으면
     어느 쪽이 맞는지 알 방법이 없음.
 
     inputs / outputs 도 마찬가지. 그건 관계라서 edges 에 적힘.
+    source 와 tool 은 관계가 아니라 그 노드 자신의 사실이라 노드에 둠.
+    tool.parameters 가 semantic 입력을 도구 칸에 넣지만 hasInput 을 대신하지 않음.
     """
     ontology = load_ontology()
 
-    assert set(ontology) >= {"nodes", "edges"}
+    assert set(ontology) == {"version", "nodes", "edges"}, "새 top-level 을 만들지 않는다"
     assert ontology["nodes"] and ontology["edges"]
 
     for node_id, node in ontology["nodes"].items():
-        assert set(node) == {"name", "description"}, node_id
+        assert {"name", "description"} <= set(node) <= {"name", "description", "source", "tool"}, node_id
         assert node["name"] and node["description"], node_id
 
     # 파일에 적힌 관계는 전부 시스템이 지원한다고 선언한 것이어야 한다.
@@ -78,8 +81,10 @@ def test_a_node_carries_only_a_name_and_a_description():
 
     # 반대쪽도 본다. 선언만 해 두고 쓰이지 않는 관계는 뜻을 잃는다 —
     # "읽는 곳이 없어진 관계는 지운다" 가 이 자리다.
+    # ★ is-a 만 예외다. 값의 출처를 말하던 노드가 source 로 들어가며 0줄이 됐고,
+    #   읽는 곳(ancestors)은 남아 형식 계층의 하위 타입이 생기면 그대로 쓴다.
     unused = set(SUPPORTED_PREDICATES) - predicates
-    assert not unused, f"선언했지만 온톨로지가 안 쓰는 관계다: {sorted(unused)}"
+    assert unused <= {IS_A}, f"선언했지만 온톨로지가 안 쓰는 관계다: {sorted(unused)}"
 
     # 관계의 양끝은 전부 실재해야 한다. 없는 노드를 가리키면 그 관계는
     # 파일에는 있는데 화면에도 경로에도 나타나지 않는다.
@@ -113,23 +118,26 @@ def test_a_nodes_character_comes_from_its_relations():
     assert [nid for nid in data if not inputs_of(nid)]
 
 
-def test_a_general_node_accepts_subtypes_through_the_is_a_chain():
+def test_a_general_node_accepts_subtypes_through_the_is_a_chain(isolated_workspace):
     """상위 타입 한 줄만 적어도 하위 타입을 받음. is-a 를 두는 이유.
 
-    장소 좌표 변환은 "장소 이름" 만 받는다고 적혀 있는데 "말한 장소" 도 받음.
+    지금 온톨로지에는 is-a 가 한 줄도 없어 형식 계층의 하위 타입을 등록으로 만들어
+    잰다. 장소 좌표 변환은 "장소 이름" 만 받는다고 적혀 있는데 "역 이름" 도 받음.
     하위 타입이 생길 때마다 기존 노드를 고치지 않아도 된다는 뜻.
 
-    반대 방향은 안 됨. "장소 이름" 을 내놓는 노드를 "말한 장소" 만 받는 노드에
-    이을 수는 없음. 그 이름이 사용자가 말한 것이라는 보장이 없음.
-    지금 온톨로지에는 상위 타입을 내놓는 노드가 없어 can_connect 로는 못 잼.
-    방향은 바로 위의 ancestors 두 줄이 못 박음.
+    반대 방향은 안 됨. "장소 이름" 을 내놓는 노드를 "역 이름" 만 받는 노드에
+    이을 수는 없음. 그 이름이 역이라는 보장이 없음.
+    방향은 바로 아래 ancestors 두 줄이 못 박음.
     """
-    assert "place_name" in ancestors("spoken_place")
+    store.append_node("station_name", {"name": "역 이름", "description": "사람이 부르는 역 이름."})
+    store.append_edge("station_name", "place_name", IS_A)
+
+    assert "place_name" in ancestors("station_name")
     assert ancestors("place_name") == [], "최상위 타입은 조상이 없다"
-    assert "spoken_place" not in ancestors("place_name"), "방향이 뒤집혔다"
+    assert "station_name" not in ancestors("place_name"), "방향이 뒤집혔다"
 
     assert inputs_of("geocode_place") == ["place_name"], "이 검사의 전제가 깨졌다"
-    assert can_connect("spoken_place", "geocode_place")
+    assert can_connect("station_name", "geocode_place")
 
     # 같은 타입끼리도 이어진다. 장소 좌표 변환이 내놓는 지도 범위를 CCTV 조회가 받는다.
     assert can_connect("geocode_place", "find_cctv")
@@ -138,30 +146,31 @@ def test_a_general_node_accepts_subtypes_through_the_is_a_chain():
     assert not can_connect("find_cctv", "geocode_place")
 
 
-def test_only_concrete_data_can_start_a_path():
-    """경로는 손에 잡히는 데이터로 시작함. 형식으로는 시작할 수 없음.
+def test_only_a_node_with_an_outside_source_can_start_a_path():
+    """경로는 밖에서 곧장 값이 들어오는 노드(source)로 시작함.
 
-    "장소 이름" 은 형식이지 데이터가 아님. 그것을 시작점으로 삼으면
-    "장소 이름으로 좌표를 찾는다" 는 recipe 가 만들어지는데, 사람이 그걸
-    골라도 어느 장소인지 아무 데도 안 적혀 있음. 실행하려는 순간 막히고,
-    그때는 이미 menu 에 실려 있음.
+    "목록" 은 source 가 없는 형식임. 그것을 시작점으로 삼으면 "목록으로 …" recipe 가
+    만들어지는데, 사람이 그걸 골라도 어느 목록인지 아무 데도 안 적혀 있음. 실행하려는
+    순간 막히고, 그때는 이미 menu 에 실려 있음.
 
-    조용히 깨지는 자리. "받는 것도 내놓는 것도 없는 노드" 로 시작점을 잡으면
-    형식 노드가 전부 여기 걸림.
+    source 는 유일한 생성원이 아님. 지점 좌표는 화면에서도 오고 장소 좌표 변환도
+    내놓으므로 형식이면서 시작점임. 「형식이면 시작점이 아니다」로 되돌리면 화면에서
+    시작하는 경로가 전부 사라짐.
     """
     starts = set(start_ids())
     types = set(type_ids())
+    nodes = store.nodes()
 
     assert starts, "시작점이 없으면 recipe 가 하나도 안 만들어진다"
-    assert types, "형식이 없으면 이 검사가 무력하다"
+    assert starts == {nid for nid, node in nodes.items() if node.get("source")}
 
-    assert not starts & types, f"형식이 시작점에 섞였다: {starts & types}"
     assert not starts & set(group_ids()), "그룹이 시작점에 섞였다"
     assert not [nid for nid in starts if is_executable(nid)]
 
-    # 형식은 실제로 존재하는 노드들이다 — 없는 것을 뺐다고 통과하면 안 된다.
-    assert {"place_name", "map_extent", "item_list"} <= types
-    assert "spoken_place" in starts
+    # 형식이면서 시작점인 것과 형식이기만 한 것이 둘 다 있다 — 한쪽만 있으면
+    # source 로 가르는지 형식으로 가르는지 이 검사가 못 가른다.
+    assert {"place_name", "point", "map_extent"} <= starts & types
+    assert {"item_list", "station_id", "admin_code"} <= types - starts
 
 
 def test_an_is_a_cycle_does_not_hang(isolated_workspace):
@@ -170,9 +179,10 @@ def test_an_is_a_cycle_does_not_hang(isolated_workspace):
     사람이 손으로 적는 파일이라 순환은 언제든 생김. 온톨로지가 잘못 적히는
     것보다 화면이 안 도는 것이 더 나쁨. 시연 중에 서버가 멈춤.
     """
-    store.append_edge("place_name", "spoken_place", IS_A)
+    store.append_edge("point", "place_name", IS_A)
+    store.append_edge("place_name", "point", IS_A)
 
-    found = ancestors("spoken_place")
+    found = ancestors("point")
 
     assert "place_name" in found
     assert len(found) == len(set(found)), "같은 조상을 두 번 담았다"
@@ -203,7 +213,7 @@ def test_nodes_connected_in_a_recipe_become_solid_edges():
     assert edges.count(repeated[0]) == 1
 
 
-def test_only_about_relations_become_dotted_edges():
+def test_only_about_relations_become_dotted_edges(isolated_workspace):
     """점선은 about 뿐. is-a 와 hasInput / hasOutput 은 그리지 않음.
 
     셋 다 그리면 17개 노드에 24개 선이 얽혀 무엇이 무엇에 관한 것인지 안 보임.
@@ -212,6 +222,9 @@ def test_only_about_relations_become_dotted_edges():
     점선은 방향이 없음. (a, b) 와 (b, a) 를 둘 다 담으면 선이 겹쳐 그려지므로
     쌍을 정렬해 한 번만 담음.
     """
+    # 지금 온톨로지에는 is-a 가 없어 하나를 얹어 판별력을 만든다.
+    store.append_edge("district_code", "keyword", IS_A)
+
     written = load_ontology()["edges"]
     about = [e for e in written if e["predicate"] == ABOUT]
     edges = dotted_edges()
@@ -261,8 +274,9 @@ def test_a_recipe_becomes_an_ordered_path():
         # 그룹은 실행할 수 없다. 섞이면 아무것도 내놓지 않아 경로가 끊긴다.
         assert not groups & set(chain), (recipe_id, chain)
 
-        # 데이터로 시작한다. 뒤집히면 경로가 거꾸로 그려진다.
+        # 밖에서 들어오는 데이터로 시작한다. 뒤집히면 경로가 거꾸로 그려진다.
         assert not is_executable(chain[0]), recipe_id
+        assert chain[0] in set(start_ids()), recipe_id
         for frm, to in edges:
             assert can_connect(frm, to), (recipe_id, frm, to)
 
@@ -283,7 +297,7 @@ def test_a_path_that_crosses_subjects_is_blocked():
     test_several_subjects_all_become_dotted_lines 가 등록으로 만들어 잼.
     """
     assert crosses_groups(
-        ["spoken_place", "get_railway_section", "search_ev_stations"]
+        ["place_name", "get_railway_section", "search_ev_stations"]
     )
 
     # 실제 recipe 는 하나도 넘나들지 않는다. 넘나드는 것은 등록되지 않기 때문이다.
@@ -292,7 +306,7 @@ def test_a_path_that_crosses_subjects_is_blocked():
 
     # 대상이 붙은 노드가 하나뿐이면 넘나드는 것이 아니다. 비교할 상대가 없다.
     # 범용 노드(장소 좌표 변환)는 대상이 안 붙어 이 수에 안 들어간다.
-    assert not crosses_groups(["spoken_place", "geocode_place", "find_cctv"])
+    assert not crosses_groups(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     assert not crosses_groups([])
 
     # 공통 대상이 있으면 통한다. CCTV 조회와 철도 노선 조회는 둘 다 교통이다.

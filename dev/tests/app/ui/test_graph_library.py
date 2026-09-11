@@ -450,8 +450,8 @@ def test_only_a_node_belonging_to_one_candidate_narrows_the_choice(model, colors
     picks = 둘["picks"]
 
     # 각 후보만 가진 노드는 그 후보를 가리킨다
-    assert picks["spoken_keyword"] == "recipe_012"
-    assert picks["spoken_place"] == "recipe_045"
+    assert picks["keyword"] == "recipe_012"
+    assert picks["place_name"] == "recipe_045"
     # 둘 다 지나는 노드는 아예 안 담긴다 — 눌러도 아무 일이 없어야 한다
     assert "search_population_statistics" not in picks
     # 좁힐 자리는 후보마다 한 벌씩 있다. 배경으로 돌아갈 자리는 빈 키다

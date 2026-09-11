@@ -1,15 +1,14 @@
 """대상 : execution/step_service.py — recipe 를 실행 계획으로 바꾼다
 
-배선표(wiring.yaml)를 읽어 노드마다 무엇을 부르고 input 을 어떻게 채울지 정한다.
-여기서 보는 것은 그 규칙이지 배선표에 적힌 값이 맞느냐가 아니다 —
+온톨로지 노드의 tool 을 읽어 노드마다 무엇을 부르고 input 을 어떻게 채울지 정한다.
+여기서 보는 것은 그 규칙이지 온톨로지에 적힌 값이 도구와 맞느냐가 아니다 —
 그것은 test_wiring_contract.py 가 본다.
 
-input 에 들어가는 표시가 넷이고 값이 어디서 오는지가 그 넷을 가른다.
+한 자리에서 받는 값의 출처가 셋이고 그것이 input 의 모양을 가른다.
 
-    @arg       발화에서 온 값
-    $prev      앞 단계가 내놓은 값
-    $context   화면이 함께 보낸 값. **여기서 안 채운다** — vendor 가 제자리에서 푼다
-    $now       부르는 순간의 날짜 · 시각
+    source    경로의 시작 노드. 발화 인자 그대로 · "$context.…"
+    step      앞 도구 단계. "$s1.…"
+    adapter   앞 노드가 builtin 계산. 그 입력과 vendor 어댑터가 이 단계에 얹힌다
 
 LLM 도 Gateway 도 부르지 않는다. 온톨로지와 배선표만 읽는다.
 """
@@ -23,11 +22,7 @@ import paths
 from execution import step_service
 from ontology import graph
 
-ARG = step_service.SPOKEN_VALUE
-
-# 가짜 노드 사이에 흐르는 타입 하나. 온톨로지의 어느 타입도 아니다 —
-# 배선 줄을 고르는 데만 쓰이므로 이름은 아무래도 좋다.
-FAKE_TYPE = "가짜형식"
+PROBE_NOW = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Seoul"))
 
 
 def recipe_of(chain):
@@ -40,47 +35,42 @@ def recipe_of(chain):
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 
 
-def wire(monkeypatch, node_ids, rows=None, handed=None, tools=None):
-    """가짜 경로를 plan 에 연결.
+def fake(monkeypatch, path, tools, inputs, outputs=None, sources=None, headlines=None):
+    """가짜 온톨로지를 plan 에 연결.
 
-    node_ids  경로. **데이터 노드부터 적는다** — 첫 실행 노드의 배선 줄을
-              고르는 것이 그 앞 칸이다
-    rows      {(노드, 받는 타입): 배선}. STEP_OF 에 없는 자리를 얹을 때 씀
-    handed    {노드: [건네는 타입, ...]}. 안 적은 노드는 온톨로지를 그대로 봄
-    tools     {노드: {server_id, tool, headline}}. TOOL_OF 에 없는 노드용
+    path      경로. 시작 노드부터 적는다
+    tools     {노드: tool dict}
+    inputs    {노드: [받는 타입, ...]}
+    outputs   {노드: [내놓는 타입, ...]}. 안 적은 노드는 아무것도 안 내놓는다
+    sources   {노드: source dict}
+    headlines {노드: 답 첫 줄}. 안 적은 도구 노드는 "{arg} 를 조회했습니다."
     """
-    monkeypatch.setattr(
-        step_service.graph,
-        "path_of",
-        lambda recipe_id: [{"node_id": node_id} for node_id in node_ids],
-    )
-    if handed:
-        real = step_service.graph.handed_types
-        monkeypatch.setattr(
-            step_service.graph,
-            "handed_types",
-            lambda node_id: handed.get(node_id) or real(node_id),
+    outputs = outputs or {}
+    sources = sources or {}
+    known = set(path) | set(tools) | {t for ts in inputs.values() for t in ts}
+
+    monkeypatch.setattr(graph, "path_of", lambda recipe_id: [{"node_id": node} for node in path])
+    monkeypatch.setattr(graph, "tool_of", lambda node: tools.get(node))
+    monkeypatch.setattr(graph, "inputs_of", lambda node: list(inputs.get(node, [])))
+    monkeypatch.setattr(graph, "outputs_of", lambda node: list(outputs.get(node, [])))
+    monkeypatch.setattr(graph, "source_of", lambda node: sources.get(node))
+    monkeypatch.setattr(graph, "node_ids", lambda: sorted(known))
+    monkeypatch.setattr(graph, "handed_types", lambda node: outputs.get(node) or [node])
+    monkeypatch.setattr(graph, "is_executable", lambda node: bool(outputs.get(node)))
+    for node in tools:
+        monkeypatch.setitem(
+            step_service.HEADLINE, node, (headlines or {}).get(node, "{arg} 를 조회했습니다.")
         )
-    for key, wiring in (rows or {}).items():
-        monkeypatch.setitem(step_service.STEP_OF, key, wiring)
-    for node_id, tool in (tools or {}).items():
-        monkeypatch.setitem(step_service.TOOL_OF, node_id, tool)
 
 
-def fake_tool(name):
-    """가짜 노드의 TOOL_OF 한 줄."""
-    return {
-        "server_id": "asap-mcp-core",
-        "tool": name,
-        "headline": "{arg} 를 조회했습니다.",
-    }
+SPOKEN = {"from": "spoken.argument"}
 
 
-# ── 배선표를 읽는다 ─────────────────────────────────────────────────
+# ── 배선표에 남은 것을 읽는다 ───────────────────────────────────────
 #
 # **「계기판이 조용히 죽는다」가 세 번 났다.** 파일이 없거나 깨졌을 때 빈 표로
-# 도는 대신 터지는지를 본다. 계기판이 TOOL_OF · STEP_OF 를 import 해서 곧장
-# 읽으므로 빈 표는 「배선 0줄」이라는 멀쩡해 보이는 출력이 된다.
+# 도는 대신 터지는지를 본다. 계기판이 표를 import 해서 곧장 읽으므로 빈 표는
+# 멀쩡해 보이는 출력이 된다.
 
 
 @pytest.fixture
@@ -91,70 +81,38 @@ def restore_tables():
     시험이 얹은 것도 그대로 남음. monkeypatch 가 되돌리는 것은
     paths.WIRING_PATH 뿐임.
     """
-    tool_of = dict(step_service.TOOL_OF)
-    step_of = dict(step_service.STEP_OF)
+    tables = [step_service.HEADLINE, step_service.PREVIOUS_RESULT_PATHS, step_service.SOURCE_FIELD_BASES]
+    saved = [dict(table) for table in tables]
     mtime = step_service._wiring_mtime
     yield
-    step_service.TOOL_OF.clear()
-    step_service.TOOL_OF.update(tool_of)
-    step_service.STEP_OF.clear()
-    step_service.STEP_OF.update(step_of)
+    for table, copy in zip(tables, saved):
+        table.clear()
+        table.update(copy)
     step_service._wiring_mtime = mtime
 
 
-def test_arg_field_is_a_pair_not_a_list():
-    """arg_field 는 짝이다.
+VALID_WIRING = (
+    "headline:\n"
+    "  n: 하나\n"
+    "previous_result_paths:\n"
+    "  n:\n"
+    "    point: location\n"
+    "source_field_bases:\n"
+    "  context.view.bbox: context.view\n"
+)
 
-    YAML 은 목록으로만 적을 수 있어 로더가 튜플로 바꾼다. 목록으로 남으면
-    _by_argument 는 그대로 돌지만 짝으로 푸는 자리가 조용히 어긋난다.
-    """
-    wiring = step_service.STEP_OF[("get_railway_lines", "place_name")]
-    assert wiring["arg_field"] == (step_service.RAILWAY_LINE_SUFFIX, "railwayName")
-    assert isinstance(wiring["arg_field"], tuple)
-
-
-def test_names_in_yaml_become_values_from_code():
-    """<이름> 이 코드의 값으로 바뀐다.
-
-    값의 원천은 코드에 남겼다. POINT_RADIUS_TO_BBOX 는 vendor 어댑터의 이름이라
-    YAML 에 값을 옮기면 원천이 둘이 된다.
-    """
-    wiring = step_service.STEP_OF[("search_ev_stations", "map_extent")]
-    assert wiring["input"]["radiusMeters"] == step_service.RADIUS_METERS
-    assert wiring["adapter"] == step_service.POINT_RADIUS_TO_BBOX
-
-
-# 믿을 수 없는 배선 파일은 전부 터진다. **빈 표로 도는 길이 없어야 한다** —
-# 계기판이 TOOL_OF · STEP_OF 를 곧장 읽으므로 빈 표는 「배선 0줄」이라는
-# 멀쩡해 보이는 출력이 된다. 각 줄이 막는 실제 고장을 옆에 적었다.
+# 믿을 수 없는 배선 파일은 전부 터진다. **빈 표로 도는 길이 없어야 한다.**
 UNTRUSTWORTHY_WIRING = [
-    # 모르는 이름을 그대로 두면 "<RADIUS_METRES>" 가 도구에 실려 나가고
-    # 오류가 아니라 0건이 온다.
-    pytest.param(
-        "tool_of: {}\n"
-        "step_of:\n"
-        "  find_cctv:\n"
-        "    point:\n"
-        '      input: {radiusMeters: "<RADIUS_METRES>"}\n',
-        ValueError, "RADIUS_METRES", id="unknown_name",
-    ),
-    # input_frist 같은 오타가 넘어가면 화면 문맥에서 시작하는 자리가
-    # 소리 없이 사라진다.
-    pytest.param(
-        "tool_of: {}\n"
-        "step_of:\n"
-        "  find_cctv:\n"
-        "    point:\n"
-        "      input: {lon: 1}\n"
-        "      input_frist: {lon: 2}\n",
-        ValueError, "input_frist", id="unknown_field",
-    ),
     # 오타 난 절은 조용히 빈 표가 된다.
+    pytest.param(VALID_WIRING + "headlines: {}\n", ValueError, "headlines", id="unknown_section"),
+    # 절이 빠지면 답 첫 줄이 통째로 없다.
+    pytest.param("previous_result_paths: {}\nsource_field_bases: {}\n", ValueError, "headline", id="missing_section"),
+    # 경로가 문자열이 아니면 "$s1.None" 이 도구에 실려 나간다.
     pytest.param(
-        "tool_of: {}\nstep_of: {}\ntool_off: {}\n",
-        ValueError, "tool_off", id="unknown_section",
+        "headline: {}\nprevious_result_paths:\n  n:\n    point: 3\nsource_field_bases: {}\n",
+        ValueError, "previous_result_paths", id="non_string_path",
     ),
-    pytest.param("tool_of: {\n  깨진다\n", Exception, None, id="broken_syntax"),
+    pytest.param("headline: {\n  깨진다\n", Exception, None, id="broken_syntax"),
     # 파일이 아예 없는 경우. text 가 None 이면 파일을 안 만든다.
     pytest.param(None, FileNotFoundError, None, id="missing_file"),
 ]
@@ -177,195 +135,187 @@ def test_a_wiring_file_that_cannot_be_trusted_raises(
 def test_a_broken_file_does_not_empty_the_tables(tmp_path, monkeypatch, restore_tables):
     """터져도 반만 바뀐 표가 남지 않는다.
 
-    두 표를 다 만든 뒤에 갈아 넣는다. 빈 표보다 반쪽 표가 나쁘다 — 계기판이
-    「배선 3줄」처럼 멀쩡한 모양으로 틀린 수를 찍는다.
+    표를 다 만든 뒤에 갈아 넣는다. 빈 표보다 반쪽 표가 나쁘다 — 계기판이
+    멀쩡한 모양으로 틀린 수를 찍는다.
     """
-    before_tool = dict(step_service.TOOL_OF)
-    before_step = dict(step_service.STEP_OF)
+    before = dict(step_service.HEADLINE)
 
     path = tmp_path / "wiring.yaml"
-    path.write_text("tool_of: {}\nstep_of: {깨진다\n", encoding="utf-8")
+    path.write_text("headline: {}\nprevious_result_paths: {깨진다\n", encoding="utf-8")
     monkeypatch.setattr(paths, "WIRING_PATH", path)
 
     with pytest.raises(Exception):
         step_service._load_wiring()
 
-    assert step_service.TOOL_OF == before_tool
-    assert step_service.STEP_OF == before_step
+    assert step_service.HEADLINE == before
 
 
 def test_reload_reads_again_when_mtime_changes(tmp_path, monkeypatch, restore_tables):
     """mtime 이 바뀌면 다시 읽는다. 안 바뀌면 안 읽는다.
 
-    등록 화면이 wiring.yaml 을 쓰면 서버를 안 내리고 반영되어야 한다.
+    파일을 고치면 서버를 안 내리고 반영되어야 한다.
     """
     path = tmp_path / "wiring.yaml"
-    path.write_text(
-        "tool_of:\n"
-        "  n:\n"
-        "    server_id: s\n"
-        "    tool: t\n"
-        "    headline: 하나\n"
-        "step_of:\n"
-        "  n:\n"
-        "    k:\n"
-        "      input: {query: '@arg'}\n",
-        encoding="utf-8",
-    )
+    path.write_text(VALID_WIRING, encoding="utf-8")
     monkeypatch.setattr(paths, "WIRING_PATH", path)
     monkeypatch.setattr(step_service, "_wiring_mtime", None)
 
     step_service.reload_wiring()
-    assert step_service.TOOL_OF["n"]["headline"] == "하나"
+    assert step_service.HEADLINE["n"] == "하나"
 
     # 파일을 안 건드리면 다시 안 판다. 손으로 얹은 줄이 살아 있으면 안 판 것이다.
-    step_service.TOOL_OF["표시"] = "안 판다"
+    step_service.HEADLINE["표시"] = "안 판다"
     step_service.reload_wiring()
-    assert "표시" in step_service.TOOL_OF
+    assert "표시" in step_service.HEADLINE
 
     stat = path.stat()
-    path.write_text(
-        "tool_of:\n"
-        "  n:\n"
-        "    server_id: s\n"
-        "    tool: t\n"
-        "    headline: 둘\n"
-        "step_of:\n"
-        "  n:\n"
-        "    k:\n"
-        "      input: {query: '@arg'}\n",
-        encoding="utf-8",
-    )
+    path.write_text(VALID_WIRING.replace("하나", "둘"), encoding="utf-8")
     if path.stat().st_mtime_ns == stat.st_mtime_ns:  # 시계가 굵은 파일시스템
         import os
 
         os.utime(path, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000))
 
     step_service.reload_wiring()
-    assert step_service.TOOL_OF["n"]["headline"] == "둘"
-    assert "표시" not in step_service.TOOL_OF
+    assert step_service.HEADLINE["n"] == "둘"
+    assert "표시" not in step_service.HEADLINE
 
 
-# ── 어느 줄을 쓰는가 — wiring_at · input_of ─────────────────────────
+# ── 온톨로지의 tool 을 읽는다 ───────────────────────────────────────
 
 
-def test_the_wiring_row_is_chosen_by_what_the_previous_node_hands_over():
-    """앞 노드가 건네는 타입이 줄을 고른다. 노드 이름만으로는 안 갈린다.
+@pytest.mark.parametrize(
+    "tool_id, kind, fields",
+    [
+        ("asap-mcp-core/geo.geocode", step_service.MCP, {"server_id": "asap-mcp-core", "tool": "geo.geocode"}),
+        ("builtin/geo.pointRadiusToBbox", step_service.BUILTIN, {"adapter": step_service.POINT_RADIUS_TO_BBOX}),
+        ("frontend/digitalTwin.showFacility", step_service.COMMAND, {"command": "digitalTwin.showFacility"}),
+    ],
+    ids=["gateway", "builtin", "frontend"],
+)
+def test_the_namespace_of_the_tool_id_decides_how_it_runs(monkeypatch, tool_id, kind, fields):
+    """도구 id 의 첫 칸이 실행 수단을 가른다. 예약 namespace 는 둘이다.
 
-    같은 노드가 두 자리에 온다 — 전기차 충전소 검색은 말한 키워드 뒤(keyword)
-    에도 오고 장소 좌표 변환 뒤(map_extent)에도 온다.
+    서버 id 와 도구 이름을 따로 적지 않는다. Gateway 가 부르는 이름이
+    "<server_id>/<도구>" 한 덩어리이고, 도구 이름에는 점이 들어 있다.
     """
-    by_keyword = step_service.wiring_at("search_ev_stations", "spoken_keyword")
-    by_point = step_service.wiring_at("search_ev_stations", "geocode_place")
+    fake(monkeypatch, ["a", "n"], tools={"n": {"id": tool_id, "parameters": {}}}, inputs={})
 
-    assert by_keyword is not None and by_point is not None
-    assert by_keyword is not by_point, "받는 타입이 다른데 같은 줄을 골랐다"
+    binding = step_service.binding_of("n")
 
-
-def test_no_matching_row_is_none_not_an_error():
-    """맞는 줄이 없으면 None. 여기서 터지면 unwired 가 셀 것이 없어진다."""
-    assert step_service.wiring_at("find_cctv", "spoken_keyword") is None
+    assert binding["kind"] == kind
+    for key, value in fields.items():
+        assert binding[key] == value
 
 
-def test_input_first_is_used_only_in_the_first_slot():
-    """첫 MCP 실행에서만 input_first 를 쓴다. 뒤에서는 input 그대로.
-
-    같은 타입을 앞 단계에서 받을 수도 화면 문맥에서 받을 수도 있는 자리를
-    위한 것이다.
-    """
-    wiring = step_service.STEP_OF[("search_ev_stations", "map_extent")]
-
-    assert "input_first" in wiring, "이 줄이 두 벌을 가져야 이 시험이 뜻이 있다"
-    assert step_service.input_of(wiring, first=True) == wiring["input_first"]
-    assert step_service.input_of(wiring, first=False) == wiring["input"]
-
-
-def test_a_row_without_input_first_uses_input_in_both_slots():
-    """한 벌뿐인 줄은 자리와 상관없이 같은 것을 쓴다."""
-    wiring = {"input": {"query": ARG}}
-
-    assert step_service.input_of(wiring, first=True) == {"query": ARG}
-    assert step_service.input_of(wiring, first=False) == {"query": ARG}
-
-
-# ── @arg — 발화에서 온 값 ───────────────────────────────────────────
-
-
-def test_a_value_from_the_utterance_goes_into_the_arg_slot(monkeypatch):
-    wire(monkeypatch, ["spoken_place", "geocode_place"])
-
-    plan = step_service.plan("recipe_001", "오송역")
-
-    assert plan["steps"][0]["input"]["query"] == "오송역"
+# 알아볼 수 없는 tool 은 전부 터진다. 조용히 넘기면 그 문자열이 도구에 실려 나가고
+# 오류가 아니라 0건이 온다. 각 줄이 막는 실제 고장을 옆에 적었다.
+UNTRUSTWORTHY_TOOLS = [
+    # namespace 가 없으면 서버를 모른다.
+    pytest.param({"id": "geo.geocode"}, "namespace", id="no_namespace"),
+    # 모르는 builtin 은 걸 어댑터가 없다.
+    pytest.param({"id": "builtin/geo.buffer"}, "builtin", id="unknown_builtin"),
+    # parameter 오타는 칸이 소리 없이 사라진다.
+    pytest.param({"id": "s/t", "parametres": {}}, "parametres", id="unknown_field"),
+    # 받지 않는 타입을 가리키면 그 칸은 영영 안 채워진다.
+    pytest.param({"id": "s/t", "parameters": {"code": "admin_code.code"}}, "hasInput", id="undeclared_type"),
+    # 부르는 순간의 모르는 이름은 문자열 그대로 실려 나간다.
+    pytest.param({"id": "s/t", "parameters": {"at": "runtime.now.datetime"}}, "runtime.now", id="unknown_runtime"),
+    # 말하지 않은 발화가 갈 곳이 없다.
+    pytest.param({"id": "s/t", "parameters": {"mode": {"from": "spoken.travel_mode"}}}, "default", id="no_default"),
+    # default 를 사람 말로 적게 해 표에 두 가지 말이 섞이지 않게 한다.
+    pytest.param(
+        {"id": "s/t", "parameters": {"mode": {"from": "spoken.travel_mode", "default": "WALK", "map": {"도보": "WALK"}}}},
+        "map", id="default_outside_map",
+    ),
+    # 발화 인자는 semantic 노드의 source 가 말한다. 두 길을 열지 않는다.
+    pytest.param({"id": "s/t", "parameters": {"query": {"from": "spoken.argument"}}}, "spoken", id="argument_by_from"),
+    # 조건은 하나만. 둘을 적으면 어느 쪽이 이기는지 안 갈린다.
+    pytest.param(
+        {"id": "s/t", "parameters": {"name": {"value": "place_name", "if_endswith": "선", "unless_endswith": "역"}}},
+        "조건", id="two_conditions",
+    ),
+]
 
 
-def test_a_value_that_is_not_a_place_goes_into_the_same_slot(monkeypatch):
-    """표시가 뜻하는 것은 "발화에서 온 값" 이지 "장소" 가 아님.
-
-    키워드를 받는 도구도 같은 칸을 쓴다. 그것을 막으려고 이름을 바꿨음.
-    """
-    wire(
+@pytest.mark.parametrize("tool, fragment", UNTRUSTWORTHY_TOOLS)
+def test_a_tool_that_cannot_be_trusted_raises(monkeypatch, tool, fragment):
+    """믿을 수 없는 tool 은 조용히 넘기지 않고 터진다."""
+    fake(
         monkeypatch,
-        ["spoken_keyword", "search_documents"],
-        rows={("search_documents", "keyword"): {"input": {"query": ARG}}},
+        ["place_name", "n"],
+        tools={"n": tool},
+        inputs={"n": ["place_name", "point"], "other": ["admin_code"]},
     )
 
-    plan = step_service.plan("recipe_014", "철도 안전")
-
-    assert plan["steps"][0]["input"]["query"] == "철도 안전"
-
-
-def test_substitution_reaches_inside_a_nested_input(monkeypatch):
-    """도구에 따라 input 이 한 겹이 아님. dict 안에도 list 안에도 있을 수 있음."""
-    wire(
-        monkeypatch,
-        ["start", "nested"],
-        rows={("nested", FAKE_TYPE): {"input": {
-            "filter": {"name": ARG, "limit": 10},
-            "names": [ARG, "고정값"],
-        }}},
-        handed={"start": [FAKE_TYPE]},
-        tools={"nested": fake_tool("x.nested")},
-    )
-
-    plan = step_service.plan("recipe_x", "오송역")
-
-    assert plan["steps"][0]["input"] == {
-        "filter": {"name": "오송역", "limit": 10},
-        "names": ["오송역", "고정값"],
-    }
+    with pytest.raises(ValueError, match=fragment):
+        step_service.binding_of("n")
 
 
-def test_arg_and_prev_mixed_each_become_their_own_value(monkeypatch):
-    """둘은 다른 것을 가리킴. @arg 는 발화, $prev 는 앞 step 의 결과."""
-    wire(
-        monkeypatch,
-        ["start", "mixed_first", "mixed_second"],
-        rows={
-            ("mixed_first", FAKE_TYPE): {"input": {"query": ARG}},
-            ("mixed_second", FAKE_TYPE): {"input": {
-                "name": ARG, "location": "$prev.location", "radius": 15000,
-            }},
-        },
-        handed={"start": [FAKE_TYPE], "mixed_first": [FAKE_TYPE]},
-        tools={
-            "mixed_first": fake_tool("x.first"),
-            "mixed_second": fake_tool("x.second"),
-        },
-    )
+def test_the_ontology_and_the_remaining_wiring_agree():
+    """온톨로지의 tool 과 배선표에 남은 것이 서로를 가리킨다.
 
-    plan = step_service.plan("recipe_x", "오송역")
-
-    assert plan["steps"][1]["input"] == {
-        "name": "오송역",
-        "location": "$s1.location",
-        "radius": 15000,
-    }
+    headline 이 없으면 답 첫 줄에서 KeyError 가 나고, 안 쓰이는 raw 경로 줄이
+    남으면 다음 사람이 그것을 원천으로 읽는다.
+    """
+    assert step_service.check_bindings() == []
 
 
-# ── 값을 보고 칸을 고르는 줄 (arg_field) ────────────────────────────
+# ── 어느 타입을 받는가 — binding_at ────────────────────────────────
+
+
+def test_the_type_is_chosen_by_what_the_previous_node_hands_over():
+    """앞 노드가 건네는 타입이 받는 칸을 고른다. 노드 이름만으로는 안 갈린다.
+
+    같은 노드가 두 자리에 온다 — 전기차 충전소 검색은 키워드 뒤(keyword)에도
+    오고 지점 주변 범위 변환 뒤(map_extent)에도 온다.
+    """
+    _, by_keyword = step_service.binding_at("search_ev_stations", "keyword")
+    _, by_extent = step_service.binding_at("search_ev_stations", "point_to_map_extent")
+
+    assert by_keyword == "keyword"
+    assert by_extent == "map_extent"
+
+
+def test_no_matching_type_is_none_not_an_error():
+    """맞는 타입이 없으면 None. 여기서 터지면 unwired 가 셀 것이 없어진다."""
+    assert step_service.binding_at("find_cctv", "keyword") is None
+
+
+# ── 발화에서 온 값 ──────────────────────────────────────────────────
+
+
+def test_a_value_from_the_utterance_goes_into_the_semantic_slot():
+    plan = step_service.plan(recipe_of(["place_name", "geocode_place"]), "오송역")
+
+    assert plan["steps"][0]["input"] == {"query": "오송역"}
+
+
+def test_a_value_that_is_not_a_place_goes_into_its_own_slot_the_same_way():
+    """발화 인자는 "장소" 를 뜻하지 않는다. 키워드를 받는 도구도 같은 길로 받는다.
+
+    무엇으로 읽히는지는 시작 노드(키워드)가 말하고, 상수 칸(k)은 그대로 간다.
+    """
+    plan = step_service.plan(recipe_of(["keyword", "search_documents"]), "철도 안전")
+
+    assert plan["steps"][0]["input"] == {"query": "철도 안전", "k": 6}
+
+
+def test_a_field_for_a_type_not_handed_over_here_is_not_sent():
+    """그 자리에서 건네받지 않은 타입의 칸은 안 보낸다. 목록 칸이면 통째로 뺀다.
+
+    행정구역 조회는 키워드 뒤에서는 query 로, 지도 범위 뒤에서는 bbox 로 부른다.
+    둘 다 보내면 도구가 두 조건을 함께 걸어 0건이 오거나, 빈 bbox 가 실려 나간다.
+    """
+    by_keyword = step_service.plan(recipe_of(["keyword", "search_admin_boundaries"]), "논산")
+    by_extent = step_service.plan(recipe_of(["map_extent", "search_admin_boundaries"]), "")
+
+    assert by_keyword["steps"][0]["input"] == {"query": "논산", "layer": "sigungu"}
+    assert set(by_extent["steps"][0]["input"]) == {"bbox", "layer"}
+
+
+# ── 값을 보고 칸을 고르는 조건 ──────────────────────────────────────
 #
-# 배선표에 값 판단이 들어온 유일한 자리다. 자가 좁은 것 자체가 요구사항이라
+# 온톨로지에 값 판단이 들어온 유일한 자리다. 자가 좁은 것 자체가 요구사항이라
 # 걸리는 값과 안 걸리는 값을 함께 본다.
 #
 # ★ 이 heuristic 을 언제 걷어낼지는 아직 정해지지 않았다.
@@ -378,7 +328,7 @@ def test_arg_and_prev_mixed_each_become_their_own_value(monkeypatch):
     [
         # "…선" 으로 끝나면 노선 이름. stationName 으로 보내면 0건이다.
         ("경부선", {"railwayName": "경부선"}),
-        # 이 줄이 원래 하던 일. 깨지면 되던 발화가 0건이 된다.
+        # 원래 하던 일. 깨지면 되던 발화가 0건이 된다.
         ("오송역", {"stationName": "오송역"}),
         # "청주" 는 railwayName 으로 0건이고 stationName 으로 9건이다(실측).
         # 자를 "…역" 으로 끝나는 것만으로 좁히지 않은 이유가 이것이다.
@@ -388,166 +338,95 @@ def test_arg_and_prev_mixed_each_become_their_own_value(monkeypatch):
     ],
     ids=["railway_line", "station", "neither", "empty"],
 )
-def test_the_value_decides_which_field_carries_the_argument(monkeypatch, argument, sent):
-    wire(monkeypatch, ["spoken_place", "get_railway_lines"])
-
-    plan = step_service.plan("recipe_003", argument)
+def test_the_value_decides_which_field_carries_the_argument(argument, sent):
+    plan = step_service.plan(recipe_of(["place_name", "get_railway_lines"]), argument)
 
     assert plan["steps"][0]["input"] == sent
 
 
-def test_a_wiring_line_without_arg_field_is_unchanged(monkeypatch):
-    """그 칸을 적은 줄은 하나뿐임. 나머지 줄이 안 흔들려야 함."""
-    wire(monkeypatch, ["spoken_place", "geocode_place"])
+def test_a_condition_on_a_value_known_only_after_the_call_raises(monkeypatch):
+    """앞 단계 결과는 vendor 가 나중에 푼다. 여기서 어미를 볼 수 없다.
 
-    plan = step_service.plan("recipe_001", "경부선")
-
-    assert plan["steps"][0]["input"] == {"query": "경부선"}
-
-
-def test_a_field_that_is_not_arg_does_not_get_renamed(monkeypatch):
-    """옮기는 것은 발화 값이 든 칸 하나뿐임."""
-    wire(
+    조용히 한쪽으로 보내면 절반의 발화가 늘 0건이 된다.
+    """
+    fake(
         monkeypatch,
-        ["start", "narrow"],
-        rows={
-            ("narrow", FAKE_TYPE): {
-                "input": {"stationName": ARG, "limit": 5},
-                "arg_field": (step_service.RAILWAY_LINE_SUFFIX, "railwayName"),
-            }
+        ["start", "first", "second"],
+        tools={
+            "first": {"id": "s/first", "parameters": {"q": "place_name"}},
+            "second": {"id": "s/second", "parameters": {"name": {"value": "place_name", "if_endswith": "선"}}},
         },
-        handed={"start": [FAKE_TYPE], "narrow": []},
-        tools={"narrow": fake_tool("geo.getRailwayLines")},
+        inputs={"first": ["place_name"], "second": ["place_name"]},
+        outputs={"first": ["place_name"], "start": ["place_name"]},
+        sources={"start": SPOKEN},
     )
 
-    plan = step_service.plan("recipe_003", "경부선")
-
-    assert plan["steps"][0]["input"] == {"railwayName": "경부선", "limit": 5}
+    with pytest.raises(ValueError, match="발화 인자"):
+        step_service.plan("recipe_x", "경부선")
 
 
 # ── 답 첫 줄 ────────────────────────────────────────────────────────
 
 
-def test_the_arg_in_the_headline_is_substituted_too(monkeypatch):
+def test_the_arg_in_the_headline_is_substituted_too():
     """답 첫 줄에 그 값이 그대로 보임. 치환이 빠지면 화면에 {arg} 가 뜸."""
-    wire(monkeypatch, ["spoken_place", "geocode_place", "find_cctv"])
-
-    plan = step_service.plan("recipe_025", "오송역")
+    plan = step_service.plan(
+        recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"]), "오송역"
+    )
 
     assert plan["headline"] == "오송역 CCTV 를 조회했습니다."
 
 
-def test_the_argument_is_not_prefixed_when_it_is_already_in_the_preamble(monkeypatch):
+def test_the_argument_is_not_prefixed_when_it_is_already_in_the_preamble():
     """"전기차 충전소 데이터 검색해줘" 가 "전기차 충전소 전기차 충전소를 조회했습니다."
 
     틀이 "{arg} 전기차 충전소를 조회했습니다." 이고 인자도 "전기차 충전소" 라
     같은 말이 두 번 나갔음(실측).
     """
-    wire(monkeypatch, ["spoken_keyword", "search_ev_stations"])
-
-    plan = step_service.plan("recipe_012", "전기차 충전소")
-
-    assert plan["headline"] == "전기차 충전소를 조회했습니다."
+    assert step_service._headline("{arg} 전기차 충전소를 조회했습니다.", "전기차 충전소") == (
+        "전기차 충전소를 조회했습니다."
+    )
 
 
-def test_a_non_overlapping_argument_is_still_prefixed(monkeypatch):
+def test_a_non_overlapping_argument_is_still_prefixed():
     """겹침을 앞머리로만 봄. 인자가 문장 가운데 낱말과 같아도 안 뺌.
 
     포함(substring)으로 보면 "역" 이 "국회의원 지역구" 안에 걸려 멀쩡한 인자가
     빠짐. 인자가 붙는 자리는 앞이라 앞에서만 더듬거림.
     """
-    wire(monkeypatch, ["spoken_identifier", "get_election_district"])
-
-    plan = step_service.plan("recipe_015", "역")
+    plan = step_service.plan(recipe_of(["district_code", "get_election_district"]), "역")
 
     assert plan["headline"] == "역 국회의원 지역구를 조회했습니다."
 
 
-# ── $prev — 앞 단계가 없을 때 ───────────────────────────────────────
-#
-# 같은 노드가 두 자리에 쓰이므로 $prev 칸이 첫 step 에 놓이는 자리가 생길 수
-# 있다. 그때 "빼고 부른다" 는 사람이 정한 규칙이고 아래가 그것을 본다.
+# ── 앞 단계 — 도구 응답을 읽는 legacy 경로 ───────────────────────────
 
 
-def test_with_no_previous_step_the_prev_field_and_its_adapter_both_drop_out(monkeypatch):
-    """멈추지 않고 그 칸만 빠져야 함. 어댑터도 함께 빠져야 함.
+def test_a_field_of_the_previous_step_is_read_by_its_own_name_unless_the_wiring_says_otherwise():
+    """point.lon 은 $s1.lon 이다. 충전소 번호는 $s1.items.0.stationId 다.
 
-    값을 지어내는 것보다 안 보내는 것이 낫다는 규칙이다. 그 칸이 required 면
-    도구가 거부하고 그것은 배선이 틀린 것이다.
-
-    어댑터를 남기면 안 되는 까닭은 걸 중심 좌표가 이미 사라졌기 때문이다 —
-    _point_radius_to_bbox_input 이 center/location 을 못 찾으면 ValueError 다.
-    배선에 adapter 가 적혀 있어도 실을 수 없는 자리가 있다.
+    둘째가 legacy 표(previous_result_paths)가 말하는 자리다. 표를 안 거치면
+    statId 에 응답 통째가 실려 나가고 도구는 0건으로 답한다.
     """
-    wire(
-        monkeypatch,
-        ["start", "lonely"],
-        rows={("lonely", FAKE_TYPE): {
-            "input": {"center": "$prev.location", "radiusMeters": 15000},
-            "adapter": step_service.POINT_RADIUS_TO_BBOX,
-        }},
-        handed={"start": [FAKE_TYPE]},
-        tools={"lonely": fake_tool("x.lonely")},
+    plan = step_service.plan(
+        recipe_of(["keyword", "search_ev_stations", "get_ev_station"]), "탄방동"
     )
 
-    plan = step_service.plan("recipe_x", "오송역")
-
-    assert plan["steps"][0]["input"] == {"radiusMeters": 15000}
-    assert "inputAdapter" not in plan["steps"][0]
+    assert plan["steps"][1]["input"] == {"statId": "$s1.items.0.stationId"}
 
 
-def test_with_a_previous_step_the_inputAdapter_is_carried_verbatim(monkeypatch):
-    """빼는 것은 앞 단계가 없을 때뿐임. geocode 뒤에서는 예전 그대로여야 함."""
-    wire(monkeypatch, ["spoken_place", "geocode_place", "search_ev_stations"])
-
-    plan = step_service.plan("recipe_035", "오송역")
-
-    assert plan["steps"][1]["input"]["center"] == "$s1.location"
-    assert plan["steps"][1]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
-
-
-def test_only_the_prev_field_is_dropped(monkeypatch):
-    """@arg 와 상수는 그대로 남아야 함. 통째로 비우는 것이 아님."""
-    wire(
-        monkeypatch,
-        ["start", "lonely"],
-        rows={("lonely", FAKE_TYPE): {
-            "input": {"query": ARG, "location": "$prev.location", "limit": 50},
-        }},
-        handed={"start": [FAKE_TYPE]},
-        tools={"lonely": fake_tool("x.lonely")},
-    )
-
-    plan = step_service.plan("recipe_x", "오송역")
-
-    assert plan["steps"][0]["input"] == {"query": "오송역", "limit": 50}
-
-
-def test_a_prev_inside_a_list_is_dropped_too(monkeypatch):
-    """중첩된 자리도 같은 규칙. dict 만 보고 list 를 빠뜨리면 참조가 새어 나감."""
-    wire(
-        monkeypatch,
-        ["start", "nested_prev"],
-        rows={("nested_prev", FAKE_TYPE): {
-            "input": {"names": [ARG, "$prev.name", "고정값"]},
-        }},
-        handed={"start": [FAKE_TYPE]},
-        tools={"nested_prev": fake_tool("x.nested")},
-    )
-
-    plan = step_service.plan("recipe_x", "오송역")
-
-    assert plan["steps"][0]["input"]["names"] == ["오송역", "고정값"]
-
-
-# ── $context — 화면이 함께 보낸 값 ──────────────────────────────────
+# ── 화면이 함께 보낸 값 ─────────────────────────────────────────────
 #
-# **여기서 채우지 않는다.** 표시를 그대로 넘기고 vendor 가 제자리에서 푼다.
+# **여기서 채우지 않는다.** 참조를 그대로 넘기고 vendor 가 제자리에서 푼다.
 
 
 def test_starting_from_the_visible_extent_the_first_step_takes_the_context_bbox():
-    """KRRI_ASAP 의 current-view-cctv 가 $context.view.bbox 네 칸을 넣는 자리다."""
-    plan = step_service.plan(recipe_of(["visible_extent", "find_cctv"]), "")
+    """KRRI_ASAP 의 current-view-cctv 가 $context.view.bbox 네 칸을 넣는 자리다.
+
+    칸은 $context.view.minLon 이다. vendor 가 bbox 를 가진 dict 에서 minLon 을
+    꺼내므로 $context.view.bbox.minLon 이면 None 이 된다(legacy source_field_bases).
+    """
+    plan = step_service.plan(recipe_of(["map_extent", "find_cctv"]), "")
 
     assert plan["steps"][0]["tool"] == "road.getCctv"
     assert plan["steps"][0]["input"] == {
@@ -561,9 +440,9 @@ def test_starting_from_the_visible_extent_the_first_step_takes_the_context_bbox(
 def test_charging_stations_starting_from_the_visible_extent_also_take_the_flat_four():
     """ev.searchStations 에는 bbox 라는 칸이 없다 — 없는 칸이라 버려져서
     지도를 아무리 좁혀도 전국에서 상한 500건이 왔다(실측).
-    CCTV 줄과 같은 꼴이어야 한다."""
+    CCTV 와 같은 꼴이어야 하고 키워드 칸은 안 나가야 한다."""
     plan = step_service.plan(
-        recipe_of(["visible_extent", "search_ev_stations", "get_ev_station"]), ""
+        recipe_of(["map_extent", "search_ev_stations", "get_ev_station"]), ""
     )
 
     assert plan["steps"][0]["tool"] == "ev.searchStations"
@@ -578,7 +457,7 @@ def test_charging_stations_starting_from_the_visible_extent_also_take_the_flat_f
 def test_a_tool_taking_a_bbox_array_takes_one_bbox_field_in_the_first_step_too():
     """같이 고치면 오히려 깨지는 자리다. geo.getRailwayLines 의 bbox 는
     진짜로 네 수짜리 배열 칸이다(inputSchema 실측)."""
-    plan = step_service.plan(recipe_of(["visible_extent", "get_railway_lines"]), "")
+    plan = step_service.plan(recipe_of(["map_extent", "get_railway_lines"]), "")
 
     assert plan["steps"][0]["tool"] == "geo.getRailwayLines"
     assert plan["steps"][0]["input"] == {
@@ -591,29 +470,6 @@ def test_a_tool_taking_a_bbox_array_takes_one_bbox_field_in_the_first_step_too()
     }
 
 
-def test_starting_from_the_picked_point_the_first_step_takes_the_selected_location():
-    """KRRI_ASAP 의 cctv-around-point 와 같은 꼴이다. 중심 좌표와 반경을 준다."""
-    plan = step_service.plan(recipe_of(["picked_point", "find_cctv"]), "")
-
-    assert plan["steps"][0]["input"] == {
-        "location": "$context.selectedLocation",
-        "radiusMeters": step_service.RADIUS_METERS,
-    }
-
-
-def test_a_slot_with_a_previous_step_still_points_at_the_previous_step():
-    """input_first 를 더해도 두 번째 칸부터는 한 글자도 안 달라져야 한다."""
-    plan = step_service.plan(
-        recipe_of(["spoken_place", "geocode_place", "find_cctv"]), "오송역"
-    )
-
-    assert plan["steps"][0]["input"] == {"query": "오송역"}
-    assert plan["steps"][1]["input"] == {
-        "location": "$s1.location",
-        "radiusMeters": step_service.RADIUS_METERS,
-    }
-
-
 def test_an_empty_context_field_does_not_count_that_start_data():
     """KRRI_ASAP 은 우클릭 전에 selectedLocation 을 null 로 보낸다. 빈 bbox 도 마찬가지."""
     full = {
@@ -621,27 +477,89 @@ def test_an_empty_context_field_does_not_count_that_start_data():
         "selectedLocation": {"lon": 127.2974, "lat": 36.6199},
     }
 
-    assert step_service.context_starts(full) == ["picked_point", "visible_extent"]
-    assert step_service.context_starts({**full, "selectedLocation": None}) == [
-        "visible_extent"
-    ]
+    assert step_service.context_starts(full) == ["point", "map_extent"]
+    assert step_service.context_starts({**full, "selectedLocation": None}) == ["map_extent"]
     assert step_service.context_starts({"view": {"bbox": []}}) == []
     assert step_service.context_starts({}) == []
     assert step_service.context_starts(None) == []
 
 
-# ── $now — 부르는 순간 ──────────────────────────────────────────────
+# ── builtin 계산 — 지점을 범위로 넓힌다 ─────────────────────────────
+
+
+def test_the_point_is_widened_by_the_next_step_not_called_on_its_own():
+    """builtin 노드는 step 이 안 된다. 그 입력과 어댑터가 바로 뒤 도구 단계에 얹힌다.
+
+    vendor 는 builtin 계산을 따로 부를 수 없고, 반경 계산은 vendor 의
+    point_radius_to_bbox 가 갖고 있다. 결과로 Gateway 에 나가는 bbox 넷은 옮기기
+    전의 배선과 같다 — KRRI_ASAP 의 cctv-around-point 와 같은 꼴이다.
+    """
+    picked = step_service.plan(recipe_of(["point", "point_to_map_extent", "find_cctv"]), "")
+    spoken = step_service.plan(
+        recipe_of(["place_name", "geocode_place", "point_to_map_extent", "search_ev_stations", "get_ev_station"]),
+        "오송역",
+    )
+
+    assert picked["nodes"] == ["find_cctv"]
+    assert picked["steps"][0]["input"] == {"center": "$context.selectedLocation", "radiusMeters": 15000}
+    assert picked["steps"][0]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
+
+    assert spoken["nodes"] == ["geocode_place", "search_ev_stations", "get_ev_station"]
+    assert spoken["steps"][1]["input"] == {"center": "$s1.location", "radiusMeters": 15000}
+    assert spoken["steps"][1]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
+    assert spoken["steps"][2]["input"] == {"statId": "$s2.items.0.stationId"}
+
+
+def test_a_tool_that_takes_the_extent_in_another_shape_is_not_wired_behind_the_builtin():
+    """어댑터가 만드는 것은 평평한 네 칸이다. bbox 배열 한 칸으로 받는 도구 뒤에는 못 잇는다.
+
+    이어 두면 그 네 칸이 모르는 칸이라 버려지고 도구가 범위 없이 돈다 — 오류가 아니라
+    전국 결과가 온다. 그래서 실행 수단이 없는 자리로 세어 부르지 않는다. 같은 도구도
+    화면 범위 뒤에서는 bbox 배열로 잘 불린다.
+    """
+    behind_builtin = ["point", "point_to_map_extent", "search_admin_boundaries"]
+
+    assert step_service.unwired_in(behind_builtin) == ["search_admin_boundaries"]
+    assert step_service.unwired_in(["map_extent", "search_admin_boundaries"]) == []
+    assert step_service.unwired_in(["point", "point_to_map_extent", "find_cctv"]) == []
+
+
+def test_with_no_center_left_the_adapter_is_not_carried(monkeypatch):
+    """걸 중심 좌표가 없는데 어댑터를 걸면 vendor 가 ValueError 를 올린다.
+
+    값을 지어내는 것보다 안 보내는 것이 낫다. 앞 단계가 없으면 좌표 칸이 빠지고
+    어댑터도 함께 빠진다.
+    """
+    fake(
+        monkeypatch,
+        ["start", "widen", "lonely"],
+        tools={
+            "widen": {"id": "builtin/geo.pointRadiusToBbox", "parameters": {"center": "point", "radiusMeters": 15000}},
+            "lonely": {"id": "s/lonely", "parameters": {"minLon": "map_extent.minLon"}},
+        },
+        inputs={"widen": ["point"], "lonely": ["map_extent"]},
+        outputs={"start": ["point"], "widen": ["map_extent"], "lonely": ["item_list"]},
+    )
+
+    plan = step_service.plan("recipe_x", "오송역")
+
+    assert plan["steps"][0]["input"] == {"radiusMeters": 15000}
+    assert "inputAdapter" not in plan["steps"][0]
+
+
+# ── 부르는 순간 ─────────────────────────────────────────────────────
+
+
+ROUTE_CHAIN = ["place_name", "geocode_place", "plan_trip"]
 
 
 def test_the_date_and_time_are_taken_when_the_call_is_made():
-    """고정된 날짜를 배선에 박으면 그날이 지나는 순간 거짓이 됨.
+    """고정된 날짜를 박으면 그날이 지나는 순간 거짓이 됨.
 
     도구 설명이 KST 를 명시로 요구한다 — "서버 로케일이나 UTC 기준으로 넣으면
     자정 근처에서 하루가 어긋날 수 있다".
     """
-    sent = step_service.plan(
-        recipe_of(["spoken_place", "geocode_place", "plan_trip"]), "조치원역"
-    )["steps"][-1]["input"]
+    sent = step_service.plan(recipe_of(ROUTE_CHAIN), "조치원역")["steps"][-1]["input"]
     now = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Seoul"))
 
     assert sent["date"] == now.strftime("%Y-%m-%d")
@@ -649,33 +567,42 @@ def test_the_date_and_time_are_taken_when_the_call_is_made():
 
 
 def test_the_runtime_marker_is_resolved_before_the_vendor_sees_it():
-    """$now 는 vendor scope 에 없는 이름임. 우리가 값으로 바꿔 내보내야 함.
+    """부르는 순간은 vendor scope 에 없는 이름임. 우리가 값으로 바꿔 내보내야 함.
 
     안 바꾸면 vendor 의 _resolve_reference 가 None 을 돌려주고 required 가
     빈 채로 나감.
     """
-    sent = step_service.plan(
-        recipe_of(["spoken_place", "geocode_place", "plan_trip"]), "조치원역"
-    )["steps"][-1]["input"]
+    sent = step_service.plan(recipe_of(ROUTE_CHAIN), "조치원역")["steps"][-1]["input"]
 
-    assert not any(str(value).startswith("$now") for value in sent.values())
+    assert not any(str(value).startswith("runtime.") for value in sent.values())
 
 
 def test_an_unknown_runtime_field_is_not_passed_through_silently():
     """모르는 이름을 그대로 두면 그 문자열이 도구에 실려 나감."""
-    now = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Seoul"))
-
     with pytest.raises(ValueError):
-        step_service._now_field("$now.datetime", now)
+        step_service._now_field("runtime.now.datetime", PROBE_NOW)
 
 
-# ── 비자명한 배선 의미 — 대표로 둘 ──────────────────────────────────
-#
-# 값의 출처가 코드만 보고 안 읽히는 자리만 남긴다. 도구 이름 · 서버 · 답 문구는
-# test_wiring_contract.py 가 generic 하게 본다.
+def test_the_origin_comes_from_the_screen_and_the_destination_from_the_utterance():
+    """뒤바뀌면 반대 방향 길이 나오고 도구는 아무 오류도 안 냄.
+
+    출발지는 사람이 화면에서 찍은 자리이고 도착지는 말한 장소를 좌표로 바꾼 것이다.
+    둘 다 「지점 좌표」라 타입으로는 안 갈리므로 이 시험이 그 자리를 지킴.
+    """
+    plan = step_service.plan(recipe_of(ROUTE_CHAIN), "조치원역")
+    sent = plan["steps"][-1]["input"]
+
+    assert plan["nodes"][-1] == "plan_trip"
+    assert sent["from_lat"] == "$context.selectedLocation.lat"
+    assert sent["from_lon"] == "$context.selectedLocation.lon"
+    assert sent["to_lat"] == "$s1.lat"
+    assert sent["to_lon"] == "$s1.lon"
 
 
-ISOCHRONE_CHAIN = ["spoken_place", "geocode_place", "compute_isochrone"]
+# ── 발화에서 온 이름 있는 값 ────────────────────────────────────────
+
+
+ISOCHRONE_CHAIN = ["place_name", "geocode_place", "compute_isochrone"]
 
 
 def isochrone_input(options=None):
@@ -685,10 +612,8 @@ def isochrone_input(options=None):
 def test_the_previous_coordinates_are_split_into_the_origin_fields():
     """칸 이름이 lon · lat 이 아니라 origin_lon · origin_lat 인 자리.
 
-    다른 지점 도구들은 lon · lat 을 받아 앵커 하나를 함께 쓰는데 이것만 다르다.
-    베껴 쓰다 lon · lat 으로 보내면 도구가 required 가 없다고 거부함.
     분과 이동수단도 명시로 보낸다 — 도구 기본값(30 · WALK)에 기대면 무엇으로
-    계산한 답인지가 배선에 안 남고, 그 값이 바뀌어도 우리 쪽에 신호가 없다.
+    계산한 답인지가 온톨로지에 안 남고, 그 값이 바뀌어도 우리 쪽에 신호가 없다.
     """
     assert isochrone_input() == {
         "origin_lon": "$s1.lon",
@@ -701,8 +626,8 @@ def test_the_previous_coordinates_are_split_into_the_origin_fields():
 def test_the_spoken_mode_and_minutes_reach_the_tool():
     """사람이 말한 이동수단과 시간이 실제 호출 인자가 되는 자리.
 
-    사람은 「도보」라고 말하고 도구는 WALK 를 받는다. 그 대응이 배선표에
-    있어야 발화 해석 프롬프트에 도구가 쓰는 말이 안 샌다.
+    사람은 「도보」라고 말하고 도구는 WALK 를 받는다. 그 대응이 tool 에 있어야
+    발화 해석 프롬프트에 도구가 쓰는 말이 안 샌다.
     """
     sent = isochrone_input({"travel_mode": "도보", "minutes": [20]})
 
@@ -711,36 +636,22 @@ def test_the_spoken_mode_and_minutes_reach_the_tool():
 
 
 def test_several_spoken_minutes_go_into_one_field():
-    """겹을 여러 개 말해도 배선이 갈라지지 않는 자리.
+    """겹을 여러 개 말해도 칸이 갈라지지 않는 자리.
 
-    cutoffs_minutes 는 목록을 받으므로 한 겹과 여러 겹이 같은 줄로 간다.
+    cutoffs_minutes 는 목록을 받으므로 한 겹과 여러 겹이 같은 칸으로 간다.
     한 겹을 max_minutes 로 보내던 것과 답이 같다(2026-09-08 실측).
     """
     assert isochrone_input({"minutes": [15, 30, 60]})["cutoffs_minutes"] == [15, 30, 60]
 
 
-def test_a_value_the_wiring_does_not_know_falls_back_to_the_default():
+def test_a_value_the_tool_does_not_know_falls_back_to_the_default():
     """응답 schema 의 enum 이 이미 막지만 그것이 유일한 자물쇠면 provider 를
     갈 때 조용히 샌다. 모르는 말은 기본값으로 간다.
     """
     assert isochrone_input({"travel_mode": "비행기"})["mode"] == "TRANSIT"
 
 
-def test_an_option_the_wiring_does_not_declare_is_not_passed_through_silently():
-    """options 에 없는 "@이름" 을 그대로 두면 그 문자열이 도구에 실려 나가고
-    0건이 오지 오류가 오지 않는다.
-    """
-    with pytest.raises(ValueError):
-        step_service._filled(
-            "@nowhere",
-            "의왕역",
-            None,
-            datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Seoul")),
-            {},
-        )
-
-
-AGE_CHAIN = ["spoken_place", "geocode_place", "find_admin_boundary_by_point", "get_age_profile"]
+AGE_CHAIN = ["place_name", "geocode_place", "find_admin_boundary_by_point", "get_age_profile"]
 
 
 def age_inputs(options=None):
@@ -764,51 +675,29 @@ def test_the_level_the_utterance_did_not_say_stays_at_the_district():
     assert age_inputs()[1]["layer"] == "sigungu"
 
 
-def test_the_origin_comes_from_the_screen_and_the_destination_from_the_utterance():
-    """뒤바뀌면 반대 방향 길이 나오고 도구는 아무 오류도 안 냄.
-
-    출발지는 사람이 화면에서 찍은 자리($context)이고 도착지는 말한 장소를
-    좌표로 바꾼 것($prev)이다. 둘 다 「지점 좌표」라 타입으로는 안 갈리므로
-    이 시험이 그 자리를 지킴.
-    """
-    plan = step_service.plan(
-        recipe_of(["spoken_place", "geocode_place", "plan_trip"]), "조치원역"
-    )
-    sent = plan["steps"][-1]["input"]
-
-    assert plan["nodes"][-1] == "plan_trip"
-    assert sent["from_lat"] == "$context.selectedLocation.lat"
-    assert sent["from_lon"] == "$context.selectedLocation.lon"
-    assert sent["to_lat"] == "$s1.lat"
-    assert sent["to_lon"] == "$s1.lon"
-
-
 # ── 지도 명령 — 부를 도구가 없는 노드 ───────────────────────────────
 
 
-def test_a_node_without_a_tool_becomes_a_map_command_not_a_step():
-    """TOOL_OF 가 「노드 -> 서버 · 도구」가 아니라 「노드 -> 실행 수단」이다.
+def test_a_node_without_a_gateway_tool_becomes_a_map_command_not_a_step():
+    """tool 이 「노드 -> 서버 · 도구」가 아니라 「노드 -> 실행 수단」이다.
 
-    온톨로지는 그것을 모른다. 거기 적힌 것은 「장소 이름을 받아 시설물 화면을
-    내놓는다」 뿐이고, 무엇으로 수행하는지는 배선표가 안다.
+    frontend 노드는 지도 명령이 되고 vendor 에 넘길 step 이 안 된다.
     vendor 에 빈 steps 를 넘기면 실패로 보므로 step 이 되어서도 안 된다.
     """
-    row = step_service.TOOL_OF["show_facility"]
-    plan = step_service.plan(
-        recipe_of(["spoken_place", "show_facility"]), "오송 테스트트랙"
-    )
+    binding = step_service.binding_of("show_facility")
+    plan = step_service.plan(recipe_of(["place_name", "show_facility"]), "오송 테스트트랙")
 
-    assert "tool" not in row and "server_id" not in row
+    assert binding["kind"] == step_service.COMMAND
     assert plan["steps"] == []
     assert plan["command_nodes"] == ["show_facility"]
-    assert plan["commands"][0]["op"] == row["command"]
+    assert plan["commands"][0]["op"] == binding["command"]
     assert plan["commands"][0]["args"]["facilityName"] == "오송 테스트트랙"
     assert plan["headline"]
 
 
 def test_a_map_command_node_is_not_counted_as_unwired():
-    """도구가 없는 것과 배선이 없는 것은 다름. STEP_OF 에 줄이 있으면 붙은 것임."""
-    assert step_service.unwired(recipe_of(["spoken_place", "show_facility"])) == []
+    """도구가 없는 것과 실행 수단이 없는 것은 다름. tool 이 있으면 붙은 것임."""
+    assert step_service.unwired(recipe_of(["place_name", "show_facility"])) == []
 
 
 # ── 이 recipe 를 지금 부를 수 있는가 ────────────────────────────────
@@ -817,15 +706,15 @@ def test_a_map_command_node_is_not_counted_as_unwired():
 def test_a_recipe_that_reads_only_the_context_does_not_need_an_argument():
     """"지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없다. 조회할 곳은 문맥이 말했다.
 
-    판정 근거는 배선이다 — 그 recipe 의 계획에 @arg 가 남는지를 본다.
+    판정 근거는 실행 계획이다 — 그 recipe 의 계획에 발화 인자가 남는지를 본다.
     recipe id 로 가르지 않는다.
     """
-    assert not step_service.spoken_needed(recipe_of(["picked_point", "find_cctv"]))
+    assert not step_service.spoken_needed(recipe_of(["point", "point_to_map_extent", "find_cctv"]))
     assert not step_service.spoken_needed(
-        recipe_of(["visible_extent", "search_ev_stations", "get_ev_station"])
+        recipe_of(["map_extent", "search_ev_stations", "get_ev_station"])
     )
     assert step_service.spoken_needed(
-        recipe_of(["spoken_place", "geocode_place", "find_cctv"])
+        recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     )
 
 
@@ -834,38 +723,38 @@ def test_a_recipe_that_mixes_the_context_and_the_utterance_still_needs_the_argum
 
     ★ 문맥이 있다고 인자 없이 부르면 도착지가 빈 채로 도구가 나간다.
     """
-    route = recipe_of(["spoken_place", "geocode_place", "plan_trip"])
+    route = recipe_of(ROUTE_CHAIN)
 
-    assert step_service.context_needs(route) == {"picked_point"}
+    assert step_service.context_needs(route) == {"point"}
     assert step_service.spoken_needed(route)
 
 
 def test_context_needs_looks_past_the_first_step():
-    """경로의 첫 칸은 말한 장소라 「첫 칸이 화면 데이터인가」로는 못 센다.
+    """경로의 첫 칸은 장소 이름이라 「첫 칸이 화면 데이터인가」로는 못 센다.
 
-    세는 것은 배선이 실제로 읽는 문맥이다. 안 세면 출발지가 빈 채로 도구를
-    불러 required 오류가 난다.
+    세는 것은 계획이 실제로 읽는 문맥이다. 지점 좌표는 화면에서도 오고 장소 좌표
+    변환에서도 오므로, 타입만 보고 세면 말한 장소 경로가 찍은 지점을 요구하게 된다.
     """
-    spoken_only = recipe_of(["spoken_place", "geocode_place", "find_cctv"])
+    spoken_only = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
 
     assert step_service.context_needs(spoken_only) == set()
+    assert step_service.context_needs(recipe_of(["map_extent", "find_cctv"])) == {"map_extent"}
     assert step_service.context_needs(
-        recipe_of(["visible_extent", "find_cctv"])
-    ) == {"visible_extent"}
+        recipe_of(["point", "point_to_map_extent", "find_cctv"])
+    ) == {"point"}
 
 
-def test_unwired_names_the_executable_nodes_with_no_wiring_row(monkeypatch):
-    """배선이 없는 실행 노드를 경로 순서로 셈. 데이터 노드는 안 셈.
+def test_unwired_names_the_executable_nodes_with_no_tool(monkeypatch):
+    """실행 수단이 없는 실행 노드를 경로 순서로 셈. 시작 노드는 안 셈.
 
     부르는 쪽(execute_service.run)이 비어 있지 않으면 도구를 하나도 안 부른다.
     """
-    wire(
+    fake(
         monkeypatch,
         ["start", "없는노드"],
-        handed={"start": [FAKE_TYPE]},
-    )
-    monkeypatch.setattr(
-        step_service.graph, "executable_in", lambda recipe_id: ["없는노드"]
+        tools={},
+        inputs={"없는노드": ["start"]},
+        outputs={"없는노드": ["item_list"]},
     )
 
     assert step_service.unwired("recipe_x") == ["없는노드"]

@@ -92,7 +92,7 @@ _compose_workflow_answer  아래 3번으로 통째로 대체됨
 
 본문은 `workflow_answer.compose_workflow_answer(intent, trace)` 한 줄이 되었다.
 성공한 실행의 첫 줄은 `intent["answer_instruction"]` 을 그대로 쓴다 — 우리 쪽
-`execution/wiring.yaml` 의 `tool_of` 가 노드마다 적어 넣는다.
+`execution/wiring.yaml` 의 `headline` 이 노드마다 적어 넣는다.
 
 원본 `_fallback_workflow_answer` 는 지우지 않았다. 다른 곳에서 쓰이지 않지만
 지우면 병합할 것이 늘어난다.

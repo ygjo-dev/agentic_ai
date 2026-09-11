@@ -7,10 +7,10 @@ ONTOLOGY_PATH = REPO_ROOT / "ontology" / "ontology.yaml"
 # 모델별 값(num_ctx · timeout · reason 길이 상한). 측정 결과라 커밋한다.
 MODELS_PATH = REPO_ROOT / "models.yaml"
 
-# 배선표. 노드를 무엇으로 실행하고 input 을 어떻게 채우는지.
+# 배선표에 남은 것. 답 첫 줄과 도구 응답을 읽는 legacy 경로다.
 #
-# **온톨로지 밖이다.** 노드가 MCP 서버에 묶이면 도구를 갈아 끼울 때 도메인을
-# 고쳐야 하고, menu 가 온톨로지에서 만들어지므로 도구 이름이 프롬프트로 샌다.
+# 도구 식별과 입력 배선은 온톨로지 노드의 tool 로 옮겼다. 여기 남은 것은 raw 도구
+# 응답을 semantic 값으로 읽는 법을 정하는 판에서 걷힐 transitional 자리다.
 WIRING_PATH = REPO_ROOT / "execution" / "wiring.yaml"
 
 # 노드 등록. 온톨로지와 배선을 자동으로 만든다.

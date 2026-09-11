@@ -243,21 +243,27 @@ def _describe_form(form: dict) -> str:
     )
 
 
-# 경로 한 개의 최대 노드 수. **데이터 노드가 한 칸을 차지한다** — 데이터 ·
-# 추출 · 분석 · 생성이 4칸이다.
+# 경로 한 개의 최대 노드 수. **시작 데이터 노드가 한 칸을 차지한다.**
 #
-# 5 로 올리면 등록 한 번이 MENU_BUDGET 을 넘긴다. 아래는 그때 잰 표이고
-# **재던 때의 온톨로지 기준**이라 지금 값과는 다를 수 있다.
+# 5 다. 지점을 범위로 넓히는 계산이 노드(지점 주변 범위 변환)로 드러나면서
+# 「장소 이름 -> 좌표 -> 범위 -> 충전소 검색 -> 충전소 상세」가 다섯 칸이 됐다.
+# 4 로 두면 지금 받아들인 recipe 하나(recipe_060)를 후보가 못 만든다.
+#
+# **실행의 안전 한도가 아니다.** vendor 의 _MAX_WORKFLOW_STEPS(8)는 따로 있고
+# 여기와 묶지 않는다. 여기는 후보를 만들 때 몇 칸까지 이어 볼지다.
+#
+# 아래는 옛 온톨로지에서 잰 표이고 **재던 때의 온톨로지 기준**이라 지금 값과는
+# 다르다.
 #
 #   MAX_STEPS   등록 한 번의 경로 수   등록 후 menu
 #         3            4~ 8           1193~1514자
-#         4           14~20           2299~2772자   <- 여기
-#         5           44~52           5764~6923자   <- 예산 초과
+#         4           14~20           2299~2772자
+#         5           44~52           5764~6923자   <- 그때 예산 초과
 #
 # **임시방편이다.** 경로 길이가 문제인 것이 아니라 말이 안 되는 조합이 섞이는
 # 것이 문제다. 온톨로지가 촘촘해지고 범용 노드가 줄면 이 상수는 의미가 없어진다.
 # ★ 이 값을 무엇으로 정할지는 아직 확정되지 않았다.
-MAX_STEPS = 4
+MAX_STEPS = 5
 
 
 def all_recipes(nodes: dict) -> list[list[str]]:
@@ -265,7 +271,7 @@ def all_recipes(nodes: dict) -> list[list[str]]:
 
     입력  노드 전체
     출력  노드 id 목록의 목록. 길이 2 이상 MAX_STEPS 이하. 파일은 안 씀
-    규칙  데이터 노드에서 출발해 can_connect 로 이어 붙임.
+    규칙  source 가 있는 시작 노드(graph.start_ids)에서 출발해 can_connect 로 이어 붙임.
           규칙은 ontology/graph.py 의 solid_edges 와 같음. 앞 노드가 건네는
           것을 뒤 노드가 받을 수 있으면 이어짐
           순서가 결정적. 짧은 것부터(BFS), 같은 길이 안에서는 start_ids 와
@@ -290,9 +296,9 @@ def all_recipes(nodes: dict) -> list[list[str]]:
     #  관계에서 나오므로 관계가 그대로 규칙이 된다.)
     usable = list(nodes)
 
-    # 시작점은 **손에 잡히는 구체적인 데이터**다. 승강장 CCTV 영상처럼 그
-    # 자체로 존재하는 것이 경로의 첫 단계가 된다. "영상" 같은 형식은 시작점이
-    # 될 수 없다 — 어느 영상인지 아무 데도 안 적혀 실행할 수 없다.
+    # 시작점은 **밖에서 곧장 값이 들어오는 노드**다(source). 장소 이름은 발화에서,
+    # 지점 좌표는 화면에서 온다. source 가 없는 형식(목록 · 충전소 번호)은 시작점이
+    # 될 수 없다 — 어느 값인지 아무 데도 안 적혀 실행할 수 없다.
     starts = [nid for nid in graph.start_ids() if nid in usable]
 
     chains = [[start] for start in starts]
@@ -426,28 +432,51 @@ def _with_particle(name: str) -> str:
     return name + ("로" if final in (0, 8) else "으로")  # 0 = 받침 없음, 8 = ㄹ
 
 
+def _source_phrase(node_id: str, nodes: dict) -> tuple[str, str]:
+    """시작 노드를 문장 앞에 둘 명사구와 그 뒤에 붙일 쓰임 문장.
+
+    출력  (명사구, 쓰임 문장). 쓰임 문장이 없으면 빈 문자열
+    규칙  source.description 이 있으면 그 첫 문장이 명사구이고 나머지가 쓰임 문장임.
+          「사용자가 화면에서 찍어 둔 한 지점. 발화가 … 가리킬 때 쓴다.」
+          source.description 이 없으면 노드 이름이 명사구임
+    """
+    node = nodes[node_id]
+    text = str((node.get("source") or {}).get("description") or "").strip()
+    if not text:
+        return node["name"], ""
+    head, separator, rest = text.partition(". ")
+    if not separator:
+        return head.rstrip("."), ""
+    return head, rest.strip()
+
+
 def function_for(chain: list[str], nodes: dict) -> str:
-    """recipe 가 하는 일 한 문장.
+    """recipe 가 하는 일을 온톨로지에서 만든 문장.
 
     입력  경로(노드 id 목록) · 노드 전체
-    출력  마침표로 끝나는 한 문장. LLM 이 recipe 를 고르는 유일한 근거
-    규칙  경로는 데이터 노드에서 시작함
-          데이터는 이름에 조사를 붙여 앞에 두고, 기능들의 description 만
-          이어 붙임. 마지막만 종결형이고 앞은 모두 연결형
-          예 : 승강장 CCTV 영상으로 영상에서 분석용 이미지 프레임을 추출하고
-               이미지에서 승강장의 혼잡한 정도를 분석한다.
-    제약  데이터의 description 을 연결형으로 바꾸지 않는다.
-          명사구라("승강장에 설치된 CCTV 가 촬영한 영상") 붙이면 "영상하고"
-          가 됨
-          데이터 이름을 빼지 않는다.
+    출력  마침표로 끝나는 문장. menu 에 실을 수 있는 후보 문장
+    규칙  경로는 source 가 있는 시작 노드에서 시작함
+          시작 노드는 _source_phrase 의 명사구에 조사를 붙여 앞에 두고, 기능들의
+          description 을 이어 붙임. 마지막만 종결형이고 앞은 모두 연결형
+          시작 노드의 쓰임 문장이 있으면 그 뒤에 붙임
+          예 : 사용자가 화면에서 찍어 둔 한 지점으로 그 지점의 행정구역과 코드를
+               찾는다. 발화가 장소 이름 대신 여기나 이 위치, 선택한 위치라고
+               가리킬 때 쓴다.
+    제약  시작 노드의 description 을 연결형으로 바꾸지 않는다.
+          명사구라 붙이면 "장소하고" 가 됨
+          시작 노드를 빼지 않는다.
           같은 기능을 쓰는 recipe 가 무엇으로 시작하는지 구분할 근거가 사라져
-          LLM 이 고를 수 없음. 승강장 CCTV 로 시작하는 것과 검측차 영상으로
+          LLM 이 고를 수 없음. 발화의 장소로 시작하는 것과 화면의 지점으로
           시작하는 것이 같은 문장이 됨
+          노드의 tool 을 읽지 않는다.
+          이 문장은 발화 해석 프롬프트에 실리는 재료라 도구 이름이 새면 안 됨
     """
     steps = [nid for nid in chain if graph.is_executable(nid)]
     sources = [nid for nid in chain if nid not in steps]
 
-    prefix = " ".join(_with_particle(nodes[nid]["name"]) for nid in sources)
+    phrases = [_source_phrase(nid, nodes) for nid in sources]
+    prefix = " ".join(_with_particle(head) for head, _ in phrases)
+    hints = [hint for _, hint in phrases if hint]
     descriptions = [nodes[nid]["description"].rstrip(".") for nid in steps]
 
     if not descriptions:
@@ -457,8 +486,9 @@ def function_for(chain: list[str], nodes: dict) -> str:
     # 마지막만 종결형으로 두고 앞은 모두 연결형으로 잇는다.
     clauses = [_to_connective(text) for text in descriptions[:-1]]
     body = " ".join([*clauses, descriptions[-1]])
+    sentence = (f"{prefix} {body}" if prefix else body) + "."
 
-    return (f"{prefix} {body}" if prefix else body) + "."
+    return " ".join([sentence, *hints])
 
 
 def append_menu(

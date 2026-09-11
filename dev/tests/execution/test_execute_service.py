@@ -175,9 +175,9 @@ def test_a_context_only_recipe_still_runs_without_a_spoken_argument(
 @pytest.mark.parametrize(
     "recipe_id, fragment",
     [
-        ("recipe_001", "장소를 함께"),          # 말한 장소로 시작
-        ("recipe_005", "찾을 것을 함께"),        # 말한 키워드로 시작
-        ("recipe_015", "이름이나 코드를 함께"),   # 말한 식별자로 시작
+        ("recipe_001", "장소를 함께"),          # 장소 이름(발화)으로 시작
+        ("recipe_005", "찾을 것을 함께"),        # 키워드(발화)로 시작
+        ("recipe_015", "이름이나 코드를 함께"),   # 선거구 코드(발화)로 시작
     ],
     ids=["place", "keyword", "identifier"],
 )
@@ -217,7 +217,7 @@ def test_a_recipe_needing_the_screen_context_does_not_start_without_it():
     없는 좌표로 부르면 전국이 나오거나 required 가 빈 채로 도구가 거부한다.
     무엇을 읽는지는 배선이 말하고 context_needs 가 그것을 센다.
     """
-    picked = recipe_of(["picked_point", "find_cctv"])
+    picked = recipe_of(["point", "point_to_map_extent", "find_cctv"])
 
     events = collect(execute_service.run(picked, "", context=None))
 
@@ -228,7 +228,7 @@ def test_a_recipe_needing_the_screen_context_does_not_start_without_it():
 
 def test_the_guard_names_what_is_missing():
     """무엇이 없어서 못 부르는지 사람이 읽을 수 있어야 함."""
-    extent = recipe_of(["visible_extent", "find_cctv"])
+    extent = recipe_of(["map_extent", "find_cctv"])
 
     events = collect(execute_service.run(extent, "", context={"selectedLocation": {"lon": 1, "lat": 2}}))
 
@@ -244,7 +244,7 @@ def test_a_recipe_that_reads_no_context_runs_without_one(monkeypatch):
         _fake_workflow(called),
     )
 
-    spoken = recipe_of(["spoken_place", "geocode_place", "find_cctv"])
+    spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     events = collect(execute_service.run(spoken, "오송역", context=None))
 
     assert called, "문맥이 필요 없는데 막혔다"
@@ -260,7 +260,7 @@ def test_the_context_that_actually_arrived_lets_it_through(monkeypatch):
         _fake_workflow(called),
     )
 
-    picked = recipe_of(["picked_point", "find_cctv"])
+    picked = recipe_of(["point", "point_to_map_extent", "find_cctv"])
     events = collect(
         execute_service.run(
             picked, "", context={"selectedLocation": {"lon": 127.3, "lat": 36.6}}
@@ -324,7 +324,7 @@ def test_a_map_command_only_run_never_reaches_the_vendor(monkeypatch):
         lambda state, intent: called.append(intent),
     )
 
-    facility = recipe_of(["spoken_place", "show_facility"])
+    facility = recipe_of(["place_name", "show_facility"])
     events = collect(
         execute_service.run(facility, "오송 테스트트랙", text="오송 테스트트랙 시설물 보여줘")
     )
@@ -340,7 +340,7 @@ def test_the_step_pair_goes_out_in_the_same_shape_as_a_tool_step():
 
     도구 이름이 오던 자리에 지도 명령 op 이 온다.
     """
-    facility = recipe_of(["spoken_place", "show_facility"])
+    facility = recipe_of(["place_name", "show_facility"])
     events = collect(execute_service.run(facility, "오송 테스트트랙"))
 
     starts = [event for event in events if event["type"] == "step_start"]
@@ -361,7 +361,7 @@ def test_a_step_pair_goes_out_for_every_step_the_vendor_ran(monkeypatch):
         execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called)
     )
 
-    spoken = recipe_of(["spoken_place", "geocode_place", "find_cctv"])
+    spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     events = collect(execute_service.run(spoken, "오송역"))
 
     starts = [event for event in events if event["type"] == "step_start"]
@@ -386,7 +386,7 @@ def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
 
     monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", fake)
 
-    spoken = recipe_of(["spoken_place", "geocode_place", "find_cctv"])
+    spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     collect(execute_service.run(spoken, "오송역"))
 
     assert called["user_context"]["user_id"]
@@ -410,7 +410,7 @@ def test_a_failed_run_never_shows_the_vendor_wording(monkeypatch):
 
     monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", failing)
 
-    spoken = recipe_of(["spoken_place", "geocode_place", "find_cctv"])
+    spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     events = collect(execute_service.run(spoken, "오송역"))
 
     answer = events[-1]["answer"]
@@ -424,8 +424,8 @@ def test_a_failed_run_never_shows_the_vendor_wording(monkeypatch):
 
 
 def clarify_path(*names):
-    """이름 목록을 path_of 모양으로. 맨 앞은 언제나 데이터 노드(말한 장소)."""
-    chain = [{"node_id": "spoken_place", "name": "말한 장소", "out_type": "말한 장소"}]
+    """이름 목록을 path_of 모양으로. 맨 앞은 언제나 시작 노드(장소 이름)."""
+    chain = [{"node_id": "place_name", "name": "장소 이름", "out_type": "장소 이름"}]
     for index, name in enumerate(names):
         chain.append({"node_id": f"n{index}_{name}", "name": name, "out_type": name})
     return chain
@@ -450,7 +450,7 @@ def clarify_wire(monkeypatch, paths, unwired=()):
         lambda recipe_id: [
             entry["node_id"]
             for entry in paths.get(recipe_id, [])
-            if entry["node_id"] != "spoken_place"
+            if entry["node_id"] != "place_name"
         ],
     )
     monkeypatch.setattr(
@@ -568,8 +568,8 @@ def test_with_no_candidates_the_answer_says_it_is_out_of_scope(no_ontology):
 def test_the_guidance_words_come_from_the_ontology(no_ontology):
     """안내를 코드에 박지 않음. 노드를 등록하면 안내도 함께 늘어야 함.
 
-    대상 이름과 시작 데이터 이름을 그대로 적는다. 화면에서 오는 둘(찍은 지점 ·
-    보이는 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다.
+    대상 이름과 시작 데이터 이름을 그대로 적는다. 화면에서 오는 둘(지점 좌표 ·
+    지도 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다.
     """
     topics, starts = execute_service._offer_names()
     answer = execute_service._no_recipe_answer(
@@ -579,8 +579,9 @@ def test_the_guidance_words_come_from_the_ontology(no_ontology):
     assert topics and starts
     for name in topics + starts:
         assert name in answer
-    for node_id in execute_service.step_service.CONTEXT_STARTS:
-        assert node_id not in starts
+    nodes = execute_service.store.nodes()
+    for node_id in execute_service.step_service.context_sources():
+        assert nodes[node_id]["name"] not in starts
 
 
 def test_an_empty_reason_does_not_leave_a_bare_blank_line(no_ontology):

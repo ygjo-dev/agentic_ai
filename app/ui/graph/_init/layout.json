@@ -19,6 +19,10 @@
     1147.5,
     733.0
   ],
+  "district_code": [
+    540.18,
+    633.83
+  ],
   "election_district_dataset_info": [
     327.78,
     549.9
@@ -111,6 +115,10 @@
     968.82,
     79.456
   ],
+  "keyword": [
+    1623.4,
+    340.91
+  ],
   "list_bim_models": [
     1406.5,
     31.0
@@ -123,13 +131,25 @@
     928.25,
     502.39
   ],
-  "picked_point": [
-    612.84,
-    260.35
+  "map_extent": [
+    1424.9,
+    287.32
+  ],
+  "place_name": [
+    47.0,
+    159.97
   ],
   "plan_trip": [
     933.55,
     -56.39
+  ],
+  "point": [
+    612.84,
+    260.35
+  ],
+  "point_to_map_extent": [
+    840.1118061684003,
+    28.458096402738725
   ],
   "population_dataset_info": [
     2052.5,
@@ -170,22 +190,6 @@
   "show_facility": [
     651.71,
     88.647
-  ],
-  "spoken_identifier": [
-    540.18,
-    633.83
-  ],
-  "spoken_keyword": [
-    1623.4,
-    340.91
-  ],
-  "spoken_place": [
-    47.0,
-    159.97
-  ],
-  "visible_extent": [
-    1424.9,
-    287.32
   ],
   "vworld_dataset_info": [
     1363.5,

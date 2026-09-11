@@ -1,6 +1,6 @@
-"""배선 줄이 도구의 어느 칸을 쓰는지 inputSchema 와 맞대는 계기판.
+"""온톨로지 tool 이 도구의 어느 칸을 쓰는지 inputSchema 와 맞대는 계기판.
 
-dev/tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 **맞는 칸을 쓰는가**는
+dev/tools/check_wiring.py 는 **입력 배선이 있는가**만 센다. 그 배선이 **맞는 칸을 쓰는가**는
 아무도 안 봤다. 그래서 이런 일이 있었다 (NOTES.md 「열린 과제」 2026-08-26).
 
     geo.getRailwayLines 는 stationName 과 railwayName 을 갖는다
@@ -15,21 +15,21 @@ dev/tools/check_wiring.py 는 **배선 줄이 있는가**만 센다. 그 줄이 
     python dev/tools/check_inputs.py --tools /tmp/tools.json
     python dev/tools/check_inputs.py --refresh           Gateway 에서 다시 받아 파일을 갱신
 
-**표를 복사하지 않는다.** STEP_OF · TOOL_OF 를 execution/step_service 에서
-그대로 import 한다. 읽기만 한다 — 이 파일은 배선도 온톨로지도 안 고친다.
+**규칙을 복사하지 않는다.** 보낼 input 벌은 execution/step_service.variants 가 실행
+계획(plan)과 같은 함수로 만든다. 읽기만 한다 — 이 파일은 온톨로지도 배선표도 안 고친다.
 
-**TOOL_OF 는 이제 「실행 수단」이다** (「마흔아홉째」). server_id · tool 대신
-command 를 적은 줄(show_facility)이 있고, 그 줄은 Gateway 도구가 아니라 지도
-명령이라 맞댈 inputSchema 가 없다 — 그 args 의 계약은 KRRI_ASAP 화면(useChat)이다.
-그래서 도구 줄과 갈라 「지도 명령 줄」로 따로 세고 표 끝에 몇 줄인지 적는다.
-이 갈래를 모르고 ["tool"] 을 읽다가 KeyError 로 죽어 있었다 (「쉰째」에서 발견,
+**tool 은 「실행 수단」이다** (「마흔아홉째」). Gateway 도구 말고 frontend/ namespace 의
+지도 명령(show_facility)이 있고, 그것은 맞댈 inputSchema 가 없다 — 그 args 의 계약은
+KRRI_ASAP 화면(useChat)이다. 그래서 「지도 명령 줄」로 따로 세고 표 끝에 몇 줄인지 적는다.
+builtin/ 계산(지점 주변 범위 변환)은 스스로 도구를 안 부르고 뒤 도구 단계에 얹혀
+나가므로, 그 뒤 단계의 「범위 변환」 행으로 센다.
+이 갈래를 모르고 도구 이름을 읽다가 KeyError 로 죽어 있었다 (「쉰째」에서 발견,
 「쉰아홉째」에서 살림).
 
-**값으로 칸이 갈리는 줄(arg_field)은 갈래마다 한 행이다.** 철도 노선 조회는
-발화 값이 "…선" 으로 끝나면 stationName 대신 railwayName 을 쓴다
-(step_service._by_argument). 한 줄이 두 벌을 보낼 수 있으므로 input_first 와
-같은 방식으로 행을 가른다 — 기본 칸 한 행 · 어미가 걸렸을 때의 칸 한 행("(…선)"
-표시). 예전에는 기본 칸만 보여 railwayName 이 영영 「안 쓰는 칸」으로 남았다.
+**값으로 칸이 갈리는 노드는 갈래마다 한 행이다.** 철도 노선 조회는 발화 값이 "…선" 으로
+끝나면 stationName 대신 railwayName 을 쓴다(tool.parameters 의 if_endswith · unless_endswith).
+그 어미로 끝나는 인자로 만든 벌이 한 행 더 나온다("(…선)" 표시). 예전에는 기본 칸만 보여
+railwayName 이 영영 「안 쓰는 칸」으로 남았다.
 
 ## 스키마는 파일로 갖는다
 
@@ -41,30 +41,31 @@ Gateway 없이 돈다. 없을 때만 Gateway 를 부르고 상한은 --timeout (
 ★ **새로 clone 하면 그 파일이 없다.** `dev/tools/probe_out/` 은 .gitignore 다 —
 Gateway 응답 전문은 기계마다 다른 실측 산출물이라 저장소에 담지 않는다. 그래서
 fresh clone 의 첫 실행은 반드시 Gateway 를 한 번 부른다. Gateway 도 없으면 이
-도구는 돌지 않는다. 배선 자체를 서버 없이 보려면 dev/tools/check_wiring.py 다.
+도구는 돌지 않는다. 입력 배선 자체를 서버 없이 보려면 dev/tools/check_wiring.py 다.
 
-r5-server 처럼 꺼진 서버의 도구는 /api/tools 에 아예 안 실린다. 배선이 가리키는
-도구가 스키마 목록에 없으면 그 줄은 「스키마를 못 받았다」로 적고 넘어간다.
+r5-server 처럼 꺼진 서버의 도구는 /api/tools 에 아예 안 실린다. tool 이 가리키는
+도구가 스키마 목록에 없으면 그 행은 「스키마를 못 받았다」로 적고 넘어간다.
 
-## 세는 법 넷 — 배선 줄마다 · 칸마다
+## 세는 법 넷 — 행마다 · 칸마다
 
     없는 칸을 보낸다        우리가 보내는 칸이 properties 에 없다.  ★ 반드시 0건이나 오류
-    꼭 필요한데 안 보낸다   required 인데 우리 배선에 없다.          ★ 반드시 오류
+    꼭 필요한데 안 보낸다   required 인데 우리가 안 보낸다.         ★ 반드시 오류
     있는데 안 쓰는 칸       properties 에 있는데 우리가 안 보낸다.   판단할 자리. 고르지 않는다
     맞다                    나머지
 
-한 줄의 판정은 그 줄의 칸 판정을 모은 것이다. 없는 칸 · 안 보낸 required 가
+한 행의 판정은 그 행의 칸 판정을 모은 것이다. 없는 칸 · 안 보낸 required 가
 하나도 없으면 「맞다」이고, 안 쓰는 칸은 몇 개인지만 옆에 적는다.
 
 **어댑터 뒤의 칸으로 맞댄다.** vendor 의 point_radius_to_bbox 는 center / location
 과 radiusMeters 를 지우고 minLon · minLat · maxLon · maxLat 를 만든다
-(generic_mcp_executor._point_radius_to_bbox_input). 줄에 adapter 가 적혀 있거나,
-안 적혀 있어도 도구의 required 에 bbox 넷이 다 있고 input 에 중심 좌표와
+(generic_mcp_executor._point_radius_to_bbox_input). 벌에 어댑터가 실려 있거나,
+안 실려 있어도 도구의 required 에 bbox 넷이 다 있고 input 에 중심 좌표와
 반경이 있으면 vendor 가 저절로 건다 (_should_auto_apply_point_radius_to_bbox).
-그 둘을 그대로 따라 한다. 어댑터가 걸린 줄은 표에 「어댑터」로 표시된다.
+그 둘을 그대로 따라 한다. 어댑터가 걸린 행은 표에 「어댑터」로 표시된다.
 
-`input_first` 도 따로 센다. 한 줄이 두 자리(첫 단계일 때 · 앞 단계가 있을 때)를
-맡으므로 갈래마다 한 행이다. 지금 input_first 를 적은 줄은 없어 행이 안 는다.
+**값이 어디서 오느냐마다 한 행이다.** 한 노드가 같은 타입을 발화 · 화면에서 곧장 받을
+수도(밖) 앞 도구 단계에서 받을 수도(앞) 지점 주변 범위 변환을 거쳐 받을 수도(범위)
+있고, 그때마다 보내는 칸이 다를 수 있다.
 
 ## 안 쓰는 칸이 제일 많다 — 추리는 기준 넷
 
@@ -76,24 +77,24 @@ properties 는 도구마다 열 개가 넘고 대부분 limit · includeGeometry
     S  우리가 보내는 칸과 닮았다    camelCase 로 쪼갠 낱말을 하나라도 공유한다.
                                     stationName 대 railwayName 이 Name 을 공유한다.
                                     철도가 이 기준으로 걸린다 — 만든 이유가 이것이다
-    O  같은 도구의 다른 줄이 쓴다   한 줄은 보내는데 다른 줄은 안 보내는 칸.
+    O  같은 도구의 다른 행이 쓴다   한 행은 보내는데 다른 행은 안 보내는 칸.
                                     자리마다 받는 것이 달라 그런 것이 보통이지만,
                                     빠뜨린 것과 안 갈려 올린다
-    A  발화 줄의 안 쓰는 칸         @arg(발화에서 온 값)를 보내는 줄에서, 크기
-                                    손잡이(limit · k · offset)가 아닌 안 쓰는 칸
-                                    전부. 「쉰아홉째」에 더했다
+    A  발화 행의 안 쓰는 칸         발화 인자를 보내는 행에서, 크기 손잡이
+                                    (limit · k · offset)가 아닌 안 쓰는 칸 전부.
+                                    「쉰아홉째」에 더했다
 
 왜 A 를 더했나 (2026-08-30 「쉰아홉째」). 사람이 하나씩 부딪혀 찾은 넷 —
 all · includeGeometry · pledgeCategory · order — 가 R · S · O 어디에도 안 걸렸다.
 넷은 칸의 성질이 제각각이라(boolean 둘 · string 둘, 기본값 있는 것 없는 것,
 거르는 칸과 출력 칸) 칸의 성질로는 못 좁힌다. 공통점은 자리다 — 전부 발화가
-@arg 한 칸으로 접히는 줄이었다. 발화는 자유 문장이라 그 줄의 다른 모든 칸이
-「사람 말이 갈 수 없는 자리」가 된다. $prev · $context 줄은 사람 말이 아니라
-앞 단계 · 화면이 채우는 자리라 예전 판정(자리마다 받는 것이 다르다) 그대로 둔다.
+인자 한 칸으로 접히는 행이었다. 발화는 자유 문장이라 그 행의 다른 모든 칸이
+「사람 말이 갈 수 없는 자리」가 된다. 앞 단계 · 화면이 채우는 행은 예전 판정
+(자리마다 받는 것이 다르다) 그대로 둔다.
 limit · k · offset 을 뺀 것은 개수 손잡이는 말을 막지 않아서인데, "100개만
 보여줘" 같은 발화가 나오면 이 제외를 다시 본다.
 
-왜 이 넷인가. 네 기준 모두 **스키마와 배선만으로** 판정된다 — 서버도 LLM 도
+왜 이 넷인가. 네 기준 모두 **스키마와 tool 만으로** 판정된다 — 서버도 LLM 도
 값 판단도 없다. "이 칸이 검색어 같다" 같은 description 읽기는 짐작이라 안 넣었다.
 S · A 가 넓어 보이면 좁히는 것은 사람이 표를 보고 정한다.
 
@@ -102,17 +103,17 @@ S · A 가 넓어 보이면 좁히는 것은 사람이 표를 보고 정한다.
 check_argument 가 나흘간 ValueError 로 죽어 있던 전례가 있다 (NOTES.md 「열린
 과제」). tools/ 는 "테스트를 두지 않는다" 가 규칙이라 tests/ 에는 안 넣는다.
 대신 **서버 없이 되는 최소 검사를 이 파일 안에 둔다** — `_selfcheck()` 가 손으로
-적은 스키마 하나와 배선 한 줄로 네 부류가 각각 한 번씩 나오는지 본 뒤에야 표를
+적은 스키마 하나와 벌 하나로 네 부류가 각각 한 번씩 나오는지 본 뒤에야 표를
 찍는다. 틀리면 첫 줄에서 죽고 표는 안 나온다.
 
 그 검사가 이 파일 자신의 KeyError 를 못 잡았다 (「쉰째」) — 손으로 적은 배선만
-보고 **진짜 표는 한 줄도 안 읽었기** 때문이다. 그래서 「TOOL_OF · STEP_OF 의
-모든 줄을 한 번씩 읽어 본다」를 더했다 — 빈 스키마로 rows_of 를 끝까지 돌린다.
-서버가 없어도 돌고, 표의 모양이 바뀌면(이번처럼 command 줄이 생기면) 여기서
-죽는다. pytest 쪽에는 dev/tests/tools/test_dashboard_selfchecks.py 가
-_selfcheck 를 부른다 — 이 도구는 어쩌다 한 번 돌지만 배선표는 커밋마다 바뀌고,
-커밋마다 도는 것은 pytest 다. check_argument 나흘 · check_inputs 하루가 그렇게
-새어 나갔다.
+보고 **진짜 표는 한 줄도 안 읽었기** 때문이다. 그래서 「tool 이 있는 노드를 전부
+한 번씩 읽어 본다」를 더했다 — 빈 스키마로 rows_of 를 끝까지 돌린다.
+서버가 없어도 돌고, 모양이 바뀌면(command 줄이 생긴 것처럼) 여기서 죽는다.
+pytest 쪽에는 dev/tests/tools/test_dashboard_selfchecks.py 가
+_selfcheck 를 부른다 — 이 도구는 어쩌다 한 번 돌지만 온톨로지는
+커밋마다 바뀌고, 커밋마다 도는 것은 pytest 다. check_argument 나흘 · check_inputs 하루가
+그렇게 새어 나갔다.
 """
 
 import argparse
@@ -129,12 +130,17 @@ sys.path.insert(0, str(REPO_ROOT))
 import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
 from execution.step_service import (  # noqa: E402
+    ADAPTER,
+    BUILTIN,
     CENTER_KEYS,
+    COMMAND,
     POINT_RADIUS_TO_BBOX,
-    SPOKEN_VALUE,
-    STEP_OF,
-    TOOL_OF,
+    SOURCE,
+    STEP,
+    binding_of,
+    variants,
 )
+from ontology.graph import node_ids  # noqa: E402
 
 # 주소를 읽기 전에 부른다. probe_tools · check_resolve · check_llm 과 같은
 # 자리다. 이 줄이 뒤로 가면 .env 를 고쳐도 이 도구만 못 본다.
@@ -171,6 +177,9 @@ WHY_SPOKEN_LINE = "A"
 
 # A 에서 빼는 개수 손잡이. 값이 커 봐야 더 줄 뿐이라 사람 말을 막지 않는다.
 SIZE_KNOBS = {"limit", "k", "offset"}
+
+# 값의 출처를 표에 적는 말.
+ORIGIN_LABELS = {SOURCE: "밖", STEP: "앞", ADAPTER: "범위"}
 
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
@@ -232,20 +241,20 @@ def _has_radius(fields: dict) -> bool:
     return any(key in fields for key in RADIUS_KEYS)
 
 
-def sent_fields(wiring: dict, variant: str, schema: dict | None) -> tuple[set, str]:
-    """그 줄이 도구에 실제로 보내는 칸 이름.
+def sent_fields(row: dict, schema: dict | None) -> tuple[set, str]:
+    """그 벌이 도구에 실제로 보내는 칸 이름.
 
-    입력  STEP_OF 한 줄 · "input" 또는 "input_first" · 그 도구의 스키마(없으면 None)
+    입력  step_service.variants 의 한 행({input, adapter, …}) · 그 도구의 스키마(없으면 None)
     출력  (칸 이름 집합, 어댑터 표시). 어댑터가 안 걸리면 표시는 빈 문자열
-    규칙  adapter 가 적혀 있고 중심 좌표가 있으면 걸림 (step_service.plan 과 같음)
-          안 적혀 있어도 required 에 bbox 넷이 다 있고 중심 좌표 · 반경이 있으면
+    규칙  벌에 어댑터가 실려 있고 중심 좌표가 있으면 걸림 (step_service.plan 과 같음)
+          안 실려 있어도 required 에 bbox 넷이 다 있고 중심 좌표 · 반경이 있으면
           vendor 가 저절로 걺 (_should_auto_apply_point_radius_to_bbox)
           걸리면 중심 · 반경 칸이 빠지고 bbox 넷이 들어감
     """
-    fields = dict(wiring[variant])
+    fields = dict(row["input"])
     names = set(fields)
     adapter = ""
-    if wiring.get("adapter") == POINT_RADIUS_TO_BBOX and _has_center(fields):
+    if row.get("adapter") == POINT_RADIUS_TO_BBOX and _has_center(fields):
         adapter = POINT_RADIUS_TO_BBOX
     elif (
         schema is not None
@@ -269,13 +278,13 @@ def _tokens(name: str) -> set:
 
 
 def judge(sent: set, schema: dict | None, sent_by_other_lines: set, spoken: bool = False) -> dict:
-    """한 줄의 칸 판정.
+    """한 행의 칸 판정.
 
-    입력  보내는 칸 · 스키마(None 이면 못 받은 것) · 같은 도구의 다른 줄이 보내는 칸
-          · 이 줄이 발화 값(@arg)을 보내는지
+    입력  보내는 칸 · 스키마(None 이면 못 받은 것) · 같은 도구의 다른 행이 보내는 칸
+          · 이 행이 발화 인자를 보내는지
     출력  {verdict, unknown, missing_required, unused: [{name, why}], ok}
     규칙  unused 의 why 는 R · S · O · A 중 걸린 것. 하나도 없으면 빈 문자열
-          A 는 spoken 인 줄에서 SIZE_KNOBS 를 뺀 안 쓰는 칸 전부
+          A 는 spoken 인 행에서 SIZE_KNOBS 를 뺀 안 쓰는 칸 전부
     """
     if schema is None:
         return {"verdict": NO_SCHEMA, "unknown": [], "missing_required": [], "unused": [], "ok": []}
@@ -317,62 +326,42 @@ def judge(sent: set, schema: dict | None, sent_by_other_lines: set, spoken: bool
     }
 
 
-def _variants_of(wiring: dict, variant: str):
-    """이 줄이 이 갈래에서 보낼 수 있는 input 벌. arg_field 가 있으면 둘.
-
-    입력  STEP_OF 한 줄 · "input" 또는 "input_first"
-    출력  (어미 표시, input) 쌍을 낳음. 기본 벌은 어미 표시가 빈 문자열
-    규칙  arg_field 갈래는 @arg 가 든 칸의 이름만 바뀜 (step_service._by_argument
-          와 같은 규칙). @arg 가 없는 벌(input_first 가 문맥에서 올 때)에는 안 생김
-    """
-    base = wiring[variant]
-    yield "", base
-    rule = wiring.get("arg_field")
-    if rule and SPOKEN_VALUE in base.values():
-        suffix, field = rule
-        yield suffix, {
-            (field if value == SPOKEN_VALUE else key): value
-            for key, value in base.items()
-        }
-
-
 def rows_of(schemas: dict) -> tuple[list, list]:
-    """STEP_OF 전부를 한 줄씩 판정.
+    """tool 이 있는 노드의 벌 전부를 한 행씩 판정.
 
     출력  (rows, command_lines)
-          rows  [{tool, node, type, variant, arg_suffix, adapter, sent,
+          rows  [{tool, node, type, origin, arg_suffix, adapter, sent,
                   schema_fields, spoken, ...judge}]
                 도구 이름 · 노드 순. 스키마 목록에 없는 도구는 verdict 가 NO_SCHEMA.
-                arg_field 가 있는 줄은 갈래마다 한 행 (arg_suffix 로 갈림)
-          command_lines  [{node, type, command}]. TOOL_OF 에 tool 이 없는 줄 —
+                조건 칸이 있는 노드는 어미 갈래마다 한 행 (arg_suffix 로 갈림)
+          command_lines  [{node, type, command}]. frontend 노드 —
                 지도 명령이라 맞댈 inputSchema 가 없어 판정에서 뺌
+    규칙  builtin 노드는 행이 없음. 그 입력은 뒤 도구 노드의 「범위」 행에 실려 셈
     """
-    # 같은 도구의 다른 줄이 보내는 칸 (O 기준). 먼저 한 바퀴 모은다.
+    # 같은 도구의 다른 행이 보내는 칸 (O 기준). 먼저 한 바퀴 모은다.
     per_line: list[tuple] = []
     command_lines: list[dict] = []
-    for (node, type_id), wiring in STEP_OF.items():
-        entry = TOOL_OF[node]
-        if "tool" not in entry:
-            command_lines.append({"node": node, "type": type_id, "command": entry["command"]})
+    for node in node_ids():
+        binding = binding_of(node)
+        if binding is None or binding["kind"] == BUILTIN:
             continue
-        tool = entry["tool"]
-        schema = schemas.get(tool)
-        for variant in ("input", "input_first"):
-            if variant not in wiring:
+        for row in variants(node):
+            if binding["kind"] == COMMAND:
+                line = {"node": node, "type": row["type"], "command": binding["command"]}
+                if line not in command_lines:
+                    command_lines.append(line)
                 continue
-            for arg_suffix, fields in _variants_of(wiring, variant):
-                branch = dict(wiring)
-                branch[variant] = fields
-                sent, adapter = sent_fields(branch, variant, schema)
-                spoken = SPOKEN_VALUE in fields.values()
-                per_line.append((tool, node, type_id, variant, arg_suffix, adapter, sent, schema, spoken))
+            tool = binding["tool"]
+            schema = schemas.get(tool)
+            sent, adapter = sent_fields(row, schema)
+            per_line.append((tool, node, row["type"], row["origin"], row["suffix"], adapter, sent, schema, row["spoken"]))
 
     by_tool: dict = {}
     for tool, _, _, _, _, _, sent, _, _ in per_line:
         by_tool.setdefault(tool, []).append(sent)
 
     rows = []
-    for tool, node, type_id, variant, arg_suffix, adapter, sent, schema, spoken in per_line:
+    for tool, node, type_id, origin, arg_suffix, adapter, sent, schema, spoken in per_line:
         others = set()
         for other in by_tool[tool]:
             if other is not sent:
@@ -381,7 +370,7 @@ def rows_of(schemas: dict) -> tuple[list, list]:
             "tool": tool,
             "node": node,
             "type": type_id,
-            "variant": variant,
+            "origin": origin,
             "arg_suffix": arg_suffix,
             "adapter": adapter,
             "sent": sorted(sent),
@@ -390,7 +379,7 @@ def rows_of(schemas: dict) -> tuple[list, list]:
         }
         row.update(judge(sent, schema, others, spoken))
         rows.append(row)
-    rows.sort(key=lambda r: (r["tool"], r["node"], r["type"], r["variant"], r["arg_suffix"]))
+    rows.sort(key=lambda r: (r["tool"], r["node"], r["type"], r["origin"], r["arg_suffix"]))
     command_lines.sort(key=lambda c: (c["node"], c["type"]))
     return rows, command_lines
 
@@ -401,12 +390,12 @@ def rows_of(schemas: dict) -> tuple[list, list]:
 def _selfcheck() -> None:
     """서버 없이 네 부류가 각각 한 번씩 나오는지. 틀리면 여기서 죽는다.
 
-    규칙  손으로 적은 스키마 · 배선으로 판정 규칙을 봄
-          진짜 TOOL_OF · STEP_OF 도 빈 스키마로 끝까지 한 바퀴 읽음.
-          표의 모양이 바뀌어 이 파일이 못 읽게 되면 여기서 죽음
-    이력  「마흔아홉째」가 TOOL_OF 에 tool 없는 줄을 더했을 때 손으로 적은
+    규칙  손으로 적은 스키마 · 벌로 판정 규칙을 봄
+          tool 이 있는 노드도 빈 스키마로 끝까지 한 바퀴 읽음.
+          모양이 바뀌어 이 파일이 못 읽게 되면 여기서 죽음
+    이력  「마흔아홉째」가 tool 없는 실행 수단(지도 명령)을 더했을 때 손으로 적은
           배선만 보던 이 검사는 통과했고 rows_of 는 KeyError 로 죽어 있었음
-          (「쉰째」 발견 · 「쉰아홉째」 수리). 전 줄 읽기가 그 구멍임
+          (「쉰째」 발견 · 「쉰아홉째」 수리). 전 노드 읽기가 그 구멍임
     """
     schema = {"properties": {"a": {}, "b": {}, "c": {}, "cName": {}}, "required": ["a", "b"]}
     result = judge({"a", "x", "aName"}, schema, {"c"})
@@ -419,36 +408,38 @@ def _selfcheck() -> None:
     assert judge({"a", "b"}, schema, set())["verdict"] == OK
     assert judge({"a"}, schema, set())["verdict"] == MISSING_REQUIRED
     assert judge({"a"}, None, set())["verdict"] == NO_SCHEMA
-    # A: 발화 줄에서는 크기 손잡이 말고 다 걸린다. 발화 줄이 아니면 안 걸린다.
+    # A: 발화 행에서는 크기 손잡이 말고 다 걸린다. 발화 행이 아니면 안 걸린다.
     spoken_schema = {"properties": {"query": {}, "all": {}, "limit": {}}, "required": []}
     unused = {u["name"]: u["why"] for u in judge({"query"}, spoken_schema, set(), spoken=True)["unused"]}
     assert unused == {"all": "A", "limit": ""}, unused
     unused = {u["name"]: u["why"] for u in judge({"query"}, spoken_schema, set(), spoken=False)["unused"]}
     assert unused == {"all": "", "limit": ""}, unused
-    # 어댑터: 명시 · 자동 · 안 걸림
-    wiring = {"input": {"center": "$prev.location", "radiusMeters": 1}, "adapter": POINT_RADIUS_TO_BBOX}
-    assert sent_fields(wiring, "input", None) == (set(BBOX_FIELDS), POINT_RADIUS_TO_BBOX)
+    # 어댑터: 실린 것 · 자동 · 안 걸림
+    carried = {"input": {"center": "$s1.location", "radiusMeters": 1}, "adapter": POINT_RADIUS_TO_BBOX}
+    assert sent_fields(carried, None) == (set(BBOX_FIELDS), POINT_RADIUS_TO_BBOX)
     bbox_schema = {"properties": {}, "required": list(BBOX_FIELDS)}
-    auto = {"input": {"location": "$prev.location", "radiusMeters": 1}}
-    assert sent_fields(auto, "input", bbox_schema)[1].endswith(":auto")
-    assert sent_fields(auto, "input", schema) == ({"location", "radiusMeters"}, "")
+    auto = {"input": {"location": "$s1.location", "radiusMeters": 1}, "adapter": None}
+    assert sent_fields(auto, bbox_schema)[1].endswith(":auto")
+    assert sent_fields(auto, schema) == ({"location", "radiusMeters"}, "")
     assert _tokens("stationName") & _tokens("railwayName") == {"name"}
-    # arg_field: @arg 가 든 칸만 이름이 바뀐 갈래가 하나 더 나온다
-    ruled = {"input": {"s": SPOKEN_VALUE, "k": 1}, "arg_field": ("선", "r")}
-    assert list(_variants_of(ruled, "input")) == [
-        ("", {"s": SPOKEN_VALUE, "k": 1}),
-        ("선", {"r": SPOKEN_VALUE, "k": 1}),
-    ]
-    assert list(_variants_of({"input": {"bbox": "$prev.bbox"}}, "input")) == [("", {"bbox": "$prev.bbox"})]
 
-    # 진짜 표 전 줄 읽기. 스키마가 비어도 rows_of 는 끝까지 돌아야 한다.
+    # 진짜 노드 전부 읽기. 스키마가 비어도 rows_of 는 끝까지 돌아야 한다.
     rows, command_lines = rows_of({})
-    assert rows, "배선 줄을 하나도 못 읽었다"
+    assert rows, "tool 을 하나도 못 읽었다"
     assert all(row["verdict"] == NO_SCHEMA for row in rows), "빈 스키마인데 딴 판정이 나왔다"
+    expected = {
+        (node, row["type"])
+        for node in node_ids()
+        if (binding_of(node) or {}).get("kind") not in (None, BUILTIN)
+        for row in variants(node)
+    }
     covered = {(r["node"], r["type"]) for r in rows} | {(c["node"], c["type"]) for c in command_lines}
-    assert covered == set(STEP_OF), covered ^ set(STEP_OF)
+    assert covered == expected, covered ^ expected
+    # 값으로 칸이 갈리는 노드는 어미 갈래 행이 있어야 한다. 없으면 railwayName 이
+    # 다시 「안 쓰는 칸」으로 숨는다.
+    assert any(row["arg_suffix"] for row in rows), "어미 갈래 행이 하나도 없다"
     for line in command_lines:
-        assert "tool" not in TOOL_OF[line["node"]], line
+        assert binding_of(line["node"])["kind"] == COMMAND, line
 
 
 # ── 표 ──────────────────────────────────────────────────────────────
@@ -457,18 +448,16 @@ TOOL_W, LINE_W, SENT_W = 42, 58, 44
 
 
 def _line_label(row: dict) -> str:
-    label = f"{row['node']} × {row['type']}"
-    if row["variant"] == "input_first":
-        label += " (첫)"
+    label = f"{row['node']} × {row['type']} ({ORIGIN_LABELS.get(row['origin'], row['origin'])})"
     if row["arg_suffix"]:
         label += f" (…{row['arg_suffix']})"
     return label
 
 
 def _print_table(rows: list, command_lines: list) -> None:
-    print("## 표 — 도구 · 배선 줄 · 보내는 칸 · 판정")
+    print("## 표 — 도구 · 노드 × 받는 타입 (값이 온 곳) · 보내는 칸 · 판정")
     print()
-    print("  " + _pad("도구", TOOL_W) + _pad("배선 줄 (노드 × 받는 타입)", LINE_W) + _pad("보내는 칸", SENT_W) + "판정")
+    print("  " + _pad("도구", TOOL_W) + _pad("노드 × 받는 타입 (밖 · 앞 · 범위)", LINE_W) + _pad("보내는 칸", SENT_W) + "판정")
     for row in rows:
         sent = ", ".join(row["sent"]) + (" ·어댑터" if row["adapter"] else "")
         verdict = row["verdict"]
@@ -492,10 +481,10 @@ def _print_table(rows: list, command_lines: list) -> None:
 def _print_watch(rows: list) -> None:
     print("## ★ 눈여겨볼 자리 — 안 쓰는 칸 중 R · S · O · A 에 걸린 것")
     print()
-    print("  R required · S 우리 칸과 낱말을 공유 · O 같은 도구의 다른 줄이 쓴다")
-    print("  A 발화(@arg) 줄의 안 쓰는 칸 (limit · k · offset 제외)")
+    print("  R required · S 우리 칸과 낱말을 공유 · O 같은 도구의 다른 행이 쓴다")
+    print("  A 발화 인자 행의 안 쓰는 칸 (limit · k · offset 제외)")
     print()
-    print("  " + _pad("도구", TOOL_W) + _pad("배선 줄", LINE_W) + _pad("우리 칸", 30) + "안 쓰는 칸 (왜)")
+    print("  " + _pad("도구", TOOL_W) + _pad("노드 × 받는 타입", LINE_W) + _pad("우리 칸", 30) + "안 쓰는 칸 (왜)")
     count = 0
     for row in rows:
         flagged = [u for u in row["unused"] if u["why"]]
@@ -535,15 +524,16 @@ def _print_total(rows: list, command_lines: list) -> None:
     unused = sum(len(r["unused"]) for r in lines)
     flagged = sum(1 for r in lines for u in r["unused"] if u["why"])
     verdicts = Counter(r["verdict"] for r in rows)
-    firsts = sum(1 for r in rows if r["variant"] == "input_first")
+    origins = Counter(r["origin"] for r in rows if not r["arg_suffix"])
     branches = sum(1 for r in rows if r["arg_suffix"])
     print("## 합계")
     print()
     print(
-        f"  판정한 행 {len(rows)} (input {len(rows) - firsts - branches} · input_first {firsts}"
-        f" · 값 갈래 {branches}) · 지도 명령 줄 {len(command_lines)} · 도구 {len({r['tool'] for r in rows})}"
+        f"  판정한 행 {len(rows)} ("
+        + " · ".join(f"{ORIGIN_LABELS[name]} {origins[name]}" for name in (SOURCE, STEP, ADAPTER))
+        + f" · 값 갈래 {branches}) · 지도 명령 줄 {len(command_lines)} · 도구 {len({r['tool'] for r in rows})}"
     )
-    print(f"  줄 판정   맞다 {verdicts[OK]} · 없는 칸 {verdicts[UNKNOWN_FIELD]} · 안 보낸 required {verdicts[MISSING_REQUIRED]} · 스키마 못 받음 {verdicts[NO_SCHEMA]}")
+    print(f"  행 판정   맞다 {verdicts[OK]} · 없는 칸 {verdicts[UNKNOWN_FIELD]} · 안 보낸 required {verdicts[MISSING_REQUIRED]} · 스키마 못 받음 {verdicts[NO_SCHEMA]}")
     print(f"  칸 합계   없는 칸 {unknown} · 안 보낸 required {missing} · 안 쓰는 칸 {unused} (그중 ★ {flagged})")
     if no_schema:
         print()
@@ -577,18 +567,19 @@ def main() -> int:
                 print("  probe_out/ 은 .gitignore 라 clone 에 안 딸려온다. 둘 중 하나가 필요하다:")
                 print(f"    Gateway 를 띄우고 다시 → --gateway {args.gateway}")
                 print("    받아 둔 것이 있으면    → --tools <tools.json 경로>")
-                print("  서버 없이 배선만 보려면 dev/tools/check_wiring.py")
+                print("  서버 없이 입력 배선만 보려면 dev/tools/check_wiring.py")
                 return 2
     else:
         print(f"스키마: {path} (서버 안 씀. 다시 받으려면 --refresh)")
     schemas = load_schemas(path)
-    print(f"도구 {len(schemas)}개 · 배선 줄 {len(STEP_OF)}")
+    tools = sum(1 for node in node_ids() if binding_of(node) is not None)
+    print(f"도구 {len(schemas)}개 · tool 이 있는 노드 {tools}")
     print()
 
     rows, command_lines = rows_of(schemas)
     _print_table(rows, command_lines)
 
-    print("## 스키마의 칸 — 배선이 가리키는 도구만 (required 는 *)")
+    print("## 스키마의 칸 — tool 이 가리키는 도구만 (required 는 *)")
     print()
     for tool in sorted({r["tool"] for r in rows}):
         schema = schemas.get(tool)

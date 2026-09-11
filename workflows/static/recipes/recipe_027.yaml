@@ -1,5 +1,5 @@
 steps:
 
-  - node: visible_extent
+  - node: map_extent
 
   - node: get_railway_lines

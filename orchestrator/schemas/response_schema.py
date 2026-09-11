@@ -4,15 +4,15 @@ SELECT = "SELECT"
 CLARIFY = "CLARIFY"
 NO_MATCH = "NO_MATCH"
 
-# 발화에서 뽑은 값 중 **이름이 있는 것**. argument 와 달리 여럿이고, 배선표가
-# 그 이름을 "@이름" 으로 적어 제 칸에 넣는다.
+# 발화에서 뽑은 값 중 **이름이 있는 것**. argument 와 달리 여럿이고, 온톨로지 노드의
+# tool.parameters 가 그 이름을 {from: spoken.<이름>} 으로 적어 제 칸에 넣는다.
 #
 # **도구가 쓰는 말을 여기 적지 않는다.** 이동수단의 값이 도보 · 자전거 ·
 # 승용차 · 대중교통 인 것은 사람이 쓰는 말이라서다. 그것이 WALK · BICYCLE ·
-# CAR · TRANSIT 중 무엇이 되는지는 execution/wiring.yaml 의 options 가 안다 —
+# CAR · TRANSIT 중 무엇이 되는지는 온톨로지 tool.parameters 의 map 이 안다 —
 # 이 파일은 프롬프트에 실리는 자리라 도구 이름이 새면 안 되는 곳이다.
 #
-# key 는 배선표가 부르는 이름이고 값은 그 칸의 JSON schema 다.
+# key 는 tool.parameters 가 부르는 이름이고 값은 그 칸의 JSON schema 다.
 SPOKEN_OPTIONS = {
     "travel_mode": {
         "type": ["string", "null"],
@@ -54,7 +54,7 @@ def recipe_selection_schema(reason_max_length: int) -> dict:
           SPOKEN_OPTIONS 는 argument 바로 뒤에 옴. 발화에서 값을 뽑는 칸끼리
           붙어 있어야 프롬프트의 「뽑는 법」 절과 차례가 같음
           말하지 않은 값은 null 임. 기본값을 여기서 넣지 않음 —
-          무엇이 기본인가는 배선표가 아는 실행 쪽 값임
+          무엇이 기본인가는 온톨로지 tool.parameters 의 default 가 아는 실행 쪽 값임
     제약  상한을 상수로 되돌리지 않는다.
           모델이 바뀌면 함께 바뀌는 값이라 한 모델만 표현하게 됨
           뽑는 칸을 고르는 칸 앞으로 되돌리지 않는다.

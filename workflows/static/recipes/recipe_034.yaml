@@ -1,6 +1,6 @@
 steps:
 
-  - node: spoken_place
+  - node: place_name
 
   - node: geocode_place
 

@@ -5,13 +5,17 @@
 저장소를 바꿀 때 고칠 곳을 store 경계에 모으려는 것이다.
 recipe 는 아직 store 가 맡는 자산이 아니라 여기서 직접 읽는다.
 
-부수효과가 아주 없지는 않다 — _edges() 가 파싱 결과를 스냅샷으로 들고 있고
+부수효과가 아주 없지는 않다 — _snapshot() 이 파싱 결과를 들고 있고
 recipe 는 파일에서 읽는다. 계산은 그 위에 순수하게 얹혀 있다.
 
 **노드에는 종류가 적혀 있지 않다.** 성격은 관계가 말한다.
   hasOutput 이 있다        -> 실행할 수 있다
   about 의 대상으로 나온다  -> 대상(그룹) 노드다
   둘 다 아니다             -> 오가는 데이터(타입) 노드다
+
+노드 자신이 말하는 사실은 둘이다. 여기서는 꺼내 주기만 한다.
+  source  밖(발화 · 화면)에서 곧장 들어오는 자리. 경로의 시작점을 정한다
+  tool    무엇으로 실행하는가. 뜻을 읽는 것은 execution/step_service.py 다
 """
 
 import yaml
@@ -29,15 +33,18 @@ HAS_OUTPUT = "hasOutput"
 # 새 관계를 더하려면 여기에 이름을 더하고 그것을 실제로 읽는 로직을 함께 만든다.
 # 넷이라는 수 자체가 불변식인 것은 아니다 — 읽는 곳이 있는 관계만 둔다는 것이
 # 규칙이고, 읽는 곳이 없어진 관계는 뺀다.
+#
+# ★ is-a 는 지금 온톨로지에 한 줄도 없다. 읽는 곳(ancestors)은 남아 있어 뺄
+#   자리가 아니다 — 형식 계층으로서의 하위 타입이 생기면 그대로 쓴다.
 SUPPORTED_PREDICATES = (IS_A, ABOUT, HAS_INPUT, HAS_OUTPUT)
 
 
-# (파일 원문, 파싱한 edges). 내용이 그대로면 다시 파싱하지 않는다.
-_EDGE_SNAPSHOT: tuple[bytes, list[dict]] | None = None
+# (파일 원문, 파싱한 nodes, 파싱한 edges). 내용이 그대로면 다시 파싱하지 않는다.
+_SNAPSHOT: tuple[bytes, dict, list[dict]] | None = None
 
 
-def _edges() -> list[dict]:
-    """edges 스냅샷.
+def _snapshot() -> tuple[bytes, dict, list[dict]]:
+    """nodes · edges 스냅샷.
 
     규칙  캐시 키는 파일 원문 바이트. 내용이 그대로면 다시 파싱하지 않음
           경로 생성이 can_connect() 를 수천 번 부름. 매번 파싱하면 등록 한 번이
@@ -47,11 +54,17 @@ def _edges() -> list[dict]:
           store 에 캐시를 두지 않는다.
           저장소는 쓰는 쪽이라 "방금 쓴 것이 다음 읽기에 보인다" 를 어기면 안 됨
     """
-    global _EDGE_SNAPSHOT
+    global _SNAPSHOT
     raw = store.raw_bytes()
-    if _EDGE_SNAPSHOT is None or _EDGE_SNAPSHOT[0] != raw:
-        _EDGE_SNAPSHOT = (raw, store.edges())
-    return _EDGE_SNAPSHOT[1]
+    if _SNAPSHOT is None or _SNAPSHOT[0] != raw:
+        document = store.read()
+        _SNAPSHOT = (raw, dict(document.get("nodes") or {}), list(document.get("edges") or []))
+    return _SNAPSHOT
+
+
+def _edges() -> list[dict]:
+    """edges 스냅샷."""
+    return _snapshot()[2]
 
 
 def _by_predicate(predicate: str) -> list[tuple[str, str]]:
@@ -66,6 +79,36 @@ def _by_predicate(predicate: str) -> list[tuple[str, str]]:
 def load_ontology() -> dict:
     """ontology.yaml 원문. dict 로 돌려줌."""
     return store.read()
+
+
+# ------------------------------------------------------------ 노드가 말하는 것
+def node_ids() -> list[str]:
+    """온톨로지의 노드 id 전부. 파일에 적힌 차례."""
+    return list(_snapshot()[1])
+
+
+def source_of(node_id: str) -> dict | None:
+    """그 노드가 밖에서 곧장 들어오는 자리.
+
+    출력  온톨로지에 적힌 source 그대로({from, description}). 없으면 None
+    규칙  유일한 생성원이 아님. 지점 좌표는 화면에서도 오고 장소 좌표 변환도 내놓음
+    """
+    node = _snapshot()[1].get(node_id) or {}
+    source = node.get("source")
+    return source if isinstance(source, dict) else None
+
+
+def tool_of(node_id: str) -> dict | None:
+    """그 노드를 무엇으로 실행하는가.
+
+    출력  온톨로지에 적힌 tool 그대로({id, parameters}). 없으면 None
+    제약  여기서 뜻을 풀지 않는다.
+          도구 id 의 namespace · parameters 문법은 실행 계층의 계약이라
+          execution/step_service.py 가 읽음
+    """
+    node = _snapshot()[1].get(node_id) or {}
+    tool = node.get("tool")
+    return tool if isinstance(tool, dict) else None
 
 
 # ------------------------------------------------------------ 관계 조회
@@ -131,8 +174,6 @@ def type_ids() -> list[str]:
     """오가는 형식.
 
     규칙  누군가 "이걸 받는다 / 내놓는다" 고 선언한 노드
-          형식은 손에 잡히는 데이터가 아님. "영상" 이라고만 하면 어느 영상인지
-          알 수 없어 start_ids 가 이것을 시작점에서 뺌
     """
     return list(
         dict.fromkeys(to for _, to in _by_predicate(HAS_INPUT) + _by_predicate(HAS_OUTPUT))
@@ -140,19 +181,18 @@ def type_ids() -> list[str]:
 
 
 def start_ids() -> list[str]:
-    """경로의 시작점. 손에 잡히는 구체적인 데이터.
+    """경로의 시작점. 밖에서 곧장 들어오는 값이 있는 노드.
 
-    규칙  온톨로지 전체에서 그룹 · 형식 · 실행 노드를 뺀 나머지
-    제약  형식을 시작점으로 삼지 않는다.
-          "영상으로 프레임을 추출하고…" recipe 가 생기는데 사람이 골라도
-          어느 영상인지 아무 데도 안 적혀 실행하려는 순간 막힘
+    출력  source 가 적힌 노드 id 목록. 온톨로지에 적힌 차례
+    규칙  시작점을 정하는 것은 source 하나임. 타입 노드여도 source 가 있으면
+          시작점이 됨. 장소 이름은 발화에서, 지점 좌표는 화면에서 곧장 옴
+          source 가 없는 타입(행정구역 코드 · 충전소 번호 · 목록)은 앞 단계가
+          내놓을 때만 경로에 들어옴
+    제약  source 없는 형식을 시작점으로 삼지 않는다.
+          "목록으로 …" recipe 가 생기는데 사람이 골라도 어느 목록인지 아무 데도
+          안 적혀 실행하려는 순간 막힘
     """
-    excluded = set(group_ids()) | set(type_ids())
-    return [
-        node_id
-        for node_id in store.nodes()
-        if node_id not in excluded and not is_executable(node_id)
-    ]
+    return [node_id for node_id in _snapshot()[1] if source_of(node_id) is not None]
 
 
 def handed_over(node_id: str) -> list[str]:
@@ -161,8 +201,8 @@ def handed_over(node_id: str) -> list[str]:
     규칙  실행 노드   hasOutput 이 말함
           데이터 노드 자기 자신. 내놓는 게 아니라 그 자체가 건네짐.
                       그래서 불러오기 노드가 따로 없음
-    제약  데이터 노드에 hasOutput video 를 적지 않는다.
-          건네는 것이 "영상" 이 되어 구체 타입을 잃음. is-a 가 그 위를 말함
+    제약  데이터 노드에 hasOutput 을 적지 않는다.
+          데이터 노드가 실행 노드로 읽혀 경로의 시작점에서 빠짐
     """
     return outputs_of(node_id) or [node_id]
 
@@ -172,7 +212,7 @@ def handed_types(node_id: str) -> list[str]:
 
     출력  타입 id 목록. 앞에 오는 것이 먼저 건네는 것
     규칙  차례는 hasOutput 에 적힌 순서 그대로임. 장소 좌표 변환은 지점 좌표를
-          지도 범위보다 먼저 내놓고, wiring_at 이 그 차례로 줄을 고름
+          지도 범위보다 먼저 내놓고, 실행이 그 차례로 받는 타입을 고름
           데이터 노드는 자기 자신을 건네므로 is-a 로 가리키는 상위 타입을 폄
     제약  받는 쪽이 무엇을 받는지 보지 않는다. 고르는 것은 부르는 쪽 일임
     """
@@ -247,7 +287,7 @@ def executable_in(recipe_id: str) -> list[str]:
     """recipe 안에서 실제로 부를 노드.
 
     출력  실행 노드 id 목록. 경로 순서 그대로
-    규칙  데이터 노드(말한 장소)는 값을 준비할 뿐 부를 것이 없어 빠짐
+    규칙  시작 데이터 노드(장소 이름)는 값을 준비할 뿐 부를 것이 없어 빠짐
     """
     return [node_id for node_id in recipe_nodes(recipe_id) if is_executable(node_id)]
 

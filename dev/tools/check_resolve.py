@@ -321,7 +321,7 @@ import endpoints  # noqa: E402
 #
 # **안 고른 것과 그 까닭.** 데이터가 미적재라 반드시 0건인 자리는 뺐다 —
 # 023 · 030 · 053 (election.searchLocalPledgeSummaries ·
-# getLocalPledgeSummary. dataset.available false, STEP_OF 주석의 실측).
+# getLocalPledgeSummary. dataset.available false, 온톨로지의 그 노드 곁 주석의 실측).
 # 020 · 021 로 가는 "여기 선거구 알려줘" · "여기 국회의원 누구야" 도 뺐다.
 # 눌러 보니 셋넷으로 되묻는다(3/3 CLARIFY). 되묻는 자리는 이미 29~31 번이
 # 세 자리 맡고 있어 더 넣을 값이 없었다.
@@ -401,7 +401,7 @@ import endpoints  # noqa: E402
 #   배선도 온톨로지도 멀쩡하며 KRRI_ASAP 화면이 안 받을 뿐이다. 게다가 지우면
 #   dev/tests/execution/test_command_step.py 의 시험 넷이 「도구를 안 부르는
 #   실행 경로」를 아무것도 안 지키게 된다 (그 파일이 사슬
-#   ["spoken_place", "show_facility"] 로 recipe 를 찾는데 004 가 유일하다).
+#   ["place_name", "show_facility"] 로 recipe 를 찾는데 004 가 유일하다).
 #   까닭은 「열린 과제」에 있다.
 #
 # ★ **오늘 이후 숫자는 오늘 이전과 직접 못 견준다.** 발화가 다르고 개수가
@@ -420,8 +420,8 @@ import endpoints  # noqa: E402
 #   election.getAssemblyDistrict 둘 · election.searchDistricts 넷 ·
 #   knowledge.listDocs 둘). 거기 없는 이름은 한 개도 안 썼다.
 #   ★ **딱 하나 예외가 4번의 「오송 테스트트랙 교량」이다.** 확인한 것이 아니라
-#   **확인할 데가 없다** — 004 는 MCP 도구를 안 부르므로(TOOL_OF 에 command 만
-#   있다) 맞대 볼 inputSchema 가 아예 없고, 시설물명을 실제 이름으로 바꾸는
+#   **확인할 데가 없다** — 004 는 MCP 도구를 안 부르므로(tool 이 frontend/ 지도
+#   명령이다) 맞대 볼 inputSchema 가 아예 없고, 시설물명을 실제 이름으로 바꾸는
 #   「Facility Aliases」 표는 KRRI_ASAP 의 skill.md 에 있어 우리가 안 베꼈다
 #   (「마흔아홉째」). 위 표 4번에 있던 줄을 글자 그대로 가져왔다.
 #
@@ -466,7 +466,7 @@ UTTERANCES = [
 
     # ── 말한 것 스물넷 (1~24) ────────────────────────────────────────
     #
-    # 시작 데이터가 spoken_place · spoken_keyword · spoken_identifier 인 것.
+    # 시작 데이터가 place_name · keyword · district_code 인 것.
     # 지도 문맥이 없어도 닿는다 — --context none 으로도 잴 수 있는 유일한 묶음이다.
 
     (1, "익산역 위치 보여줘", {"recipe_001"}, True),  # 말한 장소 → 좌표. 좌표까지만
@@ -561,7 +561,7 @@ UTTERANCES = [
 
     # ── 찍은 지점 열하나 (30~40) ──────────────────────────────────────
     #
-    # 시작 데이터가 picked_point 인 것. **--context both 라야 닿는다** —
+    # 시작 데이터가 point 인 것. **--context both 라야 닿는다** —
     # bbox 뿐이면 값이 안 와서 resolve_service 가 후보에서 뺀다.
     #
     # ★ **일곱이 다 「여기」로 시작한다. 그때는 다른 수가 없었다.**
@@ -580,8 +580,8 @@ UTTERANCES = [
     (34, "여기 의원 공약 보여줘", {"recipe_022"}, True),  # 찍은 지점 → 지점 선거구 공약
     (35, "여기 연령대별 인구 알려줘", {"recipe_054"}, True),  # 사슬 셋 — 찍은 지점에서 출발하는 3단을 이 줄이 지킨다
     (36, "여기 인구 변화 알려줘", {"recipe_055"}, True),  # 사슬 셋 — 마지막이 인구 추세
-    # ★ 이 묶음에서 **유일하게 시작 데이터가 picked_point 가 아니다.** 경로가
-    # 「말한 장소 → 좌표 → 경로 탐색」이라 첫 칸은 spoken_place 이고, 찍은 지점은
+    # ★ 이 묶음에서 **유일하게 시작 데이터가 point 가 아니다.** 경로가
+    # 「장소 이름 → 좌표 → 경로 탐색」이라 첫 칸은 place_name 이고, 찍은 지점은
     # 둘째 단계가 출발지로 읽는다. 그래도 --context both 라야 닿는 것은 위 일곱과
     # 같아서 여기 둔다 — 이 묶음을 가르는 것은 재는 조건이다.
     # 오송역(찍은 지점) → 조치원역을 실제로 눌러 경로 3개를 받았다
@@ -607,7 +607,7 @@ UTTERANCES = [
 
     # ── 보이는 범위 여덟 (41~48) ──────────────────────────────────────
     #
-    # 시작 데이터가 visible_extent 인 것. 지도 문맥이 와야 닿는다.
+    # 시작 데이터가 map_extent 인 것. 지도 문맥이 와야 닿는다.
     #
     # ★ **일곱이 다 「지금 보이는」이나 「현재 화면」으로 시작한다.**
     # 위와 같은 까닭이고 그때는 여기가 더 좁았다 — SCREEN_WORDS 여덟 중 보이는
@@ -768,9 +768,9 @@ def _mark(number: int) -> str:
 # 때문이다 — 뒤의 둘은 지도 문맥이 와야 닿고, 앞의 하나는 --context none
 # 으로도 닿는다. 묶음을 섞으면 「화면 발화가 지금 어떤가」를 물을 자가 없어진다.
 #
-#   말한 것      ~BASELINE_LAST   spoken_place · spoken_keyword · spoken_identifier
-#   찍은 지점    ~EXTENSION_LAST  picked_point
-#   보이는 범위  그 위            visible_extent
+#   말한 것      ~BASELINE_LAST   place_name · keyword · district_code
+#   찍은 지점    ~EXTENSION_LAST  point
+#   보이는 범위  그 위            map_extent
 #
 # ★ **이름만 바꾼 것이 아니라 경계값도 바꿨다.** 변수 이름(BASELINE_LAST ·
 # EXTENSION_LAST)은 그대로 뒀다 — 이 파일 안에서 여섯 곳이 그 이름을 부르고,
@@ -778,7 +778,7 @@ def _mark(number: int) -> str:
 # 이름까지 갈면 「경계가 옮겨졌다」는 것과 「이름이 갈렸다」는 것이 한 diff 에
 # 섞여 무엇이 움직였는지 못 읽는다.
 #
-# ★ EXTENSION_LAST 위쪽(37~45)이 전부 visible_extent 라, 그 시험
+# ★ EXTENSION_LAST 위쪽(37~45)이 전부 map_extent 라, 그 시험
 # (test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_screen)
 # 은 옛 뜻 그대로 지켜진다 — 「화면 발화라고 넣었는데 말한 장소 recipe 를
 # 가리키면 뜻이 없다」. 30~36 도 화면이지만 그 시험이 안 보는 자리다.
@@ -880,7 +880,7 @@ CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = "none", "bbox", "both"
 CONTEXT = CONTEXT_BOTH
 
 # 실행에 쓰는 지도 범위. 오송역(127.3277, 36.6200)에서 반경 15km 이고
-# step_service.RADIUS_METERS 로 만든 상자다. 시연이 오송·청주에서 돈다.
+# 온톨로지의 지점 주변 범위 변환(radiusMeters 15000)으로 만든 상자다. 시연이 오송·청주에서 돈다.
 VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
 
 # --context both 일 때 얹는 찍은 지점. bbox 의 중심과 같은 좌표다.
