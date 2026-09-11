@@ -81,7 +81,7 @@ def restore_tables():
     시험이 얹은 것도 그대로 남음. monkeypatch 가 되돌리는 것은
     paths.WIRING_PATH 뿐임.
     """
-    tables = [step_service.HEADLINE, step_service.PREVIOUS_RESULT_PATHS, step_service.SOURCE_FIELD_BASES]
+    tables = [step_service.HEADLINE]
     saved = [dict(table) for table in tables]
     mtime = step_service._wiring_mtime
     yield
@@ -94,11 +94,6 @@ def restore_tables():
 VALID_WIRING = (
     "headline:\n"
     "  n: 하나\n"
-    "previous_result_paths:\n"
-    "  n:\n"
-    "    point: location\n"
-    "source_field_bases:\n"
-    "  context.view.bbox: context.view\n"
 )
 
 # 믿을 수 없는 배선 파일은 전부 터진다. **빈 표로 도는 길이 없어야 한다.**
@@ -106,12 +101,15 @@ UNTRUSTWORTHY_WIRING = [
     # 오타 난 절은 조용히 빈 표가 된다.
     pytest.param(VALID_WIRING + "headlines: {}\n", ValueError, "headlines", id="unknown_section"),
     # 절이 빠지면 답 첫 줄이 통째로 없다.
-    pytest.param("previous_result_paths: {}\nsource_field_bases: {}\n", ValueError, "headline", id="missing_section"),
-    # 경로가 문자열이 아니면 "$s1.None" 이 도구에 실려 나간다.
+    pytest.param("{}\n", ValueError, "headline", id="missing_section"),
+    # 응답 경로는 온톨로지의 tool.outputs · source.fields 가 갖는다. 표가 여기 되살아나면
+    # 원천이 둘이 된다.
     pytest.param(
-        "headline: {}\nprevious_result_paths:\n  n:\n    point: 3\nsource_field_bases: {}\n",
-        ValueError, "previous_result_paths", id="non_string_path",
+        VALID_WIRING + "previous_result_paths:\n  n:\n    point: location\n",
+        ValueError, "previous_result_paths", id="response_paths_back_in_the_wiring",
     ),
+    # 틀이 문자열이 아니면 답 첫 줄을 만드는 순간 터진다. 읽을 때 터지는 것이 낫다.
+    pytest.param("headline:\n  n: 3\n", ValueError, "headline", id="non_string_headline"),
     pytest.param("headline: {\n  깨진다\n", Exception, None, id="broken_syntax"),
     # 파일이 아예 없는 경우. text 가 None 이면 파일을 안 만든다.
     pytest.param(None, FileNotFoundError, None, id="missing_file"),
@@ -141,7 +139,7 @@ def test_a_broken_file_does_not_empty_the_tables(tmp_path, monkeypatch, restore_
     before = dict(step_service.HEADLINE)
 
     path = tmp_path / "wiring.yaml"
-    path.write_text("headline: {}\nprevious_result_paths: {깨진다\n", encoding="utf-8")
+    path.write_text("headline: {깨진다\n", encoding="utf-8")
     monkeypatch.setattr(paths, "WIRING_PATH", path)
 
     with pytest.raises(Exception):
@@ -234,6 +232,8 @@ UNTRUSTWORTHY_TOOLS = [
         {"id": "s/t", "parameters": {"name": {"value": "place_name", "if_endswith": "선", "unless_endswith": "역"}}},
         "조건", id="two_conditions",
     ),
+    # builtin 은 만드는 칸이 정해져 있다. 읽는 법을 적어도 아무도 안 읽는다.
+    pytest.param({"id": "builtin/geo.pointRadiusToBbox", "outputs": {}}, "outputs", id="outputs_on_builtin"),
 ]
 
 
@@ -252,10 +252,10 @@ def test_a_tool_that_cannot_be_trusted_raises(monkeypatch, tool, fragment):
 
 
 def test_the_ontology_and_the_remaining_wiring_agree():
-    """온톨로지의 tool 과 배선표에 남은 것이 서로를 가리킨다.
+    """온톨로지의 tool · source 와 배선표에 남은 것이 서로를 가리킨다.
 
-    headline 이 없으면 답 첫 줄에서 KeyError 가 나고, 안 쓰이는 raw 경로 줄이
-    남으면 다음 사람이 그것을 원천으로 읽는다.
+    headline 이 없으면 답 첫 줄에서 KeyError 가 나고, 받는 노드가 읽는 칸을 내놓는
+    쪽이 안 적었으면 그 자리가 조용히 unwired 가 된다.
     """
     assert step_service.check_bindings() == []
 
@@ -353,7 +353,7 @@ def test_a_condition_on_a_value_known_only_after_the_call_raises(monkeypatch):
         monkeypatch,
         ["start", "first", "second"],
         tools={
-            "first": {"id": "s/first", "parameters": {"q": "place_name"}},
+            "first": {"id": "s/first", "parameters": {"q": "place_name"}, "outputs": {"place_name": {"value": "name"}}},
             "second": {"id": "s/second", "parameters": {"name": {"value": "place_name", "if_endswith": "선"}}},
         },
         inputs={"first": ["place_name"], "second": ["place_name"]},
@@ -399,20 +399,218 @@ def test_a_non_overlapping_argument_is_still_prefixed():
     assert plan["headline"] == "역 국회의원 지역구를 조회했습니다."
 
 
-# ── 앞 단계 — 도구 응답을 읽는 legacy 경로 ───────────────────────────
+# ── 앞 단계 응답 · 화면 값을 semantic 칸으로 읽는다 ──────────────────
+#
+# **칸이 raw 값의 어디 있는지는 내놓는 쪽이 적는다.** 앞 도구는 tool.outputs, 화면은
+# semantic 노드의 source.fields 다. 계획은 그것을 dict 키 · 목록 번호로만 된 경로
+# 참조로 적는다. 적힌 것이 없는 칸을 이름으로 짐작하지 않는다.
+#
+# 아래 raw 값은 dev/tools/probe_out/ 의 실측 응답에서 필요한 칸만 옮긴 것이다. 그
+# 폴더는 .gitignore 라 시험이 읽지 않는다.
+
+GEOCODE_FOUND = {
+    "location": [127.3276666158151, 36.61995281117007],
+    "bbox": [[127.3227, 36.615], [127.3327, 36.625]],
+    "address": "충청북도 청주시 흥덕구 오송읍 봉산리 369-1",
+}
+SECTION_FOUND = {
+    "sectionId": "e55869e8",
+    "bbox": [[126.868587747, 36.619576682], [127.32811524, 37.554557989]],
+}
+# Gateway 는 못 찾은 것을 200 과 error 로 돌려준다. 읽을 칸이 하나도 없다.
+NOT_FOUND = {"error": {"code": "NOT_FOUND", "message": "찾을 수 없습니다."}}
+BOUNDARY_ONE = {"items": [{"code": "43113", "name": "청주시 흥덕구", "layerId": "sigungu"}], "count": 1}
+BOUNDARY_NONE = {"items": [], "count": 0}
+STATIONS_MANY = {
+    "items": [
+        {"id": "ev_station_MT064039", "stationId": "MT064039", "name": "일출랜드"},
+        {"id": "ev_station_JE040085", "stationId": "JE040085", "name": "제주스누피가든"},
+    ],
+    "count": 2,
+}
+STATIONS_NONE = {"items": [], "count": 0}
+SCREEN = {
+    "view": {"bbox": [[127.20, 36.55], [127.40, 36.70]]},
+    "selectedLocation": {"lon": 127.2974, "lat": 36.6199, "label": "관심 지점", "source": "map-right-click"},
+}
 
 
-def test_a_field_of_the_previous_step_is_read_by_its_own_name_unless_the_wiring_says_otherwise():
-    """point.lon 은 $s1.lon 이다. 충전소 번호는 $s1.items.0.stationId 다.
+def resolve(value, scope):
+    """"$이름.경로" 를 dict 키와 목록 번호만으로 풂. 못 찾으면 None.
 
-    둘째가 legacy 표(previous_result_paths)가 말하는 자리다. 표를 안 거치면
-    statId 에 응답 통째가 실려 나가고 도구는 0건으로 답한다.
+    vendor 의 참조 해석에는 이름으로 좌표를 찾는 특례가 있음. 여기에는 없음. 계획이
+    그 특례 없이도 맞는 값을 가리키는지 보려는 것임.
     """
-    plan = step_service.plan(
-        recipe_of(["keyword", "search_ev_stations", "get_ev_station"]), "탄방동"
+    if isinstance(value, dict):
+        return {key: resolve(item, scope) for key, item in value.items()}
+    if isinstance(value, list):
+        return [resolve(item, scope) for item in value]
+    if not isinstance(value, str) or not value.startswith("$"):
+        return value
+    head, *keys = value[1:].split(".")
+    current = scope.get(head)
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
+        elif isinstance(current, list) and key.isdigit() and int(key) < len(current):
+            current = current[int(key)]
+        else:
+            return None
+    return current
+
+
+def step_input(chain, index, argument="오송역"):
+    """그 사슬의 recipe 계획에서 index 번째 step 의 input."""
+    return step_service.plan(recipe_of(chain), argument)["steps"][index]["input"]
+
+
+GEOCODE_THEN_POINT = ["place_name", "geocode_place", "find_admin_boundary_by_point", "get_age_profile"]
+GEOCODE_THEN_EXTENT = ["place_name", "geocode_place", "search_population_statistics"]
+SECTION_THEN_EXTENT = ["place_name", "get_railway_section", "find_cctv"]
+BOUNDARY_THEN_CODE = ["point", "find_admin_boundary_by_point", "get_age_profile"]
+STATIONS_THEN_ID = ["keyword", "search_ev_stations", "get_ev_station"]
+NO_EXTENT = {"minLon": None, "minLat": None, "maxLon": None, "maxLat": None}
+
+
+@pytest.mark.parametrize(
+    "chain, previous, expected",
+    [
+        # 장소 좌표 변환 -> 지점 좌표. location 이 [경도, 위도] 다.
+        (GEOCODE_THEN_POINT, GEOCODE_FOUND, {"lon": 127.3276666158151, "lat": 36.61995281117007, "layer": "sigungu"}),
+        (GEOCODE_THEN_POINT, NOT_FOUND, {"lon": None, "lat": None, "layer": "sigungu"}),
+        # 장소 좌표 변환 -> 지도 범위. bbox 가 두 겹이다.
+        (GEOCODE_THEN_EXTENT, GEOCODE_FOUND, {"bbox": [127.3227, 36.615, 127.3327, 36.625]}),
+        # 철도 구간 형상 조회 -> 지도 범위.
+        (SECTION_THEN_EXTENT, SECTION_FOUND,
+         {"minLon": 126.868587747, "minLat": 36.619576682, "maxLon": 127.32811524, "maxLat": 37.554557989}),
+        (SECTION_THEN_EXTENT, NOT_FOUND, NO_EXTENT),
+        # 지점 행정구역 판별 -> 행정구역 코드. items 의 첫 칸이다.
+        (BOUNDARY_THEN_CODE, BOUNDARY_ONE, {"level": "sigungu", "code": "43113"}),
+        (BOUNDARY_THEN_CODE, BOUNDARY_NONE, {"level": None, "code": None}),
+        # 전기차 충전소 검색 -> 충전소 번호. 첫 칸의 stationId 다. id 가 아니다.
+        (STATIONS_THEN_ID, STATIONS_MANY, {"statId": "MT064039"}),
+        (STATIONS_THEN_ID, STATIONS_NONE, {"statId": None}),
+    ],
+    ids=[
+        "geocode_point", "geocode_not_found", "geocode_extent", "section_extent", "section_not_found",
+        "boundary_one", "boundary_none", "stations_many", "stations_none",
+    ],
+)
+def test_the_previous_response_is_read_by_the_path_its_producer_declares(chain, previous, expected):
+    """앞 단계 응답에서 semantic 칸을 꺼내는 경로가 내놓는 노드의 tool.outputs 에서 온다.
+
+    못 찾은 응답 · 빈 목록에서는 값이 None 이다. 다른 칸이나 다른 항목으로 채우지
+    않는다. required 가 빈 채로는 vendor 가 부르기 전에 막는다.
+    """
+    sent = step_input(chain, 1)
+
+    assert resolve(sent, {"s1": previous}) == expected
+
+
+def test_a_semantic_field_becomes_an_explicit_path_not_its_own_name():
+    """point.lon 은 $s1.lon 이 아니라 $s1.location.0 이다.
+
+    칸 이름을 raw 경로로 쓰면 vendor 가 이름으로 좌표를 찾아 줄 때만 맞는다. 계획이
+    그 특례에 기대지 않는다. 목록에서 고르는 칸은 고른 번호까지 경로에 적힌다.
+    """
+    assert step_input(GEOCODE_THEN_POINT, 1)["lon"] == "$s1.location.0"
+    assert step_input(GEOCODE_THEN_EXTENT, 1)["bbox"][0] == "$s1.bbox.0.0"
+    assert step_input(SECTION_THEN_EXTENT, 1)["maxLat"] == "$s1.bbox.1.1"
+    assert step_input(BOUNDARY_THEN_CODE, 1) == {"level": "$s1.items.0.layerId", "code": "$s1.items.0.code"}
+    assert step_input(STATIONS_THEN_ID, 1) == {"statId": "$s1.items.0.stationId"}
+
+
+READER_CHAIN = ["place_name", "geo", "judge"]
+
+
+def fake_reader(monkeypatch, outputs):
+    """장소 이름 -> 좌표와 목록을 내놓는 도구(geo) -> 좌표 칸 둘을 읽는 도구(judge).
+
+    outputs 는 geo 의 tool.outputs. None 이면 칸을 안 둔다.
+    """
+    geo = {"id": "s/geo", "parameters": {"query": "place_name"}}
+    if outputs is not None:
+        geo["outputs"] = outputs
+    fake(
+        monkeypatch,
+        READER_CHAIN,
+        tools={"geo": geo, "judge": {"id": "s/judge", "parameters": {"lon": "point.lon", "lat": "point.lat"}}},
+        inputs={"geo": ["place_name"], "judge": ["point"]},
+        outputs={"geo": ["point", "item_list"], "judge": ["item_detail"]},
+        sources={"place_name": SPOKEN},
     )
 
-    assert plan["steps"][1]["input"] == {"statId": "$s1.items.0.stationId"}
+
+# 알아볼 수 없는 읽는 법은 전부 터진다. 각 줄이 막는 고장을 옆에 적었다.
+UNTRUSTWORTHY_OUTPUTS = [
+    # 내놓지 않는 타입의 읽는 법은 누구도 안 읽는다. 거짓 선언이 남는다.
+    pytest.param({"admin_code": {"value": "code"}}, "hasOutput", id="not_a_has_output"),
+    # 값 하나인지 칸이 있는 값인지 안 갈린다.
+    pytest.param({"point": {"value": "location", "fields": {"lon": "location.0"}}}, "value 와 fields", id="value_and_fields"),
+    pytest.param({"point": {"list": "items", "pick": "first"}}, "value 와 fields", id="neither_value_nor_fields"),
+    # 목록에서 무엇을 고를지 안 적으면 어느 항목의 칸인지 모른다.
+    pytest.param({"point": {"list": "items", "fields": {"lon": "lon", "lat": "lat"}}}, "pick", id="list_without_pick"),
+    pytest.param({"point": {"list": "items", "pick": "best", "fields": {"lon": "lon", "lat": "lat"}}}, "pick", id="unknown_pick"),
+    # 따옴표 없이 적은 경로는 수가 된다.
+    pytest.param({"point": {"fields": {"lon": 0.0, "lat": "location.1"}}}, "경로", id="number_as_path"),
+]
+
+
+@pytest.mark.parametrize("outputs, fragment", UNTRUSTWORTHY_OUTPUTS)
+def test_an_output_reading_that_cannot_be_trusted_raises(monkeypatch, outputs, fragment):
+    """믿을 수 없는 tool.outputs 는 조용히 넘기지 않고 터진다."""
+    fake_reader(monkeypatch, outputs)
+
+    with pytest.raises(ValueError, match=fragment):
+        step_service.binding_of("geo")
+
+
+UNTRUSTWORTHY_SOURCES = [
+    # 발화 인자는 칸이 없는 값 하나다.
+    pytest.param({"from": "spoken.argument", "fields": {"lon": "lon"}}, "화면 값에만", id="fields_on_the_utterance"),
+    pytest.param({"from": "context.view.bbox", "fields": {"minLon": 0.0}}, "경로", id="number_as_path"),
+    # 오타 난 fields 는 칸 없는 값으로 읽혀 그 source 의 자리가 소리 없이 unwired 가 된다.
+    pytest.param({"from": "context.selectedLocation", "feilds": {"lon": "lon"}}, "feilds", id="unknown_field"),
+]
+
+
+@pytest.mark.parametrize("source, fragment", UNTRUSTWORTHY_SOURCES)
+def test_a_source_reading_that_cannot_be_trusted_raises(monkeypatch, source, fragment):
+    """믿을 수 없는 source.fields 는 조용히 넘기지 않고 터진다."""
+    fake(monkeypatch, ["start", "n"], tools={}, inputs={}, sources={"start": source})
+
+    with pytest.raises(ValueError, match=fragment):
+        step_service._source_of("start")
+
+
+@pytest.mark.parametrize(
+    "outputs",
+    [{"point": {"fields": {"lon": "location.0"}}}, None],
+    ids=["one_field_missing", "no_reading_at_all"],
+)
+def test_a_field_the_producer_does_not_declare_is_not_guessed_from_its_name(monkeypatch, outputs):
+    """point.lat 의 경로가 안 적혀 있으면 $s1.lat 으로 짐작하지 않는다. 그 자리는 unwired 다.
+
+    칸 이름을 raw 경로로 쓰면 응답에 우연히 같은 이름이 있을 때만 맞고, 없으면 오류가
+    아니라 빈 값이 조용히 실려 나간다. check_bindings 가 어느 짝에서 빠졌는지 적는다.
+    """
+    fake_reader(monkeypatch, outputs)
+
+    assert step_service.unwired_in(READER_CHAIN) == ["judge"]
+    assert step_service.plan("recipe_x", "오송역")["nodes"] == ["geo"]
+    assert any("geo" in problem and "judge" in problem for problem in step_service.check_bindings())
+
+
+def test_a_type_nobody_reads_needs_no_reading(monkeypatch):
+    """geo 는 목록도 내놓지만 아무도 목록을 안 읽는다. 그 읽는 법까지 적으라고 하지 않는다."""
+    fake_reader(monkeypatch, {"point": {"fields": {"lon": "location.0", "lat": "location.1"}}})
+
+    assert step_service.check_bindings() == []
+    assert step_service.unwired_in(READER_CHAIN) == []
+    assert step_service.plan("recipe_x", "오송역")["steps"][1]["input"] == {
+        "lon": "$s1.location.0",
+        "lat": "$s1.location.1",
+    }
 
 
 # ── 화면이 함께 보낸 값 ─────────────────────────────────────────────
@@ -423,18 +621,32 @@ def test_a_field_of_the_previous_step_is_read_by_its_own_name_unless_the_wiring_
 def test_starting_from_the_visible_extent_the_first_step_takes_the_context_bbox():
     """KRRI_ASAP 의 current-view-cctv 가 $context.view.bbox 네 칸을 넣는 자리다.
 
-    칸은 $context.view.minLon 이다. vendor 가 bbox 를 가진 dict 에서 minLon 을
-    꺼내므로 $context.view.bbox.minLon 이면 None 이 된다(legacy source_field_bases).
+    화면의 bbox 는 [[minLon, minLat], [maxLon, maxLat]] 두 겹이다. 칸마다 그 안의 번호를
+    지도 범위의 source.fields 가 적는다. minLon 은 $context.view.bbox.0.0 이다.
     """
     plan = step_service.plan(recipe_of(["map_extent", "find_cctv"]), "")
+    sent = plan["steps"][0]["input"]
 
     assert plan["steps"][0]["tool"] == "road.getCctv"
-    assert plan["steps"][0]["input"] == {
-        "minLon": "$context.view.minLon",
-        "minLat": "$context.view.minLat",
-        "maxLon": "$context.view.maxLon",
-        "maxLat": "$context.view.maxLat",
+    assert sent == {
+        "minLon": "$context.view.bbox.0.0",
+        "minLat": "$context.view.bbox.0.1",
+        "maxLon": "$context.view.bbox.1.0",
+        "maxLat": "$context.view.bbox.1.1",
     }
+    assert resolve(sent, {"context": SCREEN}) == {"minLon": 127.20, "minLat": 36.55, "maxLon": 127.40, "maxLat": 36.70}
+
+
+def test_the_picked_point_is_read_by_the_fields_its_source_declares():
+    """찍은 점은 {lon, lat} 이다. 우클릭 전에는 null 이라 칸이 빈다.
+
+    null 인 요청은 실행이 먼저 막는다(context_starts). 여기서 좌표를 채우지 않는다.
+    """
+    sent = step_input(["point", "find_admin_boundary_by_point"], 0, "")
+
+    assert sent == {"lon": "$context.selectedLocation.lon", "lat": "$context.selectedLocation.lat", "layer": "sigungu"}
+    assert resolve(sent, {"context": SCREEN}) == {"lon": 127.2974, "lat": 36.6199, "layer": "sigungu"}
+    assert resolve(sent, {"context": {**SCREEN, "selectedLocation": None}}) == {"lon": None, "lat": None, "layer": "sigungu"}
 
 
 def test_charging_stations_starting_from_the_visible_extent_also_take_the_flat_four():
@@ -447,10 +659,10 @@ def test_charging_stations_starting_from_the_visible_extent_also_take_the_flat_f
 
     assert plan["steps"][0]["tool"] == "ev.searchStations"
     assert plan["steps"][0]["input"] == {
-        "minLon": "$context.view.minLon",
-        "minLat": "$context.view.minLat",
-        "maxLon": "$context.view.maxLon",
-        "maxLat": "$context.view.maxLat",
+        "minLon": "$context.view.bbox.0.0",
+        "minLat": "$context.view.bbox.0.1",
+        "maxLon": "$context.view.bbox.1.0",
+        "maxLat": "$context.view.bbox.1.1",
     }
 
 
@@ -462,10 +674,10 @@ def test_a_tool_taking_a_bbox_array_takes_one_bbox_field_in_the_first_step_too()
     assert plan["steps"][0]["tool"] == "geo.getRailwayLines"
     assert plan["steps"][0]["input"] == {
         "bbox": [
-            "$context.view.minLon",
-            "$context.view.minLat",
-            "$context.view.maxLon",
-            "$context.view.maxLat",
+            "$context.view.bbox.0.0",
+            "$context.view.bbox.0.1",
+            "$context.view.bbox.1.0",
+            "$context.view.bbox.1.1",
         ]
     }
 
@@ -493,6 +705,9 @@ def test_the_point_is_widened_by_the_next_step_not_called_on_its_own():
     vendor 는 builtin 계산을 따로 부를 수 없고, 반경 계산은 vendor 의
     point_radius_to_bbox 가 갖고 있다. 결과로 Gateway 에 나가는 bbox 넷은 옮기기
     전의 배선과 같다 — KRRI_ASAP 의 cctv-around-point 와 같은 꼴이다.
+
+    중심은 지점 좌표의 lon · lat 두 칸을 목록으로 넘긴다. 통째로 넘기면 어댑터가
+    화면의 {lon, lat} 과 geocode 의 location 배열을 짐작해 가려야 한다.
     """
     picked = step_service.plan(recipe_of(["point", "point_to_map_extent", "find_cctv"]), "")
     spoken = step_service.plan(
@@ -501,13 +716,20 @@ def test_the_point_is_widened_by_the_next_step_not_called_on_its_own():
     )
 
     assert picked["nodes"] == ["find_cctv"]
-    assert picked["steps"][0]["input"] == {"center": "$context.selectedLocation", "radiusMeters": 15000}
+    assert picked["steps"][0]["input"] == {
+        "center": ["$context.selectedLocation.lon", "$context.selectedLocation.lat"],
+        "radiusMeters": 15000,
+    }
     assert picked["steps"][0]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
 
     assert spoken["nodes"] == ["geocode_place", "search_ev_stations", "get_ev_station"]
-    assert spoken["steps"][1]["input"] == {"center": "$s1.location", "radiusMeters": 15000}
+    assert spoken["steps"][1]["input"] == {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 15000}
     assert spoken["steps"][1]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
     assert spoken["steps"][2]["input"] == {"statId": "$s2.items.0.stationId"}
+
+    # 어댑터가 받는 중심은 화면에서 왔든 장소에서 왔든 [경도, 위도] 다.
+    assert resolve(picked["steps"][0]["input"], {"context": SCREEN})["center"] == [127.2974, 36.6199]
+    assert resolve(spoken["steps"][1]["input"], {"s1": GEOCODE_FOUND})["center"] == GEOCODE_FOUND["location"]
 
 
 def test_a_tool_that_takes_the_extent_in_another_shape_is_not_wired_behind_the_builtin():
@@ -534,7 +756,7 @@ def test_with_no_center_left_the_adapter_is_not_carried(monkeypatch):
         monkeypatch,
         ["start", "widen", "lonely"],
         tools={
-            "widen": {"id": "builtin/geo.pointRadiusToBbox", "parameters": {"center": "point", "radiusMeters": 15000}},
+            "widen": {"id": "builtin/geo.pointRadiusToBbox", "parameters": {"center": ["point.lon", "point.lat"], "radiusMeters": 15000}},
             "lonely": {"id": "s/lonely", "parameters": {"minLon": "map_extent.minLon"}},
         },
         inputs={"widen": ["point"], "lonely": ["map_extent"]},
@@ -588,15 +810,20 @@ def test_the_origin_comes_from_the_screen_and_the_destination_from_the_utterance
 
     출발지는 사람이 화면에서 찍은 자리이고 도착지는 말한 장소를 좌표로 바꾼 것이다.
     둘 다 「지점 좌표」라 타입으로는 안 갈리므로 이 시험이 그 자리를 지킴.
+    도착은 앞 단계를 만든 노드(장소 좌표 변환)의 outputs 로 읽고, 출발은 화면 값의 칸을
+    곧장 가리킴. 두 좌표를 서로 다르게 두고 풀어 봐야 섞였는지 보임.
     """
     plan = step_service.plan(recipe_of(ROUTE_CHAIN), "조치원역")
     sent = plan["steps"][-1]["input"]
+    resolved = resolve(sent, {"context": SCREEN, "s1": GEOCODE_FOUND})
 
     assert plan["nodes"][-1] == "plan_trip"
     assert sent["from_lat"] == "$context.selectedLocation.lat"
     assert sent["from_lon"] == "$context.selectedLocation.lon"
-    assert sent["to_lat"] == "$s1.lat"
-    assert sent["to_lon"] == "$s1.lon"
+    assert sent["to_lat"] == "$s1.location.1"
+    assert sent["to_lon"] == "$s1.location.0"
+    assert (resolved["from_lon"], resolved["from_lat"]) == (127.2974, 36.6199)
+    assert (resolved["to_lon"], resolved["to_lat"]) == (127.3276666158151, 36.61995281117007)
 
 
 # ── 발화에서 온 이름 있는 값 ────────────────────────────────────────
@@ -616,8 +843,8 @@ def test_the_previous_coordinates_are_split_into_the_origin_fields():
     계산한 답인지가 온톨로지에 안 남고, 그 값이 바뀌어도 우리 쪽에 신호가 없다.
     """
     assert isochrone_input() == {
-        "origin_lon": "$s1.lon",
-        "origin_lat": "$s1.lat",
+        "origin_lon": "$s1.location.0",
+        "origin_lat": "$s1.location.1",
         "cutoffs_minutes": [30],
         "mode": "TRANSIT",
     }

@@ -121,15 +121,19 @@ Gateway 는 실패를 `200` + `{"error": {...}}` 로도 돌려주고(실물 :
 ## 이 코드가 무엇을 해주는가
 
 ```
-steps 배열                     우리가 만든다 (step_service)
+steps 배열                     우리가 만든다 (step_service). 앞 단계 응답 · 화면
+                               값의 칸은 온톨로지의 tool.outputs · source.fields 가
+                               적은 경로로 적는다 ($s1.location.0 · $s2.items.0.code ·
+                               $context.view.bbox.0.0)
   ↓
-_resolve_reference             $s1.location · $s1.minLon 을 이름으로 찾아냄.
-                               lon/lng/longitude 동의어, bbox 네 귀퉁이,
-                               [lon, lat] 배열 인덱싱까지 도구별이 아니라
-                               필드 이름별이라 도구가 늘어도 그대로다
+_resolve_reference             $s1.location.0 같은 dict 키 · 목록 번호 경로를 푼다.
+                               이름으로 찾는 특례(lon/lng/longitude 를 location 에서,
+                               minLon … 을 bbox 네 귀퉁이에서)도 코드에 남아 있지만
+                               우리 steps 는 그것에 기대지 않는다
 _apply_input_adapter           중심 좌표 + radiusMeters 를 bbox 로. 위도
                                보정(cos)까지 한다. 대상 도구의 required 에
-                               bbox 넷이 있으면 저절로 걸린다
+                               bbox 넷이 있으면 저절로 걸린다. 우리는 중심을
+                               [경도, 위도] 목록으로 넘기고 어댑터를 명시로 건다
 mcp_client.execute_tool        Gateway 호출
 inspect_mcp_trace              결과에서 지도에 그릴 것을 골라냄
 build_commands_from_artifacts  → commands

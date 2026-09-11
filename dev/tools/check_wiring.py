@@ -29,8 +29,8 @@ C 는 recipe 를 안 본다. 온톨로지의 hasInput 선언과 tool.parameters 
 두는 것이 규칙이라(온톨로지의 web_fetch 곁 주석) 비어 있는 이유가 적혀 있으면 그것이
 맞다. A 와 B 는 0 이어야 한다.
 
-tool 과 배선표 잔여분(headline · legacy result 경로)이 서로 맞는지도 맨 위에 찍는다
-(step_service.check_bindings).
+tool · source 와 배선표 잔여분(headline)이 서로 맞는지, 받는 노드가 읽는 칸을 내놓는
+쪽(tool.outputs · source.fields)이 적었는지도 맨 위에 찍는다(step_service.check_bindings).
 
 **테스트를 두지 않는다.** tools/ 는 재는 도구이고 제품 경로가 아니다. 이 파일이
 틀리면 NOTES.md 에 적힌 숫자가 안 나와 바로 드러난다.
@@ -65,7 +65,7 @@ UNDECLARED_WIRING = "C"
 # 계획에 심어 보는 발화 인자. 사람이 말할 수 없는 글자로 짓는다.
 PROBE = "\x00check-wiring\x00"
 
-# vendor 가 앞 단계 결과로 푸는 참조. "$s1.location" 같은 꼴이다.
+# vendor 가 앞 단계 결과로 푸는 참조. "$s1.location.0" 같은 꼴이다.
 PREVIOUS_REFERENCE = re.compile(r"^\$s\d+(\.|$)")
 
 

@@ -90,7 +90,7 @@ def node_ids() -> list[str]:
 def source_of(node_id: str) -> dict | None:
     """그 노드가 밖에서 곧장 들어오는 자리.
 
-    출력  온톨로지에 적힌 source 그대로({from, description}). 없으면 None
+    출력  온톨로지에 적힌 source 그대로({from, description, fields?}). 없으면 None
     규칙  유일한 생성원이 아님. 지점 좌표는 화면에서도 오고 장소 좌표 변환도 내놓음
     """
     node = _snapshot()[1].get(node_id) or {}
@@ -101,9 +101,9 @@ def source_of(node_id: str) -> dict | None:
 def tool_of(node_id: str) -> dict | None:
     """그 노드를 무엇으로 실행하는가.
 
-    출력  온톨로지에 적힌 tool 그대로({id, parameters}). 없으면 None
+    출력  온톨로지에 적힌 tool 그대로({id, parameters, outputs?}). 없으면 None
     제약  여기서 뜻을 풀지 않는다.
-          도구 id 의 namespace · parameters 문법은 실행 계층의 계약이라
+          도구 id 의 namespace · parameters · outputs 문법은 실행 계층의 계약이라
           execution/step_service.py 가 읽음
     """
     node = _snapshot()[1].get(node_id) or {}

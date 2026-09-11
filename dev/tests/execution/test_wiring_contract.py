@@ -19,6 +19,7 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
 import paths
 from execution import execute_service, step_service
@@ -79,12 +80,26 @@ def _rows():
 
 
 def test_the_tools_and_the_remaining_wiring_agree():
-    """tool 이 읽히고, 도구 · 명령 노드마다 답 첫 줄이 있고, legacy 경로가 쓰인다.
+    """tool · source 가 읽히고, 도구 · 명령 노드마다 답 첫 줄이 있고, 읽는 칸이 적혀 있다.
 
     plan 이 답 첫 줄을 HEADLINE[노드] 로 읽으므로 빠지면 그 경로 전체가 KeyError 로
-    멈춘다. 안 쓰이는 legacy 줄은 다음 사람이 원천으로 읽는다.
+    멈춘다. 받는 노드가 읽는 칸을 내놓는 쪽이 안 적었으면 그 자리가 조용히 unwired 가
+    된다.
     """
     assert step_service.check_bindings() == []
+
+
+def test_the_wiring_file_holds_only_the_headline():
+    """응답 · 화면 값을 semantic 칸으로 읽는 경로는 온톨로지에 있다. 배선표에는 답 첫 줄만 남는다.
+
+    옛 두 표가 파일이나 모듈에 되살아나면 같은 경로의 원천이 둘이 되고, 어느 쪽이
+    이기는지 코드를 읽어야 알게 된다. 절의 수가 아니라 절의 이름을 본다.
+    """
+    document = yaml.safe_load(paths.WIRING_PATH.read_text(encoding="utf-8"))
+
+    assert set(document) == {"headline"}
+    for name in ("PREVIOUS_RESULT_PATHS", "SOURCE_FIELD_BASES"):
+        assert not hasattr(step_service, name), name
 
 
 def test_every_tool_names_its_server_and_the_ontology_holds_no_address():
@@ -212,16 +227,16 @@ def test_the_check_actually_has_schemas_to_compare_against():
 
 # 지도 범위를 받는 두 모양. **실행 계획이 원천이고 여기는 기대값이다.**
 BBOX_FROM_PREVIOUS = [
-    "$s1.minLon",
-    "$s1.minLat",
-    "$s1.maxLon",
-    "$s1.maxLat",
+    "$s1.bbox.0.0",
+    "$s1.bbox.0.1",
+    "$s1.bbox.1.0",
+    "$s1.bbox.1.1",
 ]
 BBOX_FROM_CONTEXT = [
-    "$context.view.minLon",
-    "$context.view.minLat",
-    "$context.view.maxLon",
-    "$context.view.maxLat",
+    "$context.view.bbox.0.0",
+    "$context.view.bbox.0.1",
+    "$context.view.bbox.1.0",
+    "$context.view.bbox.1.1",
 ]
 
 

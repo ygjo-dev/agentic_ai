@@ -2,22 +2,17 @@
 #
 # 도구 식별(server_id · tool · command)과 입력 배선(어느 칸에 무엇을 넣나 · 기본값 ·
 # 사람 말 -> 도구 말 · 값으로 칸 고르기 · 반경 어댑터)은 온톨로지 노드의 tool 로
-# 옮겼다. 그것들의 원천은 이제 ontology/ontology.yaml 이다.
+# 옮겼다. 앞 도구의 응답 · 화면 값에서 semantic 칸을 읽는 경로도 온톨로지에 있다 —
+# 내놓는 노드의 tool.outputs 와 semantic 노드의 source.fields 다. 그것들의 원천은
+# 이제 ontology/ontology.yaml 이다.
 #
-# 여기 남은 셋은 전부 **도구가 돌려준 것을 어떻게 읽고 말하는가** 쪽이다.
-# 입력 배선이 아니다.
+# 여기 남은 것은 headline 하나다. 그 노드에서 끝나는 경로의 답 첫 줄이고, 입력
+# 배선이 아니라 답 조합 쪽이다. 어디로 옮길지는 따로 정한다.
 #
-#   headline               그 노드에서 끝나는 경로의 답 첫 줄           답 조합
-#   previous_result_paths  앞 단계 도구 응답 안에서 semantic 값이 있는   legacy result handling
-#                          raw 경로
-#   source_field_bases     화면 문맥 값의 칸을 vendor 가 어느 dict       legacy result handling
-#                          에서 푸는가
+# **새 기능의 원천을 여기 더하지 않는다.** 도구 이름 · 입력 칸 · 기본값 · 응답 경로를
+# 여기 적으면 온톨로지와 원천이 둘이 된다.
 #
-# **새 기능의 원천을 여기 더하지 않는다.** 도구 이름 · 입력 칸 · 기본값을 여기 적으면
-# 온톨로지와 원천이 둘이 된다. 아래 두 legacy 표는 「raw 도구 응답 -> semantic 값」을
-# 정하는 다음 판에서 걷힐 자리다. 그 판이 오기 전까지 이 표의 동작은 옮기기 전과 같다.
-#
-# 줄마다의 실측 근거(응답 전문 · 몇 건이 나왔나 · 왜 이 칸인가)는 그 줄 곁에 있다.
+# 줄마다의 실측 근거(응답 전문 · 몇 건이 나왔나 · 왜 이 문장인가)는 그 줄 곁에 있다.
 # **다듬지 않는다** — 문장을 고치다 실측 값이 바뀌면 되찾을 데가 없다.
 
 
@@ -120,70 +115,3 @@ headline:
 
   # 도구가 아니라 지도 명령을 내는 노드다(frontend/). 명령만 나가도 답은 한 줄 있다.
   show_facility: "{arg} 시설물을 화면에 띄웠습니다."
-
-
-# (받는 노드 -> semantic 참조 -> 앞 단계 도구 응답 안의 경로). **legacy result handling.**
-#
-# 온톨로지의 tool.parameters 가 「statId 칸에 충전소 번호를 넣는다」까지 말한다.
-# 그 충전소 번호가 앞 단계(ev.searchStations) 응답의 **어느 칸**에 있는지는 도구의
-# raw 응답 모양이라 온톨로지가 모른다. 그것을 여기 적는다.
-#
-# **표에 없는 참조는 이름 그대로 읽는다.** point.lon 은 $s1.lon 이고
-# map_extent.minLon 은 $s1.minLon 이다. 그 이름이 풀리는 것도 legacy 다 — vendor 의
-# _resolve_reference 가 lon · lat 을 location 에서, minLon … 을 bbox 에서 꺼내 준다
-# (geo.geocode 의 {location, bbox} · rail.getSectionGeometry 의 bbox 두 겹).
-#
-# **받는 노드로 키를 잡는다.** 응답 모양은 원래 내놓는 도구의 것이지만, 옮기기 전의
-# 배선표가 (받는 노드 × 받는 타입) 줄에 이 경로를 적었고 그 동작을 그대로 둔다.
-# 내놓는 도구로 키를 옮기는 것은 raw 응답을 semantic 값으로 읽는 법을 정하는 다음
-# 판의 일이다.
-previous_result_paths:
-
-  # 지점 좌표 통째. 어댑터가 중심 좌표를 location 에서 찾는다
-  # (vendor 의 _extract_center_point). geocode 뒤에서만 쓰인다.
-  point_to_map_extent:
-    point: location
-
-  # 지점 행정구역 판별이 layer 로 한 층위만 돌려주므로 items 는 늘 한 칸이다.
-  # 층위를 뽑는 까닭은 온톨로지의 find_admin_boundary_by_point 곁에 있다.
-  get_age_profile:
-    admin_code.level: items.0.layerId
-    admin_code.code: items.0.code
-
-  get_population_trend:
-    admin_code.level: items.0.layerId
-    admin_code.code: items.0.code
-
-  # 앞 단계는 adminBoundary.findBoundaryByPoint 의 items.0 이다.
-  # 여섯 지점(오송·강남·부산·제주·금산·세종)에서 items 가 늘 3건이고
-  # 순서가 sido -> sigungu -> emd 로 고정이었다. items.0 이 시도이고
-  # 그 code 가 두 자리 시도 코드라 sidoCode 와 맞는다. 세종처럼 시군구가
-  # 없는 곳도 sigungu 자리를 같은 이름으로 채워 순서가 안 밀린다.
-  # 응답 전문은 dev/tools/probe_out/ 에 있다.
-  get_local_pledge_summary:
-    admin_code.code: items.0.code
-
-  # ev.getStation 의 statId 는 **stationId 이지 id 가 아니다**(2026-08-23 실측).
-  #
-  #   statId="PL033780"            item 이 온다
-  #   statId="ev_station_PL033780" item null · 0건 ·
-  #                                "충전소 ev_station_PL033780를 찾지 못했거나…"
-  #
-  # dev/tools/probe_out/ev.getStation.statId-stationId.json 과
-  # dev/tools/probe_out/ev.getStation.statId-id.json 이 그 둘이다.
-  get_ev_station:
-    station_id: items.0.stationId
-
-
-# (온톨로지 source.from -> vendor 가 칸을 푸는 dict). **legacy result handling.**
-#
-# KRRI_ASAP 화면의 context.view 는 {bbox: [[minLon, minLat], [maxLon, maxLat]]} 이다.
-# vendor 의 _resolve_reference 는 **bbox 를 가진 dict** 에서 minLon … 을 꺼낸다 —
-# $context.view.minLon 은 풀리고 $context.view.bbox.minLon 은 목록에서 이름을 찾다가
-# None 이 된다. 그래서 지도 범위의 칸은 source.from 이 아니라 그 한 칸 위에서 읽는다.
-#
-# 표에 없는 source 는 from 그대로다 — context.selectedLocation 의 lon 은
-# $context.selectedLocation.lon 이다.
-source_field_bases:
-
-  context.view.bbox: context.view

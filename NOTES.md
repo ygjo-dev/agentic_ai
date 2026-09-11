@@ -38,6 +38,7 @@
 | `app/ui/graph_svg/layout_store.py` `DRAW_SCALE` | `1.0` | 그릴 때만 곱하는 배율이다. 지금은 1.0 이라 아무 일도 안 한다 — 배치가 처음부터 촘촘하게 놓이기 때문이다. **좌표를 다시 만들 수 없는 급한 자리에서만 임시로 쓴다.** 줄이면 간격만 줄고 노드 크기는 그대로라 원래 촘촘하던 곳이 먼저 붙는다 (0.64 에서 39쌍 · 0.4 에서 129쌍, 「쉰셋째」) |
 | `app/ui/graph_svg/_init/layout.json` | 추적한다 | 사람이 눈으로 골라 확정한 배치다. `layout.json`(작업본)은 `.gitignore` 다. `.gitignore` 패턴에서 앞의 `/app/ui/graph_svg/` 를 빼면 **_init 사본까지 함께 무시된다.** `reset_to_init()` 이 이 사본으로 좌표를 되돌린다 |
 | `ontology/shortlist.py` `candidates()` about | 두 단 (걸린 것 우선, 없으면 범용) | 범용 recipe 를 늘 통과시키면 "국회의원 선거구" 에 웹 검색과 VWorld 경계가 따라오고, 늘 빼면 대상 없는 발화에서 후보가 0개가 된다 |
+| `ontology/ontology.yaml` `tool.outputs` 의 `pick` | `first` (지점 행정구역 판별 · 전기차 충전소 검색) | 옮기기 전 배선표의 `items.0` 을 그대로 옮긴 것이다. 바꾸면 recipe 052 · 054 · 055 · 056 · 058 · 059 · 060 의 Gateway 입력이 바뀐다. 구조 이전(「리뷰 2 · 2차」)은 동작 보존이 조건이라 안 바꿨다. **검색 결과의 첫 충전소가 사람이 원하는 곳인지는 아직 안 정했다** |
 
 모델마다 다른 값(`num_ctx` · `timeout` · `reason_max_length`)은 `models.yaml` 에 있다.
 목록에 없는 모델은 `defaults` 로 돈다. 어디에 붙는가(`OLLAMA_URL` · `AGENTIC_API_URL`)는
@@ -83,25 +84,27 @@ app/ui/graph_svg                         배치 불변식. 눈이 못 보는 것
 
 ## 열린 과제
 
-### ★ 리뷰 2 후속 셋 — 서로 섞지 않는다 (2026-09-11 「리뷰 2 · 1차」)
+### ★ 리뷰 2 후속 셋 — 서로 섞지 않는다 (2026-09-11 「리뷰 2 · 1차」 · 「리뷰 2 · 2차」)
 
-1차에서 도구 식별 · 입력 배선을 온톨로지 tool 로 옮겼다. 아래 셋은 **일부러 안 했다.**
-한 판에서 구조 이전과 동작 개선을 함께 하면 무엇 때문에 달라졌는지 못 가른다.
+1차에서 도구 식별 · 입력 배선을 온톨로지 tool 로, 2차에서 raw 응답 · 화면 값을 semantic
+칸으로 읽는 경로를 내놓는 쪽(tool.outputs · source.fields)으로 옮겼다. 아래는 **일부러 안
+했다.** 한 판에서 구조 이전과 동작 개선을 함께 하면 무엇 때문에 달라졌는지 못 가른다.
 
 ```
-1 raw 도구 응답 -> semantic 값
-  지금       previous_result_paths(받는 노드 키 · items.0.code 같은 raw 경로)
-             + vendor _resolve_reference(lon · lat 을 location 에서, minLon … 을 bbox 에서)
-             + step_service.BUILTIN_ADAPTERS(어댑터가 만드는 평평한 네 칸)
-  정할 것    지점 좌표 · 지도 범위를 어떤 모양으로 건넬지(평평한 넷 / bbox 배열 한 칸),
-             그 읽는 법을 내놓는 노드 쪽에 둘지
+1 raw 도구 응답 -> semantic 값      ★ 2차에서 읽는 경로의 원천을 옮겼다
+  남은 것    step_service.BUILTIN_ADAPTERS(어댑터가 만드는 평평한 네 칸)와 vendor 어댑터 실행
+             vendor _resolve_reference 의 이름 특례 코드. 우리 steps 는 안 기댄다(2차 측정).
+             vendor 를 걷을 때 지운다
+  정할 것    지도 범위를 builtin 뒤에서 어떤 모양으로 건넬지(평평한 넷 / bbox 배열 한 칸)
   풀리면     bbox 배열을 받는 도구 7 이 지점 주변 범위 변환 뒤에 이어진다
              (지금은 unwired 로 셈 · 후보 85 중 실행 수단이 다 붙는 것 70)
+  안 한 것   pick: first 정책(전기차 검색의 첫 충전소) ·
+             get_local_pledge_summary 가 받는 코드의 층위(layer 기본이 시군구라 시도 코드가 아니다)
 
 2 wiring.yaml 완전 제거
-  남은 것    headline(답 조합) · previous_result_paths · source_field_bases
-  순서       뒤 둘은 1 이 풀려야 걷힌다. runtime 이 온톨로지를 안 읽게(받아들인 recipe 를
-             실행형으로 굳히기) 하는 것도 1 다음이다
+  남은 것    headline(답 조합) 하나
+  순서       headline 을 옮길 자리를 정한다. runtime 이 온톨로지를 안 읽게(받아들인 recipe 를
+             실행형으로 굳히기) 하는 것은 그 다음이다
 
 3 default 단계적 제거
   지금       tool.parameters 의 default — admin_level 시군구 · travel_mode 대중교통 · minutes [30]
@@ -3225,6 +3228,113 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-11 (리뷰 2 · 2차) · 응답 · 화면 값을 읽는 경로를 내놓는 쪽이 적는다 — ★ 39 recipe 의 최종 Gateway 입력 차이 0
+
+환경 오프라인(Gateway · LLM 안 부름) · recipe 39 · 후보 85 · 시작 HEAD bc0ffd0.
+**menu · prompt · 응답 schema · recipe 파일 · default 를 한 글자도 안 바꿨다.** vendor 원본 다섯도
+안 고쳤다.
+
+무엇을 옮겼나.
+
+```
+previous_result_paths (받는 노드로 키를 잡았다)   -> 내놓는 노드의 tool.outputs
+  point_to_map_extent       point: location          -> geocode_place outputs.point
+                                                        {fields: {lon: location.0, lat: location.1}}
+                                                        + point_to_map_extent center: [point.lon, point.lat]
+  get_age_profile           admin_code.level · code  -> find_admin_boundary_by_point outputs.admin_code
+  get_population_trend      (같은 두 줄)                 {list: items, pick: first,
+  get_local_pledge_summary  admin_code.code             fields: {code: code, level: layerId}}
+                                                        선언 하나를 받는 노드 셋이 읽는다
+  get_ev_station            station_id: items.0.stationId -> search_ev_stations outputs.station_id
+                                                        {list: items, pick: first, value: stationId}
+표에 없어 칸 이름 그대로 읽던 것 (vendor 의 이름 특례가 풀던 자리)
+  point.lon · point.lat     $s1.lon                  -> geocode_place outputs.point
+  map_extent.minLon …       $s1.minLon               -> geocode_place · get_railway_section outputs.map_extent
+                                                        {fields: {minLon: bbox.0.0 … maxLat: bbox.1.1}}
+source_field_bases          context.view.bbox: context.view -> map_extent source.fields
+                                                        {minLon: "0.0" … maxLat: "1.1"}
+(표에 없던 화면 값)          context.selectedLocation  -> point source.fields {lon: lon, lat: lat}
+wiring.yaml 에 남은 것      headline 하나
+옮긴 실측 근거              wiring.yaml 줄 곁의 근거(stationId 대 id · 여섯 지점 items 차례)를
+                            ontology.yaml 의 그 도구 곁으로
+```
+
+계획 문자열은 이렇게 바뀌었다.
+
+```
+                        옮기기 전                     옮긴 뒤
+point.lon (geocode)     $s1.lon                       $s1.location.0
+map_extent.minLon       $s1.minLon                    $s1.bbox.0.0
+  (화면)                $context.view.minLon          $context.view.bbox.0.0
+admin_code.code         $s1.items.0.code              같다
+station_id              $s1.items.0.stationId         같다
+center (화면)           $context.selectedLocation     [$context.selectedLocation.lon, …lat]
+center (geocode)        $s1.location                  [$s1.location.0, $s1.location.1]
+경로 탐색 from_*        $context.selectedLocation.*   같다 (parameters 의 from: context.… 그대로)
+경로 탐색 to_*          $s1.lat · $s1.lon             $s1.location.1 · $s1.location.0
+```
+
+왜 내놓는 쪽에 두었나. 옛 표는 받는 노드로 키를 잡아, 같은 응답(행정구역 판별의 items)의
+같은 경로를 받는 노드 셋이 따로 적었다. 응답 모양은 내놓는 도구의 사실이라 그 도구 곁에
+한 번 적으면 받는 노드가 늘어도 안 는다. 받는 노드는 semantic 칸(point.lon)만 안다.
+
+왜 가운데 공통 모양의 값을 안 만들었나. 지점 좌표를 늘 {lon, lat} 으로 바꿔 건네려면
+실행 중에 값을 만드는 단계가 새로 생기는데, vendor 는 steps 배열 안의 참조만 풀어 그 단계가
+들어갈 자리가 없다. 칸 하나씩 경로 참조로 적으면 vendor 가 지금 푸는 방식 그대로 돈다.
+지도 범위도 받는 도구마다 평평한 넷 · bbox 배열로 모양이 달라 가운데 한 모양이 오히려 짐이다.
+
+첫 칸 고르기(pick: first)는 옛 items.0 을 그대로 옮긴 것이다. 전기차 검색의 첫 충전소가
+사람이 원하는 곳인지는 이 판에서 안 봤다.
+
+동등성.
+
+```
+정적      받아들인 39 × 인자 5 × 이름 있는 값 4 = 780 계획 (시각 고정)
+          -> 서로 다른 (옮기기 전, 옮긴 뒤) 짝 281 · 그중 문자열이 바뀐 것 160
+          짝마다 화면 문맥 3 (찍은 점 있음 · null · 빈 문맥)
+                × 응답 4 (찾음 · 못 찾음/0건 · 첫 도구만 찾고 뒤는 0건 · 행정구역 세 칸) = 3372 장면
+          vendor _execute_generic_mcp_workflow 를 mcp_client 만 바꿔 끼워 돌렸다
+          (Gateway 입력 · errors · answer_draft · 실패 답 · 지도 commands · trace 를 통째로 비교)
+          옮기기 전 계획 대 옮긴 뒤 계획                             차이 0
+          옮긴 뒤 계획을 이름 특례 없는 해석기(dict 키 · 목록 번호만)로   차이 0
+          옮기기 전 계획을 그 해석기로                               1076 장면이 다르다
+          (마지막 줄이 이 검사의 음성 대조군이다)
+후보      85 × 같은 조합 -> 짝 509 · 6108 장면 · 차이 0
+          unwired · spoken_needed · context_needs 차이 0 · 실행 수단이 다 붙는 것 70 그대로
+          variants 의 (타입 · 출처 · 칸 이름 · 어댑터) 차이 0 · check_bindings 0 -> 0
+계기판    check_wiring 합계 같다 (A 0 · B 0 · C 1 web_fetch) · rebuild_init 요약 같다
+          check_inputs 출력이 스키마 경로 줄 빼고 같다 (판정한 행 55 · 없는 칸 0 · 안 보낸 required 0)
+```
+
+응답은 dev/tools/probe_out/ 의 실측 전문이다 — geo.geocode.query-오송역-2026-08-26 ·
+rail.getSectionGeometry.sectionName-오송역-2026-08-26 · rail.getSectionGeometry.서울역(NOT_FOUND) ·
+adminBoundary.findBoundaryByPoint.오송역-2026-08-26 (세 칸 그대로와 시군구 한 칸으로 줄인 것) ·
+adminBoundary.findBoundaryByPoint.동해바다0건-2026-08-24 · ev.searchStations.query-전기차충전소-2026-08-26
+(120건) · ev.searchStations.query-PL033780-2026-08-25 (0건). 지오코딩 못 찾음은
+{error: {code: NOT_FOUND}} 로 지었다. 화면 문맥은 KRRI_ASAP ChatRequest.context 모양 그대로다.
+
+실패하던 자리는 같은 문구로 실패한다 (옮긴 뒤 · 받아들인 recipe 장면 기준).
+
+```
+required 가 빈다             1124 장면  lon·lat 432 · query 288 · origin_lon·lat 156 · level·code 84 ·
+                                        statId 72 · minLon… 32 · from_* 24 · from_*·to_* 8 ·
+                                        sectionName 24 · to_* 4
+중심 좌표가 없다 (019 · 036)   52 장면  "CCTV를 조회할 기준 중심 좌표를 찾지 못했습니다."
+어댑터 입력 변환 실패 (060)    12 장면  "point_radius_to_bbox에는 center/location 좌표가 필요합니다."
+```
+
+★ **계획이 한 자리 더 달라졌다. 받아들인 recipe 와 후보에서는 한 번도 안 드러난다.** 건너뛴
+노드(tool 없음 · 받는 칸이 안 맞음)나 지도 명령 노드 뒤에서 옛 계획은 그보다 앞 도구 단계를
+가리켰고, 옮긴 뒤는 가리킬 step 이 없어 칸을 뺀다. 그 앞 단계는 뒤 노드가 받는 타입을 낸
+노드가 아니다. 그런 사슬은 unwired 라 실행이 먼저 막는다.
+
+★ **선언이 없는 칸은 이제 unwired 다.** 옛 코드는 표에 없는 칸을 이름 그대로 raw 경로로 썼다
+(point.lon -> $s1.lon). 지금 온톨로지에서 받는 노드가 읽는 칸은 전부 선언돼 있어
+(check_bindings 0) 판정이 바뀐 자리는 없다.
+
+pytest  HEAD 398 passed · 1 failed -> 423 passed · 1 failed
+        (둘 다 test_dense_graph_would_move_if_overlap_removal_were_used · Graphviz 음성 대조군)
 
 ### 2026-09-11 (리뷰 2 · 1차) · 온톨로지 노드가 도구 id 와 입력 배선을 갖는다 — ★ 39 recipe 의 Gateway 입력이 한 칸도 안 달라졌다
 

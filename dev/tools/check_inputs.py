@@ -415,7 +415,7 @@ def _selfcheck() -> None:
     unused = {u["name"]: u["why"] for u in judge({"query"}, spoken_schema, set(), spoken=False)["unused"]}
     assert unused == {"all": "", "limit": ""}, unused
     # 어댑터: 실린 것 · 자동 · 안 걸림
-    carried = {"input": {"center": "$s1.location", "radiusMeters": 1}, "adapter": POINT_RADIUS_TO_BBOX}
+    carried = {"input": {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 1}, "adapter": POINT_RADIUS_TO_BBOX}
     assert sent_fields(carried, None) == (set(BBOX_FIELDS), POINT_RADIUS_TO_BBOX)
     bbox_schema = {"properties": {}, "required": list(BBOX_FIELDS)}
     auto = {"input": {"location": "$s1.location", "radiusMeters": 1}, "adapter": None}

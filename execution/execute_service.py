@@ -13,7 +13,7 @@ recipe 로 갈아타지 않고 실행을 시작하지 않는다.
 
 **실행 · 배선 해석 · 답 조합은 vendor 것이다.**
 vendor_to_be_deleted/asap/generic_mcp_executor 의 _execute_generic_mcp_workflow 가
-steps 배열 하나를 받아 참조 해석($s1.location) · 입력 어댑터 · 도구 호출 ·
+steps 배열 하나를 받아 참조 해석($s1.location.0) · 입력 어댑터 · 도구 호출 ·
 지도 commands 까지 한다. 도구가 늘어도 그쪽은 그대로고, 우리가 늘리는 것은
 온톨로지 노드의 tool 한 벌이다.
 

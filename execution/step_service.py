@@ -7,11 +7,12 @@
                      "builtin/<이름>"       우리 쪽 계산. vendor 어댑터로 뒤 단계에 얹는다
                      "frontend/<명령>"      도구를 안 부르고 내는 지도 명령
     tool.parameters  도구 칸 -> 값
+    tool.outputs     semantic 타입 -> 그 도구의 raw 응답 안에서 그 값을 읽는 경로
 
 **값이 어디서 오는가는 경로가 정한다.** 한 노드가 이 자리에서 받는 semantic 타입은
 앞 노드가 건네는 것이고(graph.handed_types), 그 값의 출처는 셋 중 하나다.
 
-    source    앞 노드가 경로의 시작 노드다. 그 노드의 source.from 이 말한다
+    source    앞 노드가 경로의 시작 노드다. 그 노드의 source 가 말한다
                 spoken.argument   발화 해석 LLM 이 argument 로 내놓은 값
                 context.<경로>    화면이 보낸 값. $context.… 로 적어 vendor 가 푼다
     step      앞 노드가 도구 단계다. $s1 · $s2 … 로 적어 vendor 가 푼다
@@ -20,16 +21,27 @@
 그 자리에서 건네받지 않은 타입을 가리키는 칸은 안 보낸다. 전기차 충전소 검색은
 키워드 뒤에서는 query 만, 지도 범위 뒤에서는 범위 네 칸만 나간다.
 
-**도구 응답을 읽는 법은 아직 여기 없다. legacy 다.** $s1.lon 이 geo.geocode 의
-location 에서 풀리는 것은 vendor 의 _resolve_reference 이고, items.0.code 같은 raw
-경로는 execution/wiring.yaml 의 previous_result_paths 가 갖는다. 새 도구가 늘 때
-여기에 도구별 분기를 더하지 않는다.
+**semantic 칸이 raw 값의 어디 있는지는 값을 내놓는 쪽이 적는다.**
+
+    step      내놓는 노드의 tool.outputs      point.lon         -> $s1.location.0
+                                               admin_code.code   -> $s2.items.0.code
+    source    semantic 노드의 source.fields   map_extent.minLon -> $context.view.bbox.0.0
+
+받는 노드의 parameters 는 semantic 칸(point.lon)만 알고, 그 칸이 앞 도구 응답이나
+화면 값의 어디 있는지는 내놓는 쪽의 선언이 안다. 둘 사이에 공통 모양의 값을 만들지
+않는다 — 칸 하나씩 경로 참조로 적을 뿐이다. **선언이 없는 칸을 이름으로 짐작하지
+않는다.** 그 자리는 실행 수단이 없는 것으로 센다(binding_at).
+
+vendor 의 _resolve_reference 에는 이름으로 좌표를 찾는 특례(lon 을 location 에서 ·
+minLon 을 bbox 에서)가 남아 있다. 여기서 만드는 참조는 dict 키와 목록 번호로만 된
+경로라 그 특례를 안 지난다.
 
 **실행은 여기서 끝난다.** 참조 해석 · 입력 어댑터 · 도구 호출은 vendor 의
 _execute_generic_mcp_workflow 가 steps 배열 하나를 받아 한다.
 """
 
 import datetime
+import re
 import zoneinfo
 
 import yaml
@@ -108,11 +120,23 @@ RUNTIME_FIELDS = {
     "time": "%H:%M",
 }
 
-# parameters 의 dict 꼴 둘이 가질 수 있는 칸. 오타가 조용히 넘어가면 기본값이나
-# 조건이 소리 없이 사라진다.
+# parameters 의 dict 꼴 둘 · tool · outputs 한 줄 · source 가 가질 수 있는 칸. 오타가
+# 조용히 넘어가면 기본값 · 조건 · 읽는 법이 소리 없이 사라진다.
 _EXTERNAL_FIELDS = ("from", "default", "map")
 _CONDITIONAL_FIELDS = ("value", "if_endswith", "unless_endswith")
-_TOOL_FIELDS = ("id", "parameters")
+_TOOL_FIELDS = ("id", "parameters", "outputs")
+_OUTPUT_FIELDS = ("list", "pick", "value", "fields")
+_SOURCE_FIELDS = ("from", "description", "fields")
+
+# outputs 의 pick -> 목록에서 고르는 칸 번호. 여기 없는 pick 은 터진다.
+PICKS = {"first": "0"}
+
+# outputs · source.fields 의 경로를 이루는 마디. vendor 의 참조 패턴이 한 마디로 받는
+# 글자와 같다 — 이 밖의 글자가 섞이면 vendor 가 참조가 아니라 글 틀로 읽어 값이
+# 문자열로 바뀐다.
+_SEGMENT = r"[0-9A-Za-z_-]+"
+_RAW_PATH = re.compile(rf"{_SEGMENT}(?:\.{_SEGMENT})*")
+_FIELD_NAME = re.compile(_SEGMENT)
 
 # _resolved 가 "이 칸은 이 자리에서 안 보낸다" 를 알리는 표시.
 #
@@ -125,24 +149,21 @@ _OMIT = object()
 
 # YAML 의 절 이름. 여기 없는 절이 오면 터진다 — 오타 난 절은 조용히 빈 표가 되고,
 # 그것이 「계기판이 조용히 죽는다」의 모양이다.
-_SECTIONS = ("headline", "previous_result_paths", "source_field_bases")
+_SECTIONS = ("headline",)
 
-# **밖에서 이 이름들을 import 한다** — 계기판과 시험. 그래서 다시 읽을 때 객체를
+# **밖에서 이 이름을 import 한다** — 계기판과 시험. 그래서 다시 읽을 때 객체를
 # 갈아 끼우지 않고 **같은 dict 를 비우고 다시 채운다.** 먼저 import 해 간 쪽이 옛
 # 객체를 쥐면 조용히 어긋난다.
 HEADLINE: dict = {}
-PREVIOUS_RESULT_PATHS: dict = {}
-SOURCE_FIELD_BASES: dict = {}
 
 _wiring_mtime = None
 
 
 def _load_wiring() -> None:
-    """wiring.yaml 을 파서 HEADLINE · PREVIOUS_RESULT_PATHS · SOURCE_FIELD_BASES 를 채움.
+    """wiring.yaml 을 파서 HEADLINE 을 채움.
 
-    규칙  세 절이 다 있어야 함. 값은 전부 문자열임
-          previous_result_paths 는 두 겹임(받는 노드 -> semantic 참조 -> raw 경로)
-    제약  세 표를 다 만든 뒤에 갈아 넣는다.
+    규칙  _SECTIONS 의 절이 다 있어야 하고 그 밖의 절은 없어야 함. 값은 전부 문자열임
+    제약  표를 다 검사한 뒤에 갈아 넣는다.
           중간에 터지면 반만 바뀐 표가 남고, 그것은 빈 표보다 나쁘다
           객체를 새로 만들지 않는다. 먼저 import 해 간 쪽이 옛 dict 를 쥔다
           온톨로지와 맞는지는 여기서 안 본다. 등록으로 온톨로지가 바뀌는 사이에
@@ -165,24 +186,8 @@ def _load_wiring() -> None:
         if not isinstance(text, str):
             raise ValueError(f"{name}: headline {node_id} 이 문자열이 아니다")
 
-    previous = document["previous_result_paths"]
-    for node_id, rows in previous.items():
-        if not isinstance(rows, dict) or not all(
-            isinstance(ref, str) and isinstance(path, str) for ref, path in rows.items()
-        ):
-            raise ValueError(f"{name}: previous_result_paths {node_id} 아래가 문자열 짝이 아니다")
-
-    bases = document["source_field_bases"]
-    for source, base in bases.items():
-        if not isinstance(base, str) or not str(source).startswith(CONTEXT_SOURCE):
-            raise ValueError(f"{name}: source_field_bases {source} 가 context 문자열 짝이 아니다")
-
     HEADLINE.clear()
     HEADLINE.update(headline)
-    PREVIOUS_RESULT_PATHS.clear()
-    PREVIOUS_RESULT_PATHS.update({node_id: dict(rows) for node_id, rows in previous.items()})
-    SOURCE_FIELD_BASES.clear()
-    SOURCE_FIELD_BASES.update(bases)
 
 
 def reload_wiring() -> None:
@@ -211,14 +216,14 @@ def reload_wiring() -> None:
 reload_wiring()
 
 
-# ── 온톨로지의 tool 을 읽는다 ──────────────────────────────────────
+# ── 온톨로지의 tool 과 source 를 읽는다 ──────────────────────────────
 
 
 def binding_of(node_id: str) -> dict | None:
     """온톨로지 노드의 tool 을 실행에 쓸 모양으로.
 
     출력  {kind, id, parameters} 에 kind 마다 칸이 더 붙음
-            mcp      server_id · tool
+            mcp      server_id · tool · outputs (안 적었으면 빈 dict)
             builtin  adapter · produces (그 어댑터가 만드는 칸)
             command  command
           tool 이 없는 노드는 None
@@ -226,6 +231,9 @@ def binding_of(node_id: str) -> dict | None:
           Gateway 서버 id 임. 뒤는 도구 이름이라 점이 들어 있어도 됨
           builtin 은 BUILTIN_ADAPTERS 에 있는 것만 받음
           parameters 는 읽을 때 한 번 다 봄(_check_expression)
+          outputs 도 읽을 때 한 번 다 봄(_check_output). raw 응답을 읽는 법이라
+          mcp 도구에만 둠. builtin 은 만드는 칸이 BUILTIN_ADAPTERS 에 있고 명령은
+          읽을 응답이 없음
     제약  모르는 꼴을 조용히 넘기지 않는다.
           오타 난 칸 · 없는 타입 참조가 문자열 그대로 도구에 실려 나가고, 0건이
           오지 오류가 오지 않는다
@@ -252,6 +260,16 @@ def binding_of(node_id: str) -> dict | None:
     for field, expression in parameters.items():
         _check_expression(f"{where}.parameters.{field}", expression, inputs, known)
 
+    outputs = tool.get("outputs")
+    if outputs is not None:
+        if namespace in (BUILTIN_NAMESPACE, FRONTEND_NAMESPACE):
+            raise ValueError(f"{where}.outputs 는 MCP 도구에만 둔다. {namespace} 는 읽을 응답이 없다")
+        if not isinstance(outputs, dict):
+            raise ValueError(f"{where}.outputs 가 dict 가 아니다")
+        produced = graph.outputs_of(node_id)
+        for type_id, reading in outputs.items():
+            _check_output(f"{where}.outputs.{type_id}", type_id, reading, produced)
+
     if namespace == BUILTIN_NAMESPACE:
         if tool_id not in BUILTIN_ADAPTERS:
             raise ValueError(f"{where}.id 는 모르는 builtin 이다: {tool_id}")
@@ -259,7 +277,14 @@ def binding_of(node_id: str) -> dict | None:
         return {"kind": BUILTIN, "id": tool_id, "adapter": adapter, "produces": produces, "parameters": parameters}
     if namespace == FRONTEND_NAMESPACE:
         return {"kind": COMMAND, "id": tool_id, "command": name, "parameters": parameters}
-    return {"kind": MCP, "id": tool_id, "server_id": namespace, "tool": name, "parameters": parameters}
+    return {
+        "kind": MCP,
+        "id": tool_id,
+        "server_id": namespace,
+        "tool": name,
+        "parameters": parameters,
+        "outputs": outputs or {},
+    }
 
 
 def _check_expression(where: str, expression, inputs: list[str], known: set, in_list: bool = False) -> None:
@@ -335,6 +360,94 @@ def _check_expression(where: str, expression, inputs: list[str], known: set, in_
     raise ValueError(f"{where}: 모르는 꼴 {expression!r}")
 
 
+def _check_output(where: str, type_id: str, reading, produced: list[str]) -> None:
+    """outputs 의 한 줄이 아는 꼴인지.
+
+    입력  어디인지 · 그 줄의 key(semantic 타입) · 그 줄 · 이 노드의 hasOutput 타입
+    규칙  key 는 이 노드의 hasOutput 타입이어야 함
+          value 와 fields 중 하나만. value 는 값 하나의 경로, fields 는 semantic 칸 -> 경로
+          list 와 pick 은 함께. list 는 목록의 경로이고 pick 은 PICKS 에 있는 것만
+          경로는 전부 _check_path 를 통과해야 함
+    제약  아무도 안 받는 hasOutput 타입까지 적으라고 하지 않는다.
+          여기는 적힌 줄의 꼴만 봄. 받는 노드가 읽는 칸이 적혀 있는지는
+          check_bindings 가 봄
+    """
+    if type_id not in produced:
+        raise ValueError(f"{where}: {type_id} 는 이 노드의 hasOutput 이 아니다")
+    if not isinstance(reading, dict):
+        raise ValueError(f"{where} 가 dict 가 아니다")
+    unknown = [key for key in reading if key not in _OUTPUT_FIELDS]
+    if unknown:
+        raise ValueError(f"{where} 에 모르는 칸 {unknown}")
+
+    if ("value" in reading) == ("fields" in reading):
+        raise ValueError(f"{where}: value 와 fields 중 하나만 둔다")
+    if "value" in reading:
+        _check_path(f"{where}.value", reading["value"])
+    else:
+        _check_fields(f"{where}.fields", reading["fields"])
+
+    if ("list" in reading) != ("pick" in reading):
+        raise ValueError(f"{where}: list 와 pick 은 함께 둔다")
+    if "list" in reading:
+        _check_path(f"{where}.list", reading["list"])
+        if reading["pick"] not in PICKS:
+            raise ValueError(f"{where}.pick 은 {sorted(PICKS)} 중 하나다: {reading['pick']!r}")
+
+
+def _check_fields(where: str, fields) -> None:
+    """semantic 칸 -> 경로 한 벌이 아는 꼴인지. outputs 의 fields 와 source.fields 가 같이 씀.
+
+    규칙  비어 있지 않은 dict. 칸 이름은 한 마디 문자열이고 경로는 _check_path 를 통과함
+    """
+    if not isinstance(fields, dict) or not fields:
+        raise ValueError(f"{where} 가 비었거나 dict 가 아니다")
+    for name, path in fields.items():
+        if not isinstance(name, str) or not _FIELD_NAME.fullmatch(name):
+            raise ValueError(f"{where}: 칸 이름이 한 마디가 아니다: {name!r}")
+        _check_path(f"{where}.{name}", path)
+
+
+def _check_path(where: str, path) -> None:
+    """raw 값 안의 경로인지.
+
+    규칙  점으로 이은 마디. 마디는 dict 키 이름이거나 목록 번호임(location.0 · bbox.1.0 · items)
+    제약  수를 경로로 받지 않는다.
+          YAML 에서 따옴표 없이 적은 1.10 은 수 1.1 이 되어 경로가 조용히 바뀜
+    """
+    if not isinstance(path, str) or not _RAW_PATH.fullmatch(path):
+        raise ValueError(f"{where} 가 응답 안의 경로가 아니다: {path!r}")
+
+
+def _source_of(node_id: str) -> dict | None:
+    """그 노드의 source 를 실행에 쓸 모양으로.
+
+    출력  온톨로지의 source 그대로({from, description, fields?}). 없으면 None
+    규칙  from 은 문자열이어야 함
+          fields 는 semantic 칸 -> 화면 값 안의 경로(_check_fields). 화면 값에만 둠.
+          발화 인자는 칸이 없는 값 하나임
+    제약  모르는 칸을 조용히 넘기지 않는다.
+          fields 오타는 칸 없는 값으로 읽혀 그 source 로 시작하는 자리가 소리 없이
+          unwired 가 됨
+    """
+    source = graph.source_of(node_id)
+    if source is None:
+        return None
+
+    where = f"{paths.ONTOLOGY_PATH.name}: {node_id}.source"
+    unknown = [key for key in source if key not in _SOURCE_FIELDS]
+    if unknown:
+        raise ValueError(f"{where} 에 모르는 칸 {unknown}")
+    origin = source.get("from")
+    if not isinstance(origin, str):
+        raise ValueError(f"{where}.from 이 문자열이 아니다")
+    if "fields" in source:
+        if not origin.startswith(CONTEXT_SOURCE):
+            raise ValueError(f"{where}.fields 는 화면 값에만 둔다. {origin} 은 칸이 없는 값 하나다")
+        _check_fields(f"{where}.fields", source["fields"])
+    return source
+
+
 def _referenced_types(parameters: dict, inputs: list[str]) -> list[str]:
     """parameters 가 가리키는 hasInput 타입. 처음 나온 차례."""
     found = []
@@ -353,6 +466,67 @@ def _referenced_types(parameters: dict, inputs: list[str]) -> list[str]:
     for expression in parameters.values():
         visit(expression)
     return found
+
+
+def _read_fields(parameters: dict, type_id: str) -> set[str]:
+    """parameters 가 그 타입에서 읽는 칸.
+
+    출력  칸 이름 집합. 타입을 통째로 가리키면(place_name) 빈 문자열이 들어감
+    규칙  목록 안과 조건의 value 까지 봄
+    """
+    found = set()
+
+    def visit(expression):
+        if isinstance(expression, str):
+            root, _, field = expression.partition(".")
+            if root == type_id:
+                found.add(field)
+        elif isinstance(expression, list):
+            for item in expression:
+                visit(item)
+        elif isinstance(expression, dict) and "value" in expression:
+            visit(expression["value"])
+
+    for expression in parameters.values():
+        visit(expression)
+    return found
+
+
+def _provides(reading: dict | None, fields: set[str]) -> bool:
+    """읽는 법 하나가 그 칸을 다 주는가.
+
+    입력  outputs 의 한 줄 또는 source · 받는 노드가 읽는 칸(_read_fields)
+    출력  참이면 그 칸을 전부 경로로 적을 수 있음
+    규칙  fields 가 없으면 값 하나임. 타입을 통째로 가리킬 때만 줌
+          fields 가 있으면 칸이 있는 값임. 적힌 칸만 주고 통째로는 안 줌
+          읽는 법이 없으면(None) 아무것도 안 줌
+    제약  semantic 칸 이름을 raw 경로로 짐작하지 않는다.
+          point.lon 을 $s1.lon 으로 적으면 vendor 의 이름 특례가 풀어 줄 때만 맞음
+    """
+    if reading is None:
+        return False
+    declared = reading.get("fields")
+    if declared is None:
+        return fields == {""}
+    return "" not in fields and fields <= set(declared)
+
+
+def _path_of(where: str, reading: dict | None, field: str) -> str | None:
+    """읽는 법 하나에서 그 칸의 경로.
+
+    입력  어디의 읽는 법인지 · outputs 의 한 줄 또는 source · 칸 이름(통째면 빈 문자열)
+    출력  점 경로. 칸이 없는 source 를 통째로 가리키면 None
+    규칙  fields 가 있으면 그 칸의 경로, 없으면 value 의 경로
+          list 가 있으면 "<list>.<PICKS[pick]>." 을 앞에 붙임
+    제약  못 주는 칸을 짐작하지 않는다. _provides 가 거짓인 자리는 터진다
+    """
+    if not _provides(reading, {field}):
+        raise ValueError(f"{where} 가 {field or '통째 값'} 을 안 준다")
+    declared = reading.get("fields")
+    path = declared[field] if declared is not None else reading.get("value")
+    if "list" in reading:
+        path = f"{reading['list']}.{PICKS[reading['pick']]}.{path}"
+    return path
 
 
 def bound_inputs(node_id: str) -> list[str]:
@@ -388,6 +562,29 @@ def _fits_adapter(parameters: dict, type_id: str, produces: tuple) -> bool:
     return True
 
 
+def _readable(parameters: dict, source_id: str, type_id: str) -> bool:
+    """앞 노드가 건네는 그 타입을 이 노드의 parameters 가 읽을 수 있는가.
+
+    입력  받는 노드의 parameters · 앞 노드 id · 건네는 타입
+    출력  참이면 이을 수 있음
+    규칙  앞 노드가 builtin      그 어댑터가 만드는 칸을 그 이름 그대로 받아야 함(_fits_adapter)
+          앞 노드가 도구 · 명령  그 tool.outputs 가 읽는 칸을 다 줘야 함. 명령은 outputs 가 없음
+          앞 노드에 source 가 있음  그 source 가 읽는 칸을 다 줘야 함
+          tool 도 source 도 없는 노드  참. 그 자리에서 가리킬 step 이 없어 plan 이 칸을 뺌.
+          그 노드 자신이 unwired 로 세어짐
+    """
+    source = binding_of(source_id)
+    if source is not None and source["kind"] == BUILTIN:
+        return _fits_adapter(parameters, type_id, source["produces"])
+    fields = _read_fields(parameters, type_id)
+    if source is not None:
+        return _provides(source.get("outputs", {}).get(type_id), fields)
+    start = _source_of(source_id)
+    if start is not None:
+        return _provides(start, fields)
+    return True
+
+
 def binding_at(node_id: str, source_id: str) -> tuple[dict, str] | None:
     """앞 노드가 건네는 것 중 이 노드의 tool 이 받는 타입을 고름.
 
@@ -396,8 +593,8 @@ def binding_at(node_id: str, source_id: str) -> tuple[dict, str] | None:
     규칙  앞 노드가 건네는 타입을 hasOutput 차례대로 보고 parameters 가 가리키는
           첫 타입을 씀. 장소 좌표 변환은 지점 좌표를 먼저 내놓음
           tool 이 없는 노드는 None. 그 자리는 unwired 로 셈해짐
-          앞 노드가 builtin 이면 그 어댑터가 만드는 칸을 이 노드가 받아야 함
-          (_fits_adapter). 못 받으면 None
+          그 타입에서 읽는 칸을 앞 노드가 못 주면 None(_readable). builtin 이 만드는
+          칸 · 도구의 outputs · 시작 노드의 source 가 그 판정임
     제약  타입 판정을 여기서 다시 적지 않는다. ontology.graph 가 함
     """
     binding = binding_of(node_id)
@@ -406,10 +603,7 @@ def binding_at(node_id: str, source_id: str) -> tuple[dict, str] | None:
     referenced = _referenced_types(binding["parameters"], graph.inputs_of(node_id))
     for type_id in graph.handed_types(source_id):
         if type_id in referenced:
-            source = binding_of(source_id)
-            if source is not None and source["kind"] == BUILTIN and not _fits_adapter(
-                binding["parameters"], type_id, source["produces"]
-            ):
+            if not _readable(binding["parameters"], source_id, type_id):
                 return None
             return binding, type_id
     return None
@@ -482,36 +676,41 @@ def _now_field(reference: str, now: datetime.datetime | None) -> str | None:
     return now.strftime(RUNTIME_FIELDS[field]) if now is not None else None
 
 
-def _semantic(node_id: str, reference: str, field: str, origin, argument):
+def _semantic(node_id: str, type_id: str, field: str, origin, argument):
     """이 자리에서 받은 semantic 값을 가리키는 것.
 
-    입력  받는 노드 · 참조 원문(point.lon) · 뿌리 뒤 칸 이름(lon) · 값의 출처 · 발화 인자
+    입력  받는 노드 · 참조의 뿌리 타입(point) · 뿌리 뒤 칸 이름(lon. 없으면 빈 문자열) ·
+          값의 출처 · 발화 인자
     출력  발화 인자 그대로 · "$context.…" · "$s1.…". 못 가리키면 _OMIT
-    규칙  source spoken.argument  인자 그대로. 칸 이름이 붙으면 오류
-          source context.<경로>   "$context.<경로>". 칸이 붙으면 source_field_bases 가
-                                  말하는 dict 에서 읽음
-          step                    "$<step id>.<경로>". 경로는 previous_result_paths 가
-                                  말하고, 없으면 칸 이름 그대로
-          step 인데 앞 단계가 없음 · adapter  _OMIT
+    규칙  출처는 (source, 시작 노드) · (step, step id, 내놓은 노드) · (adapter, …) 임
+          source spoken.argument  인자 그대로. 칸 이름이 붙으면 오류
+          source context.<경로>   "$context.<경로>.<source.fields 의 그 칸 경로>".
+                                  칸 없이 통째로 가리키면 "$context.<경로>"
+          step                    "$<step id>.<내놓은 노드 tool.outputs 의 그 칸 경로>".
+                                  list 가 있으면 "<list>.<고른 번호>." 가 앞에 붙음
+          step 인데 가리킬 step 이 없음 · adapter  _OMIT
     제약  값을 지어내지 않는다. 앞 단계가 없을 때 좌표를 만들어 넣지 않고 칸을 뺀다
+          읽는 법이 안 적힌 칸을 이름으로 짐작하지 않는다. binding_at 이 먼저 거르고,
+          여기까지 오면 터진다
     """
     kind = origin[0] if origin else None
 
     if kind == SOURCE:
-        source = origin[1]
-        if source == SPOKEN_ARGUMENT:
+        source = _source_of(origin[1])
+        if source["from"] == SPOKEN_ARGUMENT:
             if field:
-                raise ValueError(f"{node_id}: 발화 인자에는 칸이 없다 ({reference})")
+                raise ValueError(f"{node_id}: 발화 인자에는 칸이 없다 ({type_id}.{field})")
             return argument
-        if isinstance(source, str) and source.startswith(CONTEXT_SOURCE):
-            if not field:
-                return f"${source}"
-            return f"${SOURCE_FIELD_BASES.get(source, source)}.{field}"
-        raise ValueError(f"{node_id}: 모르는 source {source!r}")
+        if source["from"].startswith(CONTEXT_SOURCE):
+            path = _path_of(f"{node_id}: {origin[1]}.source", source, field)
+            return f"${source['from']}.{path}" if path else f"${source['from']}"
+        raise ValueError(f"{node_id}: 모르는 source {source['from']!r}")
 
     if kind == STEP and origin[1] is not None:
-        path = (PREVIOUS_RESULT_PATHS.get(node_id) or {}).get(reference, field)
-        return f"${origin[1]}.{path}" if path else f"${origin[1]}"
+        step_id, producer = origin[1], origin[2]
+        reading = ((binding_of(producer) or {}).get("outputs") or {}).get(type_id)
+        path = _path_of(f"{node_id}: {producer}.tool.outputs.{type_id}", reading, field)
+        return f"${step_id}.{path}"
 
     return _OMIT
 
@@ -539,7 +738,7 @@ def _resolved(expression, node_id: str, type_id: str, origin, argument, options,
             return expression
         if root != type_id:
             return _OMIT
-        return _semantic(node_id, expression, field, origin, argument)
+        return _semantic(node_id, root, field, origin, argument)
 
     if isinstance(expression, list):
         values = [_resolved(item, node_id, type_id, origin, argument, options, now) for item in expression]
@@ -560,7 +759,7 @@ def _resolved(expression, node_id: str, type_id: str, origin, argument, options,
         value = _resolved(expression["value"], node_id, type_id, origin, argument, options, now)
         if value is _OMIT:
             return _OMIT
-        if origin is None or origin[0] != SOURCE or origin[1] != SPOKEN_ARGUMENT:
+        if origin is None or origin[0] != SOURCE or _source_of(origin[1])["from"] != SPOKEN_ARGUMENT:
             raise ValueError(f"{node_id}: 값을 보고 칸을 고르려면 발화 인자여야 한다")
         text = str(value or "")
         if "if_endswith" in expression:
@@ -576,7 +775,8 @@ def _has_center(tool_input: dict) -> bool:
     """point_radius_to_bbox 가 걸 중심 좌표가 input 에 남았는지.
 
     규칙  CENTER_KEYS 중 하나라도 있으면 참. 값이 무엇인지는 안 봄.
-          $s1.location 처럼 vendor 가 나중에 푸는 참조라 지금 판정할 수 없음
+          ["$s1.location.0", "$s1.location.1"] 처럼 vendor 가 나중에 푸는 참조라
+          지금 판정할 수 없음
     """
     return any(key in tool_input for key in CENTER_KEYS)
 
@@ -641,13 +841,18 @@ def plan(recipe_id: str, argument: str, options: dict | None = None) -> dict:
           headline  답의 첫 줄. 경로의 마지막 도구 · 명령 노드가 정함
     규칙  step id 는 s1 · s2 … 로 붙음. 앞 단계 참조를 그 id 로 적음
           첫 노드는 시작 데이터라 부를 것이 없음. 둘째 노드의 값은 그 source 에서 옴
-          frontend 노드는 step 이 아니라 지도 명령이 됨. 앞 단계 id 를 안 바꿈.
-          vendor 에 넘어간 step 이 없어 가리킬 것이 없음
-          builtin 노드는 step 을 안 만듦. 그 input 과 어댑터가 바로 뒤 노드에 얹힘
+          앞 단계 참조는 step id 와 그 step 을 만든 노드를 함께 들고 감. 같은 타입을
+          화면과 앞 단계가 둘 다 줄 수 있어(경로 탐색의 출발 · 도착) 타입만으로는
+          어느 쪽 값인지 안 갈림
+          frontend 노드는 step 이 아니라 지도 명령이 됨. vendor 에 넘어간 step 이 없어
+          그 뒤 노드가 가리킬 것이 없음
+          builtin 노드는 step 을 안 만듦. 그 입력과 어댑터가 바로 뒤 노드에 얹힘
           tool 이 없거나 받는 타입이 안 맞는 노드는 건너뜀. 부를지 말지는
-          unwired 로 부르는 쪽이 먼저 봄
+          unwired 로 부르는 쪽이 먼저 봄. 건너뛴 노드 뒤에서도 가리킬 step 이 없음
           맨 앞에서 한 번만 wiring.yaml 을 다시 읽음. 경로를 만드는 도중에
           표가 갈리면 앞 단계와 뒷 단계가 다른 표를 씀
+    제약  건너뛴 노드 · 명령 노드 뒤에서 그보다 앞 단계를 대신 가리키지 않는다.
+          그 앞 단계는 뒤 노드가 받는 타입을 낸 노드가 아님
     """
     reload_wiring()
 
@@ -660,16 +865,14 @@ def plan(recipe_id: str, argument: str, options: dict | None = None) -> dict:
     commands: list[dict] = []
     command_nodes: list[str] = []
     headline = ""
-    previous_id = None
 
     chain = [entry["node_id"] for entry in graph.path_of(recipe_id)]
-    start = graph.source_of(chain[0]) if chain else None
-    origin = (SOURCE, start.get("from")) if start else (STEP, None)
+    origin = (SOURCE, chain[0]) if chain and _source_of(chain[0]) else (STEP, None, None)
 
     for source_id, node_id in zip(chain, chain[1:]):
         found = binding_at(node_id, source_id)
         if found is None:
-            origin = (STEP, previous_id)
+            origin = (STEP, None, node_id)
             continue
 
         binding, type_id = found
@@ -684,7 +887,7 @@ def plan(recipe_id: str, argument: str, options: dict | None = None) -> dict:
         if binding["kind"] == COMMAND:
             commands.append({"op": binding["command"], "args": filled})
             command_nodes.append(node_id)
-            origin = (STEP, previous_id)
+            origin = (STEP, None, node_id)
             continue
 
         step_id = f"s{len(steps) + 1}"
@@ -698,8 +901,7 @@ def plan(recipe_id: str, argument: str, options: dict | None = None) -> dict:
             step["inputAdapter"] = adapter
         steps.append(step)
         nodes.append(node_id)
-        previous_id = step_id
-        origin = (STEP, previous_id)
+        origin = (STEP, step_id, node_id)
 
     return {
         "steps": steps,
@@ -820,6 +1022,7 @@ def unwired_in(chain: list[str]) -> list[str]:
     규칙  실행 노드만 셈. 시작 데이터 노드는 부를 것이 없어 세지 않음
           tool 이 있어도 이 자리에서 건네받는 타입을 parameters 가 안 가리키면 셈
           앞 builtin 이 만드는 칸을 못 받는 자리도 셈
+          앞 노드가 이 노드가 읽는 칸의 경로를 적지 않은 자리도 셈(binding_at)
     """
     reload_wiring()
     return [
@@ -841,10 +1044,7 @@ def variants(node_id: str) -> list[dict]:
           spoken 은 발화 인자가 들어갔는지
     규칙  plan 이 쓰는 _step_input 을 그대로 부름. 계기판이 규칙을 따로 옮겨 적으면
           실행과 표가 조용히 어긋남
-          source 는 그 타입에 source 가 있을 때, step 은 그 타입을 내놓는 도구
-          노드가 있을 때, adapter 는 그 타입을 내놓는 builtin 노드가 있고 그 칸을
-          이 노드가 받을 때 생김.
-          adapter 벌의 앞 builtin 입력은 그 builtin 이 앞 단계에서 받은 모양임
+          출처는 _origins 가 정함. 이 노드가 그 타입에서 읽는 칸을 줄 수 있는 출처만 담음
           조건 칸이 있으면 그 어미로 끝나는 인자로 한 벌을 더 만듦. 같은 벌은 안 담음
           이름 있는 값은 전부 default 로 채움. 부르는 순간은 고정된 한 시각임
     """
@@ -891,21 +1091,40 @@ def _suffixes(parameters: dict) -> list[str]:
     return found
 
 
+def _step_producer(type_id: str, fields: set[str]) -> str | None:
+    """그 타입의 그 칸을 tool.outputs 로 주는 첫 도구 노드. 없으면 None. 온톨로지에 적힌 차례."""
+    for node_id in graph.node_ids():
+        if type_id not in graph.outputs_of(node_id):
+            continue
+        binding = binding_of(node_id)
+        if binding is not None and binding["kind"] == MCP and _provides(binding["outputs"].get(type_id), fields):
+            return node_id
+    return None
+
+
 def _origins(consumer: dict, type_id: str, now: datetime.datetime) -> list[tuple[str, tuple]]:
     """그 타입의 값이 올 수 있는 출처. variants 가 벌을 가르는 데 씀.
 
-    규칙  builtin 출처는 받는 노드(consumer)가 그 어댑터의 칸을 받을 때만 담음
+    규칙  source 는 그 타입의 source 가 받는 노드(consumer)가 읽는 칸을 줄 때만 담음
+          step 은 그 칸을 outputs 로 주는 첫 도구 노드가 내놓은 것으로 봄
+          builtin 출처는 consumer 가 그 어댑터의 칸을 받을 때만 담음. 그 builtin 의
+          입력도 같은 규칙으로 앞 도구 단계에서 받은 모양임
     """
+    fields = _read_fields(consumer["parameters"], type_id)
     found = []
-    source = graph.source_of(type_id)
-    if source is not None:
-        found.append((SOURCE, (SOURCE, source.get("from"))))
 
-    producers = [node_id for node_id in graph.node_ids() if type_id in graph.outputs_of(node_id)]
-    kinds = {node_id: binding_of(node_id) for node_id in producers}
-    if any(binding is not None and binding["kind"] == MCP for binding in kinds.values()):
-        found.append((STEP, (STEP, "s1")))
-    for node_id, binding in kinds.items():
+    source = _source_of(type_id)
+    if source is not None and _provides(source, fields):
+        found.append((SOURCE, (SOURCE, type_id)))
+
+    producer = _step_producer(type_id, fields)
+    if producer is not None:
+        found.append((STEP, (STEP, "s1", producer)))
+
+    for node_id in graph.node_ids():
+        if type_id not in graph.outputs_of(node_id):
+            continue
+        binding = binding_of(node_id)
         if binding is None or binding["kind"] != BUILTIN:
             continue
         if not _fits_adapter(consumer["parameters"], type_id, binding["produces"]):
@@ -913,27 +1132,40 @@ def _origins(consumer: dict, type_id: str, now: datetime.datetime) -> list[tuple
         inner = _referenced_types(binding["parameters"], graph.inputs_of(node_id))
         if not inner:
             continue
-        filled, _ = _step_input(binding, node_id, inner[0], (STEP, "s1"), _SPOKEN_PROBE, None, now)
+        inner_producer = _step_producer(inner[0], _read_fields(binding["parameters"], inner[0]))
+        if inner_producer is None:
+            continue
+        origin = (STEP, "s1", inner_producer)
+        filled, _ = _step_input(binding, node_id, inner[0], origin, _SPOKEN_PROBE, None, now)
         found.append((ADAPTER, (ADAPTER, {"adapter": binding["adapter"], "input": filled})))
         break
     return found
 
 
 def check_bindings() -> list[str]:
-    """온톨로지의 tool 과 배선표에 남은 것이 서로 맞는지 전부 봄.
+    """온톨로지의 tool · source 와 배선표에 남은 것이 서로 맞는지 전부 봄.
 
     출력  문제 문장 목록. 다 맞으면 빈 목록
-    규칙  tool 이 있는 노드마다 binding_of 가 통과해야 함
+    규칙  tool 이 있는 노드마다 binding_of 가, source 가 있는 노드마다 _source_of 가
+          통과해야 함
           도구 · 명령 노드에는 headline 이 있어야 하고 builtin 노드에는 없어야 함
-          headline · previous_result_paths 가 tool 없는 노드를 가리키면 안 됨
-          previous_result_paths 의 참조는 그 노드 parameters 에 실제로 있어야 함.
-          안 쓰이는 줄이 남으면 다음 사람이 그것을 원천으로 읽음
-          source_field_bases 의 key 는 어느 노드의 source.from 이어야 함
+          headline 이 tool 없는 노드를 가리키면 안 됨
+          받는 노드가 읽는 칸을 내놓는 쪽이 적어 두어야 함(_unreadable).
+          안 적힌 칸은 짐작하지 않으므로 그 자리는 조용히 unwired 가 됨
     """
     reload_wiring()
     problems = []
+    bindings, sources = {}, {}
 
     for node_id in graph.node_ids():
+        try:
+            source = _source_of(node_id)
+        except ValueError as error:
+            problems.append(str(error))
+        else:
+            if source is not None:
+                sources[node_id] = source
+
         try:
             binding = binding_of(node_id)
         except ValueError as error:
@@ -941,39 +1173,43 @@ def check_bindings() -> list[str]:
             continue
 
         if binding is None:
-            for table, label in ((HEADLINE, "headline"), (PREVIOUS_RESULT_PATHS, "previous_result_paths")):
-                if node_id in table:
-                    problems.append(f"{label}: {node_id} 에 tool 이 없다")
+            if node_id in HEADLINE:
+                problems.append(f"headline: {node_id} 에 tool 이 없다")
             continue
+        bindings[node_id] = binding
 
         if binding["kind"] == BUILTIN and node_id in HEADLINE:
             problems.append(f"headline: builtin {node_id} 은 답을 말하지 않는다")
         if binding["kind"] != BUILTIN and node_id not in HEADLINE:
             problems.append(f"headline: {node_id} 이 없다")
 
-        written = set(_references(binding["parameters"]))
-        for reference in PREVIOUS_RESULT_PATHS.get(node_id, {}):
-            if reference not in written:
-                problems.append(f"previous_result_paths: {node_id} 의 parameters 에 {reference} 가 없다")
+    return problems + _unreadable(bindings, sources)
 
-    sources = {
-        (graph.source_of(node_id) or {}).get("from") for node_id in graph.node_ids()
-    }
-    for source in SOURCE_FIELD_BASES:
-        if source not in sources:
-            problems.append(f"source_field_bases: {source} 를 source 로 가진 노드가 없다")
 
+def _unreadable(bindings: dict, sources: dict) -> list[str]:
+    """받는 노드가 읽는 칸을 내놓는 쪽이 안 적은 자리.
+
+    입력  읽힌 binding {노드: binding} · 읽힌 source {노드: source}
+    출력  문제 문장 목록
+    규칙  받는 노드마다 parameters 가 가리키는 타입과 그 타입에서 읽는 칸을 셈
+          그 타입의 source 는 그 칸을 다 줘야 함
+          그 타입을 hasOutput 으로 내놓는 mcp 도구 노드는 tool.outputs 가 그 칸을 다 줘야 함
+          builtin 은 안 봄. 만드는 칸이 BUILTIN_ADAPTERS 에 정해져 있고, 못 받는 자리는
+          일부러 unwired 로 둔 것임(_fits_adapter)
+          명령 노드는 안 봄. 읽을 응답이 없음
+          아무도 안 읽는 타입은 적으라고 하지 않음
+    """
+    problems = []
+    for consumer, binding in bindings.items():
+        parameters = binding["parameters"]
+        for type_id in _referenced_types(parameters, graph.inputs_of(consumer)):
+            fields = _read_fields(parameters, type_id)
+            wanted = ", ".join(sorted(f"{type_id}.{field}" if field else type_id for field in fields))
+            if type_id in sources and not _provides(sources[type_id], fields):
+                problems.append(f"source: {type_id} 의 source 가 {consumer} 가 읽는 {wanted} 를 안 준다")
+            for producer, produced in bindings.items():
+                if produced["kind"] != MCP or type_id not in graph.outputs_of(producer):
+                    continue
+                if not _provides(produced["outputs"].get(type_id), fields):
+                    problems.append(f"outputs: {producer} 가 {consumer} 가 읽는 {wanted} 를 안 준다")
     return problems
-
-
-def _references(parameters: dict) -> list[str]:
-    """parameters 에 적힌 문자열 참조 원문. 목록 안과 조건의 value 까지."""
-    found = []
-    for expression in parameters.values():
-        items = expression if isinstance(expression, list) else [expression]
-        for item in items:
-            if isinstance(item, dict) and "value" in item:
-                item = item["value"]
-            if isinstance(item, str):
-                found.append(item)
-    return found

@@ -48,8 +48,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 도메인      오래 남는다
   ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
   orchestrator/      발화 해석
-  execution/         실행 계획. 노드의 tool 을 읽는다. wiring.yaml(답 첫 줄 · legacy
-                     응답 경로)이 여기 있다
+  execution/         실행 계획. 노드의 tool 을 읽는다. wiring.yaml(답 첫 줄)이
+                     여기 있다
   llm_engine/        LLM provider (ollama · vllm)
   workflows/static/  recipe · menu · prompt
 
@@ -115,25 +115,35 @@ agentic_ai 것 넷      config · schemas_chat · workflow_answer · __init__
 ## 온톨로지 설계
 
 노드에는 `name` 과 `description` 이 있고, 필요한 노드에만 `source` · `tool` 이 붙는다.
-`kind` · `inputs` · `outputs` 같은 필드가 없다 — **성격은 관계가 말한다.**
+노드 자체에 `kind` · `inputs` · `outputs` 같은 필드가 없다 — **성격은 관계가 말한다.**
+(`tool.outputs` 는 타입 선언이 아니라 도구 응답을 읽는 경로다. 무엇을 내놓는지는 `hasOutput` 이 말한다)
 
 ```
 source   밖(발화 · 화면)에서 곧장 들어오는 자리. from 이 spoken.argument ·
          context.selectedLocation · context.view.bbox 중 하나다.
          source 가 있는 노드가 경로의 시작점이다. 유일한 생성원은 아니다
          (지점 좌표는 화면에서도 오고 장소 좌표 변환도 내놓는다)
+         fields 는 화면 값 안에서 semantic 칸을 읽는 경로다 (minLon: "0.0")
 tool     id          "<server_id>/<도구>" 논리 식별. 예약 namespace builtin/ · frontend/
          parameters  도구 칸 -> 값. semantic 참조 · {from: spoken.<이름>, default, map} ·
                      {from: context.<경로>} · runtime.now.<date|time> · 조건 · 상수
+         outputs     hasOutput 타입 -> raw 응답 안의 경로. value | fields,
+                     목록에서 고르면 list + pick: first. MCP 도구에만 둔다
 ```
 
 **값의 출처를 노드로 만들지 않는다.** 「말한 장소」 · 「찍은 지점」 같은 노드는 타입이
 아니라 출처라서 source 가 대신한다. 그런 노드를 is-a 로 매달면 is-a 가 형식 계층이
 아니라 출처를 말하게 된다.
 
-**tool 에 outputs · extract 를 두지 않는다 (아직).** 도구 응답에서 semantic 값을 읽는
-법은 `execution/wiring.yaml` 의 legacy 표와 vendor 참조 해석이 갖는다. 그것을 어디에
-어떤 모양으로 둘지는 따로 정한다.
+**semantic 칸이 raw 값의 어디 있는지는 값을 내놓는 쪽이 적는다.** 앞 도구의 응답은
+그 노드의 `tool.outputs`, 화면 값은 semantic 노드의 `source.fields` 다. 받는 노드의
+`tool.parameters` 는 semantic 칸(`point.lon`)만 안다. 실행은 둘을 이어
+`$s1.location.0` 같은 경로 참조를 적는다.
+
+- **가운데 공통 모양을 만들지 않는다.** 지점 좌표를 늘 `{lon, lat}` 로 바꿔 건네지 않는다
+- **적힌 경로가 없는 칸을 이름으로 짐작하지 않는다.** 그 자리는 unwired 다.
+  `point.lon` 을 응답의 `lon` 으로 읽으면 vendor 의 이름 특례가 풀어 줄 때만 맞는다
+- 뒤 노드가 읽는 타입만 적는다. 아무도 안 받는 hasOutput 까지 적지 않는다
 
 관계는 넷뿐이다. edge 필드는 `from` · `to` · `predicate` (RDF 삼항).
 
