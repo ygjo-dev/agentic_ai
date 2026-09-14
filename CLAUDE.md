@@ -50,8 +50,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
   orchestrator/      발화 해석
   execution/         실행 계획. 노드의 tool 을 읽는다. wiring.yaml(답 첫 줄)이
                      여기 있다
-  llm_engine/        LLM provider (ollama · vllm)
-  workflows/static/  recipe · menu · prompt
+  llm_engine/        LLM 역할(logical model 판 · prompt · response schema) · provider
+  workflows/static/  recipe · menu
 
 서비스      안 사라진다
   app/api/           창구 — 라우팅 + services
@@ -279,13 +279,35 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 ## LLM 배포 계약
 
 ```
-모델 고르는 차례   명시한 이름 > 환경변수 LLM_MODEL > models.yaml 의 default
-provider          models.yaml 이 모델마다 적는다 (ollama · vllm)
-host              기계마다 다르므로 환경변수다 (OLLAMA_URL · VLLM_URL)
+llm_engine/roles/<역할>/
+  <역할>.yaml                 logical model 한 판
+                              version · model(provider · name) · inference ·
+                              prompt_version · response_schema_version
+  prompts/v<N>.yaml           template
+  response_schemas/v<N>.yaml  JSON Schema 그대로 (감싸는 칸 없음)
+host                          기계마다 다르므로 환경변수다 (OLLAMA_URL · VLLM_URL)
 ```
 
-**모델마다 다른 값은 `models.yaml`, 기계마다 다른 값은 `.env` 다.** 측정으로
-얻은 값(provider · num_ctx · timeout · reason 길이 상한)은 저장소에 남아야
+**역할 하나가 logical model 하나다.** 물리 모델 · provider · inference · prompt 판 ·
+schema 판 중 하나라도 뜻을 갖고 바꾸면 그 역할의 `version` 을 올린다. 새 prompt ·
+schema 는 판 번호를 올린 새 파일로 더한다. 경로는 manifest 에 적지 않는다 — 역할
+이름과 판 번호가 위치를 정한다. 읽는 곳은 `llm_engine/role_config.py` 하나다.
+
+- **요청이 물리 모델을 갈아 끼우지 않는다.** `/resolve` · `/nodes` 에 model 인자가
+  없고 환경변수로도 못 바꾼다. 계기판에도 `--model` 이 없다. 다른 모델을 재려면
+  manifest 를 고치고 판을 올린다
+- **전역 defaults · 모델 목록을 따로 두지 않는다.** 역할마다 필요한 값을 적는다.
+  Ollama 역할은 `num_ctx` · `timeout`, vLLM 역할은 `timeout` 만 적는다 (컨텍스트는
+  vLLM 서버의 `--max-model-len`)
+- **요청마다 역할 설정을 한 번 읽고 그 한 벌을 끝까지 넘긴다.** 캐시하지 않으므로
+  서버를 띄운 채 고치면 다음 요청부터 반영된다. 뒤에서 다시 읽으면 한 요청 안에서
+  모델과 prompt 가 서로 다른 판이 된다
+- 역할끼리 나눠 쓰는 prompt · schema 층은 공유할 요구가 생기기 전까지 만들지 않는다
+- provider 의 고정 요청 계약(think · keep_alive · temperature · seed ·
+  reasoning_effort · max_tokens · strict)은 역할 설정이 아니라 provider 코드에 있다
+
+**역할마다 다른 값은 `llm_engine/roles/`, 기계마다 다른 값은 `.env` 다.** 측정으로
+얻은 값(모델 · provider · num_ctx · timeout · schema 의 길이 상한)은 저장소에 남아야
 하고, 어디에 붙는지는 저장소가 알 일이 아니다. `.env.example` 이 후자의 목록이다.
 
 ---
@@ -312,8 +334,8 @@ AGENTIC_API_URL    화면 · 계기판  ->  agentic_ai API
   `0.0.0.0` 은 서비스 주소로 안 받고, 앱은 제 bind 주소를 읽지 않는다
 - **계기판도 같은 계약을 쓴다.** dev/tools 라고 localhost 대비책을 두지 않는다 —
   배포와 다른 주소를 재면 표를 믿을 수 없다
-- 주소를 `models.yaml` 에 적지 않는다. 저쪽은 모델마다 다른 값이고 이쪽은
-  배포마다 다른 값이다
+- 주소를 역할 manifest(`llm_engine/roles/`)에 적지 않는다. 저쪽은 역할마다 다른
+  값이고 이쪽은 배포마다 다른 값이다
 
 지금 무엇에 붙는지와 그 서버가 떠 있는지는 재기 전에 이것으로 본다.
 

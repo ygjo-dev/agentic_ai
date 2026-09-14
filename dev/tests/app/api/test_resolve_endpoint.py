@@ -3,7 +3,7 @@
 **LLM 을 부르지 않는다.** resolve_service 를 대역으로 바꾸고 창구만 본다.
 
 지키는 것은 셋이다.
-  발화와 모델만 지나간다 — 지도 문맥을 안 받는다. 고르는 것은 LLM 뿐이고
+  발화만 지나간다 — 지도 문맥도 모델 이름도 안 받는다. 고르는 것은 LLM 뿐이고
   문맥이 필요한지는 실행 직전에 execution 이 본다
   프롬프트에 실리는 menu 는 menu.yaml 원문 전부다
   예상 못 한 오류의 원문이 client 로 안 나간다 — 서버 로그로만 간다
@@ -32,9 +32,9 @@ def seen(monkeypatch):
     """resolve_service.resolve 가 무엇을 받았는지만 남기는 대역."""
     captured = {}
 
-    def fake_resolve(utterance, llm_client, reason_max_length):
+    def fake_resolve(utterance, llm_client, role):
         captured["utterance"] = utterance
-        captured["reason_max_length"] = reason_max_length
+        captured["role"] = role
         return {"status": NO_MATCH, "recipe_id": None, "candidate_recipe_ids": []}
 
     monkeypatch.setattr(backend_main.resolve_service, "resolve", fake_resolve)
@@ -64,7 +64,7 @@ def test_the_resolve_endpoint_does_not_take_a_map_context():
     parameters = inspect.signature(backend_main.resolve_endpoint).parameters
 
     assert "context" not in parameters
-    assert list(parameters) == ["utterance", "model"]
+    assert list(parameters) == ["utterance"], "요청이 모델을 갈아 끼우는 길을 두지 않는다"
 
 
 def test_a_context_in_the_body_is_ignored_instead_of_rejected(seen):
@@ -107,7 +107,7 @@ def test_an_unexpected_error_never_carries_its_own_text_to_the_client(monkeypatc
         "/home/ubuntu/source/agentic_ai/ontology/ontology.yaml"
     )
 
-    def boom(utterance, llm_client, reason_max_length):
+    def boom(utterance, llm_client, role):
         raise RuntimeError(새면_안_되는_것)
 
     monkeypatch.setattr(backend_main.resolve_service, "resolve", boom)
@@ -125,7 +125,7 @@ def test_an_unexpected_error_never_carries_its_own_text_to_the_client(monkeypatc
 def test_the_real_cause_is_written_to_the_server_log(monkeypatch, caplog):
     """client 에서 감춘 만큼 서버에서는 보여야 한다. 없으면 원인을 못 찾는다."""
 
-    def boom(utterance, llm_client, reason_max_length):
+    def boom(utterance, llm_client, role):
         raise RuntimeError("무엇이 터졌는지 여기 적힌다")
 
     monkeypatch.setattr(backend_main.resolve_service, "resolve", boom)

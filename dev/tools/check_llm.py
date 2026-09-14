@@ -4,7 +4,7 @@
 
     check_resolve   POST /resolve 를 부른다. 화면이 지나는 길을 그대로 잰다
     check_llm       resolve_service 를 직접 부른다. FastAPI 를 안 띄워도 되고
-                    provider 를 갈아끼워 모델끼리 맞댈 수 있다
+                    이 저장소의 resolve 역할 한 판을 그대로 잰다
 
 **정답표를 다시 적지 않는다.** 발화도 기대값도 판정 자도 전부 `check_resolve` ·
 `check_demo` 에서 가져온다. 자가 둘이 되면 두 성적표가 서로를 못 견준다.
@@ -13,22 +13,25 @@
 바뀌면 함께 고쳐야 하는 코드라 안으로 들여왔고, 밖의 것은 그때의 증거로만 남겼다.
 ★ 밖에 평가 driver 를 다시 만들지 않는다 — 만들면 두 벌을 손으로 맞추게 된다.
 
-    python dev/tools/check_llm.py                              기본 모델 한 판
-    python dev/tools/check_llm.py --model qwen3:32b --runs 3   모델을 골라 세 판
+    python dev/tools/check_llm.py                              resolve 역할로 한 판
+    python dev/tools/check_llm.py --runs 3                     세 판
     python dev/tools/check_llm.py --out /tmp/여기               자세한 결과를 파일로
     python dev/tools/check_llm.py --dry-run                    안 재고 지금 무엇에 붙는지만
 
 ## --dry-run 이 답하는 것
 
-재기 전에 사람이 늘 확인하던 셋이다 — 어느 모델인가 · 어느 backend 인가 ·
+재기 전에 사람이 늘 확인하던 셋이다 — 어느 역할 판 · 모델인가 · 어느 backend 인가 ·
 그 서버가 떠 있는가. 그동안은 한 판(수 분)을 시작해 봐야 알았고, 안 떠 있으면
 발화마다 타임아웃을 기다린 뒤에야 알았다.
 
-    모델 고르는 차례   --model > LLM_MODEL > models.yaml 의 default
-    provider          models.yaml 이 모델마다 적는다 (ollama · vllm)
-    host              기계마다 다르므로 환경변수다 (OLLAMA_URL · VLLM_URL).
-                      기본값이 없다. 안 적혀 있으면 --dry-run 이 무엇이
-                      비었는지 말하고 멈춘다
+    역할 설정   llm_engine/roles/resolve/resolve.yaml 한 판. 판 번호 · 모델 ·
+               provider · inference · prompt 판 · response schema 판이 거기 있다
+    host       기계마다 다르므로 환경변수다 (OLLAMA_URL · VLLM_URL).
+               기본값이 없다. 안 적혀 있으면 --dry-run 이 무엇이
+               비었는지 말하고 멈춘다
+
+**모델을 갈아 끼우는 옵션이 없다.** 다른 모델을 재려면 manifest 를 고치고
+version 을 올린다 — 표가 어느 판을 쟀는지 파일로 읽혀야 한다.
 
 **서버를 띄우지도 내리지도 않는다.** 닿는지만 보고 말한다.
 
@@ -45,7 +48,6 @@
 
 import argparse
 import json
-import os
 import sys
 import time
 import urllib.error
@@ -75,10 +77,11 @@ from dev.tools.check_resolve import (  # noqa: E402
     NEAR,
     UNATTACHED,
     UTTERANCES,
+    _describe_role,
     _grade,
 )
 from llm_engine.llm_selector import get_llm_for  # noqa: E402
-from llm_engine.model_config import (  # noqa: E402
+from llm_engine.role_config import (  # noqa: E402
     OLLAMA,
     RESOLVE,
     VLLM,
@@ -111,7 +114,12 @@ def _reachable(url: str, timeout: float = 3) -> str:
         return f"못 닿는다 ({type(error).__name__})"
 
 
-def _dry_run(config, model_arg: str | None) -> int:
+def _inference_text(role) -> str:
+    """inference 값을 한 줄로. 적힌 차례 그대로."""
+    return " · ".join(f"{key} {value}" for key, value in role.inference.items())
+
+
+def _dry_run(role) -> int:
     """안 재고 지금 무엇에 붙는지만 찍음.
 
     출력  0 이면 그 backend 에 닿음. 1 이면 못 닿거나 모르는 provider
@@ -119,18 +127,12 @@ def _dry_run(config, model_arg: str | None) -> int:
           물어볼 질문이라 출처가 없으면 답이 안 됨
     제약  서버를 띄우거나 내리지 않는다. 닿는지만 봄
     """
-    if model_arg:
-        source = "--model"
-    elif os.environ.get("LLM_MODEL"):
-        source = "환경변수 LLM_MODEL"
-    else:
-        source = f"{paths.MODELS_PATH.name} 의 {RESOLVE} 역할"
+    print(f"역할      {role.role} v{role.version}   (llm_engine/roles/{role.role}/{role.role}.yaml)")
+    print(f"모델      {role.model}")
+    print(f"provider  {role.provider}")
+    print(f"prompt    v{role.prompt_version} · response_schema v{role.response_schema_version}")
 
-    print(f"역할      {RESOLVE}   (이 자가 재는 것)")
-    print(f"모델      {config.model}   ({source})")
-    print(f"provider  {config.provider}   ({paths.MODELS_PATH.name})")
-
-    probe = PROBE.get(config.provider)
+    probe = PROBE.get(role.provider)
     if probe is None:
         print(f"host      모르는 provider 다. 아는 것은 {OLLAMA} · {VLLM} 뿐이다")
         return 1
@@ -142,7 +144,7 @@ def _dry_run(config, model_arg: str | None) -> int:
         print(f"host      {env_name} 을 못 읽는다 — {error}")
         return 1
     print(f"host      {host}   ({env_name})")
-    print(f"timeout {config.timeout}초 · reason {config.reason_max_length}자")
+    print(f"inference {_inference_text(role)}")
     print()
 
     verdict = _reachable(f"{host}{path}")
@@ -150,8 +152,8 @@ def _dry_run(config, model_arg: str | None) -> int:
     return 0 if verdict.startswith("떠 있다") else 1
 
 
-def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
-         reason_max_length: int, kind: str) -> dict:
+def _ask(llm, role, run_no: int, number: int, utterance: str, expected: set,
+         kind: str) -> dict:
     """발화 하나. 부르다 죽어도 판이 멈추지 않게 오류도 결과로 적는다.
 
     규칙  오류는 못 붙음으로 셈. _grade 가 frozenset 이 아닌 것을 그렇게 봄
@@ -163,7 +165,7 @@ def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
         result = resolve_service.resolve(
             utterance,
             llm_client=llm,
-            reason_max_length=reason_max_length,
+            role=role,
         )
     except Exception as exc:  # noqa: BLE001 — 오류도 판정 대상이다
         error = f"{type(exc).__name__}: {exc}"
@@ -198,18 +200,18 @@ def _ask(llm, run_no: int, number: int, utterance: str, expected: set,
     }
 
 
-def _one_round(llm, run_no: int, reason_max_length: int) -> tuple:
+def _one_round(llm, role, run_no: int) -> tuple:
     """한 판 = 정답표 36 + 시연 9.
 
     제약  차례를 판마다 똑같이 지킨다.
           사이에 다른 요청을 끼우지 않는다
     """
     rows = [
-        _ask(llm, run_no, number, utterance, expected, reason_max_length, "utterance")
+        _ask(llm, role, run_no, number, utterance, expected, "utterance")
         for number, utterance, expected, _flag in UTTERANCES
     ]
     demo_rows = [
-        _ask(llm, run_no, number, utterance, expected, reason_max_length, "demo")
+        _ask(llm, role, run_no, number, utterance, expected, "demo")
         for number, utterance, expected in DEMO
     ]
     return rows, demo_rows
@@ -243,13 +245,13 @@ def _groups(rows: list) -> dict:
     }
 
 
-def _report(run_no, rows, demo_rows, elapsed, model, provider) -> str:
+def _report(run_no, rows, demo_rows, elapsed, role) -> str:
     summary = _tally(rows)
     selects = sum(1 for r in demo_rows if r["status"] == SELECT)
     lines = [
-        f"# {model} ({provider}) · {run_no}판",
+        f"# {_describe_role(role)} · {run_no}판",
         "",
-        f"prompt {get_role_config(RESOLVE).prompt_path} · "
+        f"inference {_inference_text(role)} · "
         f"menu {len(paths.MENU_YAML_PATH.read_text(encoding='utf-8'))}자 · {elapsed:.1f}초",
         "",
         f"적중 {summary['HIT']}/{summary['n']} · 근접 {summary['NEAR']} · "
@@ -301,38 +303,39 @@ def _repro(all_runs: list) -> list:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="모델 하나를 정답표 36 과 시연 9 로 잰다.")
-    parser.add_argument("--model", default=None, help="쓸 모델. 없으면 기본 모델")
     parser.add_argument("--runs", type=int, default=1, help="몇 판 (기본 1)")
     parser.add_argument("--out", default="", help="자세한 결과를 남길 디렉터리")
     parser.add_argument("--dry-run", action="store_true",
                         help="안 재고 지금 무엇에 붙는지와 그 서버가 떠 있는지만")
     args = parser.parse_args()
 
-    # 이 자가 재는 것은 resolve 역할이다. 역할이 정한 모델과 같은 모델로 재야
-    # 표가 배포를 말한다 — 여기서 물리 모델 이름을 따로 고르지 않는다.
-    config = get_role_config(RESOLVE, args.model).model
+    # 이 자가 재는 것은 resolve 역할 한 판이다. 창구와 같은 manifest 를 한 번 읽어
+    # 그 한 벌로 끝까지 잰다 — 여기서 물리 모델 이름을 따로 고르지 않는다.
+    role = get_role_config(RESOLVE)
     if args.dry_run:
-        return _dry_run(config, args.model)
+        return _dry_run(role)
 
-    llm = get_llm_for(config)
+    llm = get_llm_for(role)
     out = Path(args.out) if args.out else None
     if out:
         out.mkdir(parents=True, exist_ok=True)
 
-    print(f"{config.model} · {config.provider} · timeout {config.timeout}초 · "
-          f"reason {config.reason_max_length}자")
+    print(f"{_describe_role(role)} · {_inference_text(role)}")
 
     all_runs, verdicts = [], []
     for run_no in range(1, args.runs + 1):
         started = time.perf_counter()
-        rows, demo_rows = _one_round(llm, run_no, config.reason_max_length)
+        rows, demo_rows = _one_round(llm, role, run_no)
         elapsed = time.perf_counter() - started
         all_runs.append(rows + demo_rows)
 
         summary = _tally(rows)
         selects = sum(1 for r in demo_rows if r["status"] == SELECT)
-        verdicts.append({"run": run_no, "model": config.model,
-                         "provider": config.provider, **summary,
+        verdicts.append({"run": run_no, "role": role.role, "role_version": role.version,
+                         "model": role.model, "provider": role.provider,
+                         "prompt_version": role.prompt_version,
+                         "response_schema_version": role.response_schema_version,
+                         **summary,
                          "demo_select": selects, "elapsed": round(elapsed, 1)})
         print(f"  {run_no}판  적중 {summary['HIT']}/{summary['n']} · "
               f"근접 {summary['NEAR']} · 빗나감 {summary['MISS']} · "
@@ -344,7 +347,7 @@ def main() -> int:
                 for row in rows + demo_rows:
                     handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             (out / f"run{run_no}.md").write_text(
-                _report(run_no, rows, demo_rows, elapsed, config.model, config.provider),
+                _report(run_no, rows, demo_rows, elapsed, role),
                 encoding="utf-8")
 
     if args.runs > 1:

@@ -1,121 +1,95 @@
-"""대상 : llm_engine/llm_selector.py — 어느 LLM 을 쓸지 고르는 유일한 자리
+"""대상 : llm_engine/llm_selector.py — 역할 설정을 LLM 객체로 바꾸는 유일한 자리
 
 해석 엔진은 어떤 LLM 을 쓰는지 모른다. `generate(prompt, schema)` 하나만 아는
-객체로 이야기하고, 그것이 Ollama 인지 vLLM 인지는 여기서 갈린다.
+객체로 이야기하고, 그것이 Ollama 인지 vLLM 인지는 역할 설정의 provider 가 가른다.
 
-진짜 models.yaml 을 읽지 않는다. 값이 바뀌면 함께 바뀌는 파일이라 그 내용을
-단언하면 요구사항이 바뀔 때마다 빨간불이 뜬다. 임시 파일로 규칙만 본다.
+역할 설정은 손으로 만든 한 벌(conftest.fake_role)을 쓴다. 역할 파일을 안 읽는다.
 """
+
+import inspect
 
 import pytest
 
 import paths
-from llm_engine.llm_selector import UnknownProvider, get_llm
-from llm_engine.model_config import MissingModel
+from conftest import TEST_ENDPOINTS, fake_role
+from llm_engine import llm_selector
+from llm_engine.llm_selector import UnknownProvider, get_llm_for
 from llm_engine.providers.ollama import OllamaProvider
 from llm_engine.providers.vllm import VllmProvider
 
-# 전역 기본 모델이 없다. 부르는 쪽이 이름을 대거나 역할이 정한다.
-DOCUMENT = """
-defaults:
-  provider: ollama
-  num_ctx: 8192
-  timeout: 180
-  reason_max_length: 200
-
-models:
-  "vllm모델":
-    provider: vllm
-    timeout: 300
-
-  "엉뚱한모델":
-    provider: 없는프로바이더
-"""
+OLLAMA_ROLE = fake_role(
+    provider="ollama", model="느린모델", inference={"num_ctx": 8192, "timeout": 900}
+)
+VLLM_ROLE = fake_role(provider="vllm", model="vllm모델", inference={"timeout": 300})
 
 
-@pytest.fixture
-def models_file(monkeypatch, tmp_path):
-    path = tmp_path / "models.yaml"
-    path.write_text(DOCUMENT, encoding="utf-8", newline="\n")
-    monkeypatch.setattr(paths, "MODELS_PATH", path)
-    monkeypatch.delenv("LLM_MODEL", raising=False)
-    return path
+def test_the_provider_in_the_role_decides_which_client_comes_back():
+    """역할 설정의 provider 가 구현을 고름.
 
-
-def test_the_provider_in_the_file_decides_which_client_comes_back(models_file):
-    """models.yaml 의 provider 가 구현을 고름.
-
-    부르는 쪽은 provider 이름을 안 적음. 모델 이름만 대면 됨 — 그래야
-    같은 발화를 모델만 바꿔 재는 데 부르는 코드가 안 바뀜.
+    부르는 쪽은 provider 이름을 안 적음. 역할만 넘기면 됨. 그래야 역할이 backend 를
+    옮겨도 부르는 코드가 안 바뀜.
     """
-    assert isinstance(get_llm("vllm모델"), VllmProvider)
-    assert isinstance(get_llm("목록에없는모델"), OllamaProvider)
+    assert isinstance(get_llm_for(OLLAMA_ROLE), OllamaProvider)
+    assert isinstance(get_llm_for(VLLM_ROLE), VllmProvider)
 
 
-def test_an_unlisted_model_still_goes_to_ollama(models_file):
-    """목록에 없는 모델은 defaults 를 따름.
+def test_the_role_values_reach_the_client():
+    """역할에 적힌 모델과 inference 값이 객체까지 그대로 감. host 만 환경변수에서 옴.
 
-    --model qwen2.5:7b 처럼 새 Ollama 모델을 한 번 재보는 데 파일을 안 고쳐도
-    되는 동작임. provider 를 더하면서 이것이 깨지면 안 됨.
+    vLLM 쪽에는 num_ctx 가 없음. 컨텍스트는 서버가 --max-model-len 으로 정함.
     """
-    assert isinstance(get_llm("처음보는모델"), OllamaProvider)
+    ollama_쪽 = get_llm_for(OLLAMA_ROLE).config
+    assert (ollama_쪽.model, ollama_쪽.num_ctx, ollama_쪽.timeout, ollama_쪽.host) == (
+        "느린모델", 8192, 900, TEST_ENDPOINTS["OLLAMA_URL"]
+    )
 
-    with pytest.raises(MissingModel):
-        get_llm()  # 전역 기본 모델이 없으므로 아무도 안 대면 멈춘다
-
-
-def test_the_chosen_model_reaches_the_client(models_file):
-    """고른 모델과 그 모델의 값이 객체까지 그대로 감.
-
-    모델이 다른 객체가 한 프로세스에 여럿 살아야 함. 전역 상수를 읽으면
-    그게 안 됨.
-    """
-    vllm_쪽 = get_llm("vllm모델")
-    assert vllm_쪽.config.model == "vllm모델"
-    assert vllm_쪽.config.timeout == 300, "모델 항목이 defaults 를 덮음"
-
-    이쪽 = get_llm("처음보는모델")
-    assert (이쪽.config.model, 이쪽.config.num_ctx) == ("처음보는모델", 8192)
+    vllm_쪽 = get_llm_for(VLLM_ROLE).config
+    assert (vllm_쪽.model, vllm_쪽.timeout, vllm_쪽.host) == (
+        "vllm모델", 300, TEST_ENDPOINTS["VLLM_URL"]
+    )
+    assert not hasattr(vllm_쪽, "num_ctx"), "vLLM 요청에 안 실리는 값을 들고 있으면 먹는다고 읽힌다"
 
 
-def test_an_unknown_provider_is_an_error_not_a_silent_fallback(models_file):
+def test_an_unknown_provider_is_an_error_not_a_silent_fallback():
     """모르는 provider 를 Ollama 로 떨어뜨리지 않음.
 
     오타 하나가 조용히 딴 서버를 부르면 측정이 어느 길로 갔는지 모르게 됨.
     측정 결과가 거짓말을 하느니 부르다 죽는 것이 나음.
     """
     with pytest.raises(UnknownProvider) as 터짐:
-        get_llm("엉뚱한모델")
+        get_llm_for(fake_role(provider="없는프로바이더"))
 
     assert "없는프로바이더" in str(터짐.value), "무엇이 틀렸는지 메시지가 말해야 한다"
 
 
-def test_both_providers_answer_to_the_same_call(models_file):
+def test_both_providers_answer_to_the_same_call():
     """둘이 같은 이름 같은 인자를 받음.
 
     orchestrator 가 어느 쪽인지 모르고 부를 수 있는 근거임. 한쪽 signature 가
-    갈리면 모델을 바꿀 때 부르는 코드가 함께 갈려야 함.
+    갈리면 역할이 backend 를 옮길 때 부르는 코드가 함께 갈려야 함.
     """
-    import inspect
 
     def signature(instance):
         return inspect.signature(instance.generate)
 
-    assert signature(get_llm("처음보는모델")) == signature(get_llm("vllm모델"))
+    assert signature(get_llm_for(OLLAMA_ROLE)) == signature(get_llm_for(VLLM_ROLE))
 
 
-def test_the_file_is_read_once_per_call(models_file, monkeypatch):
-    """get_llm 한 번에 models.yaml 을 한 번만 읽음.
+def test_the_selector_does_not_read_the_role_files_again(monkeypatch, tmp_path):
+    """넘겨받은 한 벌로만 만듦. 역할 폴더가 없어도 됨.
 
-    읽은 ModelConfig 를 provider 설정으로 넘김. 두 번 읽으면 재는 중에 파일을
-    고쳤을 때 한 호출 안에서 앞뒤가 다른 값으로 도는 자리가 생김.
+    여기서 다시 읽으면 한 요청 안에서 LLM 클라이언트와 prompt · schema 가 서로
+    다른 판이 되는 자리가 생김.
     """
-    from llm_engine import model_config
+    monkeypatch.setattr(paths, "ROLES_DIR", tmp_path / "없는폴더")
 
-    reads = []
-    real = model_config._document
-    monkeypatch.setattr(model_config, "_document",
-                        lambda: (reads.append(1), real())[1])
+    assert isinstance(get_llm_for(VLLM_ROLE), VllmProvider)
 
-    get_llm("vllm모델")
-    assert len(reads) == 1, f"models.yaml 을 {len(reads)}번 읽었다"
+
+def test_there_is_no_way_to_pick_a_model_by_name():
+    """이름으로 모델을 고르는 길이 없음. 역할 manifest 가 정한 판으로만 부름.
+
+    요청이나 도구가 이름 하나로 모델을 갈아 끼우면 무엇을 쟀는지 파일로 못 읽음.
+    """
+    for gone in ("get_llm", "get_model_config"):
+        assert not hasattr(llm_selector, gone), f"{gone} 이 되살아났다"

@@ -20,8 +20,8 @@ import urllib.request
 
 import pytest
 
-from conftest import TEST_ENDPOINTS, StubLLMClient
-from llm_engine.llm_selector import get_llm
+from conftest import TEST_ENDPOINTS, StubLLMClient, fake_role
+from llm_engine.llm_selector import get_llm_for
 from llm_engine.providers.ollama import (
     OllamaConfig,
     OllamaProvider,
@@ -30,9 +30,9 @@ from llm_engine.providers.ollama import (
     ping,
 )
 
-# ★ 기본 모델은 2026-09-06 부터 Solar(vLLM)다. Ollama 시험이 기본 모델을 타면
-# vLLM 쪽으로 새므로 여기서는 Ollama 모델을 이름으로 못박는다.
-MODEL = "qwen3:32b"
+# Ollama 로 가는 역할 한 벌. 실물 역할의 이름을 안 적는다 — 역할이 provider 를
+# 옮기면 여기가 상관없이 빨개진다.
+ROLE = fake_role(provider="ollama", model="시험모델", inference={"num_ctx": 32768, "timeout": 900})
 
 RESPONSE_SCHEMA = {
     "type": "object",
@@ -82,7 +82,7 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     num_ctx 는 menu 전체가 들어갈 만큼이어야 함. 넘치면 응답이 잘려
     타임아웃처럼 보임.
     """
-    call_ollama("발화", RESPONSE_SCHEMA, config=config_for(MODEL))
+    call_ollama("발화", RESPONSE_SCHEMA, config=config_for(ROLE))
 
     request = sent_request["request"]
     body = json.loads(request.data.decode("utf-8"))
@@ -91,17 +91,17 @@ def test_the_request_forces_a_structured_deterministic_answer(sent_request):
     assert request.full_url == f"{TEST_ENDPOINTS['OLLAMA_URL']}/api/generate"
     assert headers["content-type"] == "application/json"
 
-    assert body["model"] == MODEL
+    assert body["model"] == ROLE.model
     assert body["prompt"] == "발화"
     assert body["stream"] is False
     assert body["format"] == RESPONSE_SCHEMA
     assert body["think"] is False
     assert body["options"]["temperature"] == 0
     assert body["options"]["seed"] == 0
-    assert body["options"]["num_ctx"] == config_for(MODEL).num_ctx
+    assert body["options"]["num_ctx"] == ROLE.inference["num_ctx"]
 
     # 시연 중 LLM 이 멎어도 화면이 영영 기다리면 안 된다.
-    assert sent_request["kwargs"].get("timeout"), "타임아웃이 없다"
+    assert sent_request["kwargs"]["timeout"] == ROLE.inference["timeout"], "역할의 타임아웃이 안 갔다"
 
 
 def test_the_raw_answer_comes_back_untouched(sent_request):
@@ -110,7 +110,7 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
     Stub 이 실물에서 흘러가면 registry · orchestrator 테스트가 실제와 다른
     것을 검증하면서 통과함. 그래서 기준을 실물로 두고 Stub 을 맞춰 봄.
     """
-    설정 = config_for(MODEL)
+    설정 = config_for(ROLE)
     assert call_ollama("발화", RESPONSE_SCHEMA, config=설정) == ANSWER
     assert OllamaProvider(설정).generate("발화", RESPONSE_SCHEMA) == ANSWER
     assert json.loads(sent_request["request"].data.decode("utf-8"))["prompt"] == "발화"
@@ -127,40 +127,43 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
         "StubLLMClient.generate() 가 실물과 다르다"
 
 
-def test_the_model_can_be_swapped_without_restarting(sent_request):
-    """모델을 바꾸는 데 프로세스를 다시 띄우지 않음.
+def test_clients_of_different_roles_live_side_by_side(sent_request):
+    """역할마다 모델과 값이 다른 클라이언트가 한 프로세스에 함께 삶.
 
-    측정은 같은 발화를 모델만 바꿔 돌리는 일이라, 모델이 다른 클라이언트가
-    한 프로세스에 동시에 살아 있어야 함. 전역 상수를 읽으면 그게 안 됨.
-
-    get_llm 을 지나 온다. 목록에 없는 Ollama 모델도 defaults 의
-    provider=ollama 를 따라 OllamaProvider 가 되어야 함.
-    ★ 기본 모델은 Solar 라 여기서 안 씀. 「인자를 안 주면 기본 모델」은
-    test_llm_selector 가 봄.
+    resolve 와 node_registration 이 한 서버에서 서로 다른 모델 · num_ctx ·
+    timeout 으로 돔. 전역 상수를 읽으면 나중에 만든 쪽 값이 앞의 것을 덮음.
     """
     def sent_body():
         return json.loads(sent_request["request"].data.decode("utf-8"))
 
-    get_llm("qwen2.5:7b").generate("발화", RESPONSE_SCHEMA)
-    assert sent_body()["model"] == "qwen2.5:7b", "목록에 없어도 defaults 로 Ollama 다"
+    작은_쪽 = get_llm_for(
+        fake_role(provider="ollama", model="작은모델", inference={"num_ctx": 512, "timeout": 1})
+    )
+    큰_쪽 = get_llm_for(ROLE)
 
-    get_llm(MODEL).generate("발화", RESPONSE_SCHEMA)
-    assert sent_body()["model"] == MODEL
+    작은_쪽.generate("발화", RESPONSE_SCHEMA)
+    assert sent_body()["model"] == "작은모델"
+    assert sent_body()["options"]["num_ctx"] == 512
+    assert sent_request["kwargs"]["timeout"] == 1
 
-    # 모델과 함께 움직이는 값도 호출마다 갈아끼울 수 있어야 한다 —
-    # 큰 모델은 기본 타임아웃(180초)을 넘긴다.
+    큰_쪽.generate("발화", RESPONSE_SCHEMA)
+    assert sent_body()["model"] == ROLE.model
+    assert sent_body()["options"]["num_ctx"] == ROLE.inference["num_ctx"]
+    assert sent_request["kwargs"]["timeout"] == ROLE.inference["timeout"]
+
+    # 호출 설정은 역할을 안 거치고도 만들 수 있다. provider 는 역할 파일을 모른다.
     call_ollama(
         "발화",
         RESPONSE_SCHEMA,
         config=OllamaConfig(
             model="아무거나",
-            timeout=1,
-            num_ctx=512,
+            timeout=2,
+            num_ctx=256,
             host=TEST_ENDPOINTS["OLLAMA_URL"],
         ),
     )
-    assert sent_request["kwargs"]["timeout"] == 1
-    assert sent_body()["options"]["num_ctx"] == 512
+    assert sent_request["kwargs"]["timeout"] == 2
+    assert sent_body()["options"]["num_ctx"] == 256
 
 
 def test_reachability_is_checked_without_raising(monkeypatch):

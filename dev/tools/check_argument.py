@@ -1,7 +1,7 @@
 """발화에서 뽑은 인자가 도구에 실제로 통하는지 재는 도구.
 
     python dev/tools/check_argument.py
-    python dev/tools/check_argument.py --runs 5 --model qwen3:32b
+    python dev/tools/check_argument.py --runs 5
     python dev/tools/check_argument.py --only 4,6
 
 **재기만 한다. 아무것도 안 고친다.** 인자 추출을 어떻게 바꿀지는 사람이 정한다.
@@ -84,6 +84,7 @@ from tools.check_resolve import (  # noqa: E402
     ServerDown,
     _call_resolve,
     _clip,
+    _role_label,
     _pad,
     _short,
     _width,
@@ -335,10 +336,10 @@ def _execute(step: dict, argument: str) -> tuple:
 # ── 측정 ────────────────────────────────────────────────────────────
 
 
-def _measure(entries, runs: int, model: str | None) -> list[dict]:
+def _measure(entries, runs: int) -> list[dict]:
     """발화마다 인자를 뽑고 그 인자로 도구를 부름.
 
-    입력  발화 목록 · /resolve 반복 횟수 · 모델 이름
+    입력  발화 목록 · /resolve 반복 횟수
     출력  발화당 한 줄짜리 dict 목록. 표와 본문 덤프가 같은 것을 읽음
     규칙  /resolve 는 runs 회. 나온 (recipe, 인자) 조합을 다 셈 —
           흔들리면 흔들린 대로 적음
@@ -360,7 +361,7 @@ def _measure(entries, runs: int, model: str | None) -> list[dict]:
                 # _call_resolve 가 돌려주는 것 중 앞의 셋만 쓴다. 나머지가
                 # (4dd552a) 여기 언팩이 넷이라 매 호출이 ValueError 로 떨어져
                 # 전부 "!" 가 됐다. 뒤에 무엇이 더 붙어도 안 깨지게 받는다.
-                found, status, argument, *_rest = _call_resolve(utterance, model)
+                found, status, argument, *_rest = _call_resolve(utterance)
                 recipe_id = sorted(found)[0] if found else None
                 key = (recipe_id, argument, status)
                 picked[key] = picked.get(key, 0) + 1
@@ -582,7 +583,6 @@ def main() -> int:
     )
     parser.add_argument("--runs", type=int, default=3, help="발화마다 /resolve 몇 번 (기본 3)")
     parser.add_argument("--only", default="", help="잴 발화 번호. 예: 4,6")
-    parser.add_argument("--model", default="", help="쓸 모델. 예: qwen3:32b (기본: 서버 기본 모델)")
     parser.add_argument("--dump", default="", help="Gateway 응답 본문을 적을 파일")
     args = parser.parse_args()
 
@@ -597,7 +597,7 @@ def main() -> int:
         entries = [entry for entry in ALL_UTTERANCES if entry[3]]
 
     print(
-        f"발화 {len(entries)}개 × {args.runs}회 · 모델 {args.model or '서버 기본'}"
+        f"발화 {len(entries)}개 × {args.runs}회 · {_role_label()}"
         f" · Gateway {_gateway_url()}"
     )
     print("첫 실행 단계만 잰다. 사슬 끝의 답이 아니다.")
@@ -605,7 +605,7 @@ def main() -> int:
 
     rows, note, status = [], "", 0
     try:
-        rows = _measure(entries, args.runs, args.model)
+        rows = _measure(entries, args.runs)
     except ServerDown:
         note, status = "uvicorn 을 먼저 실행하세요", 1
     except KeyboardInterrupt:

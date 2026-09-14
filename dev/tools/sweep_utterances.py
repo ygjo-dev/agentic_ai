@@ -4,8 +4,7 @@
 정답표(UTTERANCES)를 읽지 않는다. 이 파일은 관측 기록기다 — 무엇이 맞는지는
 표를 보고 사람이 정한다.
 
-    python dev/tools/sweep_utterances.py                     서버 기본 모델 · 10회
-    python dev/tools/sweep_utterances.py --model qwen3:8b    모델만 바꿔 (서버 안 내림)
+    python dev/tools/sweep_utterances.py                     resolve 역할 · 10회
     python dev/tools/sweep_utterances.py --runs 3            빨리 훑어보기
     python dev/tools/sweep_utterances.py --only 3,7          발화 번호만 골라
 
@@ -18,8 +17,11 @@
 
 산출물은 `dev/tools/sweep_out/` 에 둔다 (`.gitignore` 에 있다).
 
-    sweep-<모델>-<날짜>.txt    사람이 읽을 표
-    sweep-<모델>-<날짜>.json   내일 다시 셀 수 있는 같은 내용
+    sweep-<역할 판>-<날짜>.txt    사람이 읽을 표
+    sweep-<역할 판>-<날짜>.json   내일 다시 셀 수 있는 같은 내용
+
+재는 모델은 창구가 읽는 resolve 역할 manifest 한 판이다. 다른 모델을 재려면
+manifest 를 고치고 판을 올린다.
 """
 
 from __future__ import annotations
@@ -36,7 +38,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 # _call_resolve 만 가져온다. 정답표(UTTERANCES)는 쓰지 않는다.
-from tools.check_resolve import ServerDown, _base_url, _call_resolve  # noqa: E402
+from tools.check_resolve import ServerDown, _base_url, _call_resolve, _role_label  # noqa: E402
+from llm_engine.role_config import RESOLVE, get_role_config  # noqa: E402
 
 OUT_DIR = Path(__file__).resolve().parent / "sweep_out"
 
@@ -164,7 +167,7 @@ def _short(recipe_ids) -> str:
 # ── 한 발화 재기 ────────────────────────────────────────────────────
 
 
-def _one_run(utterance: str, model: str | None) -> dict:
+def _one_run(utterance: str) -> dict:
     """/resolve 한 번. 무엇이 나왔는지 그대로 담는다.
 
     오류가 나도 예외를 밖으로 내보내지 않는다 — 사람이 자는 동안 도는 도구라
@@ -173,7 +176,7 @@ def _one_run(utterance: str, model: str | None) -> dict:
     for attempt in range(2):
         try:
             started = time.monotonic()
-            final, status, argument, tally, *_rest = _call_resolve(utterance, model)
+            final, status, argument, tally, *_rest = _call_resolve(utterance)
             llm_count, _status = tally
             return {
                 "ok": True,
@@ -248,11 +251,11 @@ def _shape_row(no, place, utt, count, total, shape) -> str:
     )
 
 
-def _render(model_label: str, runs: int, records: list, started_at: str, elapsed) -> str:
+def _render(role_label: str, runs: int, records: list, started_at: str, elapsed) -> str:
     lines = [
         "발화 쓸기 — 나온 것만 적는다",
         "",
-        f"모델      {model_label}",
+        f"역할      {role_label}",
         f"서버      {_base_url()}",
         f"회차      발화마다 {runs}회",
         f"발화      {len(records)}개",
@@ -353,9 +356,18 @@ def _render(model_label: str, runs: int, records: list, started_at: str, elapsed
 # ── 실행 ────────────────────────────────────────────────────────────
 
 
-def _sweep(model: str | None, runs: int, only: set, stamp: str) -> int:
-    model_label = model or "서버 기본"
-    slug = (model or "server-default").replace(":", "-").replace("/", "-")
+def _role_slug() -> str:
+    """파일 이름에 넣을 역할 판. 이 저장소의 manifest 를 읽음. 못 읽으면 역할 이름만."""
+    try:
+        role = get_role_config(RESOLVE)
+    except ValueError:
+        return RESOLVE
+    return f"{role.role}-v{role.version}-{role.model}".replace(":", "-").replace("/", "-")
+
+
+def _sweep(runs: int, only: set, stamp: str) -> int:
+    role_label = _role_label()
+    slug = _role_slug()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     txt_path = OUT_DIR / f"sweep-{slug}-{stamp}.txt"
     json_path = OUT_DIR / f"sweep-{slug}-{stamp}.json"
@@ -365,9 +377,9 @@ def _sweep(model: str | None, runs: int, only: set, stamp: str) -> int:
     began = time.monotonic()
     records = []
 
-    print(f"\n=== {model_label} · 발화 {len(targets)} × {runs}회 ===", flush=True)
+    print(f"\n=== {role_label} · 발화 {len(targets)} × {runs}회 ===", flush=True)
     for no, place, utt in targets:
-        rows = [_one_run(utt, model) for _ in range(runs)]
+        rows = [_one_run(utt) for _ in range(runs)]
         rec = {
             "no": no, "place": place, "utterance": utt,
             "runs": rows, "summary": _summarise(rows),
@@ -382,10 +394,10 @@ def _sweep(model: str | None, runs: int, only: set, stamp: str) -> int:
         # 중간에 끊겨도 여기까지가 남는다.
         elapsed = f"{(time.monotonic() - began) / 60:.1f}분"
         json_path.write_text(json.dumps({
-            "model": model_label, "runs": runs, "started_at": started_at,
+            "role": role_label, "runs": runs, "started_at": started_at,
             "elapsed": elapsed, "base_url": _base_url(), "records": records,
         }, ensure_ascii=False, indent=2), encoding="utf-8")
-        txt_path.write_text(_render(model_label, runs, records, started_at, elapsed),
+        txt_path.write_text(_render(role_label, runs, records, started_at, elapsed),
                             encoding="utf-8")
 
     print(f"  → {txt_path}\n  → {json_path}", flush=True)
@@ -395,7 +407,6 @@ def _sweep(model: str | None, runs: int, only: set, stamp: str) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description="발화 후보를 쓸어 나온 것만 기록한다.")
     parser.add_argument("--runs", type=int, default=10, help="발화마다 몇 번 (기본 10)")
-    parser.add_argument("--model", default="", help="쓸 모델. 비우면 서버 기본 모델")
     parser.add_argument("--only", default="", help="돌릴 발화 번호. 예: 3,7")
     parser.add_argument("--stamp", default="", help="파일 이름에 쓸 날짜. 비우면 오늘")
     parser.add_argument("--render", default="", help="이미 받아 둔 json 으로 표만 다시 그린다")
@@ -404,14 +415,15 @@ def main() -> int:
     if args.render:
         data = json.loads(Path(args.render).read_text(encoding="utf-8"))
         txt = Path(args.render).with_suffix(".txt")
-        txt.write_text(_render(data["model"], data["runs"], data["records"],
+        # 역할 판 이전 파일에는 "role" 대신 "model" 칸이 있다.
+        txt.write_text(_render(data.get("role") or data["model"], data["runs"], data["records"],
                                data["started_at"], data["elapsed"]), encoding="utf-8")
         print(f"  → {txt}")
         return 0
 
     only = {int(x) for x in args.only.split(",") if x.strip()}
     stamp = args.stamp or datetime.now().strftime("%Y-%m-%d")
-    return _sweep(args.model or None, args.runs, only, stamp)
+    return _sweep(args.runs, only, stamp)
 
 
 if __name__ == "__main__":

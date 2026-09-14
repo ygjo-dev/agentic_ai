@@ -70,7 +70,7 @@ def client(monkeypatch):
     """공통 진입점과 LLM 클라이언트만 대역으로 바꾼 진짜 앱. 남긴 회차는 치움."""
 
     def fake_process(
-        text, llm_client, reason_max_length, context=None, *, continue_after_resolve
+        text, llm_client, role, context=None, *, continue_after_resolve
     ):
         async def events():
             for payload in EVENTS:
@@ -78,7 +78,7 @@ def client(monkeypatch):
 
         return events()
 
-    monkeypatch.setattr(main, "get_llm_for", lambda config: object())
+    monkeypatch.setattr(main, "get_llm_for", lambda role: object())
     monkeypatch.setattr(main.execute_service, "process", fake_process)
     recent_service.clear()
     yield TestClient(main.app)

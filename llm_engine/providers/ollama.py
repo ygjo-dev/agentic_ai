@@ -10,12 +10,11 @@ import urllib.request
 from dataclasses import dataclass
 
 import endpoints
-from llm_engine.model_config import get_model_config
 
 
 @dataclass(frozen=True)
 class OllamaConfig:
-    """호출 한 번이 쓰는 설정. 값은 models.yaml 에서 온다."""
+    """호출 한 번이 쓰는 설정. host 말고는 역할 manifest 에서 온다."""
 
     model: str
     num_ctx: int          # menu.yaml 길이가 길수록 ↑
@@ -23,28 +22,27 @@ class OllamaConfig:
     host: str             # OLLAMA_URL. 기본값을 두지 않는다 — endpoints 를 본다
 
 
-def config_for(model: str | None = None, *, found=None) -> OllamaConfig:
-    """모델 설정을 Ollama 호출 설정으로.
+def config_for(role) -> OllamaConfig:
+    """역할 설정을 Ollama 호출 설정으로.
 
-    입력  모델 이름(None 이면 기본 모델) · 이미 읽어 둔 ModelConfig
+    입력  이미 읽어 둔 RoleConfig
     출력  OllamaConfig
-    규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴.
-          어디에 붙는가는 기계마다 다르고, 어떻게 부르는가는 모델마다 다름
+    규칙  host 만 환경변수에서 오고 나머지는 역할 manifest 에서 옴.
+          어디에 붙는가는 기계마다 다르고, 어떻게 부르는가는 역할마다 다름
           주소는 부를 설정을 만들 때 읽음. import 시점에 안 읽으므로
           Ollama 를 안 쓰는 배포는 OLLAMA_URL 이 없어도 뜸
     """
-    found = found or get_model_config(model)
     return OllamaConfig(
-        model=found.model,
-        num_ctx=found.num_ctx,
-        timeout=found.timeout,
+        model=role.model,
+        num_ctx=role.inference["num_ctx"],
+        timeout=role.inference["timeout"],
         host=endpoints.ollama_url(),
     )
 
 
 class OllamaProvider:
-    def __init__(self, config: OllamaConfig | None = None):
-        self.config = config or config_for()
+    def __init__(self, config: OllamaConfig):
+        self.config = config
 
     def generate(self, prompt: str, response_schema: dict) -> str:
         return call_ollama(prompt, response_schema, config=self.config)
@@ -74,10 +72,8 @@ def call_ollama(
     prompt: str,
     response_schema: dict,
     *,
-    config: OllamaConfig | None = None,
+    config: OllamaConfig,
 ) -> str:
-    config = config or config_for()
-
     body = json.dumps(
         {
             "model": config.model,

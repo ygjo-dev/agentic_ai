@@ -31,6 +31,7 @@ from dev.tools.check_resolve import (  # noqa: E402
     HIT,
     ServerDown,
     _call_resolve,
+    _role_label,
     _clip,
     _grade,
     _pad,
@@ -101,7 +102,6 @@ def main() -> int:
     parser.add_argument("--runs", type=int, default=1, help="발화마다 몇 번 (기본 1)")
     parser.add_argument("--reverse", action="store_true", help="거꾸로 부른다")
     parser.add_argument("--only", default="", help="번호만 골라서. 예: 4 또는 1,4,7")
-    parser.add_argument("--model", default="", help="쓸 모델. 없으면 서버 기본 모델")
     args = parser.parse_args()
 
     entries = list(DEMO)
@@ -111,6 +111,7 @@ def main() -> int:
     if args.reverse:
         entries = list(reversed(entries))
 
+    print(_role_label())
     print(_header())
     print("-" * (_width(_header())))
 
@@ -124,9 +125,7 @@ def main() -> int:
                 # 앞의 둘만 쓴다. **뒤에 칸이 더 붙어도 안 깨지게 받는다** —
                 # check_argument.py 가 같은 규칙이고, 그쪽은 언팩 수가 어긋나
                 # 매 호출이 ValueError 로 떨어진 적이 있다(4dd552a).
-                found, status, *_rest = _call_resolve(
-                    utterance, args.model or None
-                )
+                found, status, *_rest = _call_resolve(utterance)
             except ServerDown as exc:
                 print(f"서버에 못 닿았다: {exc}")
                 return 1

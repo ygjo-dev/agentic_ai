@@ -1,18 +1,23 @@
-"""대상 : llm_engine/model_config.py 의 역할 설정 — 왜 부르는가와 무엇으로 부르는가
+"""대상 : llm_engine/role_config.py — 역할 하나가 logical model 한 판이다
 
-**역할은 모델 이름이 아니다.** 역할은 애플리케이션이 LLM 을 부르는 목적이고
-(resolve · node_registration), 모델은 그 목적을 무엇으로 이루는가다. 둘을 한
-이름으로 쓰면 모델을 바꿀 때 부르는 쪽의 뜻까지 바뀐 것처럼 읽힌다.
+역할(resolve · node_registration)마다 물리 모델 · provider · inference 값 · prompt ·
+응답 schema 가 한 벌로 묶이고, manifest 의 판 번호가 prompt 와 schema 파일을 고른다.
+경로는 manifest 에 없다. 역할 이름과 판 번호가 위치를 정한다.
 
-진짜 models.yaml 의 값을 단언하지 않는다. 값이 바뀌면 함께 바뀌는 파일이라
-그 내용을 못 박으면 요구사항이 바뀔 때마다 빨간불이 뜬다. 임시 파일로 규칙만
-보고, 실물 파일에서는 **지금 살아 있는 역할이 실제로 풀리는지**만 본다.
+임시 역할 폴더로 규칙을 본다. 실물 역할에서는 **지금 살아 있는 역할이 실제로
+풀리는지와 코드가 채우는 치환자가 있는지**만 본다. 모델 이름 같은 값은 못 박지
+않는다. 측정으로 바뀌는 값이라 못 박으면 모델을 옮길 때마다 빨간불이 뜬다.
 """
 
+import inspect
+from pathlib import Path
+
 import pytest
+import yaml
 
 import paths
-from llm_engine.model_config import (
+from llm_engine import role_config
+from llm_engine.role_config import (
     NODE_REGISTRATION,
     RESOLVE,
     InvalidRoleConfig,
@@ -20,226 +25,254 @@ from llm_engine.model_config import (
     get_role_config,
 )
 
-DOCUMENT = """
-roles:
-  역할하나:
-    model: "느린모델"
-    prompt: {하나}
-  역할둘:
-    model: "vllm모델"
-    prompt: {둘}
+# type 의 "null" 은 문자열이고 enum 의 None 은 JSON null 이다. 둘이 파일을 거쳐도
+# 갈리지 않는지 함께 본다.
+SCHEMA = {
+    "type": "object",
+    "properties": {"answer": {"type": ["string", "null"], "enum": ["네", None]}},
+    "required": ["answer"],
+}
 
-defaults:
-  provider: ollama
-  num_ctx: 8192
-  timeout: 180
-  reason_max_length: 200
+OLLAMA_ROLE = {
+    "role": "역할하나",
+    "version": 1,
+    "model": {"provider": "ollama", "name": "느린모델"},
+    "inference": {"num_ctx": 8192, "timeout": 900},
+    "prompt_version": 1,
+    "response_schema_version": 1,
+}
 
-models:
-  "느린모델":
-    timeout: 900
-  "vllm모델":
-    provider: vllm
-    timeout: 300
-"""
+VLLM_ROLE = {
+    "role": "역할둘",
+    "version": 3,
+    "model": {"provider": "vllm", "name": "vllm모델"},
+    "inference": {"timeout": 300},
+    "prompt_version": 2,
+    "response_schema_version": 1,
+}
+
+
+def write(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8", newline="\n")
+
+
+def dump(path: Path, document) -> None:
+    write(path, yaml.safe_dump(document, allow_unicode=True, sort_keys=False))
+
+
+def put(root: Path, manifest: dict, folder: str | None = None) -> None:
+    folder = folder or manifest["role"]
+    dump(root / folder / f"{folder}.yaml", manifest)
+
+
+def drop(document: dict, key: str) -> dict:
+    return {k: v for k, v in document.items() if k != key}
 
 
 @pytest.fixture
-def models_file(monkeypatch, tmp_path):
-    """역할 둘이 적힌 임시 models.yaml. 프롬프트 파일도 실제로 만들어 둔다."""
-    하나 = tmp_path / "하나.md"
-    둘 = tmp_path / "둘.md"
-    하나.write_text("프롬프트 하나", encoding="utf-8", newline="\n")
-    둘.write_text("프롬프트 둘", encoding="utf-8", newline="\n")
+def roles(monkeypatch, tmp_path):
+    """역할 둘이 든 임시 roles 폴더. 하나는 Ollama, 하나는 vLLM 이고 prompt 판이 둘이다."""
+    root = tmp_path / "roles"
+    put(root, OLLAMA_ROLE)
+    dump(root / "역할하나" / "prompts" / "v1.yaml", {"template": "프롬프트 하나 {utterance}\n"})
+    dump(root / "역할하나" / "response_schemas" / "v1.yaml", SCHEMA)
 
-    path = tmp_path / "models.yaml"
-    path.write_text(
-        DOCUMENT.format(하나=하나.name, 둘=둘.name), encoding="utf-8", newline="\n"
-    )
-    monkeypatch.setattr(paths, "MODELS_PATH", path)
-    monkeypatch.setattr(paths, "REPO_ROOT", tmp_path)
-    monkeypatch.delenv("LLM_MODEL", raising=False)
-    return path
+    put(root, VLLM_ROLE)
+    dump(root / "역할둘" / "prompts" / "v1.yaml", {"template": "옛 프롬프트\n"})
+    dump(root / "역할둘" / "prompts" / "v2.yaml", {"template": "새 프롬프트\n"})
+    dump(root / "역할둘" / "response_schemas" / "v1.yaml", SCHEMA)
+
+    monkeypatch.setattr(paths, "ROLES_DIR", root)
+    return root
 
 
-def test_a_role_carries_its_model_and_its_prompt(models_file):
-    """역할 하나를 물으면 모델과 프롬프트가 함께 옴.
+def test_a_role_is_one_logical_model_read_from_its_own_folder(roles):
+    """역할 하나를 물으면 모델 · provider · inference · prompt · schema 가 한 벌로 옴.
 
-    부르는 쪽이 물리 모델 이름을 적지 않고 「이 역할로 부른다」만 말하게 하는
-    자리임. 둘을 따로 물으면 그 사이에 파일이 바뀔 수 있음.
+    manifest 하나를 보면 그 역할이 무엇으로 어떻게 도는지 다 읽혀야 함. 둘을 따로
+    물으면 그 사이에 파일이 바뀔 수 있음.
     """
     role = get_role_config("역할하나")
 
-    assert role.role == "역할하나"
-    assert role.model.model == "느린모델", "역할이 적은 모델"
-    assert role.model.timeout == 900, "모델 항목이 defaults 를 덮는다"
-    assert role.prompt == "프롬프트 하나"
+    assert (role.role, role.version, role.model, role.provider) == (
+        "역할하나", 1, "느린모델", "ollama"
+    )
+    assert role.inference == {"num_ctx": 8192, "timeout": 900}
+    assert (role.prompt_version, role.response_schema_version) == (1, 1)
+    assert role.prompt == "프롬프트 하나 {utterance}\n", "template 을 한 글자도 안 바꿔야 한다"
+    assert role.response_schema == SCHEMA
+    assert role.response_schema["properties"]["answer"]["enum"][-1] is None, (
+        "YAML null 이 문자열이 되면 schema 의 뜻이 바뀐다"
+    )
 
 
-def test_each_role_names_its_own_model(models_file):
-    """역할마다 제 모델을 적음. 한 역할을 옮겨도 다른 역할이 안 움직임.
+def test_the_version_numbers_pick_the_prompt_and_schema_files(roles):
+    """prompt_version 2 가 prompts/v2.yaml 을 고름. 경로를 manifest 에 적지 않음.
 
-    전역 기본 모델 한 줄이 있으면 그 줄을 고칠 때 모든 목적이 함께 움직이고,
-    어느 역할을 무엇으로 재고 있는지 파일만 보고는 알 수 없음.
+    판 번호만 올리면 옛 판 파일은 그대로 남고 새 판이 실림. 경로 문자열을 적게
+    하면 이름과 판 번호가 갈리는 자리가 하나 더 생김.
     """
     role = get_role_config("역할둘")
 
-    assert role.model.model == "vllm모델"
-    assert role.model.provider == "vllm", "모델이 provider 를 정한다"
-    assert role.model.timeout == 300, "모델 항목이 defaults 를 덮는다"
-    assert role.prompt == "프롬프트 둘"
+    assert role.prompt == "새 프롬프트\n"
+    assert (role.version, role.provider, role.inference) == (3, "vllm", {"timeout": 300})
 
 
-def test_the_argument_and_the_environment_still_win(models_file, monkeypatch):
-    """모델을 갈아 재는 길이 역할 때문에 막히지 않음.
+def test_an_unknown_role_says_what_is_there(roles):
+    """없는 역할은 오류. 무엇이 있는지 문장에 있어야 함.
 
-    차례는 인자 > LLM_MODEL > 역할의 model. 같은 발화를 모델만 바꿔 재는 것이
-    이 저장소 측정의 전부라 그 길이 살아 있어야 함.
-    """
-    assert get_role_config("역할둘", "인자모델").model.model == "인자모델"
-
-    monkeypatch.setenv("LLM_MODEL", "환경모델")
-    assert get_role_config("역할둘").model.model == "환경모델"
-    assert get_role_config("역할둘", "인자모델").model.model == "인자모델"
-
-
-def test_an_unknown_role_says_what_is_written(models_file):
-    """없는 역할은 오류. 무엇이 적혀 있는지 문장에 있어야 함.
-
-    역할 이름을 잘못 적었을 때 조용히 기본 모델로 돌면 어느 목적으로 불렀는지
+    역할 이름을 잘못 적었을 때 조용히 다른 역할로 돌면 어느 목적으로 불렀는지
     표에서 사라짐.
     """
     with pytest.raises(UnknownRole) as 터짐:
         get_role_config("없는역할")
 
     assert "없는역할" in str(터짐.value)
-    assert "역할하나" in str(터짐.value), "무엇이 적혀 있는지 알려줘야 한다"
+    assert "역할하나" in str(터짐.value), "무엇이 있는지 알려줘야 한다"
 
 
-def test_a_role_model_that_is_not_listed_is_an_error(models_file, tmp_path):
-    """역할이 적어 둔 모델은 models 목록에 있어야 함.
+def _vllm_with_num_ctx(root):
+    put(root, {**VLLM_ROLE, "inference": {"timeout": 300, "num_ctx": 8192}})
 
-    오타가 조용히 defaults(ollama)로 떨어지면 어느 모델로 쟀는지 모르게 됨.
-    목록에 없는 모델을 한 번 재보는 길은 --model 로 열려 있음.
+
+BROKEN = {
+    "role 이 폴더 이름과 다름": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "role": "딴이름"}, "역할하나"), "role"),
+    "manifest 파일 없음": ("역할하나", lambda r: (r / "역할하나" / "역할하나.yaml").unlink(), "파일이 없다"),
+    "manifest 가 맵이 아님": ("역할하나", lambda r: write(r / "역할하나" / "역할하나.yaml", "- 목록\n"), "맵이 아니다"),
+    "version 없음": ("역할하나", lambda r: put(r, drop(OLLAMA_ROLE, "version")), "version"),
+    "version 이 문자열": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "version": "1"}), "version"),
+    "version 이 0": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "version": 0}), "version"),
+    "model.name 없음": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "model": {"provider": "ollama"}}), "model.name"),
+    "model.provider 없음": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "model": {"name": "느린모델"}}), "model.provider"),
+    "모르는 provider": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "model": {"provider": "없는프로바이더", "name": "느린모델"}}), "없는프로바이더"),
+    "inference 없음": ("역할하나", lambda r: put(r, drop(OLLAMA_ROLE, "inference")), "inference"),
+    "Ollama 에 num_ctx 없음": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "inference": {"timeout": 900}}), "num_ctx"),
+    "vLLM 에 num_ctx 있음": ("역할둘", _vllm_with_num_ctx, "num_ctx"),
+    "timeout 이 0": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "inference": {"num_ctx": 8192, "timeout": 0}}), "timeout"),
+    "prompt_version 없음": ("역할하나", lambda r: put(r, drop(OLLAMA_ROLE, "prompt_version")), "prompt_version"),
+    "response_schema_version 없음": ("역할하나", lambda r: put(r, drop(OLLAMA_ROLE, "response_schema_version")), "response_schema_version"),
+    "prompt 판 파일 없음": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "prompt_version": 9}), "v9.yaml"),
+    "schema 판 파일 없음": ("역할하나", lambda r: put(r, {**OLLAMA_ROLE, "response_schema_version": 9}), "v9.yaml"),
+    "template 없음": ("역할하나", lambda r: dump(r / "역할하나" / "prompts" / "v1.yaml", {"text": "딴 칸"}), "template"),
+    "schema 가 맵이 아님": ("역할하나", lambda r: write(r / "역할하나" / "response_schemas" / "v1.yaml", "- type\n"), "맵이 아니다"),
+}
+
+
+@pytest.mark.parametrize("role, breaks, fragment", BROKEN.values(), ids=BROKEN.keys())
+def test_a_broken_role_stops_before_the_llm_is_called(roles, role, breaks, fragment):
+    """잘못된 역할 설정은 부르기 전에 멈춤. 무엇이 틀렸는지 문장에 있어야 함.
+
+    빈 prompt · 모르는 provider · 안 실리는 num_ctx 로 LLM 을 부르면 답이 이상한 것이
+    설정 탓인지 모델 탓인지 안 갈림. 모르는 provider 를 Ollama 로 떨어뜨리면 어느
+    서버로 쟀는지도 모르게 됨.
     """
-    (tmp_path / "models.yaml").write_text(
-        DOCUMENT.format(하나="하나.md", 둘="둘.md").replace(
-            'model: "vllm모델"', 'model: "오타모델"'
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
+    breaks(roles)
 
     with pytest.raises(InvalidRoleConfig) as 터짐:
-        get_role_config("역할둘")
+        get_role_config(role)
 
-    assert "오타모델" in str(터짐.value)
-
-
-def test_a_role_without_a_model_is_an_error(models_file, tmp_path):
-    """역할이 model 을 안 적으면 오류. 전역 기본으로 메우지 않음.
-
-    메워 주면 역할마다 무엇으로 재는지가 파일에서 사라지고, 한 줄을 고칠 때
-    모든 목적이 함께 움직인다.
-    """
-    (tmp_path / "models.yaml").write_text(
-        DOCUMENT.format(하나="하나.md", 둘="둘.md").replace(
-            '    model: "느린모델"\n', ""
-        ),
-        encoding="utf-8",
-        newline="\n",
-    )
-
-    with pytest.raises(InvalidRoleConfig) as 터짐:
-        get_role_config("역할하나")
-
-    assert "model" in str(터짐.value)
+    assert fragment in str(터짐.value)
 
 
-def test_a_missing_prompt_file_is_an_error(models_file, tmp_path):
-    """프롬프트가 가리키는 파일이 없으면 부르기 전에 멈춤.
-
-    빈 프롬프트로 LLM 을 부르면 답이 이상한 것이 프롬프트 탓인지 모델 탓인지
-    안 갈림.
-    """
-    (tmp_path / "models.yaml").write_text(
-        DOCUMENT.format(하나="없는파일.md", 둘="둘.md"), encoding="utf-8", newline="\n"
-    )
-
-    with pytest.raises(InvalidRoleConfig) as 터짐:
-        get_role_config("역할하나")
-
-    assert "없는파일.md" in str(터짐.value)
-
-
-def test_a_broken_role_does_not_break_the_others(models_file, tmp_path):
+def test_a_broken_role_does_not_break_the_others(roles):
     """부르지 않은 역할은 검사하지 않음.
 
-    roles 하나가 잘못됐다고 상관없는 자리가 통째로 죽으면, 쓰지도 않는 설정
-    한 줄 때문에 애플리케이션이 안 뜨는 구조가 됨.
+    역할 하나가 잘못됐다고 상관없는 자리가 통째로 죽으면, 쓰지도 않는 설정 한 줄
+    때문에 애플리케이션이 안 뜨는 구조가 됨.
     """
-    (tmp_path / "models.yaml").write_text(
-        DOCUMENT.format(하나="없는파일.md", 둘="둘.md"), encoding="utf-8", newline="\n"
+    (roles / "역할하나" / "prompts" / "v1.yaml").unlink()
+
+    assert get_role_config("역할둘").prompt == "새 프롬프트\n"
+
+
+def test_nothing_is_cached_between_calls(roles):
+    """manifest · prompt · schema 를 고치면 다음 호출에 보임. 먼저 받은 한 벌은 그대로임.
+
+    서버를 띄운 채 설정을 고치고 다시 재는 것이 용도임. 캐시하면 재시작 전까지
+    옛 판으로 돌면서 새 판으로 쟀다고 읽힘.
+    """
+    first = get_role_config("역할하나")
+
+    put(roles, {**OLLAMA_ROLE, "model": {"provider": "ollama", "name": "바꾼모델"}})
+    dump(roles / "역할하나" / "prompts" / "v1.yaml", {"template": "고친 프롬프트\n"})
+    dump(roles / "역할하나" / "response_schemas" / "v1.yaml", {**SCHEMA, "required": []})
+
+    second = get_role_config("역할하나")
+
+    assert (second.model, second.prompt, second.response_schema["required"]) == (
+        "바꾼모델", "고친 프롬프트\n", []
+    )
+    assert (first.model, first.prompt) == ("느린모델", "프롬프트 하나 {utterance}\n"), (
+        "먼저 받은 한 벌이 뒤의 수정에 따라 움직이면 한 요청 안에서 판이 섞인다"
     )
 
-    assert get_role_config("역할둘").prompt == "프롬프트 둘"
 
+def test_one_call_reads_the_three_files_once_each(roles, read_file_paths):
+    """한 호출이 manifest · prompt · schema 를 한 번씩 읽어 한 벌로 묶음.
 
-def test_the_file_is_read_once_per_call(models_file, monkeypatch):
-    """역할 하나를 푸는 데 models.yaml 을 한 번만 읽음.
-
-    두 번 읽으면 재는 중에 파일을 고쳤을 때 한 호출 안에서 모델과 프롬프트가
-    서로 다른 판의 값이 되는 자리가 생김.
+    같은 파일을 두 번 읽으면 그 사이의 수정이 한 벌 안에 섞일 자리가 생김. 역할
+    이름과 판 번호가 가리키는 세 파일 말고 다른 것도 안 읽음.
     """
-    from llm_engine import model_config
-
-    reads = []
-    real = model_config._document
-    monkeypatch.setattr(
-        model_config, "_document", lambda: (reads.append(1), real())[1]
-    )
+    read_file_paths.clear()
 
     get_role_config("역할하나")
-    assert len(reads) == 1, f"models.yaml 을 {len(reads)}번 읽었다"
 
-
-def test_the_live_roles_resolve():
-    """실물 models.yaml 의 역할 둘이 실제로 풀림.
-
-    임시 파일 시험은 규칙만 봄. 저장소에 적힌 역할이 실제 프롬프트 파일과
-    실제 provider 로 이어지는지는 여기서만 걸림 — 프롬프트를 옮기고 roles 를
-    안 고치면 이 줄이 먼저 빨개짐.
-
-    **모델 이름을 단언하지 않는다.** 측정으로 바뀌는 값이라 못 박으면 모델을
-    옮길 때마다 상관없는 빨간불이 뜸.
-    """
-    for role in (RESOLVE, NODE_REGISTRATION):
-        config = get_role_config(role)
-        assert config.prompt_path.is_file(), f"{role} 의 프롬프트가 없다"
-        assert config.prompt.strip(), f"{role} 의 프롬프트가 비었다"
-        assert config.model.provider, f"{role} 의 provider 가 비었다"
-
-    assert (
-        get_role_config(RESOLVE).prompt_path
-        != get_role_config(NODE_REGISTRATION).prompt_path
-    ), "목적이 다른 두 역할이 같은 프롬프트를 쓰면 한 역할로 합친 것과 같다"
-
-
-def test_every_live_role_names_its_own_model():
-    """실물 역할이 저마다 model 을 적고 있음.
-
-    **모델 이름을 단언하지 않는다.** 측정으로 바뀌는 값이라 못 박으면 모델을
-    옮길 때마다 상관없는 빨간불이 뜸. 보는 것은 「적혀 있는가」 하나다 —
-    안 적히면 get_role_config 가 이미 InvalidRoleConfig 로 멈추므로, 이 줄은
-    두 역할이 실제로 그 문을 지난다는 것을 지킨다.
-    """
-    import yaml
-
-    document = yaml.safe_load(paths.MODELS_PATH.read_text(encoding="utf-8"))
-
-    assert "default" not in document, (
-        "전역 기본 모델을 되살리지 않는다. 한 줄로 모든 목적이 함께 움직인다"
+    read = sorted(
+        str(Path(entry).relative_to(roles))
+        for entry in read_file_paths
+        if isinstance(entry, Path) and roles in entry.parents
     )
-    for role in (RESOLVE, NODE_REGISTRATION):
-        assert document["roles"][role].get("model"), f"{role} 에 model 이 없다"
-        assert get_role_config(role).model.model == document["roles"][role]["model"]
+    assert read == [
+        "역할하나/prompts/v1.yaml",
+        "역할하나/response_schemas/v1.yaml",
+        "역할하나/역할하나.yaml",
+    ]
+
+
+def test_the_physical_model_cannot_be_swapped_at_run_time(roles, monkeypatch):
+    """인자도 환경변수도 manifest 의 모델을 못 바꿈.
+
+    요청 하나가 manifest 와 다른 물리 모델로 돌면 무엇을 쟀는지 파일로 못 읽음.
+    다른 모델을 재려면 manifest 를 고치고 판을 올림.
+    """
+    monkeypatch.setenv("LLM_MODEL", "환경모델")
+
+    assert get_role_config("역할하나").model == "느린모델"
+    assert list(inspect.signature(get_role_config).parameters) == ["role"]
+    assert not hasattr(role_config, "get_model_config"), "이름으로 모델을 고르는 길이 되살아났다"
+
+
+# 코드가 prompt 에 채워 넣는 치환자. 이름이 갈리면 format 이 KeyError 로 죽거나
+# 값이 통째로 안 실린다.
+PLACEHOLDERS = {
+    RESOLVE: ("{menu}", "{utterance}"),
+    NODE_REGISTRATION: ("{existing_nodes}", "{new_node}", "{groups}"),
+}
+
+
+def test_the_live_roles_resolve_with_the_placeholders_the_code_fills():
+    """실물 역할 둘이 실제로 풀리고, 코드가 채우는 치환자를 prompt 가 가짐.
+
+    임시 폴더 시험은 규칙만 봄. 저장소에 적힌 역할이 실제 판 파일로 이어지는지는
+    여기서만 걸림. 판 번호를 올리고 파일을 안 만들면 이 줄이 먼저 빨개짐.
+
+    모델 이름을 단언하지 않는다. 측정으로 바뀌는 값이라 못 박으면 모델을 옮길 때마다
+    상관없는 빨간불이 뜸.
+    """
+    for role, placeholders in PLACEHOLDERS.items():
+        config = get_role_config(role)
+        assert config.role == role
+        for placeholder in placeholders:
+            assert placeholder in config.prompt, f"{role} prompt 에 {placeholder} 가 없다"
+        schema = config.response_schema
+        assert set(schema["required"]) == set(schema["properties"]), (
+            f"{role} schema 의 required 와 properties 가 갈렸다"
+        )
+
+    assert get_role_config(RESOLVE).prompt != get_role_config(NODE_REGISTRATION).prompt, (
+        "목적이 다른 두 역할이 같은 프롬프트를 쓰면 한 역할로 합친 것과 같다"
+    )
+    assert not (paths.REPO_ROOT / "models.yaml").exists(), (
+        "역할 밖에 모델 목록을 되살리지 않는다. 역할 manifest 한 곳이 모델을 정한다"
+    )

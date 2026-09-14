@@ -28,10 +28,10 @@
 |---|---|---|
 | `models.yaml` `default` | `qwen3:32b` | 8b 와 아홉 발화를 각 10회 재서 갈랐다 — 20/90 대 50/90. 갈린 것은 `want` 축 하나다 (아래 2026-08-22 (이어서) 참고). 더 작은 것으로도 못 내린다. qwen2.5:7b · qwen3:4b 는 발화 하나씩을 못 맞춘다 |
 | `llm_engine/ollama.py` `options` | `repeat_penalty` 없음 | 올리면 반복은 멎지만 판정까지 깎인다. 반복은 아래 `maxLength` 로 막는다 |
-| `models.yaml` `defaults.reason_max_length` | `200` | 없애면 모델이 recipe id 나열을 무한 반복해 202초에 끊긴다. 올려도 답은 그대로이고 시간만 는다 (200 · 400 · 600 -> 30 · 50 · 70초) |
-| `workflows/static/prompts/recipe_selection.md` | reason 에 ID 금지 | 이 규칙이 루프와 판정을 함께 잡는다. 빼면 3번 발화가 0/10 |
+| `llm_engine/roles/resolve/response_schemas/v1.yaml` `reason.maxLength` (옛 `models.yaml` `defaults.reason_max_length`) | `200` | 없애면 모델이 recipe id 나열을 무한 반복해 202초에 끊긴다. 올려도 답은 그대로이고 시간만 는다 (200 · 400 · 600 -> 30 · 50 · 70초) |
+| `llm_engine/roles/resolve/prompts/v1.yaml` (옛 `recipe_selection.md`) | reason 에 ID 금지 | 이 규칙이 루프와 판정을 함께 잡는다. 빼면 3번 발화가 0/10 |
 | `workflows/static/menu/menu.yaml` | recipe 를 끝에 이어 붙임 | 대상별로 묶는 것을 재봤는데 모델에 따라 반대로 작용한다 |
-| `workflows/static/prompts/recipe_selection.md` 축 목록 | id + 이름 + 설명 734자 (문맥이 오면 922자) | 채운 프롬프트가 7648자다 (문맥이 오면 7836자). 2026-08-28 「마흔여섯째」에 다시 쟀다 — 화면 시작 노드 둘이 붙어 730 -> 734 · 7133 -> 7648 이 됐고, 는 것의 대부분은 축 목록이 아니라 menu(3321 -> 4833자)다. 문맥을 안 보내면 given 은 셋 그대로다. `num_ctx` 는 32768(토큰) 이라 지금도 여유가 있다 — 옛 근거(8192 · 6758자)는 2026-08-21 측정 기록 쪽에 날짜와 함께 남아 있다. 선택지를 늘릴 때 다시 재는 것은 그대로다 |
+| `llm_engine/roles/resolve/prompts/v1.yaml` (옛 `recipe_selection.md`) 축 목록 | id + 이름 + 설명 734자 (문맥이 오면 922자) | 채운 프롬프트가 7648자다 (문맥이 오면 7836자). 2026-08-28 「마흔여섯째」에 다시 쟀다 — 화면 시작 노드 둘이 붙어 730 -> 734 · 7133 -> 7648 이 됐고, 는 것의 대부분은 축 목록이 아니라 menu(3321 -> 4833자)다. 문맥을 안 보내면 given 은 셋 그대로다. `num_ctx` 는 32768(토큰) 이라 지금도 여유가 있다 — 옛 근거(8192 · 6758자)는 2026-08-21 측정 기록 쪽에 날짜와 함께 남아 있다. 선택지를 늘릴 때 다시 재는 것은 그대로다 |
 | `ontology/registry.py` `MENU_BUDGET` | `6000` | 근거가 낡았다. `num_ctx` 8192 시절 값이고 지금은 32768 이다. 프로덕션에서 읽는 곳이 0 이고 테스트 하나가 보는 회귀 방지선이다 (`registry.py` 주석). 올릴 이유도 없다 — 진짜 제약은 컨텍스트 크기가 아니라 문장 변별력이다. menu 문장의 앞 30자가 23개나 같아서 shortlist 를 만들었다. 자수를 늘리면 오히려 나빠진다. 개편에서 잴 것은 자수가 아니라 "앞토막이 같은 문장 수" 다 |
 | `registration/registry.py` `MAX_STEPS` | `5` | 같은 성격이다. `registry.py` 주석이 스스로 "임시방편이다. 경로 길이가 문제가 아니라 말이 안 되는 조합이 섞이는 것이 문제" 라고 적고 있고, 그 조합 문제는 온톨로지 개편이 푼다. **2026-09-11 에 4 -> 5 로 올렸다** — 지점을 범위로 넓히는 계산이 노드(`point_to_map_extent`)로 드러나 recipe_060 이 다섯 칸이 됐다. 4 로 되돌리면 받아들인 recipe 하나를 후보가 못 만든다. **후보를 만들 때의 한도일 뿐이다.** 실행 안전 한도(vendor `_MAX_WORKFLOW_STEPS` 8)와 묶지 않는다. 후보 64 -> 85 (「리뷰 2 · 1차」) |
 | `app/ui/graph_svg/dot.py` `NODE_ATTRS` fontsize · `layout_store.py` `SPREAD_X` · `NEATO_SPREAD_ATTRS` 의 `sep` | `32` · `5.0` · `+12` | **셋이 한 덩어리다. 하나만 고치면 노드가 겹친다.** 화면 글씨는 `fontsize x 맞춤배율` 이고 맞춤배율은 캔버스가 정한다 — 글씨를 키우면 상자가 커져 붙고, 늘리기를 줄이면 캔버스가 커져 글씨가 작아진다. 지금 값에서 가장 가까운 쌍이 24pt 떨어져 있고 칸의 폭과 높이를 100%·98% 쓴다. **고친 뒤에는 좌표를 다시 만들어야 한다** — `layout.json` 을 지우고 서버를 켜면 다시 계산되고, 그 결과를 `_init/layout.json` 에 복사해야 커밋된다. `tests/app/ui/graph_svg/test_nodes_do_not_overlap.py` 를 돌린다. 후보 표는 2026-08-29 「쉰셋째」 |
@@ -40,8 +40,8 @@
 | `ontology/shortlist.py` `candidates()` about | 두 단 (걸린 것 우선, 없으면 범용) | 범용 recipe 를 늘 통과시키면 "국회의원 선거구" 에 웹 검색과 VWorld 경계가 따라오고, 늘 빼면 대상 없는 발화에서 후보가 0개가 된다 |
 | `ontology/ontology.yaml` `tool.outputs` 의 `pick` | `first` (지점 행정구역 판별 · 전기차 충전소 검색) | 옮기기 전 배선표의 `items.0` 을 그대로 옮긴 것이다. 바꾸면 recipe 052 · 054 · 055 · 056 · 058 · 059 · 060 의 Gateway 입력이 바뀐다. 구조 이전(「리뷰 2 · 2차」)은 동작 보존이 조건이라 안 바꿨다. **검색 결과의 첫 충전소가 사람이 원하는 곳인지는 아직 안 정했다** |
 
-모델마다 다른 값(`num_ctx` · `timeout` · `reason_max_length`)은 `models.yaml` 에 있다.
-목록에 없는 모델은 `defaults` 로 돈다. 어디에 붙는가(`OLLAMA_URL` · `AGENTIC_API_URL`)는
+역할마다 다른 값(모델 · provider · `num_ctx` · `timeout`)과 prompt · response schema 판은
+`llm_engine/roles/<역할>/` 에 있다 (2026-09-14 부터. 그 전은 `models.yaml`). 어디에 붙는가(`OLLAMA_URL` · `AGENTIC_API_URL`)는
 기계마다 다르므로 환경변수로 두고 커밋하지 않는다 — `.env.example` 을 복사해 쓴다.
 
 ---
@@ -3228,6 +3228,64 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 ---
 
 ## 측정 기록
+
+### 2026-09-14 · LLM 설정을 역할별 logical model 로 — models.yaml 을 걷고 prompt · schema 를 판 번호로 둔다
+
+환경 오프라인(LLM · Gateway · MCP 안 부름) · 시작 HEAD b04babd.
+**prompt 문구 · schema 칸 · 모델 · inference 값을 한 글자도 안 바꿨다.** 옮기고 판 번호만 붙였다.
+
+무엇을 옮겼나.
+
+```
+models.yaml roles · defaults · models        -> llm_engine/roles/<역할>/<역할>.yaml (version 1)
+workflows/static/prompts/recipe_selection.md -> llm_engine/roles/resolve/prompts/v1.yaml
+registration/node_registration.md            -> llm_engine/roles/node_registration/prompts/v1.yaml
+orchestrator/schemas/response_schema.py      -> llm_engine/roles/resolve/response_schemas/v1.yaml
+  recipe_selection_schema(200)
+registry.NODE_REGISTRATION_SCHEMA            -> llm_engine/roles/node_registration/response_schemas/v1.yaml
+defaults.reason_max_length 200               -> resolve schema 의 properties.reason.maxLength 200
+SPOKEN_OPTIONS (칸 schema 를 담은 dict)      -> execute_service.SPOKEN_OPTIONS (이름 셋의 tuple)
+llm_engine/model_config.py                   -> llm_engine/role_config.py
+```
+
+옮긴 값 (옮기기 전 effective 값 그대로).
+
+```
+역할               판  model             provider  inference                    prompt  schema
+resolve            1   solar-open2-250b  vllm      timeout 180                  v1      v1
+node_registration  1   qwen3:32b         ollama    num_ctx 32768 · timeout 900  v1      v1
+```
+
+resolve 의 num_ctx 32768(defaults 에서 오던 것)은 옮기지 않았다. vLLM 요청 body 에 안 실리던
+값이다 — 컨텍스트는 서버의 --max-model-len 이 정한다. 로더가 vLLM 역할의 num_ctx 를 오류로 본다.
+
+없앤 길. `/resolve` · `/nodes` 의 model query 인자 · `LLM_MODEL` · `get_model_config` ·
+`get_llm(model)` · 목록에 없는 모델을 defaults(ollama)로 보내던 fallback · 계기판 다섯
+(check_llm · check_resolve · check_demo · check_argument · sweep_utterances)의 `--model`.
+다른 모델을 재려면 manifest 를 고치고 version 을 올린다. 계기판은 표 머리에
+「역할 resolve v1 · solar-open2-250b (vllm) · prompt v1 · response_schema v1」 을 찍는다.
+HTTP 로 재는 넷은 이 저장소의 manifest 를 읽어 찍는다 — /resolve 응답에는 판이 안 실린다.
+
+한 요청에 역할 설정을 한 번 읽는다. 옛 구조는 main._process 가 한 번, resolve_service 가
+prompt 를 위해 또 한 번(등록은 main 과 registry 에서 한 번씩) 읽었다. 이제 창구가 읽은
+RoleConfig 한 벌이 get_llm_for 와 해석(등록)의 prompt · schema 로 함께 간다.
+
+동등성 (옛 소스를 지우기 전에 Python 으로 맞댐).
+
+```
+resolve prompt            옛 read_text == 새 template            같다 (2253자)
+node_registration prompt  옛 read_text == 새 template            같다 (1236자)
+resolve schema            recipe_selection_schema(200) == 새 dict  같다 · json.dumps(키 차례 포함)도 같다
+  properties 차례         reason · candidate_recipe_ids · status · recipe_id · argument ·
+                          travel_mode · minutes · admin_level      같다 · required 차례 같다
+  null                    type 의 "null" 은 문자열 · enum 의 null 은 None  같다
+node_registration schema  NODE_REGISTRATION_SCHEMA == 새 dict      같다 · 키 차례 같다
+effective 값              models.yaml defaults+models 병합 == 새 manifest  같다 (위 표)
+```
+
+테스트. 대상 묶음 161 통과. 전체 448 통과 · 1 실패 — 실패는
+`test_dense_graph_would_move_if_overlap_removal_were_used` 하나로 Graphviz 판 차이다(전과 같다).
+test_model_config.py 는 지웠다. 지킬 대상(models.yaml defaults · 이름 차례)이 없어졌다.
 
 ### 2026-09-11 (리뷰 2 · 2차) · 응답 · 화면 값을 읽는 경로를 내놓는 쪽이 적는다 — ★ 39 recipe 의 최종 Gateway 입력 차이 0
 

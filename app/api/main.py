@@ -36,7 +36,7 @@ from app.api.services.bridge import recent_service
 from app.api.services.streamlit import node_service, screen_service
 from app.api.services.streamlit.screen_service import UnknownRenderMode
 from llm_engine.llm_selector import get_llm_for
-from llm_engine.model_config import NODE_REGISTRATION, RESOLVE, get_role_config
+from llm_engine.role_config import NODE_REGISTRATION, RESOLVE, get_role_config
 from registration.registry import (
     DuplicateNode,
     InvalidInference,
@@ -146,7 +146,7 @@ async def render_endpoint(form: RenderRequest) -> dict:
 
 
 @app.post("/resolve")
-async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
+async def resolve_endpoint(utterance: str) -> dict:
     """사용자 발화로부터 Recipe 선택.
 
     출력  status(SELECT / CLARIFY / NO_MATCH) · recipe_id ·
@@ -154,62 +154,65 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
           paths 는 후보별 실행 경로. NO_MATCH 면 비어 있음
     규칙  고르는 것은 LLM 뿐임. 지도 문맥을 안 받음 — 문맥이 필요한지는 실행
           직전에 보고, 실행은 /chat/stream 이 함
-          model 은 측정용임. 같은 발화를 모델만 바꿔 재는 데 서버를 다시
-          띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음
-          어느 모델로 갈지는 resolve 역할 설정이 정함(models.yaml 의 roles).
-          여기서 물리 모델 이름을 적지 않음
+          어느 모델 · prompt · schema 로 갈지는 resolve 역할 설정이 정함
+          (llm_engine/roles/resolve). 요청이 물리 모델을 갈아 끼우지 못함
           /chat/stream 과 같은 진입점(_process)을 continue_after_resolve=False
           로 지남. 해석 뒤에 실행을 이어 가지 않는 것 말고는 같은 길임
     """
-    return _process(utterance, model=model, continue_after_resolve=False)
+    return _process(utterance, continue_after_resolve=False)
 
 
 def _process(
     text: str,
     *,
-    model: str | None = None,
     context: dict | None = None,
     continue_after_resolve: bool,
 ):
-    """창구 둘이 지나는 한 자리. resolve 역할 설정을 LLM 클라이언트로 바꿔 넘김.
+    """창구 둘이 지나는 한 자리. resolve 역할 설정을 읽어 LLM 클라이언트와 함께 넘김.
 
     출력  execute_service.process 가 낸 것 그대로. continue_after_resolve=False
           면 resolve 결과 dict, True 면 이벤트 흐름
     규칙  POST /resolve 는 continue_after_resolve=False, POST /chat/stream 은
           True 로 부름
           역할 설정을 읽고 LLM 클라이언트를 만드는 자리가 여기 하나임. 창구마다
-          따로 두면 한쪽 모델 · reason 상한만 바뀌어도 안 보임
-    제약  요청 경로를 보고 가르지 않는다.
+          따로 두면 한쪽 모델 · prompt · schema 만 바뀌어도 안 보임
+          역할 설정은 요청마다 한 번 읽음. 그 한 벌이 LLM 클라이언트와 해석의
+          prompt · schema 로 함께 감
+    제약  역할 설정을 뒤에서 다시 읽게 하지 않는다.
+          파일을 고치는 중에 요청이 오면 모델과 prompt 가 서로 다른 판이 됨
+          요청 경로를 보고 가르지 않는다.
           어느 창구인지는 continue_after_resolve 로만 말함
           해석을 여기서 부르지 않는다.
           resolve_service.resolve 를 부르는 곳은 execute_service._resolve 한 곳임
     """
-    role = get_role_config(RESOLVE, model)
+    role = get_role_config(RESOLVE)
     return execute_service.process(
         text,
-        llm_client=get_llm_for(role.model),
-        reason_max_length=role.model.reason_max_length,
+        llm_client=get_llm_for(role),
+        role=role,
         context=context,
         continue_after_resolve=continue_after_resolve,
     )
 
 
 @app.post("/nodes")
-async def register_node_endpoint(
-    form: NodeRegisterRequest, model: str | None = None
-) -> dict:
+async def register_node_endpoint(form: NodeRegisterRequest) -> dict:
     """노드 등록. 온톨로지 · recipe · menu 가 함께 갱신됨.
 
     출력  새로 생긴 것. node_id · node · groups · reason · recipe_ids ·
           new_solid_edges · new_dotted_edges
+    규칙  node_registration 역할 설정을 요청마다 한 번 읽음. 그 한 벌이 LLM
+          클라이언트와 등록의 prompt · schema 로 함께 감
     제약  대상이 어긋나는 경로를 등록하지 않는다.
           화각이 안 맞는 것(궤도 검측차 영상으로 승강장 승객을 보는 식)은
           recipe 가 되지 않고 응답에도 안 담김
           버린 경로를 응답에 담지 않는다.
           화면이 쓰지 않는 키를 만들지 않음
     """
-    role = get_role_config(NODE_REGISTRATION, model)
-    return node_service.register(form.model_dump(), llm_client=get_llm_for(role.model))
+    role = get_role_config(NODE_REGISTRATION)
+    return node_service.register(
+        form.model_dump(), llm_client=get_llm_for(role), role=role
+    )
 
 
 @app.post("/chat/stream")

@@ -14,7 +14,6 @@ LLM 이 그 recipe 를 고르는지 잰다. 「이 recipe 를 어떤 말로도 �
     python dev/tools/check_resolve.py                   전체 정답표 (기본 5회)
     python dev/tools/check_resolve.py --runs 3          회차만 바꿔
     python dev/tools/check_resolve.py --only 2,4        고친 발화만 다시
-    python dev/tools/check_resolve.py --model qwen3:4b  모델만 바꿔 (서버 재시작 없이)
     python dev/tools/check_resolve.py --context bbox    실행에 실을 문맥을 우클릭 전 모양으로
     python dev/tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
 
@@ -128,8 +127,10 @@ recipe 가 맞았는데 실행이 엉뚱한 것을 조회하면 인자 표에서
 그래서 「LLM 이 쓴 것」과 「최종 후보」가 언제나 같고, 후보 표는 LLM 후보 수와
 status 만 본다.
 
-기본 모델은 `models.yaml` 의 `default` 다 — 그 값은 여기 안 적는다. 바뀌면 두
-곳이 조용히 어긋난다. 모델만 갈아 재려면 `--model` 을 쓴다.
+재는 모델은 창구가 읽는 resolve 역할 설정(`llm_engine/roles/resolve/resolve.yaml`)
+한 판이다 — 이 도구가 고르지 않는다. 다른 모델을 재려면 manifest 를 고치고 판을
+올린다. 표 머리의 역할 줄은 **이 저장소의** manifest 를 읽은 것이다. `/resolve`
+응답에는 판이 안 실리므로 창구가 다른 사본에서 떠 있으면 다를 수 있다.
 
 발화가 확정된 뒤에도 **이 파일은 지우지 않는다.** 온톨로지나 menu 가 바뀌면
 다시 재야 하고, 지웠다 되살리는 것보다 두는 편이 싸다. 그래서 파일 하나에 담고
@@ -858,9 +859,9 @@ def _base_url() -> str:
     """
     return endpoints.agentic_api_url()
 
-# models.yaml 의 가장 큰 timeout(qwen3:32b 900) 보다 짧으면 큰 모델을 잴 때
-# 서버가 답하기 전에 여기서 끊겨 표가 오류로만 찬다. 화면(app/ui/api_client.
-# RESOLVE_TIMEOUT 180)과 달리 이 도구는 큰 모델도 재므로 값을 따로 둔다.
+# 역할 manifest 의 timeout 보다 짧으면 느린 판을 잴 때 서버가 답하기 전에 여기서
+# 끊겨 표가 오류로만 찬다. 화면(app/ui/api_client.RESOLVE_TIMEOUT 180)과 달리 이
+# 도구는 느린 판도 재므로 값을 넉넉히 따로 둔다.
 TIMEOUT = 900
 
 RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "recipes"
@@ -1033,24 +1034,46 @@ def _tally(result: dict) -> tuple:
     return llm_count, result.get("status") or "-"
 
 
-def _call_resolve(utterance: str, model: str | None = None) -> tuple:
+def _describe_role(role) -> str:
+    """역할 설정 한 벌을 표 머리 한 줄로. 계기판들이 같은 글자로 적게 한 곳에 둠."""
+    return (
+        f"역할 {role.role} v{role.version} · {role.model} ({role.provider}) · "
+        f"prompt v{role.prompt_version} · response_schema v{role.response_schema_version}"
+    )
+
+
+def _role_label() -> str:
+    """표 머리에 적을 resolve 역할 한 줄.
+
+    규칙  이 저장소의 역할 manifest 를 읽음. 창구가 같은 사본에서 떠 있을 때
+          창구가 쓰는 판과 같음. /resolve 응답에는 판이 안 실림
+          못 읽으면 그 까닭을 적고 재기는 멈추지 않음. 재는 것은 창구임
+          부를 때 import 함. 이 파일의 발화 목록만 빌려 쓰는 자가 역할 설정까지
+          끌어오지 않게 하려는 것
+    """
+    from llm_engine.role_config import RESOLVE, get_role_config
+
+    try:
+        return _describe_role(get_role_config(RESOLVE))
+    except ValueError as error:
+        return f"역할 {RESOLVE} 못 읽음 ({error})"
+
+
+def _call_resolve(utterance: str) -> tuple:
     """POST /resolve 한 번.
 
-    입력  발화 · 모델 이름(없으면 서버 기본 모델)
+    입력  발화
     출력  (후보 집합, status, 인자, 후보 수와 조회 후보 집합, 시간 칸,
           이름 있는 값들).
           후보는 recipe_id 와 candidate_recipe_ids 를 합친 것
           맨 뒤에만 덧붙인다 — check_argument 가 앞의 셋만 받아 쓴다
           시간 칸은 이 도구가 잰 /resolve 한 번의 시간(elapsed) 하나뿐인 dict
     규칙  서버에 못 닿으면 ServerDown. 재시도하지 않고 즉시 멈춤
-          모델은 요청마다 실어 보냄. 모델을 바꾸는 데 서버를 다시 띄우지 않음
           지도 문맥을 안 보냄. 고르는 것은 LLM 뿐이라 /resolve 가 안 받음
           status 를 후보와 함께 냄. 적중 표가 근접·빗나감을 가르는 데 씀 —
           후보 집합만으로는 CLARIFY 와 SELECT 가 안 갈림
     """
     params = {"utterance": utterance}
-    if model:
-        params["model"] = model
 
     started = time.perf_counter()
     try:
@@ -1081,12 +1104,12 @@ def _call_resolve(utterance: str, model: str | None = None) -> tuple:
 
 def _measure(
     entries, runs: int, outcomes: dict, axes: dict, tallies: dict,
-    model: str | None = None, times: dict | None = None,
+    times: dict | None = None,
     spoken: dict | None = None,
 ) -> None:
     """발화마다 runs 회 돌려 결과를 쌓음.
 
-    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 넷 · 모델 이름
+    입력  발화 목록 · 반복 횟수 · 채워 넣을 dict 넷
     규칙  outcomes[번호] 에 나온 (후보 집합, status) 조합의 Counter 를 쌓음.
           status 를 함께 묶는 것은 적중 표가 근접·빗나감을 가르기 위함임.
           적중 판정은 후보 집합만 봄 — 예전과 같은 숫자가 나와야 함
@@ -1120,7 +1143,7 @@ def _measure(
         for _ in range(runs):
             try:
                 found, status, axis, tally, timing, values = _call_resolve(
-                    utterance, model
+                    utterance
                 )
                 counter[(found, status)] += 1
                 axis_counter[axis] += 1
@@ -1925,7 +1948,6 @@ def main() -> int:
         default="",
         help="돌릴 발화 번호. 예: 2,4 (기준선 아홉만: 1,2,3,4,5,6,7,8,9)",
     )
-    parser.add_argument("--model", default="", help="쓸 모델. 예: qwen2.5:7b (기본: 서버 기본 모델)")
     parser.add_argument(
         "--execute", action="store_true",
         help="실행까지 부른다 (발화마다 한 번 더). 실행 칸 표가 하나 더 나온다",
@@ -1951,10 +1973,10 @@ def main() -> int:
     else:
         entries = [entry for entry in UTTERANCES if entry[3]]
 
-    # 모델을 적는다. NOTES.md 의 측정 기록은 조건 없는 숫자를 받지 않는다.
+    # 잰 역할 판을 적는다. NOTES.md 의 측정 기록은 조건 없는 숫자를 받지 않는다.
     print(
         f"발화 {len(entries)}개 × {args.runs}회 · {_recipe_state()}"
-        f" · 모델 {args.model or '서버 기본'}"
+        f" · {_role_label()}"
         f" · 지도 문맥 {CONTEXT}"
         f"{' · 실행까지' if args.execute else ''}"
     )
@@ -1964,7 +1986,7 @@ def main() -> int:
     executions, spoken = {}, {}
     try:
         _measure(
-            entries, args.runs, outcomes, axes, tallies, args.model, times, spoken
+            entries, args.runs, outcomes, axes, tallies, times, spoken
         )
         if args.execute:
             print()

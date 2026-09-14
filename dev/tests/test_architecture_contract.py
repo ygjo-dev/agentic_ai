@@ -31,8 +31,8 @@ import ast
 import yaml
 
 import paths
+from llm_engine.role_config import RESOLVE, get_role_config
 from ontology import graph
-from orchestrator.schemas.response_schema import recipe_selection_schema
 
 # ── LLM 은 recipe 를 고른다 ─────────────────────────────────────────
 
@@ -73,15 +73,32 @@ def test_the_llm_is_asked_to_choose_a_recipe_not_a_tool_sequence():
 
     나온 값이 이 계약을 지키는지는 orchestrator 의 test_resolve_service.py
     (test_only_the_contracted_keys_survive)가 본다. 여기서는 계약 쪽을 본다.
-    상한 값은 안 본다 — 모델마다 다르고 models.yaml 에서 온다.
+    읽는 것은 resolve 역할이 지금 가리키는 response schema 판이다. 칸의 모양
+    (type · enum · 길이 상한)은 안 본다. 판을 올릴 때 바뀔 수 있는 값임.
     """
-    schema = recipe_selection_schema(200)
+    schema = get_role_config(RESOLVE).response_schema
     fields = set(schema["properties"])
 
     assert fields == set(schema["required"]), "required 와 properties 가 갈렸다"
     assert fields == SELECTION_FIELDS, (
         f"LLM 이 정하는 것이 달라졌다: {sorted(fields ^ SELECTION_FIELDS)}. "
         "실행을 적는 칸이면 여기서 막고, 아니면 이 목록과 위 주석을 함께 고친다"
+    )
+
+
+def test_the_spoken_options_handed_to_execution_are_fields_the_llm_fills():
+    """실행이 run 에 넘기는 이름 있는 값은 resolve 응답 schema 에 실제로 있는 칸이다.
+
+    칸의 모양은 schema 가 갖고 실행은 이름만 적는다. 이름이 schema 와 갈리면 run
+    에 늘 null 이 가는데, 말하지 않은 값도 null 이라 표에서 안 보인다.
+    """
+    from execution.execute_service import SPOKEN_OPTIONS
+
+    properties = get_role_config(RESOLVE).response_schema["properties"]
+
+    assert SPOKEN_OPTIONS, "이름 있는 값이 비면 이 검사가 무력하다"
+    assert [name for name in SPOKEN_OPTIONS if name not in properties] == [], (
+        "실행이 받아 가는 이름이 resolve 응답 schema 에 없다"
     )
 
 

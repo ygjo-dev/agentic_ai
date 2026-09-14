@@ -103,6 +103,29 @@ class StubLLMClient:
         return self.response
 
 
+def fake_role(**overrides):
+    """역할 설정 한 벌을 손으로 만듦. 역할 파일을 안 읽음.
+
+    provider 나 inference 값만 갈아 끼워 보는 시험이 씀. 실물 역할의 모델 이름을
+    적으면 모델을 옮길 때마다 상관없는 시험이 빨개짐.
+    """
+    from llm_engine.role_config import RoleConfig
+
+    values = {
+        "role": "시험역할",
+        "version": 1,
+        "model": "시험모델",
+        "provider": "ollama",
+        "inference": {"num_ctx": 8192, "timeout": 180},
+        "prompt_version": 1,
+        "response_schema_version": 1,
+        "prompt": "{utterance}",
+        "response_schema": {"type": "object", "properties": {}, "required": []},
+    }
+    values.update(overrides)
+    return RoleConfig(**values)
+
+
 # ------------------------------------------------------------ 공통 Fixture
 @pytest.fixture
 def read_file_paths(monkeypatch):

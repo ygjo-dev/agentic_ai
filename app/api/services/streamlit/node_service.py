@@ -19,7 +19,7 @@ def _edges():
     return solid, dotted
 
 
-def register(form: dict, llm_client) -> dict:
+def register(form: dict, llm_client, role) -> dict:
     """노드를 등록하고 그로 인해 무엇이 늘었는지까지.
 
     출력  node_id · node · groups · reason · recipe_ids ·
@@ -27,13 +27,14 @@ def register(form: dict, llm_client) -> dict:
     규칙  new_solid_edges / new_dotted_edges 는 등록 직전과 직후의 차집합.
           registry 가 알려주지 않으므로 앞뒤로 한 번씩 조회해 직접 계산함
     제약  llm_client 를 여기서 import 하지 않는다. 이유는 resolve_service 와 같음
+          역할 설정을 여기서 다시 읽지 않는다. 창구가 읽은 한 벌을 registry 에 넘김
           화면이 안 읽는 키를 만들지 않는다.
           경로는 화면이 /render 로 다시 받고, 등록 장면인지는 화면이 이미
           알고 넘김(mode="register")
     """
     before_solid, before_dotted = _edges()
 
-    result = registry.register_node(form, llm_client=llm_client)
+    result = registry.register_node(form, llm_client=llm_client, role=role)
 
     _, after_solid, after_dotted = screen_service.domain_graph()
 

@@ -4,8 +4,10 @@
 열지 않는다 — 저장소를 바꿀 때 고칠 곳을 store 경계에 모으려는 것이다.
 recipe 와 menu 는 아직 store 가 맡는 자산이 아니라 여기서 직접 쓴다.
 
-**LLM 추론도 여기 것이다.** 등록이 LLM 에 무엇을 묻고 어떤 응답을 받아야
-하는지는 등록만 아는 계약이라 발화 해석과 공용 층을 나눠 쓰지 않는다.
+**LLM 추론도 여기서 부른다.** 무엇을 묻고 어떤 모양으로 받는지(prompt ·
+response schema)는 node_registration 역할(llm_engine/roles/node_registration)이
+갖고, 받은 값이 등록에 쓸 수 있는지(node_id 형식 · 대상 목록)는 여기서 본다.
+발화 해석과 공용 층을 나눠 쓰지 않는다.
 """
 
 import json
@@ -13,7 +15,6 @@ import re
 import shutil
 
 import paths
-from llm_engine.model_config import NODE_REGISTRATION, get_role_config
 from ontology import graph, store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
 
@@ -87,20 +88,7 @@ def check_types(type_ids, path=None) -> None:
             )
 
 
-# LLM 응답 구조(json). node_id 형식은 코드에서 다시 검증한다.
-NODE_REGISTRATION_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "node_id": {"type": "string"},
-        # 관한 대상(그룹) 노드 id 들. **여러 개 고를 수 있다** — 승강장 CCTV
-        # 영상이 승강장에도 CCTV 에도 관한 것처럼. 어느 대상에도 매이지
-        # 않으면 빈 목록.
-        "groups": {"type": "array", "items": {"type": "string"}},
-        "reason": {"type": "string"},
-    },
-    "required": ["node_id", "groups", "reason"],
-}
-
+# LLM 이 준 node_id 의 형식. 응답 schema 는 문자열까지만 강제하므로 여기서 다시 본다.
 NODE_ID_PATTERN = re.compile(r"^[a-z]+(_[a-z]+)*$")
 
 
@@ -108,15 +96,17 @@ class InvalidInference(ValueError):
     """LLM 이 쓸 수 없는 값을 돌려줬다. 계약을 어긴 응답도 여기로 온다."""
 
 
-def _inferred(prompt: str, variables: dict, llm_client) -> dict:
+def _inferred(
+    prompt: str, variables: dict, response_schema: dict, llm_client
+) -> dict:
     """등록 프롬프트를 채워 LLM 을 한 번 부르고 계약된 key 만 남김.
 
-    출력  NODE_REGISTRATION_SCHEMA 의 required 에 적힌 key 만.
+    출력  response_schema 의 required 에 적힌 key 만.
           LLM 이 덧붙인 것은 버림
     제약  계약을 어긴 응답을 조용히 넘기지 않는다.
           빈 결과가 화면에 뜨면 원인을 못 찾음. 원문을 붙여 예외로 올림
     """
-    raw = llm_client.generate(prompt.format(**variables), NODE_REGISTRATION_SCHEMA)
+    raw = llm_client.generate(prompt.format(**variables), response_schema)
 
     try:
         data = json.loads(raw)
@@ -126,17 +116,18 @@ def _inferred(prompt: str, variables: dict, llm_client) -> dict:
         ) from exc
 
     try:
-        return {key: data[key] for key in NODE_REGISTRATION_SCHEMA["required"]}
+        return {key: data[key] for key in response_schema["required"]}
     except (KeyError, TypeError) as exc:
         raise InvalidInference(
             f"LLM 응답에 필요한 key 가 없다: {data!r}"
         ) from exc
 
 
-def infer_node(form: dict, llm_client, path=None) -> dict:
+def infer_node(form: dict, llm_client, role, path=None) -> dict:
     """사람이 쓴 노드 정보를 보고 LLM 이 node_id 와 관한 대상들을 정함.
 
-    입력  노드 폼 · LLM 클라이언트 · 온톨로지 경로(없으면 기본)
+    입력  노드 폼 · LLM 클라이언트 · node_registration 역할 설정 ·
+          온톨로지 경로(없으면 기본)
     출력  node_id · groups · reason. groups 는 중복 제거됨.
           같은 대상을 두 번 적으면 점선이 두 줄 생김
     규칙  대상은 닫힌 목록에서 고름. 존재하는 그룹 노드 id 들
@@ -146,7 +137,10 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
           노드 등)가 그렇고, 억지로 고르는 것보다 나음
           InvalidInference  형식에 맞지 않거나 쓸 수 없는 값을 돌려줌.
                             응답이 JSON 이 아니거나 필수 key 가 없는 것도 같음
-    제약  대상을 자유 문자열로 받지 않는다.
+          prompt 와 응답 schema 는 넘겨받은 역할 설정의 것임
+    제약  역할 설정을 여기서 다시 읽지 않는다.
+          한 요청 안에서 LLM 클라이언트를 만든 판과 prompt · schema 판이 갈림
+          대상을 자유 문자열로 받지 않는다.
           예전 subject 값이 그랬는데 "궤도" 대신 "선로" 라고 쓰면 아무와도
           안 이어졌음
     """
@@ -154,12 +148,13 @@ def infer_node(form: dict, llm_client, path=None) -> dict:
     choices = group_ids()
 
     result = _inferred(
-        prompt=get_role_config(NODE_REGISTRATION).prompt,
+        prompt=role.prompt,
         variables={
             "existing_nodes": _describe(nodes, _group_of(store.edges(path))),
             "new_node": _describe_form(form),
             "groups": _describe_groups(nodes, choices),
         },
+        response_schema=role.response_schema,
         llm_client=llm_client,
     )
 
@@ -570,10 +565,10 @@ def append_menu(
     md_path.write_text(md.rstrip("\n") + sections + "\n", encoding="utf-8", newline="\n")
 
 
-def register_node(form: dict, llm_client) -> dict:
+def register_node(form: dict, llm_client, role) -> dict:
     """노드 등록 전체. 한 번에 끝남.
 
-    입력  노드 폼 · LLM 클라이언트
+    입력  노드 폼 · LLM 클라이언트 · node_registration 역할 설정
     출력  inferred(node_id · groups · reason) + node · recipe_ids · chains
     규칙  LLM 판단 -> 온톨로지 -> 경로 생성 -> recipe · menu
           앞 단계가 실패하면 뒤는 실행되지 않음. 온톨로지에 못 넣은 노드로
@@ -591,7 +586,7 @@ def register_node(form: dict, llm_client) -> dict:
           (propose/approve). 관문이 시연 화면의 절반을 먹었고, 걸러지는 것이
           전부 진짜 쓰레기라 사람이 건질 조합이 하나도 없었음
     """
-    inferred = infer_node(form, llm_client=llm_client)
+    inferred = infer_node(form, llm_client=llm_client, role=role)
     node_id = inferred["node_id"]
 
     check_types([*form["inputs"], *form["outputs"]])

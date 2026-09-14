@@ -1,0 +1,80 @@
+# resolve 응답 구조(JSON Schema). provider 가 문법으로 강제한다.
+#
+# properties 순서대로 생성된다.
+# - reason 을 맨 앞에 두어 무엇을 비교했는지 먼저 쓰고 그다음에 고르게 한다
+# - 고르는 칸(candidate_recipe_ids · status · recipe_id)이 발화에서 값을 뽑는 칸보다
+#   앞에 온다. 두 일을 한 응답이 하므로 앞선 칸이 뒤 칸의 조건이 된다 — 뽑는 칸이
+#   앞에 있으면 뽑기 규칙만 고쳐도 고르기가 함께 흔들린다
+# - argument 는 발화에서 그대로 떼어 온 값이라 닫힌 목록이 아니고 enum 이 없다.
+#   무엇을 떼어 올지는 프롬프트가 말한다. 장소 · 키워드 · 식별자 세 칸으로 나누지
+#   않는다 — 칸을 나누면 프롬프트가 그만큼 길어진다
+# - 이름 있는 값(travel_mode · minutes · admin_level)은 argument 바로 뒤에 온다.
+#   프롬프트의 「뽑는 법」 절과 차례가 같아야 한다
+#
+# 말하지 않은 값은 null 이다. 기본값을 여기서 넣지 않는다 — 무엇이 기본인가는
+# 온톨로지 tool.parameters 의 default 가 아는 실행 쪽 값이다.
+#
+# ★ enum 에 도구가 쓰는 말(WALK · TRANSIT …)을 적지 않는다. 이 schema 는 LLM 에
+#   실리는 자리라 도구 이름이 새면 안 된다. 사람의 말이 도구 값이 되는 것은
+#   온톨로지 tool.parameters 의 map 이 안다.
+#
+# ★ YAML 에서 type 의 "null" 은 따옴표를 친 문자열이고, enum 의 null 은 따옴표 없는
+#   JSON null 이다. 둘을 바꿔 적으면 schema 의 뜻이 달라진다.
+type: object
+properties:
+  reason:
+    type: string
+    # 없애면 모델이 recipe id 나열을 되풀이해 끊기지 않는다 (NOTES 「건드리기 전에 읽을 것」)
+    maxLength: 200
+  candidate_recipe_ids:
+    type: array
+    items:
+      type: string
+  status:
+    type: string
+    enum:
+      - SELECT
+      - CLARIFY
+      - NO_MATCH
+  recipe_id:
+    type:
+      - string
+      - "null"
+  argument:
+    type:
+      - string
+      - "null"
+  travel_mode:
+    type:
+      - string
+      - "null"
+    enum:
+      - 도보
+      - 자전거
+      - 승용차
+      - 대중교통
+      - null
+  minutes:
+    type:
+      - array
+      - "null"
+    items:
+      type: integer
+  admin_level:
+    type:
+      - string
+      - "null"
+    enum:
+      - 시도
+      - 시군구
+      - 읍면동
+      - null
+required:
+  - reason
+  - candidate_recipe_ids
+  - status
+  - recipe_id
+  - argument
+  - travel_mode
+  - minutes
+  - admin_level

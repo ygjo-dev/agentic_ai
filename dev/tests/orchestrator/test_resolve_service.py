@@ -14,20 +14,28 @@ LLM 은 호출하지 않는다(Stub). 여기서 검증하는 것은 계약이지
 """
 
 import json
+from dataclasses import replace
 
 import pytest
 
 import paths
-from conftest import CLARIFY, NO_MATCH, SELECT, assert_route_contract, menu_was_read
-from llm_engine.model_config import RESOLVE, get_role_config
+from conftest import (
+    CLARIFY,
+    NO_MATCH,
+    SELECT,
+    StubLLMClient,
+    assert_route_contract,
+    menu_was_read,
+)
+from llm_engine.role_config import RESOLVE, get_role_config
 from orchestrator import resolve_service
 from orchestrator.resolve_service import RouteResolutionError
-from orchestrator.schemas.response_schema import recipe_selection_schema
 
-# 상한 값 자체는 이 테스트의 관심이 아니다. 모델별 값은 models.yaml 에 있다.
+# 창구가 요청마다 읽어 넘기는 resolve 역할 한 벌. 실물 prompt · schema 판이다.
 #
 # argument 는 선택지가 없다. 발화에서 그대로 떼어 온 값이라 닫힌 목록이 아니다.
-SCHEMA = recipe_selection_schema(200)
+ROLE = get_role_config(RESOLVE)
+SCHEMA = ROLE.response_schema
 
 from workflows.static.menu.load import load_menu
 
@@ -38,7 +46,7 @@ def resolve(stub_llm_client, raw: str, utterance: str = UTTERANCE):
     """계약 부분만 본다. paths 조립은 아래 test_the_result_carries_the_paths 가 봄."""
     client = stub_llm_client(raw)
     result = resolve_service._selected(
-        prompt=get_role_config(RESOLVE).prompt,
+        prompt=ROLE.prompt,
         variables={"menu": load_menu(), "utterance": utterance},
         response_schema=SCHEMA,
         llm_client=client,
@@ -179,7 +187,7 @@ def answer(**overrides) -> str:
 
 def resolved(stub_llm_client, **overrides) -> dict:
     return resolve_service.resolve(
-        UTTERANCE, llm_client=stub_llm_client(answer(**overrides)), reason_max_length=200
+        UTTERANCE, llm_client=stub_llm_client(answer(**overrides)), role=ROLE
     )
 
 
@@ -197,24 +205,37 @@ def test_resolving_an_utterance_calls_the_llm_exactly_once(stub_llm_client):
     client = stub_llm_client(answer(recipe_id="recipe_002",
                                     candidate_recipe_ids=["recipe_002"]))
 
-    resolve_service.resolve(UTTERANCE, llm_client=client, reason_max_length=200)
+    resolve_service.resolve(UTTERANCE, llm_client=client, role=ROLE)
 
     assert len(client.prompts) == 1, f"LLM 을 {len(client.prompts)}번 불렀다"
 
 
-def test_the_resolve_role_owns_the_prompt(stub_llm_client):
-    """프롬프트가 역할 설정에서 옴. 부르는 코드에 경로가 박혀 있지 않음.
+def test_the_prompt_and_schema_come_from_the_role_it_was_handed(monkeypatch, tmp_path):
+    """프롬프트와 응답 schema 가 넘겨받은 역할 설정의 것임. 역할 파일을 다시 안 읽음.
 
-    models.yaml 의 roles.resolve.prompt 를 고치면 실제로 그 파일이 실림.
-    상수로 박아 두면 어느 역할이 무엇을 쓰는지 파일 하나로는 못 읽음.
+    창구가 요청마다 한 번 읽은 한 벌이 LLM 클라이언트와 prompt · schema 로 함께
+    가야 함. 여기서 다시 읽으면 파일을 고치는 중에 온 요청이 모델과 prompt 를
+    서로 다른 판으로 부름. 그래서 역할 폴더를 없는 곳으로 돌려 두고 부름.
     """
-    client = stub_llm_client(answer())
+    seen = {}
 
-    resolve_service.resolve(UTTERANCE, llm_client=client, reason_max_length=200)
+    class Recording(StubLLMClient):
+        def generate(self, prompt: str, response_schema: dict) -> str:
+            seen["schema"] = response_schema
+            return super().generate(prompt, response_schema)
 
-    assert client.prompts[0].startswith(
-        get_role_config(RESOLVE).prompt.split("{", 1)[0]
-    ), "역할이 가리키는 프롬프트가 안 실렸다"
+    handed = replace(
+        ROLE,
+        prompt="손으로 쓴 판 {utterance} / {menu}",
+        response_schema={**SCHEMA, "title": "손으로 쓴 판"},
+    )
+    monkeypatch.setattr(paths, "ROLES_DIR", tmp_path / "없는폴더")
+    client = Recording(answer())
+
+    resolve_service.resolve(UTTERANCE, llm_client=client, role=handed)
+
+    assert client.prompts[0].startswith(f"손으로 쓴 판 {UTTERANCE} / "), "넘겨받은 prompt 가 안 실렸다"
+    assert seen["schema"] is handed.response_schema, "넘겨받은 schema 를 그대로 넘겨야 한다"
 
 
 def test_the_chosen_recipe_comes_first_in_the_candidates(stub_llm_client):

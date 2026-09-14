@@ -23,7 +23,6 @@ import urllib.request
 from dataclasses import dataclass
 
 import endpoints
-from llm_engine.model_config import get_model_config
 
 # reason 상한(200자)에 후보 몇 개면 100 토큰 언저리다. 넉넉하되 작은 상한.
 MAX_TOKENS = 1024
@@ -42,24 +41,23 @@ class VllmConfig:
     host: str             # VLLM_URL. 기본값을 두지 않는다 — endpoints 를 본다
 
 
-def config_for(model: str | None = None, *, found=None) -> VllmConfig:
-    """모델 설정을 vLLM 호출 설정으로.
+def config_for(role) -> VllmConfig:
+    """역할 설정을 vLLM 호출 설정으로.
 
-    입력  모델 이름(None 이면 기본 모델) · 이미 읽어 둔 ModelConfig
+    입력  이미 읽어 둔 RoleConfig
     출력  VllmConfig
-    규칙  host 만 환경변수에서 오고 나머지는 models.yaml 에서 옴
+    규칙  host 만 환경변수에서 오고 나머지는 역할 manifest 에서 옴
           주소는 부를 설정을 만들 때 읽음. import 시점에 안 읽으므로
           vLLM 을 안 쓰는 배포는 VLLM_URL 이 없어도 뜸
     """
-    found = found or get_model_config(model)
     return VllmConfig(
-        model=found.model, timeout=found.timeout, host=endpoints.vllm_url()
+        model=role.model, timeout=role.inference["timeout"], host=endpoints.vllm_url()
     )
 
 
 class VllmProvider:
-    def __init__(self, config: VllmConfig | None = None):
-        self.config = config or config_for()
+    def __init__(self, config: VllmConfig):
+        self.config = config
 
     def generate(self, prompt: str, response_schema: dict) -> str:
         return call_vllm(prompt, response_schema, config=self.config)
@@ -69,7 +67,7 @@ def call_vllm(
     prompt: str,
     response_schema: dict,
     *,
-    config: VllmConfig | None = None,
+    config: VllmConfig,
 ) -> str:
     """CHAT 한 건 처리.
 
@@ -85,8 +83,6 @@ def call_vllm(
           /v1/completions 를 부르지 않는다.
           맨 prompt 로는 JSON 강제가 안 걸림(실측)
     """
-    config = config or config_for()
-
     body = json.dumps(
         {
             "model": config.model,

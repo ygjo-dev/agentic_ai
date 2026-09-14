@@ -16,7 +16,7 @@ import urllib.request
 
 import pytest
 
-from conftest import TEST_ENDPOINTS, StubLLMClient
+from conftest import TEST_ENDPOINTS, StubLLMClient, fake_role
 from llm_engine.providers.vllm import (
     MAX_TOKENS,
     VllmConfig,
@@ -37,6 +37,10 @@ RESPONSE_SCHEMA = {
 }
 ANSWER = '{"reason": "까닭", "recipe_id": "recipe_052", "status": "SELECT"}'
 
+# vLLM 으로 가는 역할 한 벌. inference 에 num_ctx 가 없다 — 컨텍스트는 서버가 정한다.
+# 실물 역할의 모델 이름을 적으면 모델을 옮길 때마다 여기가 빨개진다.
+ROLE = fake_role(provider="vllm", model="시험모델", inference={"timeout": 180})
+
 
 class FakeHTTPResponse:
     """urlopen() 이 돌려주는 객체 흉내. context manager + read()."""
@@ -52,17 +56,6 @@ class FakeHTTPResponse:
 
     def read(self):
         return json.dumps(self.payload).encode("utf-8")
-
-
-@pytest.fixture(autouse=True)
-def a_model_is_named(monkeypatch):
-    """모델 이름을 하나 못 박는다.
-
-    전역 기본 모델이 없으므로 아무도 이름을 안 대면 config_for 가 멈춤.
-    이 파일이 보는 것은 요청 모양이지 모델 고르기가 아니므로 이름만 준다 —
-    저장소의 실제 모델 이름을 적으면 모델을 옮길 때마다 여기가 빨개짐.
-    """
-    monkeypatch.setenv("LLM_MODEL", "시험모델")
 
 
 @pytest.fixture
@@ -92,7 +85,7 @@ def test_the_request_matches_the_verified_vllm_contract(sent_request):
     strict     response_format.json_schema 가 이 모양일 때 measurement 가
                한 번도 안 깨졌음
     """
-    call_vllm("발화", RESPONSE_SCHEMA)
+    call_vllm("발화", RESPONSE_SCHEMA, config=config_for(ROLE))
 
     request = sent_request["request"]
     body = json.loads(request.data.decode("utf-8"))
@@ -101,7 +94,7 @@ def test_the_request_matches_the_verified_vllm_contract(sent_request):
     assert request.full_url == f"{TEST_ENDPOINTS['VLLM_URL']}/v1/chat/completions"
     assert headers["content-type"] == "application/json"
 
-    assert body["model"] == config_for().model
+    assert body["model"] == ROLE.model
     assert body["messages"] == [{"role": "user", "content": "발화"}]
     assert body["temperature"] == 0
     assert body["seed"] == 0
@@ -114,7 +107,7 @@ def test_the_request_matches_the_verified_vllm_contract(sent_request):
     assert json_schema["schema"] == RESPONSE_SCHEMA, "받은 스키마를 고치면 안 된다"
 
     # 시연 중 LLM 이 멎어도 화면이 영영 기다리면 안 된다.
-    assert sent_request["kwargs"].get("timeout"), "타임아웃이 없다"
+    assert sent_request["kwargs"]["timeout"] == ROLE.inference["timeout"], "역할의 타임아웃이 안 갔다"
 
 
 def test_what_ollama_sends_and_vllm_must_not(sent_request):
@@ -125,7 +118,7 @@ def test_what_ollama_sends_and_vllm_must_not(sent_request):
     think       provider 마다 표현이 다름. 여기서는 reasoning_effort 임
     format      schema 를 맨몸으로 보내지 않음. response_format.json_schema 에 담음
     """
-    call_vllm("발화", RESPONSE_SCHEMA)
+    call_vllm("발화", RESPONSE_SCHEMA, config=config_for(ROLE))
     body = json.loads(sent_request["request"].data.decode("utf-8"))
 
     for absent in ("num_ctx", "keep_alive", "think", "format", "options", "stream"):
@@ -139,8 +132,8 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
     통과함. 그래서 실물을 기준으로 Stub 을 맞춰 봄. 두 provider 가 같은
     signature 라야 orchestrator 가 어느 쪽인지 몰라도 됨.
     """
-    assert call_vllm("발화", RESPONSE_SCHEMA) == ANSWER
-    assert VllmProvider().generate("발화", RESPONSE_SCHEMA) == ANSWER
+    assert call_vllm("발화", RESPONSE_SCHEMA, config=config_for(ROLE)) == ANSWER
+    assert VllmProvider(config_for(ROLE)).generate("발화", RESPONSE_SCHEMA) == ANSWER
 
     def parameters(instance):
         generate = getattr(instance, "generate", None)
@@ -150,7 +143,7 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
             (p.name, p.annotation) for p in signature.parameters.values()
         ], signature.return_annotation
 
-    assert parameters(StubLLMClient(ANSWER)) == parameters(VllmProvider()), \
+    assert parameters(StubLLMClient(ANSWER)) == parameters(VllmProvider(config_for(ROLE))), \
         "StubLLMClient.generate() 가 실물과 다르다"
 
 

@@ -14,9 +14,7 @@ execution/execute_service 가 실행 직전에 본다. 여기서 미리 빼면 �
 
 import json
 
-from llm_engine.model_config import RESOLVE, get_role_config
 from ontology import graph
-from orchestrator.schemas.response_schema import recipe_selection_schema
 from workflows.static.menu.load import load_menu
 
 
@@ -24,7 +22,7 @@ class RouteResolutionError(RuntimeError):
     """LLM 응답이 계약과 다르다. JSON 이 아니거나 필요한 key 가 없다."""
 
 
-def resolve(utterance: str, llm_client, reason_max_length: int) -> dict:
+def resolve(utterance: str, llm_client, role) -> dict:
     """발화를 recipe 로.
 
     출력  LLM 응답(reason · argument 포함) +
@@ -36,19 +34,21 @@ def resolve(utterance: str, llm_client, reason_max_length: int) -> dict:
           다를 수 있음. **무엇이 후보인가는 안 바뀜. 순서와 중복만 다듬음**
           paths 는 그 정돈된 후보 목록으로 계산해 덧붙임. 프론트엔드가 recipe
           파일을 직접 읽지 않게 하려는 것
-          프롬프트는 resolve 역할 설정에서 옴(models.yaml 의 roles). 어느 역할이
-          무엇을 쓰는지가 한 파일에 있어야 함
+          프롬프트와 응답 schema 는 부르는 쪽이 넘긴 resolve 역할 설정의 것임
+          (role.prompt · role.response_schema)
           LLM 을 한 번만 부름. 고르기와 발화에서 값 뽑기가 한 응답에서 옴
-    제약  고른 것을 여기서 다시 거르지 않는다.
+    제약  역할 설정을 여기서 다시 읽지 않는다.
+          한 요청 안에서 LLM 클라이언트를 만든 판과 prompt · schema 판이 갈림
+          고른 것을 여기서 다시 거르지 않는다.
           실행할 수 있는지는 실행 직전에 봄. 두 판단을 한 값에 섞으면 어느
           쪽이 후보를 없앴는지 알 수 없음
           여기서 LLM 클라이언트를 만들지 않는다.
-          app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
+          app.api.main 의 get_llm_for 를 갈아끼우는 테스트가 죽음
     """
     result = _selected(
-        prompt=get_role_config(RESOLVE).prompt,
+        prompt=role.prompt,
         variables={"menu": load_menu(), "utterance": utterance},
-        response_schema=recipe_selection_schema(reason_max_length),
+        response_schema=role.response_schema,
         llm_client=llm_client,
     )
 

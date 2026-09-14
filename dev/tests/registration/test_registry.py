@@ -20,19 +20,19 @@ register_node 구현은 crosses_groups 가 참인 후보를 recipe 로 쓰지 �
 """
 
 import json
+from dataclasses import replace
 
 import pytest
 import yaml
 
 import paths
 from conftest import REAL_ONTOLOGY_PATH, StubLLMClient, workspace_digest
-from llm_engine.model_config import NODE_REGISTRATION, get_role_config
+from llm_engine.role_config import NODE_REGISTRATION, get_role_config
 from ontology import store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
 from registration.registry import (
     MAX_STEPS,
     MENU_BUDGET,
-    NODE_REGISTRATION_SCHEMA,
     DuplicateNode,
     InvalidInference,
     UnknownType,
@@ -66,6 +66,9 @@ INFERRED = {
 }
 
 NEW_NODE = {"name": FORM["name"], "description": FORM["description"]}
+
+# 창구가 요청마다 읽어 넘기는 node_registration 역할 한 벌. 실물 prompt · schema 판이다.
+ROLE = get_role_config(NODE_REGISTRATION)
 
 
 def stub(response=None):
@@ -109,22 +112,22 @@ def test_the_llm_decides_the_node_id_and_what_it_is_about():
     어느 대상에도 매이지 않는 범용 노드는 빈 목록. 형식만 바꾸는 생성
     노드는 어떤 대상의 결과든 받으므로 한 대상에 묶으면 오히려 틀림.
     """
-    result = infer_node(FORM, llm_client=stub())
+    result = infer_node(FORM, role=ROLE, llm_client=stub())
 
     assert result["node_id"] == "find_nearby_cctv"
     assert result["groups"] == ["group_transport"]
     assert result["reason"]
 
     # 빈 목록도 정상이다.
-    assert infer_node(FORM, llm_client=stub({**INFERRED, "groups": []}))["groups"] == []
+    assert infer_node(FORM, role=ROLE, llm_client=stub({**INFERRED, "groups": []}))["groups"] == []
 
     # 같은 대상을 두 번 적으면 점선이 두 줄 생긴다.
     twice = infer_node(
-        FORM, llm_client=stub({**INFERRED, "groups": ["group_transport", "group_transport"]})
+        FORM, role=ROLE, llm_client=stub({**INFERRED, "groups": ["group_transport", "group_transport"]})
     )
     assert twice["groups"] == ["group_transport"]
 
-    assert set(NODE_REGISTRATION_SCHEMA["required"]) == {
+    assert set(ROLE.response_schema["required"]) == {
         "node_id", "groups", "reason"
     }
 
@@ -137,7 +140,7 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
     아무 근거 없이 답하게 되고, 그 사실이 화면에서는 안 보임.
     """
     client = stub()
-    infer_node(FORM, llm_client=client)
+    infer_node(FORM, role=ROLE, llm_client=client)
     sent = client.prompts[0]
 
     # 기존 **기능** 노드가 다 실려야 한다. 데이터 노드는 이 판단의 근거가
@@ -168,9 +171,37 @@ def test_the_prompt_shows_what_the_llm_needs_to_decide_with():
 
     assert FORM["name"] in sent and FORM["description"] in sent
 
-    template = get_role_config(NODE_REGISTRATION).prompt
+    template = ROLE.prompt
     for placeholder in ("{existing_nodes}", "{new_node}", "{groups}"):
         assert placeholder in template, placeholder
+
+
+def test_the_prompt_and_schema_come_from_the_role_it_was_handed(monkeypatch, tmp_path):
+    """등록이 넘겨받은 역할 설정의 prompt 와 응답 schema 로 LLM 을 부름. 역할 파일을 다시 안 읽음.
+
+    창구가 요청마다 한 번 읽은 한 벌이 LLM 클라이언트와 prompt · schema 로 함께
+    가야 함. 여기서 다시 읽으면 파일을 고치는 중에 온 요청이 모델과 prompt 를
+    서로 다른 판으로 부름. 그래서 역할 폴더를 없는 곳으로 돌려 두고 부름.
+    """
+    seen = {}
+
+    class Recording(StubLLMClient):
+        def generate(self, prompt: str, response_schema: dict) -> str:
+            seen["schema"] = response_schema
+            return super().generate(prompt, response_schema)
+
+    handed = replace(
+        ROLE,
+        prompt="손으로 쓴 판\n{groups}\n{new_node}\n{existing_nodes}",
+        response_schema={**ROLE.response_schema, "title": "손으로 쓴 판"},
+    )
+    monkeypatch.setattr(paths, "ROLES_DIR", tmp_path / "없는폴더")
+    client = Recording(json.dumps(INFERRED))
+
+    infer_node(FORM, role=handed, llm_client=client)
+
+    assert client.prompts[0].startswith("손으로 쓴 판\n"), "넘겨받은 prompt 가 안 실렸다"
+    assert seen["schema"] is handed.response_schema, "넘겨받은 schema 를 그대로 넘겨야 한다"
 
 
 def test_a_malformed_llm_answer_is_rejected():
@@ -194,13 +225,13 @@ def test_a_malformed_llm_answer_is_rejected():
     ]
     for answer in bad_answers:
         with pytest.raises(InvalidInference):
-            infer_node(FORM, llm_client=stub(answer))
+            infer_node(FORM, role=ROLE, llm_client=stub(answer))
 
     # 계약을 어긴 응답도 등록 도메인의 예외로 나온다. 공용 해석 층을 안 지난다.
     with pytest.raises(InvalidInference):
-        infer_node(FORM, llm_client=StubLLMClient("JSON 이 아니다"))
+        infer_node(FORM, role=ROLE, llm_client=StubLLMClient("JSON 이 아니다"))
     with pytest.raises(InvalidInference):
-        infer_node(FORM, llm_client=StubLLMClient(json.dumps({"node_id": "x"})))
+        infer_node(FORM, role=ROLE, llm_client=StubLLMClient(json.dumps({"node_id": "x"})))
 
 
 def test_an_existing_node_id_is_rejected():
@@ -208,7 +239,7 @@ def test_an_existing_node_id_is_rejected():
     existing = next(iter(nodes_now()))
 
     with pytest.raises(InvalidInference):
-        infer_node(FORM, llm_client=stub({**INFERRED, "node_id": existing}))
+        infer_node(FORM, role=ROLE, llm_client=stub({**INFERRED, "node_id": existing}))
 
     with pytest.raises(DuplicateNode):
         add_node(existing, NEW_NODE)
@@ -461,7 +492,7 @@ def test_current_registration_filters_paths_that_cross_subjects():
     before_files = recipes_now()
     before_menu = set(menu_now())
 
-    result = register_node(CROSSING_FORM, llm_client=stub(CROSSING_INFERRED))
+    result = register_node(CROSSING_FORM, role=ROLE, llm_client=stub(CROSSING_INFERRED))
 
     made = new_recipes_for("predict_charging_wait", nodes_now())
     dropped = [chain for chain in made if crosses_groups(chain)]
@@ -500,7 +531,7 @@ def test_a_node_that_agrees_with_everything_loses_no_path():
     result = register_node(
         {"name": "목록 건수 요약", "description": "목록에 몇 건이 담겼는지 센다.",
          "inputs": ["item_list"], "outputs": ["item_list"]},
-        llm_client=stub({**INFERRED, "node_id": "count_items", "groups": []}),
+        role=ROLE, llm_client=stub({**INFERRED, "node_id": "count_items", "groups": []}),
     )
 
     made = new_recipes_for("count_items", nodes_now())
@@ -643,7 +674,7 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     """
     before_recipes = recipes_now()
 
-    result = register_node(FORM, llm_client=stub())
+    result = register_node(FORM, role=ROLE, llm_client=stub())
 
     node = nodes_now()["find_nearby_cctv"]
     assert set(node) == {"name", "description"}, "노드에 종류나 입출력을 적었다"
@@ -678,7 +709,7 @@ def test_registration_updates_the_ontology_recipes_and_menu_together():
     second = register_node(
         {"name": "지도 범위 보정", "description": "지도 범위를 보정한다.",
          "inputs": ["map_extent"], "outputs": ["map_extent"]},
-        llm_client=stub({**INFERRED, "node_id": "refine_extent", "groups": []}),
+        role=ROLE, llm_client=stub({**INFERRED, "node_id": "refine_extent", "groups": []}),
     )
     # 범용 노드는 어디에도 안 붙는다. 억지로 묶으면 오히려 틀린다.
     assert len([e for e in edges_now() if e["predicate"] == ABOUT]) == about_count
@@ -696,7 +727,7 @@ def test_several_subjects_all_become_dotted_lines():
     """
     register_node(
         FORM,
-        llm_client=stub({**INFERRED, "groups": ["group_ev", "group_transport"]}),
+        role=ROLE, llm_client=stub({**INFERRED, "groups": ["group_ev", "group_transport"]}),
     )
 
     attached = {
@@ -725,13 +756,13 @@ def test_a_failure_leaves_nothing_half_written():
         {**INFERRED, "groups": ["group_tunnel"]},
     ):
         with pytest.raises(InvalidInference):
-            register_node(FORM, llm_client=stub(answer))
+            register_node(FORM, role=ROLE, llm_client=stub(answer))
 
     # 2단계(온톨로지 쓰기)에서 걸리는 경우. **여기가 순서를 실제로 검사한다.**
     # 모르는 타입은 LLM 판단을 통과하고 쓰기 직전에 걸린다. recipe 를 먼저 쓰는
     # 구현이면 이 시점에 파일이 이미 늘어나 있다.
     with pytest.raises(UnknownType):
-        register_node({**FORM, "outputs": ["Report"]}, llm_client=stub())
+        register_node({**FORM, "outputs": ["Report"]}, role=ROLE, llm_client=stub())
 
     # 노드는 썼는데 관계를 못 붙이는 경우도 없어야 한다 — 관계 없는 노드는
     # 화면에 떠 있기만 하고 아무 경로에도 안 낀다.
@@ -753,7 +784,7 @@ def test_resetting_removes_everything_a_registration_added():
         paths.INIT_MENU_YAML_PATH.read_bytes(),
         {p.name: p.read_bytes() for p in paths.INIT_RECIPES_DIR.glob("*.yaml")},
     )
-    register_node(FORM, llm_client=stub())
+    register_node(FORM, role=ROLE, llm_client=stub())
     (paths.RECIPES_DIR / "recipe_099.yaml").write_text("steps: []\n", encoding="utf-8")
 
     reset_to_init()

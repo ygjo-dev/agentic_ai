@@ -35,7 +35,6 @@ from collections import Counter
 from execution import step_service
 from ontology import graph, store
 from orchestrator import resolve_service
-from orchestrator.schemas.response_schema import SPOKEN_OPTIONS
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
 from vendor_to_be_deleted.asap.workflow_answer import (
     command_answer,
@@ -57,6 +56,17 @@ USER_CONTEXT = {
     "user_id": "asap-ontology-orchestrator",
     "selected_mcp_tool_refs": ["asap-mcp-core/*", "r5-server/*", "otp-router/*"],
 }
+
+# resolve 응답에서 run 에 이름 있는 값(options)으로 넘길 칸.
+#
+# 칸의 모양(type · enum)은 resolve 역할의 response schema 가 갖는다. 여기는
+# 실행이 무엇을 받아 가는가만 적는다. 온톨로지 노드의 tool.parameters 가 그 이름을
+# {from: spoken.<이름>} 으로 불러 제 칸에 넣는다.
+SPOKEN_OPTIONS = (
+    "travel_mode",
+    "minutes",
+    "admin_level",
+)
 
 # vendor 가 steps 를 workflow 로 알아보게 하는 이름.
 WORKFLOW_ACTION = "call_mcp_workflow"
@@ -414,31 +424,27 @@ async def run(
     yield _result(_answer(intent, executed), _commands(executed) + plan["commands"])
 
 
-def _resolve(text: str, llm_client, reason_max_length: int) -> dict:
+def _resolve(text: str, llm_client, role) -> dict:
     """발화 한 건의 해석. resolve_service.resolve 를 부르는 유일한 자리.
 
     규칙  두 창구 모두 process 를 거쳐 여기로 옴. 받는 값이 늘 같음
     제약  문맥을 넘기지 않는다.
           무엇을 고를지는 발화와 menu 만 보고 LLM 이 정함
     """
-    return resolve_service.resolve(
-        text,
-        llm_client=llm_client,
-        reason_max_length=reason_max_length,
-    )
+    return resolve_service.resolve(text, llm_client=llm_client, role=role)
 
 
 def process(
     text: str,
     llm_client,
-    reason_max_length: int,
+    role,
     context: dict | None = None,
     *,
     continue_after_resolve: bool,
 ):
     """발화 한 건의 공통 진입점. 해석하고, 이어 가면 부르고 답을 만듦.
 
-    입력  발화 · LLM 클라이언트 · reason 길이 상한 · 화면 문맥 ·
+    입력  발화 · LLM 클라이언트 · resolve 역할 설정 · 화면 문맥 ·
           continue_after_resolve(해석 뒤에 실행을 이어 가는가)
     출력  continue_after_resolve=False 면 resolve 결과 dict 그대로
           continue_after_resolve=True 면 이벤트 dict 를 순서대로 내는
@@ -447,6 +453,7 @@ def process(
           두 창구의 차이는 해석 뒤에 실행을 이어 가느냐 하나뿐이고, 해석은 둘 다
           _resolve 한 곳에서 함
           해석에는 문맥을 안 넘김. 문맥이 실제로 왔는지는 run 이 실행 직전에 봄
+          역할 설정은 받은 한 벌을 해석까지 그대로 넘김. 여기서 다시 안 읽음
           이어 가면 해석도 한 단계로 냄. 해석 단계의 step_start 가 LLM 을
           부르기 전에 나가야 부르는 화면이 기다리는 동안 진행 상황을 그림.
           그래서 흐름을 읽기 시작한 뒤에 해석함
@@ -466,7 +473,7 @@ def process(
           인 것을 여기서 채우지 않음. 무엇이 기본인가는 온톨로지 tool.parameters 의
           default 가 앎
     제약  여기서 LLM 클라이언트를 만들지 않는다.
-          app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
+          app.api.main 의 get_llm_for 를 갈아끼우는 테스트가 죽음
           어느 창구에서 왔는지를 요청 경로로 가르지 않는다.
           continue_after_resolve 하나로만 말함. 경로를 보면 창구마다 흐름이
           다시 갈림
@@ -477,11 +484,11 @@ def process(
           말과 똑같이 새 발화로 해석됨. 되묻기 자체는 그대로 남
     """
     if not continue_after_resolve:
-        return _resolve(text, llm_client, reason_max_length)
+        return _resolve(text, llm_client, role)
 
     async def stream():
         yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
-        resolved = _resolve(text, llm_client, reason_max_length)
+        resolved = _resolve(text, llm_client, role)
         recipe_id = resolved.get("recipe_id")
         yield {
             "type": "step_end",
