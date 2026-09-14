@@ -414,62 +414,48 @@ async def run(
     yield _result(_answer(intent, executed), _commands(executed) + plan["commands"])
 
 
+def _resolve(text: str, llm_client, reason_max_length: int) -> dict:
+    """발화 한 건의 해석. resolve_service.resolve 를 부르는 유일한 자리.
+
+    규칙  두 창구 모두 process 를 거쳐 여기로 옴. 받는 값이 늘 같음
+    제약  문맥을 넘기지 않는다.
+          무엇을 고를지는 발화와 menu 만 보고 LLM 이 정함
+    """
+    return resolve_service.resolve(
+        text,
+        llm_client=llm_client,
+        reason_max_length=reason_max_length,
+    )
+
+
 def process(
     text: str,
     llm_client,
     reason_max_length: int,
     context: dict | None = None,
     *,
-    execute: bool,
+    continue_after_resolve: bool,
 ):
-    """발화 한 건의 공통 진입점. 해석하고, execute 면 이어서 부르고 답을 만듦.
+    """발화 한 건의 공통 진입점. 해석하고, 이어 가면 부르고 답을 만듦.
 
     입력  발화 · LLM 클라이언트 · reason 길이 상한 · 화면 문맥 ·
-          execute(해석 뒤에 실행을 이어 가는가)
-    출력  execute=False 면 resolve 결과 dict 그대로
-          execute=True 면 이벤트 dict 를 순서대로 내는 async generator.
-          마지막은 반드시 type=result
-    규칙  resolve_service.resolve 를 부르는 자리는 여기 한 곳뿐임.
-          POST /resolve 는 execute=False, POST /chat/stream 은 execute=True 로
-          이 함수를 지남. 두 창구의 차이는 해석 뒤에 실행을 이어 가느냐 하나뿐임
-          해석에는 문맥을 안 넘김. 무엇을 고를지는 발화와 menu 만 보고 LLM 이
-          정하고, 문맥이 실제로 왔는지는 run 이 실행 직전에 봄
-          execute=True 면 흐름을 읽기 시작한 뒤에 해석함. 해석 단계의
-          step_start 가 LLM 을 부르기 전에 나가야 부르는 화면이 기다리는 동안
-          진행 상황을 그림
-    제약  여기서 LLM 클라이언트를 만들지 않는다.
-          app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
-          어느 창구에서 왔는지를 요청 경로로 가르지 않는다.
-          execute 하나로만 말함. 경로를 보면 창구마다 흐름이 다시 갈림
-          상태를 두지 않는다.
-          발화 한 건이 한 건으로 끝남. 앞 발화를 안 기억하므로 「1번」도 다른
-          말과 똑같이 새 발화로 해석됨. 되묻기 자체는 그대로 남
-    """
-
-    def resolving() -> dict:
-        return resolve_service.resolve(
-            text,
-            llm_client=llm_client,
-            reason_max_length=reason_max_length,
-        )
-
-    if not execute:
-        return resolving()
-    return _chat(text, resolving, context)
-
-
-async def _chat(text: str, resolving, context: dict | None):
-    """해석을 한 단계로 내고 그 결과대로 부름. process 가 execute=True 일 때 씀.
-
-    입력  발화 · 해석을 한 번 하는 함수(process 가 만듦) · 화면 문맥
-    출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
-    규칙  해석도 한 단계로 냄. 부르는 화면이 진행 상황을 그림
-          resolving 은 step_start 를 낸 뒤 한 번만 부름. 그 결과 하나로
-          끝까지 감. 실행 쪽이 다시 해석하지 않음
+          continue_after_resolve(해석 뒤에 실행을 이어 가는가)
+    출력  continue_after_resolve=False 면 resolve 결과 dict 그대로
+          continue_after_resolve=True 면 이벤트 dict 를 순서대로 내는
+          async generator. 마지막은 반드시 type=result
+    규칙  POST /resolve 는 False, POST /chat/stream 은 True 로 이 함수를 지남.
+          두 창구의 차이는 해석 뒤에 실행을 이어 가느냐 하나뿐이고, 해석은 둘 다
+          _resolve 한 곳에서 함
+          해석에는 문맥을 안 넘김. 문맥이 실제로 왔는지는 run 이 실행 직전에 봄
+          이어 가면 해석도 한 단계로 냄. 해석 단계의 step_start 가 LLM 을
+          부르기 전에 나가야 부르는 화면이 기다리는 동안 진행 상황을 그림.
+          그래서 흐름을 읽기 시작한 뒤에 해석함
+          해석은 한 번만 하고 그 결과 하나로 끝까지 감. 실행 쪽이 다시
+          해석하지 않음
           SELECT 가 아니면 도구를 하나도 안 부름. CLARIFY 는 무엇을 부를지
           정해지지 않았고 NO_MATCH 는 부를 것이 없음
-          인자는 LLM 이 argument 로 준 것 하나뿐임. **발화에서 인자를 뽑는
-          자리는 발화 해석 LLM 한 곳임** — 파이썬이 문자열을 다시 훑어
+          인자는 LLM 이 argument 로 준 것 하나뿐임. 발화에서 인자를 뽑는
+          자리는 발화 해석 LLM 한 곳임. 파이썬이 문자열을 다시 훑어
           되살리면 어느 값이 어디서 왔는지 표에서 안 갈림
           인자를 못 뽑으면 부르지 않고 안내만 함. 무엇을 조회할지 정해지지
           않았는데 부르면 엉뚱한 곳이 나옴
@@ -479,32 +465,46 @@ async def _chat(text: str, resolving, context: dict | None):
           이름 있는 값(SPOKEN_OPTIONS)은 그대로 run 에 넘김. 말하지 않아 null
           인 것을 여기서 채우지 않음. 무엇이 기본인가는 온톨로지 tool.parameters 의
           default 가 앎
-    제약  resolve_service 를 여기서 직접 부르지 않는다.
-          해석하는 자리가 process 밖에 하나 더 생기면 두 창구의 해석이 갈림
+    제약  여기서 LLM 클라이언트를 만들지 않는다.
+          app.api.main 의 get_llm 을 갈아끼우는 테스트가 죽음
+          어느 창구에서 왔는지를 요청 경로로 가르지 않는다.
+          continue_after_resolve 하나로만 말함. 경로를 보면 창구마다 흐름이
+          다시 갈림
+          흐름을 만들기 전에 해석하지 않는다.
+          LLM 이 끝난 뒤에야 화면에 해석 단계가 뜸
+          상태를 두지 않는다.
+          발화 한 건이 한 건으로 끝남. 앞 발화를 안 기억하므로 「1번」도 다른
+          말과 똑같이 새 발화로 해석됨. 되묻기 자체는 그대로 남
     """
-    yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
-    resolved = resolving()
-    recipe_id = resolved.get("recipe_id")
-    yield {
-        "type": "step_end",
-        "node": "resolve",
-        "message": f"{resolved.get('status')} {recipe_id or ''}".strip(),
-    }
+    if not continue_after_resolve:
+        return _resolve(text, llm_client, reason_max_length)
 
-    if resolved.get("status") != "SELECT" or not recipe_id:
-        yield _result(_no_recipe_answer(resolved), [])
-        return
+    async def stream():
+        yield {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."}
+        resolved = _resolve(text, llm_client, reason_max_length)
+        recipe_id = resolved.get("recipe_id")
+        yield {
+            "type": "step_end",
+            "node": "resolve",
+            "message": f"{resolved.get('status')} {recipe_id or ''}".strip(),
+        }
 
-    argument = resolved.get("argument")
-    if not argument and step_service.spoken_needed(recipe_id):
-        yield _result(_no_argument_answer(recipe_id), [])
-        return
+        if resolved.get("status") != "SELECT" or not recipe_id:
+            yield _result(_no_recipe_answer(resolved), [])
+            return
 
-    async for payload in run(
-        recipe_id,
-        argument,
-        text=text,
-        context=context,
-        options={name: resolved.get(name) for name in SPOKEN_OPTIONS},
-    ):
-        yield payload
+        argument = resolved.get("argument")
+        if not argument and step_service.spoken_needed(recipe_id):
+            yield _result(_no_argument_answer(recipe_id), [])
+            return
+
+        async for payload in run(
+            recipe_id,
+            argument,
+            text=text,
+            context=context,
+            options={name: resolved.get(name) for name in SPOKEN_OPTIONS},
+        ):
+            yield payload
+
+    return stream()

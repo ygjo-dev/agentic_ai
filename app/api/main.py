@@ -158,10 +158,10 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
           띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음
           어느 모델로 갈지는 resolve 역할 설정이 정함(models.yaml 의 roles).
           여기서 물리 모델 이름을 적지 않음
-          /chat/stream 과 같은 진입점(_process)을 execute=False 로 지남.
-          해석 뒤에 실행을 이어 가지 않는 것 말고는 같은 길임
+          /chat/stream 과 같은 진입점(_process)을 continue_after_resolve=False
+          로 지남. 해석 뒤에 실행을 이어 가지 않는 것 말고는 같은 길임
     """
-    return _process(utterance, model=model, execute=False)
+    return _process(utterance, model=model, continue_after_resolve=False)
 
 
 def _process(
@@ -169,19 +169,20 @@ def _process(
     *,
     model: str | None = None,
     context: dict | None = None,
-    execute: bool,
+    continue_after_resolve: bool,
 ):
     """창구 둘이 지나는 한 자리. resolve 역할 설정을 LLM 클라이언트로 바꿔 넘김.
 
-    출력  execute_service.process 가 낸 것 그대로. execute=False 면 resolve
-          결과 dict, execute=True 면 이벤트 흐름
-    규칙  POST /resolve 는 execute=False, POST /chat/stream 은 execute=True 로 부름
+    출력  execute_service.process 가 낸 것 그대로. continue_after_resolve=False
+          면 resolve 결과 dict, True 면 이벤트 흐름
+    규칙  POST /resolve 는 continue_after_resolve=False, POST /chat/stream 은
+          True 로 부름
           역할 설정을 읽고 LLM 클라이언트를 만드는 자리가 여기 하나임. 창구마다
           따로 두면 한쪽 모델 · reason 상한만 바뀌어도 안 보임
     제약  요청 경로를 보고 가르지 않는다.
-          어느 창구인지는 execute 로만 말함
+          어느 창구인지는 continue_after_resolve 로만 말함
           해석을 여기서 부르지 않는다.
-          resolve_service.resolve 를 부르는 곳은 execute_service.process 한 곳임
+          resolve_service.resolve 를 부르는 곳은 execute_service._resolve 한 곳임
     """
     role = get_role_config(RESOLVE, model)
     return execute_service.process(
@@ -189,7 +190,7 @@ def _process(
         llm_client=get_llm_for(role.model),
         reason_max_length=role.model.reason_max_length,
         context=context,
-        execute=execute,
+        continue_after_resolve=continue_after_resolve,
     )
 
 
@@ -211,41 +212,32 @@ async def register_node_endpoint(
     return node_service.register(form.model_dump(), llm_client=get_llm_for(role.model))
 
 
-def _chat_events(form: ChatRequest, model: str | None = None):
-    """발화 한 건의 이벤트 흐름. /chat/stream 이 이것을 씀.
-
-    출력  비동기 이벤트 흐름. 마지막은 반드시 type=result
-    규칙  흐름이 끝나면 그 회차를 recent_service 가 기억함. GET /recent 로
-          Streamlit 이 물어가 따라 그림
-    제약  동기 for 로 돌지 않는다.
-          vendor 실행기가 코루틴이라 흐름 전체가 async generator 임
-          기록 때문에 이벤트를 바꾸지 않는다.
-          watched 는 받은 것을 그대로 다시 내는 껍데기임. KRRI_ASAP 시스템이
-          읽는 흐름이라 한 건이라도 모양이 달라지면 시연이 깨짐
-    """
-    return recent_service.watched(
-        form.text,
-        _process(form.text, model=model, context=form.context, execute=True),
-    )
-
-
 @app.post("/chat/stream")
 async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
     """발화 한 건의 답을 SSE 로 흘려보냄. **KRRI_ASAP 시스템이 부르는 유일한 창구다.**
 
     출력  text/event-stream. step_start · step_end · result · [DONE] 순서
-    규칙  step_start 와 step_end 가 recipe 의 실행 단계마다 한 쌍씩 나감.
+    규칙  /resolve 와 같은 진입점(_process)을 continue_after_resolve=True 로 지남
+          step_start 와 step_end 가 recipe 의 실행 단계마다 한 쌍씩 나감.
           해석(resolve)도 한 단계로 나감. 부르는 화면이 진행 상황을 그림
           이벤트마다 빈 줄을 하나 붙임. SSE 는 빈 줄이 있어야 한 건이 끝남
+          흐름이 끝나면 그 회차를 recent_service 가 기억함. GET /recent 로
+          Streamlit 이 물어가 따라 그림
+          진입점은 흐름을 읽기 시작할 때 부름. 회차 칸이 열린 안에서 해석이
+          돌아야 recent_service 가 해석 결과를 봄
     제약  ensure_ascii 를 켜지 않는다. 켜면 한글이 유니코드 이스케이프로
           나가 받는 화면에서 읽히지 않는다
+          기록 때문에 이벤트를 바꾸지 않는다.
+          watched 는 받은 것을 그대로 다시 내는 껍데기임. KRRI_ASAP 시스템이
+          읽는 흐름이라 한 건이라도 모양이 달라지면 시연이 깨짐
     """
 
     def event(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream():
-        async for payload in _chat_events(form):
+        events = _process(form.text, context=form.context, continue_after_resolve=True)
+        async for payload in recent_service.watched(form.text, events):
             yield event(payload)
         yield "data: [DONE]\n\n"
 

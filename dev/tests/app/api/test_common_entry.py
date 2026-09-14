@@ -5,9 +5,10 @@
 갈린다.
 
 지키는 것은 셋이다.
-  두 창구가 같은 진입점(execute_service.process)을 지나고 execute 만 다르다
+  두 창구가 같은 진입점(execute_service.process)을 지나고 continue_after_resolve 만 다르다
   한 요청에서 해석은 한 번이다
   /resolve 는 실행을 안 하고, /chat/stream 은 그 해석 결과를 그대로 실행에 넘긴다
+  회차로 남는 것은 /chat/stream 뿐이다
 
 LLM 도 Gateway 도 부르지 않는다. 진입점 · resolve · run 을 대역으로 바꾼다.
 """
@@ -58,11 +59,18 @@ def entry(monkeypatch):
     """공통 진입점을 대역으로 바꿈. 누가 어떤 값으로 불렀는지만 남김."""
     calls = []
 
-    def fake_process(text, llm_client, reason_max_length, context=None, *, execute):
+    def fake_process(
+        text, llm_client, reason_max_length, context=None, *, continue_after_resolve
+    ):
         calls.append(
-            {"text": text, "llm_client": llm_client, "context": context, "execute": execute}
+            {
+                "text": text,
+                "llm_client": llm_client,
+                "context": context,
+                "continue_after_resolve": continue_after_resolve,
+            }
         )
-        if not execute:
+        if not continue_after_resolve:
             return RESOLVED
 
         async def events():
@@ -104,18 +112,28 @@ def test_the_resolve_endpoint_goes_through_the_common_entry_without_executing(en
     assert response.status_code == 200
     assert response.json() == RESOLVED
     assert entry == [
-        {"text": UTTERANCE, "llm_client": LLM, "context": None, "execute": False}
+        {
+            "text": UTTERANCE,
+            "llm_client": LLM,
+            "context": None,
+            "continue_after_resolve": False,
+        }
     ]
 
 
 def test_the_chat_stream_endpoint_goes_through_the_same_entry_and_executes(entry):
-    """같은 진입점이고 execute 만 다르다. 문맥은 실행에 쓰이도록 그대로 넘어간다."""
+    """같은 진입점이고 continue_after_resolve 만 다르다. 문맥은 실행에 쓰이도록 그대로 넘어간다."""
     with TestClient(main.app) as client:
         response = client.post("/chat/stream", json={"text": UTTERANCE, "context": CONTEXT})
 
     assert response.status_code == 200
     assert entry == [
-        {"text": UTTERANCE, "llm_client": LLM, "context": CONTEXT, "execute": True}
+        {
+            "text": UTTERANCE,
+            "llm_client": LLM,
+            "context": CONTEXT,
+            "continue_after_resolve": True,
+        }
     ]
 
 
@@ -154,3 +172,29 @@ def test_both_endpoints_hand_the_resolution_the_same_inputs(counted):
     only_resolve, with_execution = counted["resolve"]
     assert only_resolve == with_execution
     assert only_resolve[:2] == (UTTERANCE, LLM)
+
+
+# ================================================================ 회차
+def test_only_the_chat_stream_leaves_a_turn_and_it_sees_its_resolution(counted, monkeypatch):
+    """Streamlit 은 GET /recent 로 KRRI_ASAP 의 회차를 따라 그린다.
+
+    /resolve 가 회차로 남으면 화면에 없는 발화가 끼고, /chat/stream 의 해석이
+    회차 칸 밖에서 돌면 고른 recipe 가 비어 남는다.
+    """
+    monkeypatch.setattr(
+        main.resolve_service,
+        "resolve",
+        recent_service.watch_resolve(main.resolve_service.resolve),
+    )
+
+    with TestClient(main.app) as client:
+        client.post("/resolve", params={"utterance": UTTERANCE})
+        assert recent_service.since()["turns"] == [], "/resolve 가 회차로 남았다"
+
+        client.post("/chat/stream", json={"text": UTTERANCE, "context": CONTEXT})
+
+    turns = recent_service.since()["turns"]
+    assert len(turns) == 1
+    assert turns[0]["utterance"] == UTTERANCE
+    assert turns[0]["recipe_id"] == RESOLVED["recipe_id"]
+    assert turns[0]["argument"] == RESOLVED["argument"]
