@@ -158,12 +158,38 @@ async def resolve_endpoint(utterance: str, model: str | None = None) -> dict:
           띄우지 않으려는 것. 화면은 이 인자를 쓰지 않음
           어느 모델로 갈지는 resolve 역할 설정이 정함(models.yaml 의 roles).
           여기서 물리 모델 이름을 적지 않음
+          /chat/stream 과 같은 진입점(_process)을 execute=False 로 지남.
+          해석 뒤에 실행을 이어 가지 않는 것 말고는 같은 길임
+    """
+    return _process(utterance, model=model, execute=False)
+
+
+def _process(
+    text: str,
+    *,
+    model: str | None = None,
+    context: dict | None = None,
+    execute: bool,
+):
+    """창구 둘이 지나는 한 자리. resolve 역할 설정을 LLM 클라이언트로 바꿔 넘김.
+
+    출력  execute_service.process 가 낸 것 그대로. execute=False 면 resolve
+          결과 dict, execute=True 면 이벤트 흐름
+    규칙  POST /resolve 는 execute=False, POST /chat/stream 은 execute=True 로 부름
+          역할 설정을 읽고 LLM 클라이언트를 만드는 자리가 여기 하나임. 창구마다
+          따로 두면 한쪽 모델 · reason 상한만 바뀌어도 안 보임
+    제약  요청 경로를 보고 가르지 않는다.
+          어느 창구인지는 execute 로만 말함
+          해석을 여기서 부르지 않는다.
+          resolve_service.resolve 를 부르는 곳은 execute_service.process 한 곳임
     """
     role = get_role_config(RESOLVE, model)
-    return resolve_service.resolve(
-        utterance,
+    return execute_service.process(
+        text,
         llm_client=get_llm_for(role.model),
         reason_max_length=role.model.reason_max_length,
+        context=context,
+        execute=execute,
     )
 
 
@@ -197,15 +223,9 @@ def _chat_events(form: ChatRequest, model: str | None = None):
           watched 는 받은 것을 그대로 다시 내는 껍데기임. KRRI_ASAP 시스템이
           읽는 흐름이라 한 건이라도 모양이 달라지면 시연이 깨짐
     """
-    role = get_role_config(RESOLVE, model)
     return recent_service.watched(
         form.text,
-        execute_service.chat(
-            form.text,
-            llm_client=get_llm_for(role.model),
-            reason_max_length=role.model.reason_max_length,
-            context=form.context,
-        ),
+        _process(form.text, model=model, context=form.context, execute=True),
     )
 
 

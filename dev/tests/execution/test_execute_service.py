@@ -70,7 +70,7 @@ def test_the_resolution_goes_out_as_a_step_of_its_own(monkeypatch, no_execution)
     """해석도 한 단계로 냄. 부르는 화면이 진행 상황을 그림."""
     resolved(monkeypatch, argument="오송역")
 
-    events = collect(execute_service.chat("오송역 위치 보여줘", None, 200))
+    events = collect(execute_service.process("오송역 위치 보여줘", None, 200, execute=True))
 
     assert events[0] == {
         "type": "step_start",
@@ -95,7 +95,7 @@ def test_the_context_is_not_passed_to_the_resolution(monkeypatch, no_execution):
     monkeypatch.setattr(execute_service.resolve_service, "resolve", fake_resolve)
 
     context = {"view": {"bbox": [[1, 2], [3, 4]]}, "selectedLocation": None}
-    collect(execute_service.chat("오송역 위치", None, 200, context=context))
+    collect(execute_service.process("오송역 위치", None, 200, context=context, execute=True))
 
     assert seen["kwargs"] == (None, 200)
     assert no_execution["context"] == context, "실행에는 문맥이 그대로 가야 한다"
@@ -113,10 +113,89 @@ def test_a_status_that_is_not_select_calls_no_tool(monkeypatch, no_execution, st
         reason="",
     )
 
-    events = collect(execute_service.chat("아무 말", None, 200))
+    events = collect(execute_service.process("아무 말", None, 200, execute=True))
 
     assert not no_execution, "SELECT 가 아닌데 도구를 불렀다"
     assert events[-1]["type"] == "result"
+
+
+# ── 해석은 한 번, 실행은 이어 갈 때만 ───────────────────────────────
+
+
+def counting_resolve(monkeypatch, answer):
+    """resolve 가 무엇으로 몇 번 불렸는지 남기는 가짜. LLM 은 안 부름."""
+    calls = []
+
+    def fake_resolve(text, llm_client, reason_max_length):
+        calls.append((text, llm_client, reason_max_length))
+        return answer
+
+    monkeypatch.setattr(execute_service.resolve_service, "resolve", fake_resolve)
+    return calls
+
+
+def test_resolve_only_returns_the_resolution_and_does_not_execute(monkeypatch, no_execution):
+    """POST /resolve 가 지나는 길. 해석 결과를 그대로 돌려주고 거기서 멈춘다."""
+    answer = {"status": "SELECT", "recipe_id": "recipe_001", "argument": "오송역"}
+    calls = counting_resolve(monkeypatch, answer)
+
+    result = execute_service.process("오송역 위치 보여줘", None, 200, execute=False)
+
+    assert result is answer
+    assert calls == [("오송역 위치 보여줘", None, 200)]
+    assert not no_execution, "해석만 하는 길이 실행까지 갔다"
+
+
+def test_execution_uses_the_one_resolution_as_it_is(monkeypatch, no_execution):
+    """**실행 쪽이 다시 해석하지 않는다.**
+
+    두 번 해석하면 LLM 을 두 번 부르고, 두 답이 갈리면 화면에 보인 해석과 실제로
+    부른 recipe 가 달라진다. 해석이 낸 인자와 이름 있는 값이 그대로 run 에 간다.
+    """
+    answer = {
+        "status": "SELECT",
+        "recipe_id": "recipe_001",
+        "argument": "오송역",
+        "travel_mode": "도보",
+        "minutes": 15,
+        "admin_level": None,
+    }
+    calls = counting_resolve(monkeypatch, answer)
+
+    collect(execute_service.process("오송역 위치 보여줘", None, 200, execute=True))
+
+    assert len(calls) == 1
+    assert no_execution["recipe_id"] == answer["recipe_id"]
+    assert no_execution["argument"] == answer["argument"]
+    assert no_execution["options"] == {
+        name: answer[name] for name in execute_service.SPOKEN_OPTIONS
+    }
+
+
+def test_the_resolution_starts_only_after_its_step_start_goes_out(monkeypatch, no_execution):
+    """KRRI_ASAP 화면은 step_start 를 보고 지금 도는 단계를 그린다.
+
+    해석을 먼저 하고 흐름을 만들면 LLM 이 도는 동안 화면에 아무것도 안 뜬다.
+    """
+    calls = counting_resolve(
+        monkeypatch, {"status": "SELECT", "recipe_id": "recipe_001", "argument": "오송역"}
+    )
+
+    async def pump():
+        events = execute_service.process("오송역 위치 보여줘", None, 200, execute=True)
+        before_reading = len(calls)
+        first = await events.__anext__()
+        after_first = len(calls)
+        rest = [event async for event in events]
+        return before_reading, first, after_first, rest
+
+    before_reading, first, after_first, rest = asyncio.run(pump())
+
+    assert before_reading == 0, "흐름을 읽기도 전에 해석했다"
+    assert first["type"] == "step_start" and first["node"] == "resolve"
+    assert after_first == 0, "step_start 가 나가기 전에 해석했다"
+    assert len(calls) == 1
+    assert rest[-1]["type"] == "result"
 
 
 # ── 인자가 있는가 ───────────────────────────────────────────────────
@@ -130,7 +209,7 @@ def test_the_argument_comes_from_the_llm_and_reaches_execution(monkeypatch, no_e
     """
     resolved(monkeypatch, argument="충북대")
 
-    collect(execute_service.chat("충북대 근처 CCTV 보여줘", None, 200))
+    collect(execute_service.process("충북대 근처 CCTV 보여줘", None, 200, execute=True))
 
     assert no_execution["argument"] == "충북대"
 
@@ -149,7 +228,7 @@ def test_a_null_argument_stops_the_call_instead_of_being_re_extracted(
     """
     resolved(monkeypatch, argument=None)
 
-    events = collect(execute_service.chat("오송역 위치 보여줘", None, 200))
+    events = collect(execute_service.process("오송역 위치 보여줘", None, 200, execute=True))
 
     assert not no_execution, "인자가 없는데 도구를 불렀다"
     assert events[-1]["type"] == "result"
@@ -166,7 +245,7 @@ def test_a_context_only_recipe_still_runs_without_a_spoken_argument(
     """
     resolved(monkeypatch, recipe_id="recipe_026", argument=None)
 
-    collect(execute_service.chat("지금 보이는 데 CCTV 다 띄워줘", None, 200))
+    collect(execute_service.process("지금 보이는 데 CCTV 다 띄워줘", None, 200, execute=True))
 
     assert no_execution, "문맥으로 도는 recipe 인데 안 불렀다"
     assert no_execution["argument"] is None, "없는 인자를 지어내지 않는다"
@@ -190,7 +269,7 @@ def test_with_neither_the_guidance_matching_the_start_node_goes_out(
     """
     resolved(monkeypatch, recipe_id=recipe_id, argument=None)
 
-    events = collect(execute_service.chat("찾아줘", None, 200))
+    events = collect(execute_service.process("찾아줘", None, 200, execute=True))
 
     assert fragment in events[-1]["answer"]
     assert not no_execution, "인자가 없는데 도구를 불렀다"
@@ -203,7 +282,7 @@ def test_an_unknown_start_node_falls_back_to_the_place_wording(monkeypatch, no_e
         execute_service.step_service, "spoken_needed", lambda recipe_id: True
     )
 
-    events = collect(execute_service.chat("찾아줘", None, 200))
+    events = collect(execute_service.process("찾아줘", None, 200, execute=True))
 
     assert "장소를 함께" in events[-1]["answer"]
 
