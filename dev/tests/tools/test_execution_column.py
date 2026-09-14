@@ -13,10 +13,8 @@
 from dev.tools import check_resolve
 from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer, step_line
 
-# recipe 가 아는 성공 문장. 무엇이 오든 vendor 는 그대로 첫 줄에 쓴다.
-HEADLINE = "행정구역을 조회했습니다."
-
-INTENT = {"answer_instruction": HEADLINE}
+# vendor 에 넘긴 intent. 답 문구는 이것을 읽지 않는다.
+INTENT = {}
 
 
 def turn_of(trace, *, failed=False):

@@ -11,7 +11,7 @@ test_published_execution.py 가 본다.
     step      앞 도구 단계. {from: s1.<타입>.<칸>}
     adapter   앞 노드가 builtin 계산. 뒤 단계의 transform 과 {from: transform.<타입>.<칸>}
 
-vendor 에 실제로 무엇이 나가는지는 compile 한 블록을 plan_service.bind 로 채워 본다.
+vendor 에 실제로 무엇이 나가는지는 compile 한 블록을 ExecutionRequest 로 묶어 legacy_vendor.to_legacy 로 채워 본다.
 요청 중에 실행이 지나는 것과 같은 함수다.
 
 LLM 도 Gateway 도 부르지 않는다. 온톨로지와 배선표만 읽는다.
@@ -22,7 +22,7 @@ import zoneinfo
 
 import pytest
 
-from execution import plan_service, step_service
+from execution import legacy_vendor, plan_service, step_service
 from ontology import graph
 
 PROBE_NOW = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Seoul"))
@@ -44,11 +44,12 @@ def compiled(recipe_id):
 
 
 def plan(recipe_id, argument, options=None, now=None):
-    """compile 한 블록을 실행이 쓰는 bind 로 채운 계획. vendor 가 받는 모양."""
-    return plan_service.bind(compiled(recipe_id), argument, options, now)
+    """compile 한 블록을 실행이 쓰는 ExecutionRequest · legacy 어댑터로 채운 계획. vendor 가 받는 모양."""
+    request = plan_service.request(recipe_id, compiled(recipe_id), argument, options)
+    return legacy_vendor.to_legacy(request, now)
 
 
-def fake(monkeypatch, path, tools, inputs, outputs=None, sources=None, headlines=None):
+def fake(monkeypatch, path, tools, inputs, outputs=None, sources=None):
     """가짜 온톨로지를 compile 에 연결.
 
     path      경로. 시작 노드부터 적는다
@@ -56,7 +57,6 @@ def fake(monkeypatch, path, tools, inputs, outputs=None, sources=None, headlines
     inputs    {노드: [받는 타입, ...]}
     outputs   {노드: [내놓는 타입, ...]}. 안 적은 노드는 아무것도 안 내놓는다
     sources   {노드: source dict}
-    headlines {노드: 답 첫 줄}. 안 적은 도구 노드는 "{arg} 를 조회했습니다."
     """
     outputs = outputs or {}
     sources = sources or {}
@@ -72,10 +72,6 @@ def fake(monkeypatch, path, tools, inputs, outputs=None, sources=None, headlines
     monkeypatch.setattr(graph, "start_ids", lambda: [node for node in sorted(known) if node in sources])
     monkeypatch.setattr(graph, "handed_types", lambda node: outputs.get(node) or [node])
     monkeypatch.setattr(graph, "is_executable", lambda node: bool(outputs.get(node)))
-    for node in tools:
-        monkeypatch.setitem(
-            plan_service.HEADLINE, node, (headlines or {}).get(node, "{arg} 를 조회했습니다.")
-        )
 
 
 SPOKEN = {"from": "spoken.argument"}
@@ -88,7 +84,7 @@ SPOKEN = {"from": "spoken.argument"}
     "tool_id, kind, fields",
     [
         ("asap-mcp-core/geo.geocode", step_service.MCP, {"server_id": "asap-mcp-core", "tool": "geo.geocode"}),
-        ("builtin/geo.pointRadiusToBbox", step_service.BUILTIN, {"adapter": step_service.POINT_RADIUS_TO_BBOX}),
+        ("builtin/geo.pointRadiusToBbox", step_service.BUILTIN, {"produces": ("minLon", "minLat", "maxLon", "maxLat")}),
         ("frontend/digitalTwin.showFacility", step_service.COMMAND, {"command": "digitalTwin.showFacility"}),
     ],
     ids=["gateway", "builtin", "frontend"],
@@ -154,11 +150,10 @@ def test_a_tool_that_cannot_be_trusted_raises(monkeypatch, tool, fragment):
         step_service.binding_of("n")
 
 
-def test_the_ontology_and_the_remaining_wiring_agree():
-    """온톨로지의 tool · source 와 배선표에 남은 것이 서로를 가리킨다.
+def test_the_ontology_tools_and_sources_agree():
+    """온톨로지의 tool · source 가 읽히고, 받는 노드가 읽는 칸을 내놓는 쪽이 적었다.
 
-    headline 이 없으면 답 첫 줄에서 KeyError 가 나고, 받는 노드가 읽는 칸을 내놓는
-    쪽이 안 적었으면 그 자리가 조용히 unwired 가 된다.
+    안 적었으면 그 자리가 조용히 unwired 가 된다.
     """
     assert step_service.check_bindings() == []
 
@@ -392,29 +387,6 @@ def test_a_condition_on_a_value_known_only_after_the_call_raises(monkeypatch):
 
     with pytest.raises(ValueError, match="발화 인자"):
         plan("recipe_x", "경부선")
-
-
-# ── 답 첫 줄 ────────────────────────────────────────────────────────
-
-
-def test_the_arg_in_the_headline_is_substituted_too():
-    """답 첫 줄에 그 값이 그대로 보임. 치환이 빠지면 화면에 {arg} 가 뜸."""
-    plan_result = plan(
-        recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"]), "오송역"
-    )
-
-    assert plan_result["headline"] == "오송역 CCTV 를 조회했습니다."
-
-
-def test_a_non_overlapping_argument_is_still_prefixed():
-    """겹침을 앞머리로만 봄. 인자가 문장 가운데 낱말과 같아도 안 뺌.
-
-    포함(substring)으로 보면 "역" 이 "국회의원 지역구" 안에 걸려 멀쩡한 인자가
-    빠짐. 인자가 붙는 자리는 앞이라 앞에서만 더듬거림.
-    """
-    plan_result = plan(recipe_of(["district_code", "get_election_district"]), "역")
-
-    assert plan_result["headline"] == "역 국회의원 지역구를 조회했습니다."
 
 
 # ── 앞 단계 응답 · 화면 값을 semantic 칸으로 읽는다 ──────────────────
@@ -730,11 +702,11 @@ def test_the_point_is_widened_by_the_next_step_not_called_on_its_own():
         "center": ["$context.selectedLocation.lon", "$context.selectedLocation.lat"],
         "radiusMeters": 15000,
     }
-    assert picked["steps"][0]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
+    assert picked["steps"][0]["inputAdapter"] == legacy_vendor.POINT_RADIUS_TO_BBOX
 
     assert spoken["nodes"] == ["geocode_place", "search_ev_stations", "get_ev_station"]
     assert spoken["steps"][1]["input"] == {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 15000}
-    assert spoken["steps"][1]["inputAdapter"] == step_service.POINT_RADIUS_TO_BBOX
+    assert spoken["steps"][1]["inputAdapter"] == legacy_vendor.POINT_RADIUS_TO_BBOX
     assert spoken["steps"][2]["input"] == {"statId": "$s2.items.0.stationId"}
 
     # 어댑터가 받는 중심은 화면에서 왔든 장소에서 왔든 [경도, 위도] 다.
@@ -769,7 +741,7 @@ def test_the_date_and_time_are_taken_when_the_call_is_made():
     자정 근처에서 하루가 어긋날 수 있다". 블록에는 기호만 있고 값은 부를 때 찍힌다.
     """
     execution = compiled(recipe_of(ROUTE_CHAIN))
-    sent = plan_service.bind(execution, "조치원역")["steps"][-1]["input"]
+    sent = legacy_vendor.to_legacy(plan_service.request("recipe_x", execution, "조치원역"))["steps"][-1]["input"]
     now = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Seoul"))
 
     assert execution["workflow"][-1]["input"]["date"] == {"from": "runtime.now.date"}
@@ -914,7 +886,6 @@ def test_a_node_without_a_gateway_tool_becomes_a_map_command_not_a_step():
     assert plan_result["command_nodes"] == ["show_facility"]
     assert plan_result["commands"][0]["op"] == binding["command"]
     assert plan_result["commands"][0]["args"]["facilityName"] == "오송 테스트트랙"
-    assert plan_result["headline"]
 
 
 def test_a_map_command_node_is_not_counted_as_unwired():

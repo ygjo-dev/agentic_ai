@@ -1,4 +1,4 @@
-"""대상 : 온톨로지의 tool 과 execution/wiring.yaml — 지금 적힌 실행 수단이 실제로 실행 가능한가
+"""대상 : 온톨로지의 tool — 지금 적힌 실행 수단이 실제로 실행 가능한가
 
 로더와 계획의 규칙은 test_step_service.py 가 본다. 여기서 보는 것은 **지금 파일에
 적힌 것**이 온톨로지 · Gateway 스키마 · 실행 권한과 맞느냐다.
@@ -11,7 +11,7 @@
 모르는 칸이라 버리고 인자 없이 부른 것처럼 답한다. 지도를 아무리 좁혀도
 전국 결과가 오던 자리가 그것이었다(실측).
 
-LLM 도 Gateway 도 부르지 않는다. 온톨로지 · wiring.yaml ·
+LLM 도 Gateway 도 부르지 않는다. 온톨로지 · 게시된 recipe ·
 dev/tools/probe_out/tools.json 만 읽는다.
 """
 
@@ -19,10 +19,9 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 import paths
-from execution import execute_service, plan_service, step_service
+from execution import execute_service, legacy_vendor, plan_service, step_service
 from ontology import graph, store
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
@@ -31,7 +30,7 @@ SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "too
 # 중심 · 반경을 빼고 bbox 넷을 넣어 맞댄다 — vendor 의 _point_radius_to_bbox_input 이
 # 하는 그대로다.
 BBOX_FIELDS = ("minLon", "minLat", "maxLon", "maxLat")
-ADAPTER_CONSUMES = set(step_service.CENTER_KEYS) | {"radiusMeters", "radius"}
+ADAPTER_CONSUMES = set(legacy_vendor.CENTER_KEYS) | {"radiusMeters", "radius"}
 
 
 def _schemas():
@@ -79,27 +78,30 @@ def _rows():
 # ── 표의 구조 ───────────────────────────────────────────────────────
 
 
-def test_the_tools_and_the_remaining_wiring_agree():
-    """tool · source 가 읽히고, 도구 · 명령 노드마다 답 첫 줄이 있고, 읽는 칸이 적혀 있다.
+def test_the_tools_and_sources_agree():
+    """tool · source 가 읽히고, 받는 노드가 읽는 칸을 내놓는 쪽이 적었다.
 
-    plan 이 답 첫 줄을 HEADLINE[노드] 로 읽으므로 빠지면 그 경로 전체가 KeyError 로
-    멈춘다. 받는 노드가 읽는 칸을 내놓는 쪽이 안 적었으면 그 자리가 조용히 unwired 가
-    된다.
+    안 적었으면 그 자리가 조용히 unwired 가 된다.
     """
     assert step_service.check_bindings() == []
 
 
-def test_the_wiring_file_holds_only_the_headline():
-    """응답 · 화면 값을 semantic 칸으로 읽는 경로는 온톨로지에 있다. 배선표에는 답 첫 줄만 남는다.
+def test_no_wiring_table_stands_beside_the_ontology_and_the_published_plan():
+    """실행 수단 · 응답 경로는 온톨로지에, 실행 계획은 게시된 recipe 에 있다. 노드별 표를 따로 두지 않는다.
 
-    옛 두 표가 파일이나 모듈에 되살아나면 같은 경로의 원천이 둘이 되고, 어느 쪽이
-    이기는지 코드를 읽어야 알게 된다. 절의 수가 아니라 절의 이름을 본다.
+    표가 파일이나 모듈에 되살아나면 같은 것의 원천이 둘이 되고, 어느 쪽이 이기는지 코드를
+    읽어야 알게 된다. 노드마다 답 첫 줄을 적던 표도 실행 계획에 화면 문구를 섞던 자리라
+    되살리지 않는다.
     """
-    document = yaml.safe_load(paths.WIRING_PATH.read_text(encoding="utf-8"))
-
-    assert set(document) == {"headline"}
-    for name in ("PREVIOUS_RESULT_PATHS", "SOURCE_FIELD_BASES"):
-        assert not hasattr(step_service, name), name
+    assert not (paths.REPO_ROOT / "execution" / "wiring.yaml").exists()
+    assert not hasattr(paths, "WIRING_PATH")
+    for module, name in [
+        (step_service, "PREVIOUS_RESULT_PATHS"),
+        (step_service, "SOURCE_FIELD_BASES"),
+        (plan_service, "HEADLINE"),
+        (plan_service, "reload_wiring"),
+    ]:
+        assert not hasattr(module, name), name
 
 
 def test_every_tool_names_its_server_and_the_ontology_holds_no_address():

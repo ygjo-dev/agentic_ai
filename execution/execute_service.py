@@ -1,13 +1,17 @@
-"""발화를 recipe 로 해석하고, 그 recipe 에 게시된 실행 계획을 vendor 실행기에 넘긴다.
+"""발화를 recipe 로 해석하고, 게시된 실행 계획을 ExecutionRequest 로 묶어 실행 계층에 넘긴다.
 
 여기 남은 일은 셋이다.
 
-    발화에서 recipe 를 고르고                    resolve_service
-    recipe 에 게시된 execution 을 steps 로 채우고  plan_service
-    vendor 가 준 것을 이벤트로 흘린다             아래
+    발화에서 recipe 를 고르고                          resolve_service
+    고른 recipe 를 지금 부를 수 있는지 보고              아래 run · process
+    게시된 execution 을 ExecutionRequest 로 묶어 넘긴다   plan_service.request -> legacy_vendor.run
 
-**실행 계획을 여기서 만들지 않는다.** 고른 recipe 파일의 execution 블록이 무엇을
-어떤 차례로 부를지 이미 말한다. 온톨로지를 다시 훑어 계획을 짜지 않고, 블록이
+**agentic_ai 가 오케스트레이터다.** 어느 recipe 를 · 어떤 차례로 · 어느 서버 · 도구 ·
+칸에 · 값이 어디서 와서 · 앞 단계 응답의 어느 경로를 읽어 · 어느 transform 을 거쳐
+넣는지는 게시된 execution 이 이미 말하고, ExecutionRequest 가 그것을 그대로 담는다.
+실행 계층은 적힌 대로 부를 뿐 그 관계를 추론하지 않는다.
+
+**실행 계획을 여기서 만들지 않는다.** 온톨로지를 다시 훑어 계획을 짜지 않고, 블록이
 없으면 오류다(plan_service.PlanError). 온톨로지를 읽는 곳은 사람에게 보일 이름 ·
 안내 문구뿐이다.
 
@@ -16,37 +20,15 @@ LLM 이 혼자 한다. 고른 것을 실제로 부를 수 있는지(배선이 �
 있는가 · 화면 문맥이 왔는가)는 실행 직전에 게시된 블록으로 본다. 못 부르면 다른
 recipe 로 갈아타지 않고 실행을 시작하지 않는다.
 
-**실행 · 배선 해석 · 답 조합은 vendor 것이다.**
-vendor_to_be_deleted/asap/generic_mcp_executor 의 _execute_generic_mcp_workflow 가
-steps 배열 하나를 받아 참조 해석($s1.location.0) · 입력 어댑터 · 도구 호출 ·
-지도 commands 까지 한다. 도구가 늘어도 그쪽은 그대로고, 우리가 늘리는 것은
-온톨로지 노드의 tool 한 벌이다.
-
-**step_start / step_end 는 실행이 끝난 뒤에 나간다.** vendor 는 steps 전부를
-한 번에 돌리고 trace 를 돌려주므로 중간에 끼어들 자리가 없다. 단계마다 한 쌍이
-recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
-
-**답 문구를 만드는 workflow_answer 를 부르는 자리가 둘이다.** 성공한 실행은
-vendor 안에서 부르고, 실패한 실행은 vendor 가 자기 문구로 돌아오므로 아래
-run 이 trace 로 다시 부른다. 같은 함수라 문구가 갈라지지 않는다.
-
-**vendor 를 아예 안 지나는 실행이 하나 있다.** 경로의 실행 노드가 전부
-「부를 도구가 없는」 것이면 넘길 steps 가 비고, vendor 는 빈 steps 를 실패로
-본다. 그때는 실행 계획이 만든 지도 명령을 그대로 내고 끝낸다.
+**지금 실행 계층은 KRRI_ASAP 의 옛 vendor 실행기다.** 그것은 ExecutionRequest 를 모르므로
+execution/legacy_vendor 가 옛 입력으로 바꿔 부른다. vendor 를 아는 제품 코드는 그 파일 하나다.
 """
 
 from collections import Counter
 
-from execution import plan_service
+from execution import legacy_vendor, plan_service
 from ontology import graph, store
 from orchestrator import resolve_service
-from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
-from vendor_to_be_deleted.asap.workflow_answer import (
-    command_answer,
-    compose_workflow_answer,
-    no_match_answer,
-    step_failed,
-)
 
 # 우리가 누구인지. 이 값으로 Gateway 가 권한을 찾는다.
 #
@@ -72,9 +54,6 @@ SPOKEN_OPTIONS = (
     "minutes",
     "admin_level",
 )
-
-# vendor 가 steps 를 workflow 로 알아보게 하는 이름.
-WORKFLOW_ACTION = "call_mcp_workflow"
 
 # 부를 인자를 못 뽑았을 때의 안내. 그 recipe 가 무엇으로 시작하느냐에 따라
 # 무엇을 더 말해 달라고 할지가 다르다. 장소 문구 하나로 두면 "국회의원
@@ -126,12 +105,7 @@ CLARIFY_MANY_HEADLINE = "여러 가지로 해석됩니다. 어느 것을 보시�
 CLARIFY_MANY_FROM = 4
 
 # 부를 것이 하나도 없을 때의 답은
-# vendor_to_be_deleted/asap/workflow_answer.no_match_answer 가 만든다.
-
-# 도구를 안 부르는 단계의 진행 표시. 도구 단계와 같은 모양이라 부르는 화면이
-# 따로 알아볼 것이 없다 — 그 자리에 도구 이름 대신 지도 명령 op 이 온다.
-COMMAND_START = "{op} 명령을 내는 중입니다..."
-COMMAND_END = "{op} 완료"
+# vendor_to_be_deleted/asap/workflow_answer.no_match_answer 가 만든다(legacy_vendor 를 지나 읽는다).
 
 # 후보 줄에서 앞 단계를 잇는 표시.
 STEP_JOIN = " -> "
@@ -206,7 +180,7 @@ def _no_recipe_answer(resolved: dict) -> str:
 
     if not candidates:
         topics, starts = _offer_names()
-        return no_match_answer(reason, topics, starts)
+        return legacy_vendor.no_match_answer(reason, topics, starts)
 
     head = _clarify_head(candidates, resolved.get("paths") or {})
     return f"{head}\n\n{reason}".rstrip()
@@ -310,43 +284,6 @@ def _step_names(recipe_id: str, paths: dict) -> list[str]:
     ]
 
 
-# ── vendor 가 준 것을 읽는다 ───────────────────────────────────
-
-def _answer(intent: dict, executed: dict) -> str:
-    """이 실행에 보일 답 한 벌.
-
-    입력  vendor 에 넘긴 intent · vendor 가 돌려준 것
-    출력  화면에 그대로 나갈 문자열
-    규칙  errors 가 비어 있으면 vendor 의 answer_draft. 그 안에서 이미
-          workflow_answer 가 만든 것임
-          errors 가 있으면 trace 로 우리가 다시 만듦. 이때 failed 를 넘김.
-          vendor 는 중단할 때 대개 trace 에 아무것도 안 남기고, 남은 마지막
-          항목은 성공한 앞 단계라 trace 만 보면 성공으로 읽힘
-          trace 가 비면 단계 목록 없이 첫 줄만 나옴
-    """
-    if executed.get("errors"):
-        return compose_workflow_answer(intent, _trace(executed), failed=True)
-    return executed.get("answer_draft") or ""
-
-
-def _trace(executed: dict) -> list[dict]:
-    """vendor 가 쌓은 단계 기록. 성공이든 실패든 같은 자리에 있음."""
-    artifacts = executed.get("artifacts") or {}
-    return artifacts.get("mcp_workflow_trace") or []
-
-
-def _commands(executed: dict) -> list[dict]:
-    """지도 명령을 JSON 으로.
-
-    출력  [{"op": ..., "args": {...}}, ...]
-    규칙  vendor 는 pydantic Command 로 돌려줌. 부르는 화면은 JSON 을 받음
-    """
-    return [
-        command.model_dump() if hasattr(command, "model_dump") else command
-        for command in (executed.get("commands") or [])
-    ]
-
-
 # ── 실행 ───────────────────────────────────────────────────────
 
 async def run(
@@ -370,17 +307,11 @@ async def run(
           배선이 실제로 읽는 화면 문맥이 안 왔으면 시작하지 않음. 없는 좌표로
           부르면 전국이 나오거나 required 가 빈 채로 도구가 거부함.
           무엇을 읽는지는 게시된 execution 의 context_needs 가 말함
-          부를 도구가 없고 지도 명령만 있으면 vendor 를 안 지남. 빈 steps 를
-          넘기면 vendor 가 실패로 봄
-          지도 명령이 도구 단계와 함께 있으면 도구 응답에서 나온 명령 뒤에
-          붙임. 순서가 곧 경로 순서임
-          한 단계가 실패하면 vendor 가 거기서 멈춤. trace 에 그 단계까지만
-          담기므로 이벤트도 거기까지만 나감
-    제약  실패 문구를 vendor 에서 가져오지 않는다.
-          vendor 의 answer_draft 가 HTTP 오류 원문 · 내부 URL · Gateway 응답
-          본문을 그대로 담음(실측 : "… Server error '500 Internal Server Error'
-          for url '<ASAP_GATEWAY_URL>/api/tools/execute' … Response body: …").
-          무엇이 비었는지만 trace 로 다시 만들어 씀
+          다 되면 게시된 execution 과 이번 요청의 값을 ExecutionRequest 로 묶어
+          (plan_service.request) 실행 계층에 넘김. 부를 것이 없으면 안 넘김
+          지금 실행 계층은 legacy_vendor.run 이고 그 뒤의 단계 이벤트 · 답은 거기서 옴
+    제약  ExecutionRequest 에 옛 vendor 표현을 적지 않는다.
+          "$s1.location.0" · inputAdapter 는 legacy_vendor 안에서만 생김
           게시된 execution 이 없다고 온톨로지로 계획을 다시 만들지 않는다.
           원천이 게시된 블록과 온톨로지 둘이 됨
     """
@@ -399,48 +330,13 @@ async def run(
         yield _result(_no_context_answer(absent), [])
         return
 
-    plan = plan_service.bind(execution, argument, options)
-    if not plan["steps"] and not plan["commands"]:
+    request = plan_service.request(recipe_id, execution, argument, options, context)
+    if not request["workflow"]:
         yield _result(NO_TOOL_ANSWER, [])
         return
 
-    if not plan["steps"]:
-        for node_id, command in zip(plan["command_nodes"], plan["commands"]):
-            op = command["op"]
-            yield {
-                "type": "step_start",
-                "node": node_id,
-                "message": COMMAND_START.format(op=op),
-            }
-            yield {
-                "type": "step_end",
-                "node": node_id,
-                "message": COMMAND_END.format(op=op),
-            }
-        yield _result(command_answer(plan["headline"]), plan["commands"])
-        return
-
-    intent = {
-        "action": WORKFLOW_ACTION,
-        "steps": plan["steps"],
-        "answer_instruction": plan["headline"],
-    }
-    state = {
-        "user_text": text,
-        "context": context or {},
-        "user_context": dict(USER_CONTEXT),
-        "intent": intent,
-    }
-
-    executed = await _execute_generic_mcp_workflow(state, intent)
-
-    for node_id, item in zip(plan["nodes"], _trace(executed)):
-        tool = item.get("tool") or ""
-        yield {"type": "step_start", "node": node_id, "message": f"{tool} 호출 중입니다..."}
-        outcome = "실패" if step_failed(item) else "완료"
-        yield {"type": "step_end", "node": node_id, "message": f"{tool} {outcome}"}
-
-    yield _result(_answer(intent, executed), _commands(executed) + plan["commands"])
+    async for payload in legacy_vendor.run(request, text, USER_CONTEXT):
+        yield payload
 
 
 def _resolve(text: str, llm_client, role) -> dict:

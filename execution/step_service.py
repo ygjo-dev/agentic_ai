@@ -3,13 +3,13 @@
     온톨로지 + 사람이 받아들인 노드 사슬
       -> compile_execution
       -> recipe 파일의 execution 블록        (registration/publish.py 가 적는다)
-      -> execution/plan_service.py 가 읽어 vendor 계획으로 채운다
+      -> execution/plan_service.py 가 요청마다 ExecutionRequest 로 묶는다
 
 **도구 식별과 입력 배선은 온톨로지 노드의 tool 이 갖는다.** 여기는 그것을 읽어
 경로의 한 자리에서 칸마다 값이 어디서 오는지를 기호로 적는다.
 
     tool.id          "<server_id>/<도구>"   Gateway 의 MCP 도구
-                     "builtin/<이름>"       vendor 어댑터로 뒤 단계에 얹는 transform
+                     "builtin/<이름>"       뒤 단계에 얹는 transform. 실행 계층이 id 로 계산
                      "frontend/<명령>"      도구를 안 부르고 내는 지도 명령
     tool.parameters  도구 칸 -> 값
     tool.outputs     semantic 타입 -> 그 도구의 raw 응답 안에서 그 값을 읽는 경로
@@ -44,19 +44,14 @@ import re
 import paths
 from execution import plan_service
 from execution.plan_service import (
-    CENTER_KEYS,
     CONTEXT_SOURCE,
-    POINT_RADIUS_TO_BBOX,
     RUNTIME_NOW,
     SPOKEN_ARGUMENT,
     SPOKEN_SOURCE,
     TRANSFORM,
-    TRANSFORM_ADAPTERS,
+    TRANSFORMS,
 )
 from ontology import graph
-
-# 밖(계기판 · 시험)이 이 모듈 이름으로 읽는 것. 원천은 plan_service 다.
-__all__ = ["CENTER_KEYS", "POINT_RADIUS_TO_BBOX"]
 
 # ── 이름 ──────────────────────────────────────────────────────────
 
@@ -71,11 +66,11 @@ COMMAND = "command"
 
 # builtin 계산 -> 그 transform 이 도구 input 에 만드는 칸.
 #
-# 온톨로지에는 논리 식별(builtin/geo.pointRadiusToBbox)만 적는다. 그 계산은 지금
-# vendor 의 _point_radius_to_bbox_input 이 갖고 있어서(plan_service.TRANSFORM_ADAPTERS),
-# builtin 노드는 따로 부르지 않고 바로 뒤 도구 단계의 transform 으로 얹힌다.
+# 온톨로지에는 논리 식별(builtin/geo.pointRadiusToBbox)만 적는다. builtin 노드는 따로
+# 부르지 않고 바로 뒤 도구 단계의 transform 으로 얹힌다. 계산은 실행 계층이 id 를 보고
+# 한다(지금은 legacy_vendor 가 vendor 의 _point_radius_to_bbox_input 으로 옮긴다).
 #
-# **만드는 칸이 정해져 있다.** 어댑터는 중심 · 반경 칸을 지우고 minLon · minLat ·
+# **만드는 칸이 정해져 있다.** 그 계산은 중심 · 반경 칸을 지우고 minLon · minLat ·
 # maxLon · maxLat 넷을 평평하게 만든다. 뒤 도구가 지도 범위를 bbox 배열 한 칸으로
 # 받으면(행정구역 조회 · 인구 통계 조회 …) 그 넷은 모르는 칸이라 버려지고 도구는
 # 범위 없이 돈다. 그래서 뒤 노드가 이 넷을 그 이름 그대로 받을 때만 잇는다
@@ -119,12 +114,12 @@ def binding_of(node_id: str) -> dict | None:
 
     출력  {kind, id, parameters} 에 kind 마다 칸이 더 붙음
             mcp      server_id · tool · outputs (안 적었으면 빈 dict)
-            builtin  adapter · produces (그 어댑터가 만드는 칸)
+            builtin  produces (그 transform 이 만드는 칸)
             command  command
           tool 이 없는 노드는 None
     규칙  id 의 첫 "/" 앞이 namespace 임. builtin · frontend 는 예약이고 나머지는
           Gateway 서버 id 임. 뒤는 도구 이름이라 점이 들어 있어도 됨
-          builtin 은 BUILTIN_ADAPTERS 에 있는 것만 받음
+          builtin 은 BUILTIN_ADAPTERS 와 계약의 TRANSFORMS 에 둘 다 있는 것만 받음
           parameters 는 읽을 때 한 번 다 봄(_check_expression)
           outputs 도 읽을 때 한 번 다 봄(_check_output). raw 응답을 읽는 법이라
           mcp 도구에만 둠
@@ -165,12 +160,11 @@ def binding_of(node_id: str) -> dict | None:
             _check_output(f"{where}.outputs.{type_id}", type_id, reading, produced)
 
     if namespace == BUILTIN_NAMESPACE:
-        if tool_id not in BUILTIN_ADAPTERS or tool_id not in TRANSFORM_ADAPTERS:
+        if tool_id not in BUILTIN_ADAPTERS or tool_id not in TRANSFORMS:
             raise ValueError(f"{where}.id 는 모르는 builtin 이다: {tool_id}")
         return {
             "kind": BUILTIN,
             "id": tool_id,
-            "adapter": TRANSFORM_ADAPTERS[tool_id],
             "produces": BUILTIN_ADAPTERS[tool_id],
             "parameters": parameters,
         }
@@ -850,12 +844,16 @@ def variants(node_id: str) -> list[dict]:
           suffix 는 조건 칸의 어미 갈래. 기본 벌은 빈 문자열
           spoken 은 발화 인자가 들어갔는지
     규칙  출처마다 compile 과 같은 함수로 그 자리의 기호를 적고, 요청 중에 쓰는
-          plan_service.bind_input 으로 채움. 계기판이 규칙을 따로 옮겨 적으면
+          legacy_vendor.bind_input 으로 채움. 계기판이 규칙을 따로 옮겨 적으면
           실행과 표가 조용히 어긋남
+          도구 스키마와 맞대는 벌이라 지금 Gateway 에 실리는 옛 입력 모양으로 채움
           출처는 _origins 가 정함. 이 노드가 그 타입에서 읽는 칸을 줄 수 있는 출처만 담음
           조건 칸이 있으면 그 어미로 끝나는 인자로 한 벌을 더 만듦. 같은 벌은 안 담음
           이름 있는 값은 전부 default 로 채움. 부르는 순간은 고정된 한 시각임
     """
+    # 계기판 · 시험만 부른다. compile · 게시가 import 할 때 vendor 가 딸려 오지 않게 여기서 읽는다.
+    from execution import legacy_vendor
+
     binding = binding_of(node_id)
     if binding is None:
         return []
@@ -871,7 +869,8 @@ def variants(node_id: str) -> list[dict]:
         for origin_name, execution, entry in _origins(node_id, binding, type_id):
             seen = []
             for suffix, argument in arguments:
-                filled, adapter = plan_service.bind_input(entry, execution, argument, None, now)
+                request = {"spoken": {"argument": argument}, **execution}
+                filled, adapter = legacy_vendor.bind_input(entry, request, now)
                 if (filled, adapter) in seen:
                     continue
                 seen.append((filled, adapter))
@@ -979,18 +978,14 @@ def _origins(node_id: str, consumer: dict, type_id: str) -> list[tuple[str, dict
 
 
 def check_bindings() -> list[str]:
-    """온톨로지의 tool · source 와 배선표에 남은 것이 서로 맞는지 전부 봄.
+    """온톨로지의 tool · source 가 읽히고 서로 맞는지 전부 봄.
 
     출력  문제 문장 목록. 다 맞으면 빈 목록
     규칙  tool 이 있는 노드마다 binding_of 가, source 가 있는 노드마다 _source_of 가
           통과해야 함
-          도구 · 명령 노드에는 headline 이 있어야 하고 builtin 노드에는 없어야 함
-          headline 이 tool 없는 노드를 가리키면 안 됨
           받는 노드가 읽는 칸을 내놓는 쪽이 적어 두어야 함(_unreadable).
           안 적힌 칸은 짐작하지 않으므로 그 자리는 조용히 unwired 가 됨
     """
-    plan_service.reload_wiring()
-    headline = plan_service.HEADLINE
     problems = []
     bindings, sources = {}, {}
 
@@ -1009,16 +1004,8 @@ def check_bindings() -> list[str]:
             problems.append(str(error))
             continue
 
-        if binding is None:
-            if node_id in headline:
-                problems.append(f"headline: {node_id} 에 tool 이 없다")
-            continue
-        bindings[node_id] = binding
-
-        if binding["kind"] == BUILTIN and node_id in headline:
-            problems.append(f"headline: builtin {node_id} 은 답을 말하지 않는다")
-        if binding["kind"] != BUILTIN and node_id not in headline:
-            problems.append(f"headline: {node_id} 이 없다")
+        if binding is not None:
+            bindings[node_id] = binding
 
     return problems + _unreadable(bindings, sources)
 

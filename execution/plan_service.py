@@ -1,18 +1,26 @@
-"""게시된 recipe 의 execution 블록을 읽어 vendor 실행기가 받는 계획으로 채운다.
+"""agentic_ai 의 공식 실행 출력. 게시된 recipe 의 execution 과 요청 하나의 값을 묶은 ExecutionRequest.
 
 **여기는 계획을 만들지 않는다.** 어느 노드를 어느 서버 · 도구로 부르고 칸마다 값이
 어디서 오는지는 게시할 때 execution/step_service.compile_execution 이 온톨로지와 사람이
 받아들인 노드 사슬로 정해 recipe 파일에 적어 두었다. 요청 중에는 그 블록만 읽는다.
 온톨로지를 import 하지 않는다.
 
-    execution:
-      spoken_needed   발화 인자를 쓰는가. 안 말했으면 부르지 않는다
-      unwired         실행 수단이 없는 노드. 있으면 workflow 가 비고 부르지 않는다
-      context_needs   화면에서 받아야 하는 시작 노드 -> {from: context.<경로>, fields}
-      workflow        차례대로. 도구 단계 {id, node, server_id, tool, transform?, input, outputs?}
-                      지도 명령 {node, command, transform?, input}
+    Recipe.execution    게시된 정적 기호 계획. 요청과 무관하다
+      spoken_needed     발화 인자를 쓰는가. 안 말했으면 부르지 않는다
+      unwired           실행 수단이 없는 노드. 있으면 workflow 가 비고 부르지 않는다
+      context_needs     화면에서 받아야 하는 시작 노드 -> {from: context.<경로>, fields}
+      workflow          차례대로. 도구 단계 {id, node, server_id, tool, transform?, input, outputs?}
+                        지도 명령 {node, command, transform?, input}
 
-input 의 값은 기호다. 실제 값은 넣지 않는다.
+    ExecutionRequest    request() 가 만든다. 실행 계층에 넘기는 한 벌
+      recipe_id         고른 recipe
+      spoken            발화 해석이 뽑은 값. {argument, travel_mode, minutes, admin_level}
+      context           화면이 보낸 문맥 그대로
+      context_needs     게시된 것 그대로. context.<시작 노드>.<칸> 이 화면 값의 어디인지
+      workflow          게시된 것 그대로
+
+**ExecutionRequest 는 workflow 를 다시 적지 않는다.** 게시된 workflow 와 context_needs 에
+이번 요청의 spoken · context 를 봉투로 붙일 뿐이다. 실제 값은 기호 안에 넣지 않는다.
 
     {value: <상수>}
     {from: spoken.argument}                         발화 인자
@@ -27,11 +35,15 @@ input 의 값은 기호다. 실제 값은 넣지 않는다.
 **같은 타입이라도 누가 내놓았는지가 기호에 남는다.** 화면에서 찍은 지점은
 context.point.lat, 앞 단계가 찾은 지점은 s1.point.lat 이다.
 
-**transform 은 여기서 계산하지 않는다.** 선언(id · 입력)을 vendor 의 입력 어댑터로 옮겨
-적을 뿐이고 반경 계산은 vendor 의 point_radius_to_bbox 가 한다.
+**raw 응답의 어디를 읽을지는 agentic_ai 가 정해 내놓는 쪽에 적는다.** 앞 단계는 그 단계의
+outputs(point.lon -> location.0), 화면 값은 context_needs 의 fields 다. 받는 쪽은 semantic
+칸만 가리킨다. 실행 계층은 적힌 경로에서 값을 꺼낼 뿐 경로를 짐작하지 않는다.
 
-**채우는 것은 셋뿐이다.** 발화 인자 · 이름 있는 값 · 부르는 순간. 앞 단계 결과와 화면
-값은 "$s1.location.0" · "$context.view.bbox.0.0" 같은 참조로 적어 vendor 가 푼다.
+**transform 은 선언이다.** id 와 입력만 적고 계산은 실행 계층이 id 를 보고 한다.
+
+지금 KRRI_ASAP 은 이 계약을 직접 받지 않는다. execution/legacy_vendor.py 가 옛 입력
+(steps · "$s1.location.0" · inputAdapter)으로 바꿔 vendor 실행기에 넘긴다. 그 표현은 여기
+오지 않는다.
 """
 
 import copy
@@ -51,11 +63,6 @@ SPOKEN_SOURCE = "spoken."
 CONTEXT_SOURCE = "context."
 TRANSFORM = "transform"
 
-# vendor 에 넘기는 화면 문맥 참조의 머리. **여기서 값을 안 채운다.** vendor 의
-# _build_resolution_scope 가 state["context"] 를 scope["context"] 에 얹고
-# _resolve_reference 가 제자리에서 푼다.
-CONTEXT_VALUE = "$context"
-
 # 부르는 순간의 값을 가리키는 기호. 고정된 날짜를 박으면 그날이 지나는 순간
 # 거짓이 된다.
 #
@@ -71,23 +78,10 @@ RUNTIME_FIELDS = {
     "time": "%H:%M",
 }
 
-# 중심 좌표와 반경을 bbox 넷으로 바꾸는 vendor 어댑터의 이름.
-POINT_RADIUS_TO_BBOX = "point_radius_to_bbox"
+# 계약이 아는 transform id. 실행 계층이 이 id 를 보고 계산한다.
+TRANSFORMS = ("builtin/geo.pointRadiusToBbox",)
 
-# transform id -> 그것을 실제로 하는 vendor 입력 어댑터. **legacy vendor 의존이다.**
-# 계산을 외부 실행기로 옮기면 이 표가 사라진다.
-TRANSFORM_ADAPTERS = {
-    "builtin/geo.pointRadiusToBbox": POINT_RADIUS_TO_BBOX,
-}
-
-# point_radius_to_bbox 가 중심 좌표를 찾는 칸 이름. vendor 의
-# _extract_center_point 가 보는 것과 같은 순서 · 같은 이름이다.
-#
-# 이 중 하나도 안 남으면 어댑터가 ValueError 를 올린다("point_radius_to_bbox에는
-# center/location 좌표가 필요합니다"). 그래서 어댑터를 걸기 전에 본다.
-CENTER_KEYS = ("center", "point", "coordinate", "coordinates", "location")
-
-# 칸 이름 · 경로 마디. vendor 의 참조 패턴이 한 마디로 받는 글자와 같다.
+# 칸 이름 · 경로 마디. 점으로 이은 dict 키 · 목록 번호다(location.0 · bbox.1.0).
 _SEGMENT = r"[0-9A-Za-z_-]+"
 _RAW_PATH = re.compile(rf"{_SEGMENT}(?:\.{_SEGMENT})*")
 _FIELD_NAME = re.compile(_SEGMENT)
@@ -101,98 +95,12 @@ _TRANSFORM_FIELDS = ("id", "node", "input")
 _CONTEXT_FIELDS = ("from", "fields")
 _CONDITIONS = ("if_endswith", "unless_endswith")
 
-# _bound 가 "이 칸은 이 자리에서 안 보낸다" 를 알리는 표시.
-#
-# None 을 쓰지 않는다. None 은 도구가 받는 값일 수 있어 "빼라" 와 "null 을
-# 보내라" 가 안 갈린다.
-_OMIT = object()
+# ExecutionRequest 의 칸. 차례도 이것이다.
+_REQUEST_FIELDS = ("recipe_id", "spoken", "context", "context_needs", "workflow")
 
 
 class PlanError(ValueError):
     """recipe 파일의 execution 블록이 없거나 알아볼 수 없다. 게시 오류다."""
-
-
-# ── 배선표에 남은 것을 파일에서 읽는다 ──────────────────────────────
-
-# YAML 의 절 이름. 여기 없는 절이 오면 터진다 — 오타 난 절은 조용히 빈 표가 되고,
-# 그것이 「계기판이 조용히 죽는다」의 모양이다.
-_SECTIONS = ("headline",)
-
-# **밖에서 이 이름을 import 한다** — 계기판과 시험. 그래서 다시 읽을 때 객체를
-# 갈아 끼우지 않고 **같은 dict 를 비우고 다시 채운다.**
-HEADLINE: dict = {}
-
-_wiring_mtime = None
-
-
-def _load_wiring() -> None:
-    """wiring.yaml 을 파서 HEADLINE 을 채움.
-
-    규칙  _SECTIONS 의 절이 다 있어야 하고 그 밖의 절은 없어야 함. 값은 전부 문자열임
-    제약  표를 다 검사한 뒤에 갈아 넣는다.
-          중간에 터지면 반만 바뀐 표가 남고, 그것은 빈 표보다 나쁘다
-          객체를 새로 만들지 않는다. 먼저 import 해 간 쪽이 옛 dict 를 쥔다
-    """
-    name = paths.WIRING_PATH.name
-    document = yaml.safe_load(paths.WIRING_PATH.read_text(encoding="utf-8"))
-    if not isinstance(document, dict):
-        raise ValueError(f"{name}: 최상위가 dict 가 아니다")
-
-    unknown = [key for key in document if key not in _SECTIONS]
-    if unknown:
-        raise ValueError(f"{name}: 모르는 절 {unknown}")
-    for section in _SECTIONS:
-        if not isinstance(document.get(section), dict):
-            raise ValueError(f"{name}: {section} 절이 없다")
-
-    headline = document["headline"]
-    for node_id, text in headline.items():
-        if not isinstance(text, str):
-            raise ValueError(f"{name}: headline {node_id} 이 문자열이 아니다")
-
-    HEADLINE.clear()
-    HEADLINE.update(headline)
-
-
-def reload_wiring() -> None:
-    """파일이 바뀌었으면 다시 판다.
-
-    규칙  mtime 이 그대로면 아무것도 안 함. 요청마다 파일을 통째로 파지 않음
-    제약  판정이 끝난 뒤에 mtime 을 적는다.
-          터진 파일에 mtime 만 먼저 적으면 다음 요청이 「안 바뀌었다」고 보고
-          조용히 옛 표로 돈다
-    """
-    global _wiring_mtime
-
-    mtime = paths.WIRING_PATH.stat().st_mtime_ns
-    if mtime == _wiring_mtime:
-        return
-
-    _load_wiring()
-    _wiring_mtime = mtime
-
-
-# import 하는 때에 한 번 판다. 계기판은 표를 import 해서 곧장 읽는다.
-reload_wiring()
-
-
-def _headline(template: str, argument: str) -> str:
-    """답의 첫 줄. 인자가 이미 문장 안에 있으면 앞에 안 붙임.
-
-    입력  HEADLINE 의 틀 · 발화에서 뽑은 인자
-    규칙  틀은 전부 "{arg} …" 꼴이라 뒤 문장이 인자로 시작하면 같은 말이 두 번
-          나감. "전기차 충전소 전기차 충전소를 조회했습니다." 가 그것임
-          (2026-08-25 화면 실측)
-          겹침은 앞머리 일치로만 봄. 포함으로 보면 "역" 같은 짧은 인자가
-          "국회의원 지역구" 안에 걸려 멀쩡한 인자까지 빠짐
-          겹치면 인자를 빼고 뒤 문장만. 인자가 비어도 마찬가지임
-    제약  headline 줄들을 고치지 않는다.
-          겹치는 것은 한 줄이 아니라 「인자 + 도구 이름」이 만나는 자리임
-    """
-    rest = template.format(arg="").strip()
-    if not argument or rest.startswith(argument):
-        return rest
-    return template.format(arg=argument)
 
 
 def now_field(reference: str, now: datetime.datetime | None) -> str | None:
@@ -311,7 +219,7 @@ def validate(execution, where: str) -> None:
         if transform is not None:
             if not isinstance(transform, dict) or set(transform) != set(_TRANSFORM_FIELDS):
                 raise fail(f"{at}.transform 은 {list(_TRANSFORM_FIELDS)} 다")
-            if transform["id"] not in TRANSFORM_ADAPTERS:
+            if transform["id"] not in TRANSFORMS:
                 raise fail(f"{at}.transform.id 는 모르는 transform 이다: {transform['id']!r}")
             _check_input(f"{at}.transform.input", transform["input"], needs, outputs, False, fail)
 
@@ -447,7 +355,7 @@ def _check_field(at: str, origin: str, fields, rest: list[str], fail) -> None:
         raise fail(f"{at}: {origin} 의 칸이 선언에 없다")
 
 
-# ── 채운다 ──────────────────────────────────────────────────────
+# ── 요청 하나로 묶는다 ──────────────────────────────────────────
 
 
 def absent_context(execution: dict, context: dict | None) -> list[str]:
@@ -471,130 +379,56 @@ def absent_context(execution: dict, context: dict | None) -> list[str]:
     return absent
 
 
-def bind(execution: dict, argument, options: dict | None = None, now: datetime.datetime | None = None) -> dict:
-    """execution 한 벌을 vendor 가 받는 실행 계획으로.
+def request(recipe_id: str, execution: dict, argument, options: dict | None = None, context: dict | None = None) -> dict:
+    """게시된 execution 한 벌과 이번 요청의 값을 ExecutionRequest 로.
 
-    입력  execution · 발화 인자 · 발화 해석이 함께 내놓은 이름 있는 값 · 부르는 순간
-          (안 주면 지금)
-    출력  steps  vendor 의 intent["steps"] 에 그대로 들어갈 배열
-          nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
-          commands  도구를 안 부르고 곧장 내는 지도 명령
-          command_nodes  commands 와 같은 길이
-          headline  답의 첫 줄. workflow 의 마지막 항목의 노드가 정함
-    규칙  workflow 차례 그대로 step · 명령을 냄. step id 는 게시된 것 그대로
-          부르는 순간은 계획 하나에 한 번만 읽음
-          맨 앞에서 한 번만 wiring.yaml 을 다시 읽음
-    제약  온톨로지를 읽지 않는다. 무엇을 부를지는 게시된 블록이 이미 말함
+    입력  recipe id · 검사를 통과한 execution · 발화 인자 · 발화 해석이 함께 내놓은
+          이름 있는 값 · 화면 문맥
+    출력  _REQUEST_FIELDS 차례의 dict. validate_request 를 통과한 것
+    규칙  workflow 와 context_needs 는 게시된 것을 복사만 함. 기호를 값으로 안 바꿈
+          spoken 은 argument 를 먼저 두고 이름 있는 값을 받은 차례대로 붙임.
+          말하지 않은 값(None)도 그대로 둠. 기본값은 기호의 default 가 앎
+          context 는 dict 가 아니면 빈 dict
+          spoken_needed · unwired 는 안 담음. 실행 전에 부를 수 있는지 가르는 데 쓰였고
+          실행 계층이 볼 것이 아님
+    제약  조건 · 부르는 순간 · 앞 단계 참조를 여기서 풀지 않는다.
+          실행 계층이 받는 모양이 곧 게시된 모양이어야 경로 소유가 안 흐려짐
+          게시된 블록을 바꾸지 않는다. 요청마다 같은 블록을 읽음
     """
-    reload_wiring()
-
-    # 계획 하나에 한 번만 읽는다. 단계마다 읽으면 자정 언저리에서 date 와
-    # time 이 서로 다른 날을 가리킬 수 있다.
-    now = now or datetime.datetime.now(RUNTIME_ZONE)
-
-    steps: list[dict] = []
-    nodes: list[str] = []
-    commands: list[dict] = []
-    command_nodes: list[str] = []
-    headline = ""
-
-    for entry in execution["workflow"]:
-        filled, adapter = bind_input(entry, execution, argument, options, now)
-        headline = _headline(HEADLINE[entry["node"]], argument)
-
-        if "command" in entry:
-            commands.append({"op": entry["command"], "args": filled})
-            command_nodes.append(entry["node"])
-            continue
-
-        step = {"id": entry["id"], "server_id": entry["server_id"], "tool": entry["tool"], "input": filled}
-        if adapter:
-            step["inputAdapter"] = adapter
-        steps.append(step)
-        nodes.append(entry["node"])
-
-    return {
-        "steps": steps,
-        "nodes": nodes,
-        "commands": commands,
-        "command_nodes": command_nodes,
-        "headline": headline,
-    }
+    built = copy.deepcopy({
+        "recipe_id": recipe_id,
+        "spoken": {"argument": argument, **(options or {})},
+        "context": context if isinstance(context, dict) else {},
+        "context_needs": execution["context_needs"],
+        "workflow": execution["workflow"],
+    })
+    validate_request(built)
+    return built
 
 
-def bind_input(entry: dict, execution: dict, argument, options: dict | None, now: datetime.datetime) -> tuple[dict, str | None]:
-    """workflow 항목 하나의 input 과 걸 어댑터.
+def validate_request(built) -> None:
+    """ExecutionRequest 한 벌이 계약의 꼴인지.
 
-    출력  (input, vendor 어댑터 이름 또는 None)
-    규칙  input 차례대로 _bound 를 부르고 _OMIT 인 칸은 뺌
-          transform 이 있으면 그 입력을 먼저 두고 이 항목의 나머지 칸을 이어 붙임.
-          transform 이 만드는 칸(transform.<타입>.<칸>)은 vendor 어댑터가 만들어 안 보냄
-          중심 좌표 칸이 남았을 때만 어댑터를 걺
+    규칙  칸은 _REQUEST_FIELDS 그대로. recipe_id 는 빈 문자열이 아님
+          spoken 은 argument 가 있는 dict, context 는 dict
+          context_needs · workflow 는 validate 와 같은 규칙으로 봄
+    제약  실행 계층마다 다른 칸을 받으려고 넓히지 않는다
     """
-    outputs = {item["id"]: item.get("outputs") or {} for item in execution["workflow"] if "id" in item}
+    where = built.get("recipe_id") if isinstance(built, dict) else None
 
-    def fill(fields):
-        filled = {}
-        for field, expression in fields.items():
-            value = _bound(expression, execution, outputs, argument, options, now)
-            if value is not _OMIT:
-                filled[field] = value
-        return filled
+    def fail(message):
+        return PlanError(f"{where}: request {message}")
 
-    filled = fill(entry["input"])
-    transform = entry.get("transform")
-    if transform is None:
-        return filled, None
-    filled = {**fill(transform["input"]), **filled}
-    return filled, TRANSFORM_ADAPTERS[transform["id"]] if _has_center(filled) else None
-
-
-def _bound(expression, execution: dict, outputs: dict, argument, options, now):
-    """기호 하나를 vendor 에 넘길 값으로. 이 자리에서 안 보내면 _OMIT."""
-    if isinstance(expression, list):
-        values = [_bound(item, execution, outputs, argument, options, now) for item in expression]
-        return _OMIT if any(value is _OMIT for value in values) else values
-
-    if "value" in expression:
-        return copy.deepcopy(expression["value"])
-
-    origin = expression["from"]
-    if origin == SPOKEN_ARGUMENT:
-        text = str(argument or "")
-        if "if_endswith" in expression and not text.endswith(expression["if_endswith"]):
-            return _OMIT
-        if "unless_endswith" in expression and text.endswith(expression["unless_endswith"]):
-            return _OMIT
-        return argument
-
-    if origin.startswith(SPOKEN_SOURCE):
-        said = (options or {}).get(origin[len(SPOKEN_SOURCE):])
-        chosen = said if said not in (None, "", [], {}) else expression["default"]
-        mapping = expression.get("map")
-        if mapping is None:
-            return copy.deepcopy(chosen)
-        return mapping.get(chosen, mapping[expression["default"]])
-
-    head, *rest = origin.split(".")
-    if origin.startswith(RUNTIME_NOW + "."):
-        return now_field(origin, now)
-    if head == TRANSFORM:
-        return _OMIT
-    if head == "context":
-        declaration = execution["context_needs"][rest[0]]
-        base = f"${declaration['from']}"
-        return f"{base}.{declaration['fields'][rest[1]]}" if len(rest) > 1 else base
-
-    reading = outputs[head][rest[0]]
-    path = reading["fields"][rest[1]] if len(rest) > 1 else reading["value"]
-    return f"${head}.{path}"
-
-
-def _has_center(tool_input: dict) -> bool:
-    """point_radius_to_bbox 가 걸 중심 좌표가 input 에 남았는지.
-
-    규칙  CENTER_KEYS 중 하나라도 있으면 참. 값이 무엇인지는 안 봄.
-          ["$s1.location.0", "$s1.location.1"] 처럼 vendor 가 나중에 푸는 참조라
-          지금 판정할 수 없음
-    """
-    return any(key in tool_input for key in CENTER_KEYS)
+    if not isinstance(built, dict) or tuple(built) != _REQUEST_FIELDS:
+        raise fail(f"칸은 {list(_REQUEST_FIELDS)} 다")
+    if not isinstance(where, str) or not where:
+        raise fail("recipe_id 가 비었다")
+    if not isinstance(built["spoken"], dict) or "argument" not in built["spoken"]:
+        raise fail("spoken 에 argument 가 없다")
+    if not isinstance(built["context"], dict):
+        raise fail("context 가 dict 가 아니다")
+    validate({
+        "spoken_needed": mentions_argument(built["workflow"]),
+        "context_needs": built["context_needs"],
+        "workflow": built["workflow"],
+    }, where)

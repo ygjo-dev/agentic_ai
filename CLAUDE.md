@@ -18,7 +18,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 → recipe = 사람이 받아들인 온톨로지 노드 목록 + 게시된 execution
 → 온톨로지 관계가 이을 수 있는지 말한다
 → 게시할 때 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다 (compile)
-→ 요청 중에는 게시된 execution 을 채워 vendor / Gateway 실행
+→ 요청 중에는 게시된 execution 에 이번 요청의 값을 붙여 ExecutionRequest 로 넘긴다
+  (지금은 legacy 어댑터가 옛 vendor 입력으로 바꿔 Gateway 실행)
 → 답 · API · 화면
 ```
 
@@ -43,6 +44,30 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 나머지는 각 subsystem 의 시험이 본다 (`dev/tests/orchestrator/` ·
 `dev/tests/execution/`).
 
+### 실행 계약 — agentic_ai 가 오케스트레이터다
+
+실행의 뜻은 전부 agentic_ai 가 정한다. 어느 recipe · 차례 · step id · 서버 · 도구 ·
+칸 이름 · 값의 출처(발화 · 화면 · 부르는 순간 · 앞 단계 · 상수 · 조건) · 앞 단계 응답의
+어느 경로를 읽나 · 어느 transform 인가. 그 공식 출력이 ExecutionRequest 다
+(`execution/plan_service.request`).
+
+```
+Recipe.execution    게시된 정적 기호 계획. 요청과 무관하다
+ExecutionRequest    {recipe_id, spoken, context, context_needs, workflow}
+                    workflow · context_needs 는 게시된 것 그대로, spoken · context 는 이번 요청
+```
+
+- **기호를 풀지 않는다.** 받는 쪽은 `s1.point.lon`, raw 경로 `location.0` 은 내놓는 단계의
+  `outputs` 에만 있다. transform 은 id 로, 조건 · `runtime.now.*` 는 기호로 남는다
+- **실행 계층은 판단하지 않는다.** 앞으로 KRRI_ASAP Gateway 가 받으면 적힌 차례로 부르고
+  적힌 참조 · 경로 · transform 을 수행할 뿐, recipe · 도구 · 차례 · 연결 · 경로를 고르지 않는다
+- **지금 KRRI_ASAP 은 이 계약을 모른다.** `execution/legacy_vendor.py` 가 옛 입력(steps ·
+  `$s1.location.0` · inputAdapter · 채운 조건 · 시각)으로 바꿔 vendor 를 부른다.
+  vendor_to_be_deleted 를 import 하는 제품 코드는 그 파일 하나다. 옛 표현을
+  ExecutionRequest 로 되돌려 넣지 않는다
+- **답 첫 줄은 판정(성공 · 빈 결과 · 오류)마다 하나다.** 노드 · recipe 마다 문장을 두지
+  않는다 — 실행 계획에 화면 문구를 섞지 않는다
+
 ---
 
 ## 폴더가 말하는 여섯 갈래
@@ -52,8 +77,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
   ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
   orchestrator/      발화 해석
   execution/         실행 계획. step_service 가 노드의 tool 을 읽어 게시할 execution 을
-                     compile 하고, plan_service 가 요청 중에 게시된 것을 채운다.
-                     wiring.yaml(답 첫 줄)이 여기 있다
+                     compile 하고, plan_service 가 요청 중에 ExecutionRequest 로 묶는다.
+                     legacy_vendor 는 그것을 옛 vendor 입력으로 바꾸는 임시 호환 계층이다
   llm_engine/        LLM 역할(logical model 판 · prompt · response schema) · provider
   workflows/static/  recipe · menu
 
@@ -141,8 +166,8 @@ tool     id          "<server_id>/<도구>" 논리 식별. 예약 namespace buil
 
 **semantic 칸이 raw 값의 어디 있는지는 값을 내놓는 쪽이 적는다.** 앞 도구의 응답은
 그 노드의 `tool.outputs`, 화면 값은 semantic 노드의 `source.fields` 다. 받는 노드의
-`tool.parameters` 는 semantic 칸(`point.lon`)만 안다. 실행은 둘을 이어
-`$s1.location.0` 같은 경로 참조를 적는다.
+`tool.parameters` 는 semantic 칸(`point.lon`)만 안다. ExecutionRequest 는 둘을 그대로
+담고, `$s1.location.0` 같은 옛 vendor 경로 참조는 legacy 어댑터가 둘을 이어 적는다.
 
 - **가운데 공통 모양을 만들지 않는다.** 지점 좌표를 늘 `{lon, lat}` 로 바꿔 건네지 않는다
 - **적힌 경로가 없는 칸을 이름으로 짐작하지 않는다.** 그 자리는 unwired 다.

@@ -3229,6 +3229,65 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-14 · 실행 출력을 ExecutionRequest 로 두고 vendor 입력은 legacy 어댑터에 가둔다 — headline · wiring.yaml 을 걷는다
+
+환경 오프라인(LLM · Gateway · MCP 안 부름) · 시작 HEAD c7b0cd3.
+**게시된 recipe 의 execution · steps · example · 후보 · menu 를 한 글자도 안 바꿨다.**
+
+plan_service.bind 가 하던 일을 둘로 갈랐다.
+
+```
+계약에 필요한 것 (plan_service 에 남음)          옛 vendor 입력 때문에만 필요한 것 (legacy_vendor 로)
+  게시된 execution 읽기 · 검사                       s1.point.lon -> "$s1.location.0"
+  화면 문맥이 왔는지 (absent_context)                context.point.lon -> "$context.selectedLocation.lon"
+  runtime.now 이름과 형식 (KST · %Y-%m-%d · %H:%M)    발화 인자 · 이름 있는 값 · 시각을 값으로 채움
+  아는 transform id (TRANSFORMS)                     조건(if_endswith · unless_endswith)을 지금 인자로 가림
+  ExecutionRequest 만들기 · 검사 (새것)              transform id -> inputAdapter · 중심 좌표 칸 판정
+                                                     지도 명령 인자 채움 · 명령만 있는 실행
+                                                     vendor 호출 · trace 이벤트 · 실패 답 다시 짓기
+없앤 것  headline 만들기 · wiring.yaml 적재 · 옛 plan 모양의 headline 칸 · intent.answer_instruction
+```
+
+ExecutionRequest 는 `{recipe_id, spoken, context, context_needs, workflow}` 다. workflow ·
+context_needs 는 게시된 것을 복사만 하고, spoken 은 `{argument, 이름 있는 값…}`, context 는 화면이
+보낸 그대로다. vendor_to_be_deleted 를 import 하는 제품 코드는 `execution/legacy_vendor.py` 하나다.
+
+wiring.yaml 에 남아 있던 것은 headline(노드 29줄)뿐이었고 계획 · 응답 경로 · 화면 값 · transform 어디에도
+안 쓰였다. 읽는 곳은 plan_service.bind(답 첫 줄) · step_service.check_bindings(줄이 있나)였다.
+headline 을 recipe 로 옮기지 않고 없앴다. 답 첫 줄은 판정마다 하나다.
+
+```
+성공        「<인자> CCTV 를 조회했습니다.」 같은 노드별 문장 -> 「조회했습니다.」 (단계 줄은 그대로)
+빈 결과     「찾지 못했습니다.」 그대로
+오류        「조회하지 못했습니다.」 그대로
+명령만      「<인자> 시설물을 화면에 띄웠습니다.」 -> 「화면에 표시했습니다.」 (있던 대비 문구)
+```
+
+차등 (base = `git archive c7b0cd3` 사본, 시각 고정 2026-09-14 23:59 KST).
+
+```
+계획        받아들인 recipe 39 × 인자 6 × 이름 있는 값 4 = 936
+            base plan_service.bind(headline 뺌) == work to_legacy(request)          차이 0
+            936 request 에 '"$' · inputAdapter · answer_instruction · point_radius_to_bbox  0건
+장면        process 를 가짜 resolve · 가짜 vendor 로. (39+1) × 6 × 4 × 문맥 3 × 성공/실패 = 5760
+            vendor 호출 3200 == 3200. intent · state 차이 0 (base intent 의 answer_instruction 만 뺌)
+            단계 이벤트 · commands 차이 0. 답 차이 96 — 전부 명령만 내는 실행 (의도한 변경)
+진짜 vendor process 를 진짜 _execute_generic_mcp_workflow 로. mcp_client 만 fixture 로 바꿈
+            39 × 인자 3 × 값 2 × 문맥 2 × 응답(일반 · probe_out · 둘째 호출 500) 3 = 1404
+            Gateway 호출 1144 == 1144 (도구 · 서버 · 풀린 입력 · user_context 까지) 차이 0
+            단계 이벤트 · commands 차이 0
+            답 같음 850 · 성공 첫 줄만 다름 530 (둘째 줄부터 같음) · 명령만 24 · 그 밖 0
+```
+
+check_wiring 전후 `recipe 39 · 완비 39 · tool 노드 30 · A 0 · B 0 · C 1` 같다. A · B 를 채운
+steps 의 "$s…" 대신 게시된 기호(from s<N>. · from spoken.argument)로 세게 바꿨다.
+
+불변. accepted 39 (id · steps · example · execution 해시 같음) · 후보 85 (집합 같음) · menu.yaml ·
+menu.md 바이트 같음.
+
+테스트. 전체 504 통과 · 1 실패 — test_dense_graph_would_move_if_overlap_removal_were_used
+(Graphviz 판 차이, 전과 같음).
+
 ### 2026-09-14 · LLM 설정을 역할별 logical model 로 — models.yaml 을 걷고 prompt · schema 를 판 번호로 둔다
 
 환경 오프라인(LLM · Gateway · MCP 안 부름) · 시작 HEAD b04babd.

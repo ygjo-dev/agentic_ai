@@ -648,7 +648,7 @@ UTTERANCES = [
 # recipe 만 대조하던 자 옆에 이 표를 둔다.
 #
 # **null 은 실패가 아니다.** 사람이 말하지 않은 값을 LLM 이 지어내지 않았다는
-# 뜻이고, 기본값을 넣는 것은 execution/wiring.yaml 의 options 다. 그래서
+# 뜻이고, 기본값을 넣는 것은 온톨로지 tool.parameters 의 default 다. 그래서
 # 여기 기대값 None 은 「null 이어야 한다」는 요구다 — 「아무거나 좋다」가 아니다.
 #
 # **적는 칸만 본다.** dict 에 없는 이름은 이 표가 안 본다. 발화마다 무엇이

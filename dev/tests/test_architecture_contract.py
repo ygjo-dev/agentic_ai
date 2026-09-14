@@ -6,8 +6,9 @@
     → LLM 이 static recipe 를 **고른다** (만들지 않는다)
     → recipe = 순서 있는 온톨로지 노드 목록
     → 온톨로지 관계가 이어질 수 있는지 말한다
-    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다
-    → vendor/Gateway 실행
+    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다 (게시할 때 compile)
+    → 게시된 계획 + 이번 요청의 값 = ExecutionRequest (agentic_ai 의 공식 실행 출력)
+    → 지금은 legacy 어댑터가 옛 입력으로 바꿔 vendor/Gateway 실행
     → 답 · API · 화면
 
 여기서 지키는 것은 그 길의 이음매다.
@@ -15,6 +16,7 @@
     LLM 은 MCP 도구 순서를 만들지 않는다 — recipe 를 고른다
     recipe 의 steps 는 사람이 받아들인 노드만 적는다 — 실행 계획은 온톨로지로 compile 해 게시한다
     요청 중에는 게시된 실행 계획만 읽는다 — 온톨로지로 계획을 다시 만들지 않는다
+    vendor 를 아는 제품 코드는 legacy 어댑터 하나다 — 옛 입력 표현이 계약으로 역류하지 않는다
     도메인은 서비스 계층을 모듈 수준에서 안 부른다
 
 이음매의 **반대쪽 끝**은 각 subsystem 이 본다. 여기서 다시 안 본다.
@@ -142,7 +144,7 @@ def test_a_recipe_is_an_accepted_node_list_with_its_plan_compiled_and_published(
 # ── 요청 중에는 게시된 계획만 읽는다 ────────────────────────────────
 
 # 요청 중에 고른 recipe 를 실행하는 모듈.
-RUNTIME_MODULES = ("execution/execute_service.py", "execution/plan_service.py")
+RUNTIME_MODULES = ("execution/execute_service.py", "execution/plan_service.py", "execution/legacy_vendor.py")
 
 
 def imported_names(tree):
@@ -161,7 +163,8 @@ def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontolo
 
     요청 중에 계획을 다시 만들면 사람이 받아들여 게시한 실행 계획과 온톨로지 중 무엇이
     실행을 정하는지 둘이 된다. 그래서 실행 모듈은 compile 하는 step_service 를 import
-    하지 않고, 게시된 블록을 읽는 plan_service 는 온톨로지도 게시도 import 하지 않는다.
+    하지 않고, 게시된 블록을 읽는 plan_service 와 그것을 옛 입력으로 바꾸는 legacy_vendor 는
+    온톨로지도 게시도 import 하지 않는다.
 
     execute_service 가 온톨로지를 읽는 것은 사람에게 보일 이름 · 안내 문구다. 그것은
     계획이 아니라 여기서 막지 않는다. 계획을 안 지나는지는
@@ -179,12 +182,69 @@ def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontolo
             for node in ast.walk(tree)
             if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "step_service"
         ]
-        if relative.endswith("plan_service.py"):
+        if relative.endswith(("plan_service.py", "legacy_vendor.py")):
             offenders += [
                 f"{relative} -> {name}" for name in names if name.split(".")[0] in ("ontology", "registration")
             ]
 
     assert offenders == [], "요청 중의 실행이 계획을 다시 만들 수 있다:\n  " + "\n  ".join(offenders)
+
+
+# ── vendor 는 legacy 어댑터 뒤에만 있다 ─────────────────────────────
+
+# 옛 vendor 입력에만 있는 표현. 코드 속 문자열(docstring · 주석 제외)로 판다.
+LEGACY_VENDOR_FORMS = ("inputAdapter", "answer_instruction", "point_radius_to_bbox", "$s", "$context")
+
+# vendor 를 아는 유일한 제품 모듈.
+LEGACY_ADAPTER = "execution/legacy_vendor.py"
+
+
+def code_strings(tree):
+    """docstring 을 뺀 문자열 상수."""
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        and node.body and isinstance(node.body[0], ast.Expr) and isinstance(node.body[0].value, ast.Constant)
+    }
+    return [
+        node for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) and id(node) not in docstrings
+    ]
+
+
+def test_only_the_legacy_adapter_knows_the_vendor_and_its_forms_do_not_flow_back_into_the_request():
+    """**agentic_ai 의 실행 출력은 ExecutionRequest 다. 옛 vendor 입력은 어댑터 뒤에만 있다.**
+
+    vendor 를 여러 곳에서 부르면 KRRI_ASAP Gateway 가 계약을 직접 받게 됐을 때 걷어낼 자리를
+    못 찾는다. "$s1.location.0" · inputAdapter 를 compile · 계약 · 실행 흐름이 만들기 시작하면
+    raw 경로와 어댑터 이름이 agentic_ai 의 계약이 되고, 어댑터를 걷는 날 계약이 깨진다.
+
+    import 문과 코드 속 문자열을 판다. 제품 폴더(도메인 · 서비스) 전부를 훑는다.
+    """
+    from paths import REPO_ROOT
+
+    importers, leaks, scanned = [], [], 0
+    for folder in DOMAIN_DIRS + SERVICE_PACKAGES:
+        for path in sorted((REPO_ROOT / folder).rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            scanned += 1
+            relative = path.relative_to(REPO_ROOT).as_posix()
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            if relative == LEGACY_ADAPTER:
+                continue
+            importers += [f"{relative} -> {name}" for name in imported_names(tree) if name.startswith("vendor_to_be_deleted")]
+            if folder == "execution":
+                leaks += [
+                    f"{relative}:{node.lineno} -> {node.value!r}"
+                    for node in code_strings(tree)
+                    if any(form in node.value for form in LEGACY_VENDOR_FORMS)
+                ]
+
+    assert scanned and (REPO_ROOT / LEGACY_ADAPTER).is_file(), "훑은 파일이 없거나 어댑터가 없다 — 이 검사가 무력하다"
+    assert importers == [], "legacy 어댑터 밖에서 vendor 를 부른다:\n  " + "\n  ".join(importers)
+    assert leaks == [], "옛 vendor 표현을 어댑터 밖 실행 코드가 만든다:\n  " + "\n  ".join(leaks)
 
 
 # ── 도메인이 서비스를 안 부른다 ─────────────────────────────────────

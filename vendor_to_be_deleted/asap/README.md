@@ -91,18 +91,18 @@ _compose_workflow_answer  아래 3번으로 통째로 대체됨
 문장에 녹아 사라지고, JSON 덤프는 사람이 읽을 것이 못 된다.
 
 본문은 `workflow_answer.compose_workflow_answer(intent, trace)` 한 줄이 되었다.
-성공한 실행의 첫 줄은 `intent["answer_instruction"]` 을 그대로 쓴다 — 우리 쪽
-`execution/wiring.yaml` 의 `headline` 이 노드마다 적어 넣는다.
+첫 줄은 성공 · 빈 결과 · 오류 판정마다 하나인 우리 문구이고 `intent` 는 읽지 않는다.
+원본의 `answer_instruction`(Gemini 요약 지시)은 우리 intent 에 없다.
 
 원본 `_fallback_workflow_answer` 는 지우지 않았다. 다른 곳에서 쓰이지 않지만
 지우면 병합할 것이 늘어난다.
 
 **`compose_workflow_answer` 를 부르는 자리는 둘이다.** 여기가 하나이고, 우리 쪽
-`execution/execute_service.run` 이 또 하나다. vendor 는 실패하면
+`execution/legacy_vendor.run` 이 또 하나다. vendor 는 실패하면
 `_failed_workflow_result` 로 **여기까지 오지 않고** 자기 문구를 `answer_draft` 에
 담아 돌아간다. 그 문구가 사용자 화면에 나가면 안 되는 것을 담고 있어(실측 :
 HTTP 오류 문장 · `<ASAP_GATEWAY_URL>/api/tools/execute` · Gateway 응답 본문
-원문) `execute_service` 가 `executed["errors"]` 를 보고 같은 함수를 trace 로 다시
+원문) `legacy_vendor` 가 `executed["errors"]` 를 보고 같은 함수를 trace 로 다시
 부른다. 문구를 두 벌 쓰지 않으려는 것이다.
 
 `compose_workflow_answer` 가 성공/실패를 스스로 가르는 이유도 여기 있다.
@@ -121,10 +121,10 @@ Gateway 는 실패를 `200` + `{"error": {...}}` 로도 돌려주고(실물 :
 ## 이 코드가 무엇을 해주는가
 
 ```
-steps 배열                     우리가 만든다 (step_service). 앞 단계 응답 · 화면
-                               값의 칸은 온톨로지의 tool.outputs · source.fields 가
-                               적은 경로로 적는다 ($s1.location.0 · $s2.items.0.code ·
-                               $context.view.bbox.0.0)
+steps 배열                     우리가 만든다 (execution/legacy_vendor 가 ExecutionRequest
+                               에서). 앞 단계 응답 · 화면 값의 칸은 게시된 execution 의
+                               outputs · context_needs 가 적은 경로로 적는다
+                               ($s1.location.0 · $s2.items.0.code · $context.view.bbox.0.0)
   ↓
 _resolve_reference             $s1.location.0 같은 dict 키 · 목록 번호 경로를 푼다.
                                이름으로 찾는 특례(lon/lng/longitude 를 location 에서,

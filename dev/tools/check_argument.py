@@ -23,7 +23,7 @@
 
     1  /resolve 를 발화마다 여러 번 불러 recipe 와 argument 를 받는다.
        check_resolve._call_resolve 를 그대로 쓴다 — 같은 경로여야 표를 믿을 수 있다
-    2  그 recipe 의 첫 실행 노드 배선을 게시된 execution(plan_service) 에서 읽는다
+    2  그 recipe 의 첫 실행 노드 배선을 게시된 execution 에서 읽어 지금 Gateway 로 나가는 모양으로 채운다
     3  발화 인자 자리에 뽑힌 인자를 넣고 Gateway 를 직접 부른다
     4  건수를 적는다
 
@@ -73,7 +73,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
-from execution import plan_service  # noqa: E402
+from execution import legacy_vendor, plan_service  # noqa: E402
 from execution.execute_service import USER_CONTEXT  # noqa: E402
 # check_resolve 의 밑줄 이름을 그대로 가져온다. 발화 목록과 /resolve 부르는
 # 자리를 여기 베껴 적으면 "같은 경로" 가 아니게 되고, 그러면 이 표의 인자가
@@ -239,13 +239,15 @@ def _first_step(recipe_id: str) -> dict | None:
     """그 recipe 의 첫 실행 단계. 발화 인자 자리를 PROBE 로 표시한 채.
 
     입력  recipe id
-    출력  게시된 execution 을 plan_service.bind 로 채운 첫 step. 부를 것이 없으면 None
-    규칙  실행이 쓰는 bind 를 그대로 부름. 배선을 여기서 다시 읽지 않음 — 실행이 지나는
+    출력  게시된 execution 을 ExecutionRequest 로 묶어 legacy_vendor.to_legacy 로 채운 첫 step.
+          부를 것이 없으면 None
+    규칙  실행이 쓰는 request · to_legacy 를 그대로 부름. 배선을 여기서 다시 읽지 않음 — 실행이 지나는
           것과 같은 자리를 봐야 표를 믿을 수 있음
           인자 자리에 PROBE 를 넣어 두면 발화 인자를 쓰는지 아닌지가 값으로 드러남
     """
     try:
-        steps = plan_service.bind(plan_service.load(recipe_id), PROBE)["steps"]
+        request = plan_service.request(recipe_id, plan_service.load(recipe_id), PROBE)
+        steps = legacy_vendor.to_legacy(request)["steps"]
     except Exception:  # noqa: BLE001 — 표에 남기고 계속 간다.
         return None
     return steps[0] if steps else None

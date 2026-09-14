@@ -51,17 +51,17 @@ def test_an_empty_list_does_not_get_the_headline():
             "result": {"features": [], "count": 0, "crs": "EPSG:4326"},
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 행정구역을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert answer.startswith("찾지 못했습니다.")
-    assert "오송역 행정구역을 조회했습니다." not in answer
+    assert not answer.startswith(workflow_answer.SUCCESS_HEADLINE)
     assert "0건" in answer
 
 
 def test_the_geocoded_address_is_in_the_answer():
     """좌표만 보이면 어디를 찍었는지 사람이 못 알아봄. 주소가 판정 근거임."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
+        {}, [geocode_step(OSONG)]
     )
 
     assert "충청북도 청주시 흥덕구 오송읍 봉산리 369-1" in answer
@@ -85,7 +85,7 @@ def test_a_wrong_place_shows_its_own_address():
             "result": [{"cctvname": "cctv-1"}, {"cctvname": "cctv-2"}],
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "오송시 CCTV 를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "경상남도 거제시 동부면 오송리 143-2" in answer
     assert "2건" in answer
@@ -110,11 +110,11 @@ def test_no_result_value_reaches_the_answer():
             },
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 전기차 충전기를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "100건 (전체 2,195건)" in answer
     assert "FeatureCollection" not in answer
-    assert "충전기" not in answer.replace("전기차 충전기를 조회했습니다.", "")
+    assert "충전기" not in answer
 
 
 def test_an_error_body_that_came_back_with_200_is_a_failure():
@@ -125,12 +125,12 @@ def test_an_error_body_that_came_back_with_200_is_a_failure():
     """
     result = {"error": {"code": "NOT_FOUND", "message": "장소 'Osong Station'을(를) 찾을 수 없습니다."}}
     answer = compose_workflow_answer(
-        {"answer_instruction": "Osong Station 좌표를 조회했습니다."},
+        {},
         [geocode_step(result, query="Osong Station")],
     )
 
     assert answer.startswith("조회하지 못했습니다.")
-    assert "Osong Station 좌표를 조회했습니다." not in answer
+    assert not answer.startswith(workflow_answer.SUCCESS_HEADLINE)
     assert "찾을 수 없습니다" in answer
     assert "NOT_FOUND" not in answer
 
@@ -152,7 +152,7 @@ def test_a_raw_tool_error_never_reaches_the_answer():
             "MCP tool 'web-search/web.search' is not applied for this user."
         ),
     }]
-    answer = compose_workflow_answer({"answer_instruction": "철도 안전 문서를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert answer.startswith("조회하지 못했습니다.")
     assert "이 도구를 쓸 권한이 없습니다" in answer
@@ -171,7 +171,7 @@ def test_missing_input_fields_stay_in_the_answer():
         "input": {},
         "error": "s1 단계 필수 입력값이 비어 있습니다: minLon, minLat, maxLon, maxLat",
     }]
-    answer = compose_workflow_answer({"answer_instruction": "대전~김천 CCTV 를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "필수 입력값이 비어 있습니다: minLon, minLat, maxLon, maxLat" in answer
     assert "s1 단계" not in answer
@@ -185,13 +185,13 @@ def test_a_failed_run_never_shows_the_success_headline():
     부르는 쪽이 아는 것(errors)을 failed 로 넘긴다.
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "오송역 전기차 충전기를 조회했습니다."},
+        {},
         [geocode_step(OSONG)],
         failed=True,
     )
 
     assert answer.startswith("조회하지 못했습니다.")
-    assert "오송역 전기차 충전기를 조회했습니다." not in answer
+    assert not answer.startswith(workflow_answer.SUCCESS_HEADLINE)
 
 
 def test_a_middle_step_error_beats_a_later_success():
@@ -209,21 +209,21 @@ def test_a_middle_step_error_beats_a_later_success():
             "result": {"features": [{"id": "충북 제1선거구"}], "count": 1},
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 공약을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert answer.startswith("조회하지 못했습니다.")
-    assert "오송역 공약을 조회했습니다." not in answer
+    assert not answer.startswith(workflow_answer.SUCCESS_HEADLINE)
     assert "election.findAssemblyPledgeDistrictByPoint  1건" in answer
 
 
 def test_a_successful_trace_keeps_its_shape():
-    """성공한 발화의 답은 안 바뀜. headline · 빈 줄 · 번호 붙은 단계 목록."""
+    """성공한 발화의 답 모양. 판정 첫 줄 · 빈 줄 · 번호 붙은 단계 목록."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
+        {}, [geocode_step(OSONG)]
     )
 
     assert answer == (
-        "오송역 좌표를 조회했습니다.\n"
+        "조회했습니다.\n"
         "\n"
         "1. geo.geocode       오송역 → 충청북도 청주시 흥덕구 오송읍 봉산리 369-1 "
         "(127.3277, 36.6200)"
@@ -249,7 +249,7 @@ def test_an_empty_result_carries_its_reason():
             },
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 행정구역을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert answer.startswith("찾지 못했습니다.")
     assert "0건 · 행정구역 DB 데이터가 없거나 PostGIS 연결을 사용할 수 없습니다." in answer
@@ -266,7 +266,7 @@ def test_a_warning_next_to_a_count_never_shows():
             "result": {"features": [{"id": "오송읍"}], "count": 1, "warning": "일부만 반환했습니다."},
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "오송읍 행정구역을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "1건" in answer
     assert "일부만 반환했습니다." not in answer
@@ -358,7 +358,7 @@ def test_population_response_figures_are_carried_in_the_answer():
     KEY_LIMIT 6 에서 잘려 수치가 하나도 안 실렸음.
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "청주시 흥덕구 연령대별 인구 구성을 조회했습니다."},
+        {},
         [age_profile_step()],
     )
 
@@ -369,7 +369,7 @@ def test_population_response_figures_are_carried_in_the_answer():
 def test_population_response_list_values_never_leak():
     """ageBands 23건 · ages 111건이 답에 통째로 실리면 화면이 raw JSON 이 됨."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "청주시 흥덕구 연령대별 인구 구성을 조회했습니다."},
+        {},
         [age_profile_step()],
     )
 
@@ -398,7 +398,7 @@ def test_states_that_one_of_many_was_returned():
             "totalMatches": 8,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "충북 선거구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "충북 청주서원" in answer
     assert "전체 8건 중 하나" in answer
@@ -417,7 +417,7 @@ def test_no_one_of_many_when_the_total_equals_what_was_received():
             "totalMatches": 1,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "선거구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "충북 청주서원 · 1건" in answer
     assert "중 하나" not in answer
@@ -436,7 +436,7 @@ def test_never_invents_when_totalMatches_is_absent():
             "count": 1,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "포빌 충전소를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "포빌 · 1건" in answer
     assert "중 하나" not in answer
@@ -462,7 +462,7 @@ def test_a_figure_with_an_unknown_unit_is_not_put_beside_the_name():
             "totalRegionCount": 17,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "ev.getDatasetInfo  한국환경공단 전기자동차 충전소" in answer
     assert "17" not in answer
@@ -483,7 +483,7 @@ def test_field_names_stay_when_there_is_neither_name_nor_figure():
             "bbox": [[127.3, 36.6], [127.4, 36.7]],
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 구간을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "칸: sectionId · geometry · bbox" in answer
     assert "LineString" not in answer
@@ -507,7 +507,7 @@ def test_what_the_call_was_made_with_is_recorded_on_the_step_line():
         "input": {"query": "전기차 충전소"},
         "result": {"count": 120, "totalMatches": 120},
     }]
-    answer = compose_workflow_answer({"answer_instruction": "전기차 충전소를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert 'query="전기차 충전소"' in answer
     assert "120건" in answer
@@ -519,17 +519,17 @@ def test_an_argument_already_shown_in_the_result_is_not_recorded_again():
     앞에 query="오송역" 을 또 적으면 같은 값이 한 줄에 두 번 나감.
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
+        {}, [geocode_step(OSONG)]
     )
 
     assert 'query=' not in answer
-    assert answer.count("오송역") == 2, "머리말 하나와 단계 줄 하나뿐이어야 함"
+    assert answer.count("오송역") == 1, "단계 줄 하나뿐이어야 함"
 
 
 def test_an_empty_argument_drops_the_slot_entirely():
     """빈 dict 에 "input: {}" 를 찍으면 읽을 것이 없는 칸이 화면을 먹음."""
     trace = [{"id": "s1", "tool": "bim.listModels", "input": {}, "result": []}]
-    answer = compose_workflow_answer({"answer_instruction": "모델을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert answer.endswith("bim.listModels    0건")
 
@@ -545,7 +545,7 @@ def test_list_valued_arguments_are_not_recorded():
         "input": {"bbox": [[126.868587, 36.619576], [127.328115, 37.554557]], "limit": 50},
         "result": [],
     }]
-    answer = compose_workflow_answer({"answer_instruction": "철도 노선을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "bbox" not in answer
     assert "126.868587" not in answer
@@ -565,7 +565,7 @@ def test_float_arguments_are_cut_to_coordinate_precision():
         },
         "result": [],
     }]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 CCTV 를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "minLon=127.1598" in answer
     assert "127.15983291624491" not in answer
@@ -602,11 +602,11 @@ def test_a_not_found_response_states_its_reason():
         "result": NOT_FOUND,
     }]
     answer = compose_workflow_answer(
-        {"answer_instruction": "충북 제1선거구 국회의원 지역구를 조회했습니다."}, trace
+        {}, trace
     )
 
     assert answer.startswith("찾지 못했습니다.")
-    assert "충북 제1선거구 국회의원 지역구를 조회했습니다." not in answer
+    assert not answer.startswith(workflow_answer.SUCCESS_HEADLINE)
     assert "조건에 맞는 선거구를 찾지 못했습니다." in answer
     assert "칸: status" not in answer
 
@@ -619,7 +619,7 @@ def test_what_was_asked_is_kept_when_not_found():
         "input": {"name": "충북 제1선거구"},
         "result": NOT_FOUND,
     }]
-    answer = compose_workflow_answer({"answer_instruction": "지역구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert 'name="충북 제1선거구"' in answer
 
@@ -632,7 +632,7 @@ def test_a_not_found_response_never_leaks_big_values():
         "input": {"name": "충북 제1선거구"},
         "result": NOT_FOUND,
     }]
-    answer = compose_workflow_answer({"answer_instruction": "지역구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "kr-assembly-districts-2024" not in answer
     assert "124.61169218381582" not in answer
@@ -655,9 +655,9 @@ def test_a_status_that_has_data_is_not_called_not_found():
             "stationCount": 93353,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
-    assert answer.startswith("충전소 데이터를 조회했습니다.")
+    assert answer.startswith(workflow_answer.SUCCESS_HEADLINE)
     assert "찾지 못했습니다" not in answer
     assert "한국환경공단 전기자동차 충전소" in answer
 
@@ -679,7 +679,7 @@ def test_says_there_is_none_when_nothing_is_loaded():
             "totalRegionCount": 17,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert answer.startswith("찾지 못했습니다.")
     assert "데이터가 없습니다" in answer
@@ -718,7 +718,7 @@ def knowledge_step(result=KNOWLEDGE):
 def test_document_name_and_body_text_are_carried_in_the_answer():
     """본문이 오는데 세기만 했음. "4건" 은 문서 수도 아니고 k 의 기본값임."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+        {}, [knowledge_step()]
     )
 
     assert "「철도안전법(법률)(제21188호)(20260303).pdf」" in answer
@@ -729,7 +729,7 @@ def test_document_name_and_body_text_are_carried_in_the_answer():
 def test_body_text_is_carried_truncated_and_states_that_it_was():
     """content 가 962~995자임. 통째로 실으면 화면이 응답 전문이 됨."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+        {}, [knowledge_step()]
     )
 
     assert "…" in answer
@@ -739,7 +739,7 @@ def test_body_text_is_carried_truncated_and_states_that_it_was():
 def test_runs_of_whitespace_in_body_text_collapse_to_one():
     """PDF 본문이 공백 수십 칸을 달고 옴. 그대로 실으면 한 줄이 텅 빔."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+        {}, [knowledge_step()]
     )
 
     assert "  " not in answer.split("knowledge.query")[1].split("「")[1]
@@ -748,7 +748,7 @@ def test_runs_of_whitespace_in_body_text_collapse_to_one():
 def test_the_path_is_never_shown():
     """metadata.file_path 는 Gateway 컨테이너의 /tmp 경로임. 사람이 볼 것이 아님."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 문서를 조회했습니다."}, [knowledge_step()]
+        {}, [knowledge_step()]
     )
 
     assert "/tmp" not in answer
@@ -777,7 +777,7 @@ def test_when_the_first_list_is_empty_the_next_list_is_read():
             "totalMatches": 2,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 행정구역을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "2건 · 충청북도" in answer
     assert "청주시 흥덕구" not in answer, "첫 항목 하나만 봄"
@@ -805,7 +805,7 @@ def test_only_the_count_is_given_when_the_first_item_is_a_coordinate_blob():
             "count": 1,
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 지역구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "election.findAssemblyDistrictByPoint  lon=127.3277 · lat=36.6200  1건" in answer
     assert "MultiPolygon" not in answer
@@ -832,7 +832,7 @@ def test_a_cctv_url_never_leaks_even_as_the_first_item():
             "cctvFormat": "HLS",
         }],
     }]
-    answer = compose_workflow_answer({"answer_instruction": "오송역 CCTV 를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "1건" in answer
     assert "http" not in answer
@@ -885,7 +885,7 @@ def test_text_list_chunks_each_come_out_with_document_name_and_page():
     돌려주는데 화면에는 첫 조각 하나만 나왔음.
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        {},
         [knowledge_chunks_step()],
     )
 
@@ -898,7 +898,7 @@ def test_text_list_chunks_each_come_out_with_document_name_and_page():
 def test_the_fourth_chunk_onward_is_not_carried():
     """전부 늘어놓으면 화면이 응답 전문이 됨. 두셋에서 멈춰야 함."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        {},
         [knowledge_chunks_step()],
     )
 
@@ -912,7 +912,7 @@ def test_page_numbers_are_given_as_people_count_them():
     (2026-08-26, tools/probe_out 의 knowledge.query 응답 전문).
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        {},
         [knowledge_chunks_step()],
     )
 
@@ -928,7 +928,7 @@ def test_only_the_source_remains_when_the_page_cannot_be_read():
         "metadata": {"source": "철도안전법(법률)(제21188호)(20260303).pdf", "title": ""},
     }
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 문서를 조회했습니다."},
+        {},
         [knowledge_chunks_step([chunk])],
     )
 
@@ -948,7 +948,7 @@ def test_a_non_text_list_is_still_only_its_first_item():
         "result": [{"name": "청주시 상당구"}, {"name": "청주시 서원구"},
                    {"name": "청주시 흥덕구"}],
     }]
-    answer = compose_workflow_answer({"answer_instruction": "청주 행정구역을 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "3건 · 청주시 상당구" in answer
     assert "청주시 서원구" not in answer, "첫 항목 하나만 봄"
@@ -969,7 +969,7 @@ def test_a_decomposed_document_name_is_composed_and_shown_whole():
         "metadata": {"source": name, "page": 16, "title": ""},
     }
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        {},
         [knowledge_chunks_step([chunk])],
     )
 
@@ -979,7 +979,7 @@ def test_a_decomposed_document_name_is_composed_and_shown_whole():
 def test_long_tokens_never_leak_even_with_many_chunks():
     """조각마다 본문 · 출처가 실리므로 자르는 상한이 조각 수만큼 돌아야 함."""
     answer = compose_workflow_answer(
-        {"answer_instruction": "철도 안전 교육 문서를 조회했습니다."},
+        {},
         [knowledge_chunks_step()],
     )
 
@@ -995,7 +995,7 @@ def test_no_result_leaks_a_long_token_to_the_screen():
     """
     for result in (KNOWLEDGE, NOT_FOUND, AGE_PROFILE):
         answer = compose_workflow_answer(
-            {"answer_instruction": "조회했습니다."},
+            {},
             [{"id": "s1", "tool": "t", "input": {"query": "철도 안전"}, "result": result}],
         )
         longest = max(answer.split(), key=len)
@@ -1064,7 +1064,7 @@ def test_zero_hits_gives_where_it_searched_and_how_to_rephrase():
         "result": SEARCH_DISTRICTS_EMPTY,
     }]
     answer = compose_workflow_answer(
-        {"answer_instruction": "국회의원 선거구 국회의원 지역구 목록을 조회했습니다."}, trace
+        {}, trace
     )
 
     assert answer.startswith("찾지 못했습니다.")
@@ -1085,7 +1085,7 @@ def test_where_it_searched_is_recorded_only_from_the_name_the_response_carried()
         "result": SEARCH_BOUNDARIES_EMPTY,
     }]
     answer = compose_workflow_answer(
-        {"answer_instruction": "행정경계 행정구역 경계를 조회했습니다."}, trace
+        {}, trace
     )
 
     assert answer.startswith("찾지 못했습니다.")
@@ -1106,7 +1106,7 @@ def test_not_found_speaks_differently_from_zero_hits():
         "input": {"name": "충북 제1선거구"},
         "result": NOT_FOUND,
     }]
-    answer = compose_workflow_answer({"answer_instruction": "지역구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "데이터에 있는 이름을 그대로 말씀해 주세요." in answer
     assert "다른 낱말로 다시 말씀해 주세요." not in answer
@@ -1126,7 +1126,7 @@ def test_does_not_ask_to_rephrase_when_nothing_is_loaded():
             "dataset": {"name": "한국환경공단 전기자동차 충전소"},
         },
     }]
-    answer = compose_workflow_answer({"answer_instruction": "충전소 데이터를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "말씀해 주세요" not in answer
 
@@ -1146,7 +1146,7 @@ def test_does_not_ask_to_rephrase_for_zero_hits_called_by_coordinates_only():
             },
         },
     ]
-    answer = compose_workflow_answer({"answer_instruction": "선거구를 조회했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "「2024 제22대 국회의원 선거구」" in answer
     assert "말씀해 주세요" not in answer
@@ -1156,7 +1156,7 @@ def test_the_widened_preamble_never_leaks_raw_JSON():
     """dataset 안에 bbox 두 겹과 datasetId 가 통째로 들어 있음."""
     for result in (SEARCH_DISTRICTS_EMPTY, SEARCH_BOUNDARIES_EMPTY, NOT_FOUND):
         answer = compose_workflow_answer(
-            {"answer_instruction": "조회했습니다."},
+            {},
             [{"id": "s1", "tool": "t", "input": {"query": "선거구"}, "result": result}],
         )
         assert "kr-assembly-districts-2024" not in answer
@@ -1167,16 +1167,16 @@ def test_the_widened_preamble_never_leaks_raw_JSON():
 
 
 def test_a_non_zero_hit_answer_keeps_its_preamble_one_line_verbatim():
-    """넓힌 것은 0건 자리뿐임. 성공 · 오류 문구가 한 글자도 안 달라져야 함."""
+    """넓힌 것은 0건 자리뿐임. 성공 · 오류 문구가 한 줄 그대로여야 함."""
     success = compose_workflow_answer(
-        {"answer_instruction": "오송역 좌표를 조회했습니다."}, [geocode_step(OSONG)]
+        {}, [geocode_step(OSONG)]
     )
-    assert success.splitlines()[0] == "오송역 좌표를 조회했습니다."
+    assert success.splitlines()[0] == workflow_answer.SUCCESS_HEADLINE
     assert "말씀해 주세요" not in success
     assert "찾아본 곳은" not in success
 
     failure = compose_workflow_answer(
-        {"answer_instruction": "오송역 좌표를 조회했습니다."},
+        {},
         [{"id": "s1", "tool": "geo.geocode", "input": {"query": "지금 보이는 곳"},
           "error": "s1 단계 장소 '지금 보이는 곳'을(를) 찾을 수 없습니다."}],
     )
@@ -1235,7 +1235,7 @@ def test_one_points_hierarchy_is_answered_with_the_narrowest_level():
     틀린 것은 답 문구뿐이었음.
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "여기가 어느 동인지 조회했습니다."},
+        {},
         [{"id": "s1", "tool": "adminBoundary.findBoundaryByPoint",
           "input": {"lon": 127.5719, "lat": 36.3539}, "result": POINT_HIERARCHY}],
     )
@@ -1251,7 +1251,7 @@ def test_neighbouring_areas_are_not_reordered():
     계층 규칙이 여기까지 번지면 도구가 정해 보낸 차례(인구순 등)가 뒤집힘.
     """
     answer = compose_workflow_answer(
-        {"answer_instruction": "화면 안 행정경계를 조회했습니다."},
+        {},
         [{"id": "s1", "tool": "adminBoundary.searchBoundaries",
           "input": {"bbox": [127.1598, 36.4853, 127.4956, 36.7547]},
           "result": NEIGHBOURS}],
@@ -1270,7 +1270,7 @@ def test_the_hierarchy_rule_reads_a_field_never_a_name():
         "totalMatches": 2,
     }
     answer = compose_workflow_answer(
-        {"answer_instruction": "조회했습니다."},
+        {},
         [{"id": "s1", "tool": "t", "input": {"lon": 127.5, "lat": 36.3},
           "result": without_chain}],
     )
@@ -1322,7 +1322,7 @@ def test_a_gateway_permission_refusal_comes_out_as_a_reason_not_a_crash():
         "error_detail": 거부,
     }]
 
-    answer = compose_workflow_answer({"answer_instruction": "도달권을 계산했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert NO_PERMISSION_REASON in answer
     assert NOT_APPLIED not in answer
@@ -1357,7 +1357,7 @@ def test_the_isochrone_answer_says_how_far_and_never_carries_the_shape():
         },
     }]
 
-    answer = compose_workflow_answer({"answer_instruction": "의왕역 도달권을 계산했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "걸어서" in answer
     assert "30분" in answer
@@ -1382,7 +1382,7 @@ def test_an_unknown_travel_mode_drops_the_word_from_the_isochrone_answer():
         },
     }]
 
-    answer = compose_workflow_answer({"answer_instruction": "도달권을 계산했습니다."}, trace)
+    answer = compose_workflow_answer({}, trace)
 
     assert "SCOOTER" not in answer
     assert "15분" in answer

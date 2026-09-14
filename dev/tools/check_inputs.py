@@ -16,7 +16,7 @@ dev/tools/check_wiring.py 는 **입력 배선이 있는가**만 센다. 그 배�
     python dev/tools/check_inputs.py --refresh           Gateway 에서 다시 받아 파일을 갱신
 
 **규칙을 복사하지 않는다.** 보낼 input 벌은 execution/step_service.variants 가 게시
-compile 과 같은 함수로 적고 실행이 쓰는 plan_service.bind_input 으로 채운다. 읽기만 한다 — 이 파일은 온톨로지도 배선표도 안 고친다.
+compile 과 같은 함수로 적고 지금 Gateway 로 나가는 legacy_vendor.bind_input 으로 채운다. 읽기만 한다 — 이 파일은 온톨로지도 배선표도 안 고친다.
 
 **tool 은 「실행 수단」이다** (「마흔아홉째」). Gateway 도구 말고 frontend/ namespace 의
 지도 명령(show_facility)이 있고, 그것은 맞댈 inputSchema 가 없다 — 그 args 의 계약은
@@ -129,12 +129,11 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
+from execution.legacy_vendor import CENTER_KEYS, POINT_RADIUS_TO_BBOX  # noqa: E402
 from execution.step_service import (  # noqa: E402
     ADAPTER,
     BUILTIN,
-    CENTER_KEYS,
     COMMAND,
-    POINT_RADIUS_TO_BBOX,
     SOURCE,
     STEP,
     binding_of,
@@ -246,7 +245,7 @@ def sent_fields(row: dict, schema: dict | None) -> tuple[set, str]:
 
     입력  step_service.variants 의 한 행({input, adapter, …}) · 그 도구의 스키마(없으면 None)
     출력  (칸 이름 집합, 어댑터 표시). 어댑터가 안 걸리면 표시는 빈 문자열
-    규칙  벌에 어댑터가 실려 있고 중심 좌표가 있으면 걸림 (plan_service.bind_input 과 같음)
+    규칙  벌에 어댑터가 실려 있고 중심 좌표가 있으면 걸림 (legacy_vendor.bind_input 과 같음)
           안 실려 있어도 required 에 bbox 넷이 다 있고 중심 좌표 · 반경이 있으면
           vendor 가 저절로 걺 (_should_auto_apply_point_radius_to_bbox)
           걸리면 중심 · 반경 칸이 빠지고 bbox 넷이 들어감

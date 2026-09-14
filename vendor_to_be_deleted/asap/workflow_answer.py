@@ -50,14 +50,11 @@ SUCCESS = "success"
 EMPTY = "empty"
 ERROR = "error"
 
-# 빈 결과 · 오류일 때의 첫 줄. 이때는 headline 을 안 쓴다.
+# 판정마다의 첫 줄. 노드 · recipe 마다 다른 문장을 두지 않는다.
 #
-# headline 은 배선표(wiring.yaml 의 headline)가 "{arg} 행정구역을 조회했습니다." 처럼 완결된 한국어
-# 문장으로 갖고 있어 부정형으로 바꿀 수 없다. 어미를 문자열로 잘라 고치지
-# 않는다 — 문형이 하나 늘 때마다 자르는 규칙이 하나 는다. headline 을 명사형
-# ("{arg} 행정구역")으로 바꾸면 세 문구를 한 틀로 합칠 수 있는데 48줄을 다시
-# 쓰는 일이라 이번 범위 밖이다 (NOTES.md).
-# 무엇을 조회하려던 것인지는 아래 단계 줄이 말한다.
+# 무엇을 무엇으로 조회했고 무엇이 나왔는지는 아래 단계 줄이 말한다. 첫 줄은
+# 성공 · 빈 결과 · 오류 판정 하나만 적는다.
+SUCCESS_HEADLINE = "조회했습니다."
 EMPTY_HEADLINE = "찾지 못했습니다."
 ERROR_HEADLINE = "조회하지 못했습니다."
 
@@ -427,32 +424,30 @@ def compose_workflow_answer(
 ) -> str:
     """실행 결과 한 벌을 답으로.
 
-    입력  intent(answer_instruction 이 첫 줄) · vendor 가 쌓은 trace ·
+    입력  vendor 에 넘긴 intent(읽지 않음) · vendor 가 쌓은 trace ·
           부르는 쪽이 이미 실패를 알 때의 failed
-    출력  첫 줄에 무엇을 했는지, 빈 줄, 그다음 단계 목록
+    출력  첫 줄에 판정, 빈 줄, 그다음 단계 목록
     규칙  성공 · 빈 결과 · 오류 셋으로 가름. 가르는 것은 _verdict 임
-          성공이면 첫 줄은 intent.answer_instruction 을 그대로 씀. 노드가 아는
-          문장이라 도구 이름으로는 만들 수 없음
-          빈 결과 · 오류면 첫 줄을 우리 문구로 바꿔 씀
+          첫 줄은 판정마다 하나인 우리 문구임. 성공은 SUCCESS_HEADLINE
           빈 결과의 첫 줄은 두 줄일 수 있음. 어디를 뒤졌고 어떻게 말하면
           되는지를 _empty_headline 이 아래에 붙임
-          answer_instruction 이 없으면 단계 목록만 남음
           trace 가 비면 단계 목록이 없으므로 첫 줄만 남음
-          failed 는 키워드 전용이고 기본이 거짓임. vendor 의
-          _compose_workflow_answer 호출부가 안 바뀌어야 함
+          intent · failed 자리는 vendor 의 _compose_workflow_answer 호출부가 안
+          바뀌도록 둠. failed 는 키워드 전용이고 기본이 거짓임
+    제약  노드 · recipe 마다 다른 첫 줄을 두지 않는다.
+          실행 계획에 화면 문구가 섞이고, 무엇을 했는지는 단계 줄이 이미 적음
+    이력  노드마다 첫 줄을 적던 배선표를 걷으면서 intent.answer_instruction 을 안 읽게 됨
     """
     verdict = _verdict(trace, failed)
     lines = [f"{index}. {step_line(item)}" for index, item in enumerate(trace, start=1)]
 
     if verdict == SUCCESS:
-        headline = str(intent.get("answer_instruction") or "").strip()
+        headline = SUCCESS_HEADLINE
     elif verdict == EMPTY:
         headline = _empty_headline(trace[-1] if trace else {})
     else:
         headline = ERROR_HEADLINE
 
-    if not headline:
-        return "\n".join(lines)
     if not lines:
         return headline
     return "\n".join([headline, "", *lines])
@@ -1502,10 +1497,9 @@ def _lon_lat(value: Any):
 #
 # **여기도 도구 이름을 모른다.** 아래 둘은 문자열만 받는다.
 
-# 지도 명령만 낸 실행의 답. headline 이 비었을 때만 쓴다.
-#
-# headline 은 배선표(plan_service.HEADLINE)가 갖고 있고 인자가 들어간 문장이라
-# ("오송 테스트트랙 시설물을 화면에 띄웠습니다") 이 자리보다 늘 낫다.
+# 지도 명령만 낸 실행의 답. 단계 목록이 없으므로 이 한 줄이 답 전부다.
+# 무엇을 냈는지 op 이름으로 적지 않는다 — 사람에게 뜻이 없고, 이 파일은 부르는
+# 쪽이 무엇을 부르는지 모른다.
 NOTHING_RAN = "화면에 표시했습니다."
 
 # 맞는 경로가 없을 때의 첫 줄.
@@ -1522,19 +1516,6 @@ NO_MATCH_STARTS = "{starts} 가운데 하나를 함께 말씀해 주세요."
 
 # 이름을 늘어놓을 때의 사이. 답 문구가 쓰는 다른 구분자와 같다.
 NAME_JOIN = " · "
-
-
-def command_answer(headline: str) -> str:
-    """도구를 안 부르고 지도 명령만 낸 실행의 답.
-
-    입력  배선표가 만든 답 첫 줄. 없으면 빈 문자열
-    출력  화면에 그대로 나갈 한 줄
-    규칙  단계 목록이 없으므로 첫 줄이 곧 답 전부임
-          headline 이 비면 대비 문구를 씀
-    제약  무엇을 냈는지 op 이름으로 적지 않는다.
-          사람에게 뜻이 없고, 이 파일은 부르는 쪽이 무엇을 부르는지 모른다
-    """
-    return headline.strip() or NOTHING_RAN
 
 
 def no_match_answer(reason: str, topics: List[str], starts: List[str]) -> str:

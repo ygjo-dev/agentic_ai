@@ -29,8 +29,8 @@ C 는 recipe 를 안 본다. 온톨로지의 hasInput 선언과 tool.parameters 
 두는 것이 규칙이라(온톨로지의 web_fetch 곁 주석) 비어 있는 이유가 적혀 있으면 그것이
 맞다. A 와 B 는 0 이어야 한다.
 
-tool · source 와 배선표 잔여분(headline)이 서로 맞는지, 받는 노드가 읽는 칸을 내놓는
-쪽(tool.outputs · source.fields)이 적었는지도 맨 위에 찍는다(step_service.check_bindings).
+tool · source 가 읽히는지, 받는 노드가 읽는 칸을 내놓는 쪽(tool.outputs · source.fields)이
+적었는지도 맨 위에 찍는다(step_service.check_bindings).
 
 **테스트를 두지 않는다.** tools/ 는 재는 도구이고 제품 경로가 아니다. 이 파일이
 틀리면 NOTES.md 에 적힌 숫자가 안 나와 바로 드러난다.
@@ -47,6 +47,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from app.api.services.streamlit import screen_service  # noqa: E402
 from execution import plan_service  # noqa: E402
+from execution.plan_service import SPOKEN_ARGUMENT  # noqa: E402
 from execution.step_service import (  # noqa: E402
     binding_of,
     bound_inputs,
@@ -62,11 +63,8 @@ DISCARDS_SPOKEN = "A"
 IGNORES_PREVIOUS = "B"
 UNDECLARED_WIRING = "C"
 
-# 계획에 심어 보는 발화 인자. 사람이 말할 수 없는 글자로 짓는다.
-PROBE = "\x00check-wiring\x00"
-
-# vendor 가 앞 단계 결과로 푸는 참조. "$s1.location.0" 같은 꼴이다.
-PREVIOUS_REFERENCE = re.compile(r"^\$s\d+(\.|$)")
+# 게시된 계획에서 앞 단계 결과를 가리키는 기호. "s1.point.lon" 같은 꼴이다.
+PREVIOUS_REFERENCE = re.compile(r"^s\d+(\.|$)")
 
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
@@ -90,24 +88,30 @@ PREVIOUS = "previous"
 
 
 def marks_in(value) -> set:
-    """input 한 벌이 쓰는 값의 출처.
+    """게시된 workflow 항목 조각이 쓰는 값의 출처.
 
-    입력  실행 계획이 만든 step 의 input. dict · list · 스칼라가 섞여 있음
+    입력  workflow 항목의 input · transform. 기호 dict · list 가 섞여 있음
     출력  {SPOKEN, PREVIOUS} 의 부분집합
     규칙  중첩된 dict · list 안까지 봄
-          발화 인자는 PROBE 가 그대로 들어간 칸임
-          앞 단계 참조는 "$s<번호>" 로 시작하는 문자열임
+          발화 인자는 {from: spoken.argument} 임. 조건이 붙어도 셈
+          앞 단계 참조는 from 이 "s<번호>" 로 시작하는 기호임
     제약  값이 무엇인지 판정하지 않는다. 어느 출처를 썼는지만 셈
     """
+    found = set()
     if isinstance(value, dict):
-        return set().union(*(marks_in(item) for item in value.values())) if value else set()
-    if isinstance(value, list):
-        return set().union(*(marks_in(item) for item in value)) if value else set()
-    if value == PROBE:
-        return {SPOKEN}
-    if isinstance(value, str) and PREVIOUS_REFERENCE.match(value):
-        return {PREVIOUS}
-    return set()
+        origin = value.get("from")
+        if origin == SPOKEN_ARGUMENT:
+            found.add(SPOKEN)
+        elif isinstance(origin, str) and PREVIOUS_REFERENCE.match(origin):
+            found.add(PREVIOUS)
+        items = value.values()
+    elif isinstance(value, list):
+        items = value
+    else:
+        return found
+    for item in items:
+        found |= marks_in(item)
+    return found
 
 
 def undeclared() -> list:
@@ -148,8 +152,8 @@ def findings() -> tuple:
           kind 는 DISCARDS_SPOKEN 또는 IGNORES_PREVIOUS. previous 는 앞 도구
           노드 id 이고 첫 단계면 None
     규칙  unwired 가 빈 recipe 만 봄
-          게시된 실행 계획(plan_service.bind)을 PROBE 인자로 채워 step 마다 봄.
-          builtin 은 뒤 단계에 얹혀 step 이 없고 지도 명령은 step 이 아님
+          게시된 실행 계획(plan_service.load)의 도구 단계마다 input 과 transform 의 기호를 봄.
+          builtin 은 뒤 단계의 transform 에 얹혀 단계가 없고 지도 명령은 도구 단계가 아님
           첫 단계가 앞 단계 참조만 쓰면 A. 발화 · 화면 값이 갈 곳이 없음
           앞 단계가 있는데 발화 인자만 쓰면 B. 앞 단계 결과가 버려짐
           둘 다 쓰거나 둘 다 안 쓰는 것은 세지 않음
@@ -164,10 +168,12 @@ def findings() -> tuple:
             continue
         wired += 1
 
-        result = plan_service.bind(plan_service.load(recipe_id), PROBE)
         previous = None
-        for node_id, step in zip(result["nodes"], result["steps"]):
-            marks = marks_in(step["input"])
+        for entry in plan_service.load(recipe_id)["workflow"]:
+            if "command" in entry:
+                continue
+            node_id = entry["node"]
+            marks = marks_in([entry["input"], entry.get("transform") or {}])
 
             kind = None
             if previous is None:
@@ -183,7 +189,7 @@ def findings() -> tuple:
                         "recipe_id": recipe_id,
                         "previous": previous,
                         "node_id": node_id,
-                        "tool": f"{step['server_id']}/{step['tool']}",
+                        "tool": f"{entry['server_id']}/{entry['tool']}",
                     }
                 )
             previous = node_id
@@ -244,7 +250,7 @@ def _print_total(total: int, wired: int, found: list, missing: list, problems: l
         f"  recipe {total}개 · 실행 수단이 다 있는 것 {wired}개"
         f" · tool 이 있는 노드 {tools}개"
         f" · A {len(discards)}개 · B {len(ignores)}개 · C {len(missing)}개"
-        f" · tool/배선표 어긋남 {len(problems)}개"
+        f" · tool/source 어긋남 {len(problems)}개"
     )
     for label, rows in ((DISCARDS_SPOKEN, discards), (IGNORES_PREVIOUS, ignores)):
         if rows:
@@ -267,7 +273,7 @@ def main() -> int:
     if not args.quiet:
         if problems:
             print()
-            print(f"  tool 과 배선표 잔여분이 어긋났다 ({len(problems)}개)")
+            print(f"  tool 과 source 가 어긋났다 ({len(problems)}개)")
             for problem in problems:
                 print(f"    {problem}")
         discards = [row for row in found if row["kind"] == DISCARDS_SPOKEN]

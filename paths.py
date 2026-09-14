@@ -8,12 +8,6 @@ ONTOLOGY_PATH = REPO_ROOT / "ontology" / "ontology.yaml"
 # 읽는 곳은 llm_engine/role_config.py 의 get_role_config 하나다.
 ROLES_DIR = REPO_ROOT / "llm_engine" / "roles"
 
-# 배선표에 남은 것. 답 첫 줄과 도구 응답을 읽는 legacy 경로다.
-#
-# 도구 식별과 입력 배선은 온톨로지 노드의 tool 로 옮겼다. 여기 남은 것은 raw 도구
-# 응답을 semantic 값으로 읽는 법을 정하는 판에서 걷힐 transitional 자리다.
-WIRING_PATH = REPO_ROOT / "execution" / "wiring.yaml"
-
 # 노드 등록. 온톨로지와 배선을 자동으로 만든다.
 REGISTRATION_DIR = REPO_ROOT / "registration"
 

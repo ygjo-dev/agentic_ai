@@ -20,7 +20,7 @@ import asyncio
 import pytest
 
 import paths
-from execution import execute_service, plan_service, step_service
+from execution import execute_service, legacy_vendor, plan_service, step_service
 from ontology import graph, store
 
 # resolve 역할 설정 대역. 해석을 가짜로 주므로 읽히지 않고, 받은 그대로 넘어가는지만 본다.
@@ -327,7 +327,7 @@ def test_a_recipe_that_reads_no_context_runs_without_one(monkeypatch):
     """문맥을 안 읽는 recipe 까지 막으면 말한 장소 발화가 전부 죽는다."""
     called = []
     monkeypatch.setattr(
-        execute_service,
+        legacy_vendor,
         "_execute_generic_mcp_workflow",
         _fake_workflow(called),
     )
@@ -343,7 +343,7 @@ def test_the_context_that_actually_arrived_lets_it_through(monkeypatch):
     """값이 오면 그대로 실행한다. 판정은 값의 유무이지 recipe id 가 아니다."""
     called = []
     monkeypatch.setattr(
-        execute_service,
+        legacy_vendor,
         "_execute_generic_mcp_workflow",
         _fake_workflow(called),
     )
@@ -384,7 +384,7 @@ def test_a_recipe_with_an_unwired_node_calls_nothing(monkeypatch):
     """부르는 것만 부르면 반쪽 결과를 온전한 답인 것처럼 내놓게 됨."""
     called = []
     monkeypatch.setattr(
-        execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called)
+        legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called)
     )
     monkeypatch.setattr(
         execute_service.plan_service,
@@ -414,9 +414,9 @@ def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_onto
     막아 두고 돈다. 넘긴 steps 는 게시된 블록을 채운 것 그대로다.
     """
     spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
-    published = plan_service.bind(plan_service.load(spoken), "오송역")["steps"]
+    published = legacy_vendor.to_legacy(plan_service.request(spoken, plan_service.load(spoken), "오송역"))["steps"]
     called = []
-    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
     resolved(monkeypatch, recipe_id=spoken, argument="오송역")
 
     for name in ("read", "raw_bytes", "nodes"):
@@ -445,7 +445,7 @@ def test_a_recipe_file_with_no_published_plan_stops_with_an_error_instead_of_pla
     monkeypatch.setattr(paths, "RECIPES_DIR", tmp_path)
     monkeypatch.setattr(step_service, "compile_execution", _untouchable)
     called = []
-    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
 
     with pytest.raises(plan_service.PlanError, match="블록이 없다"):
         collect(execute_service.run("recipe_900", "오송역"))
@@ -456,7 +456,7 @@ def test_a_recipe_file_with_no_published_plan_stops_with_an_error_instead_of_pla
 def test_an_id_that_is_not_an_accepted_recipe_calls_nothing(monkeypatch):
     """resolve 응답 schema 에는 recipe id 목록이 없다. 없는 번호가 오면 부를 것이 없다고만 답한다."""
     called = []
-    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
 
     events = collect(execute_service.run("recipe_없음", "오송역"))
 
@@ -474,7 +474,7 @@ def test_a_map_command_only_run_never_reaches_the_vendor(monkeypatch):
     """
     called = []
     monkeypatch.setattr(
-        execute_service,
+        legacy_vendor,
         "_execute_generic_mcp_workflow",
         lambda state, intent: called.append(intent),
     )
@@ -486,8 +486,8 @@ def test_a_map_command_only_run_never_reaches_the_vendor(monkeypatch):
 
     assert called == []
     assert events[-1]["type"] == "result"
-    assert events[-1]["commands"][0]["op"] == "digitalTwin.showFacility"
-    assert "오송 테스트트랙" in events[-1]["answer"]
+    assert events[-1]["commands"][0] == {"op": "digitalTwin.showFacility", "args": {"facilityName": "오송 테스트트랙"}}
+    assert events[-1]["answer"] == legacy_vendor.NOTHING_RAN
 
 
 def test_the_step_pair_goes_out_in_the_same_shape_as_a_tool_step():
@@ -513,7 +513,7 @@ def test_a_step_pair_goes_out_for_every_step_the_vendor_ran(monkeypatch):
     """단계마다 한 쌍이 recipe 순서대로 나감. 마지막은 반드시 result."""
     called = []
     monkeypatch.setattr(
-        execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called)
+        legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called)
     )
 
     spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
@@ -539,7 +539,7 @@ def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
         called["user_context"] = state["user_context"]
         return {"answer_draft": "답", "errors": [], "commands": [], "artifacts": {}}
 
-    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", fake)
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", fake)
 
     spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     collect(execute_service.run(spoken, "오송역"))
@@ -563,7 +563,7 @@ def test_a_failed_run_never_shows_the_vendor_wording(monkeypatch):
             "artifacts": {"mcp_workflow_trace": []},
         }
 
-    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", failing)
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", failing)
 
     spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
     events = collect(execute_service.run(spoken, "오송역"))
