@@ -3,3 +3,19 @@ steps:
   - node: map_extent
 
   - node: get_railway_lines
+
+execution:
+
+  spoken_needed: false
+
+  context_needs:
+    map_extent: {from: context.view.bbox, fields: {minLon: '0.0', minLat: '0.1', maxLon: '1.0', maxLat: '1.1'}}
+
+  workflow:
+
+    - id: s1
+      node: get_railway_lines
+      server_id: asap-mcp-core
+      tool: geo.getRailwayLines
+      input:
+        bbox: [{from: context.map_extent.minLon}, {from: context.map_extent.minLat}, {from: context.map_extent.maxLon}, {from: context.map_extent.maxLat}]

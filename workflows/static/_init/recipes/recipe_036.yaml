@@ -7,3 +7,36 @@ steps:
   - node: point_to_map_extent
 
   - node: find_cctv
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: geocode_place
+      server_id: asap-mcp-core
+      tool: geo.geocode
+      input:
+        query: {from: spoken.argument}
+      outputs:
+        point: {fields: {lon: location.0, lat: location.1}}
+
+    - id: s2
+      node: find_cctv
+      server_id: asap-mcp-core
+      tool: road.getCctv
+      transform:
+        id: builtin/geo.pointRadiusToBbox
+        node: point_to_map_extent
+        input:
+          center: [{from: s1.point.lon}, {from: s1.point.lat}]
+          radiusMeters: {value: 15000}
+      input:
+        minLon: {from: transform.map_extent.minLon}
+        minLat: {from: transform.map_extent.minLat}
+        maxLon: {from: transform.map_extent.maxLon}
+        maxLat: {from: transform.map_extent.maxLat}

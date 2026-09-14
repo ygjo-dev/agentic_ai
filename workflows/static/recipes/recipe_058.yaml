@@ -7,3 +7,39 @@ steps:
   - node: find_admin_boundary_by_point
 
   - node: get_age_profile
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: geocode_place
+      server_id: asap-mcp-core
+      tool: geo.geocode
+      input:
+        query: {from: spoken.argument}
+      outputs:
+        point: {fields: {lon: location.0, lat: location.1}}
+
+    - id: s2
+      node: find_admin_boundary_by_point
+      server_id: asap-mcp-core
+      tool: adminBoundary.findBoundaryByPoint
+      input:
+        lon: {from: s1.point.lon}
+        lat: {from: s1.point.lat}
+        layer: {from: spoken.admin_level, default: 시군구, map: {시도: sido, 시군구: sigungu, 읍면동: emd}}
+      outputs:
+        admin_code: {fields: {code: items.0.code, level: items.0.layerId}}
+
+    - id: s3
+      node: get_age_profile
+      server_id: asap-mcp-core
+      tool: population.getAgeProfile
+      input:
+        level: {from: s2.admin_code.level}
+        code: {from: s2.admin_code.code}

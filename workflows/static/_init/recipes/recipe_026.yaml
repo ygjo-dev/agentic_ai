@@ -5,3 +5,22 @@ steps:
   - node: find_cctv
 
 example: 현재 화면에 걸린 CCTV 전부 띄워줘
+
+execution:
+
+  spoken_needed: false
+
+  context_needs:
+    map_extent: {from: context.view.bbox, fields: {minLon: '0.0', minLat: '0.1', maxLon: '1.0', maxLat: '1.1'}}
+
+  workflow:
+
+    - id: s1
+      node: find_cctv
+      server_id: asap-mcp-core
+      tool: road.getCctv
+      input:
+        minLon: {from: context.map_extent.minLon}
+        minLat: {from: context.map_extent.minLat}
+        maxLon: {from: context.map_extent.maxLon}
+        maxLat: {from: context.map_extent.maxLat}

@@ -7,3 +7,28 @@ steps:
   - node: search_admin_boundaries
 
 example: 수원역 둘레 행정구역 경계 띄워줘
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: geocode_place
+      server_id: asap-mcp-core
+      tool: geo.geocode
+      input:
+        query: {from: spoken.argument}
+      outputs:
+        map_extent: {fields: {minLon: bbox.0.0, minLat: bbox.0.1, maxLon: bbox.1.0, maxLat: bbox.1.1}}
+
+    - id: s2
+      node: search_admin_boundaries
+      server_id: asap-mcp-core
+      tool: adminBoundary.searchBoundaries
+      input:
+        bbox: [{from: s1.map_extent.minLon}, {from: s1.map_extent.minLat}, {from: s1.map_extent.maxLon}, {from: s1.map_extent.maxLat}]
+        layer: {from: spoken.admin_level, default: 시군구, map: {시도: sido, 시군구: sigungu, 읍면동: emd}}

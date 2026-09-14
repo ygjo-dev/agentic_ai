@@ -5,3 +5,30 @@ steps:
   - node: geocode_place
 
   - node: compute_isochrone
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: geocode_place
+      server_id: asap-mcp-core
+      tool: geo.geocode
+      input:
+        query: {from: spoken.argument}
+      outputs:
+        point: {fields: {lon: location.0, lat: location.1}}
+
+    - id: s2
+      node: compute_isochrone
+      server_id: r5-server
+      tool: compute_isochrone
+      input:
+        origin_lon: {from: s1.point.lon}
+        origin_lat: {from: s1.point.lat}
+        cutoffs_minutes: {from: spoken.minutes, default: [30]}
+        mode: {from: spoken.travel_mode, default: 대중교통, map: {도보: WALK, 자전거: BICYCLE, 승용차: CAR, 대중교통: TRANSIT}}

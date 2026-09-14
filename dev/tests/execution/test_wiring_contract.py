@@ -22,7 +22,7 @@ import pytest
 import yaml
 
 import paths
-from execution import execute_service, step_service
+from execution import execute_service, plan_service, step_service
 from ontology import graph, store
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
@@ -161,16 +161,17 @@ def _permitted_servers():
 
 
 def _servers_recipes_call():
-    """지금 recipe 가 실제로 지나는 서버.
+    """지금 recipe 에 게시된 execution 이 실제로 부르는 서버.
 
     **tool 전체가 아니라 recipe 가 지나는 것만 본다.** 부를 수 없는 서버의
     tool 이 남아 있는 것은 권한이 열리면 되살릴 자리라는 뜻이지 지금 부른다는
     뜻이 아니다.
     """
     return {
-        step["server_id"]
+        entry["server_id"]
         for recipe_id in graph.recipe_ids()
-        for step in step_service.plan(recipe_id, "오송역")["steps"]
+        for entry in plan_service.load(recipe_id)["workflow"]
+        if "server_id" in entry
     }
 
 

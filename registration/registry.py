@@ -17,6 +17,7 @@ import shutil
 import paths
 from ontology import graph, store
 from ontology.graph import ABOUT, HAS_INPUT, HAS_OUTPUT
+from registration.publish import published_text
 
 
 def group_ids() -> list[str]:
@@ -363,6 +364,8 @@ def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list
     입력  경로 목록 · 노드 전체 · 쓸 디렉터리(없으면 기본)
     출력  만들어진 recipe id 목록
     규칙  가장 큰 번호 다음부터 이어 붙임
+          파일에 쓰는 순간 그 recipe 는 받아들인 것이라 execution 칸을 함께 게시함
+          (registration/publish.py). 실행은 그 칸만 읽음
     제약  기존 번호를 건드리지 않는다.
           menu 와 정답표(dev/tools/check_resolve.py)가 그 번호를 가리키고 있음
     """
@@ -376,7 +379,7 @@ def append_recipes(chains: list[list[str]], nodes: dict, directory=None) -> list
     created = []
     for offset, chain in enumerate(chains, start=1):
         recipe_id = f"recipe_{last + offset:03d}"
-        body = "steps:\n\n" + "\n\n".join(_step_block(nodes[n], n) for n in chain) + "\n"
+        body = published_text("steps:\n\n" + "\n\n".join(_step_block(nodes[n], n) for n in chain) + "\n")
         (directory / f"{recipe_id}.yaml").write_text(body, encoding="utf-8", newline="\n")
         created.append(recipe_id)
 

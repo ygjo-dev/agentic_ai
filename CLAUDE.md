@@ -15,10 +15,10 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 ```
 발화
 → LLM 이 static recipe 를 고른다 (만들지 않는다)
-→ recipe = 순서 있는 온톨로지 노드 목록
+→ recipe = 사람이 받아들인 온톨로지 노드 목록 + 게시된 execution
 → 온톨로지 관계가 이을 수 있는지 말한다
-→ 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
-→ vendor / Gateway 실행
+→ 게시할 때 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다 (compile)
+→ 요청 중에는 게시된 execution 을 채워 vendor / Gateway 실행
 → 답 · API · 화면
 ```
 
@@ -26,7 +26,10 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 
 ```
 1  LLM 은 MCP 도구 순서를 만들지 않는다. recipe 를 고른다
-2  recipe 는 노드만 적는다. 서버 · 도구 · 인자를 안 가진다 (사람이 적은 example 은 둔다)
+2  recipe 의 steps 는 노드만 적는다 (사람이 적은 example 은 둔다). 서버 · 도구 · 인자는
+   사람이 안 적는다 — 온톨로지로 compile 해 execution 칸에 게시한다
+   (python -m registration.publish · --init). 요청 중에는 그 칸만 읽고, 없으면 오류다.
+   온톨로지로 계획을 다시 만들지 않는다
 3  도구 식별과 입력 배선은 온톨로지 노드의 tool 에 둔다. 관계(hasInput)를 대신하지 않는다.
    도구 이름은 tool 칸에만 있다 — name · description · source.description 은 menu
    재료라 거기 적으면 프롬프트로 샌다. 주소 · 포트는 온톨로지에 두지 않는다
@@ -48,8 +51,9 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 도메인      오래 남는다
   ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
   orchestrator/      발화 해석
-  execution/         실행 계획. 노드의 tool 을 읽는다. wiring.yaml(답 첫 줄)이
-                     여기 있다
+  execution/         실행 계획. step_service 가 노드의 tool 을 읽어 게시할 execution 을
+                     compile 하고, plan_service 가 요청 중에 게시된 것을 채운다.
+                     wiring.yaml(답 첫 줄)이 여기 있다
   llm_engine/        LLM 역할(logical model 판 · prompt · response schema) · provider
   workflows/static/  recipe · menu
 
@@ -189,6 +193,8 @@ example 은 온톨로지가 아니라 recipe 파일에 사람이 적는다.
 
 ★ **recipe 하나를 되살리면 넷이 함께 움직인다** — `recipes/` 와
 `_init/recipes/` 의 파일(example 까지), 그리고 두 `menu.yaml` · 두 `menu.md` 의 해당 줄.
+파일을 되살린 뒤 `python -m registration.publish` 와 `--init` 으로 execution 을 게시한다.
+온톨로지의 tool · source 를 고쳤을 때도 두 짝을 다시 게시한다.
 후보를 받아들이는 것도 이 절차다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
@@ -355,7 +361,7 @@ streamlit run app/ui/main.py                   화면 (8501)
 계기판이 무엇을 요구하는지는 갈린다. **서버가 필요한 것과 아닌 것을 섞지 않는다.**
 
 ```
-아무것도 안 띄우고        check_wiring · rebuild_init(대조) · pytest
+아무것도 안 띄우고        check_wiring · rebuild_init(대조) · registration.publish · pytest
 Gateway 만               check_inputs(캐시 없을 때) · probe_tools · probe_shapes
 LLM 만                   check_llm  (창구를 안 지나고 resolve_service 를 직접 부른다)
 창구(8000) + LLM         check_resolve · check_demo

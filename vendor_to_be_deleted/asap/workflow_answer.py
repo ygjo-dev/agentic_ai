@@ -1504,7 +1504,7 @@ def _lon_lat(value: Any):
 
 # 지도 명령만 낸 실행의 답. headline 이 비었을 때만 쓴다.
 #
-# headline 은 배선표(step_service.HEADLINE)가 갖고 있고 인자가 들어간 문장이라
+# headline 은 배선표(plan_service.HEADLINE)가 갖고 있고 인자가 들어간 문장이라
 # ("오송 테스트트랙 시설물을 화면에 띄웠습니다") 이 자리보다 늘 낫다.
 NOTHING_RAN = "화면에 표시했습니다."
 

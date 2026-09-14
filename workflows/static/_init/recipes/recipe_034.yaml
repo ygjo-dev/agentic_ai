@@ -7,3 +7,29 @@ steps:
   - node: find_admin_boundary_by_point
 
 example: 서대전역이 어느 동에 속하는지 알려줘
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: geocode_place
+      server_id: asap-mcp-core
+      tool: geo.geocode
+      input:
+        query: {from: spoken.argument}
+      outputs:
+        point: {fields: {lon: location.0, lat: location.1}}
+
+    - id: s2
+      node: find_admin_boundary_by_point
+      server_id: asap-mcp-core
+      tool: adminBoundary.findBoundaryByPoint
+      input:
+        lon: {from: s1.point.lon}
+        lat: {from: s1.point.lat}
+        layer: {from: spoken.admin_level, default: 시군구, map: {시도: sido, 시군구: sigungu, 읍면동: emd}}

@@ -5,3 +5,19 @@ steps:
   - node: get_railway_lines
 
 example: 대전역에 어떤 철도 노선이 들어와
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: get_railway_lines
+      server_id: asap-mcp-core
+      tool: geo.getRailwayLines
+      input:
+        stationName: {from: spoken.argument, unless_endswith: 선}
+        railwayName: {from: spoken.argument, if_endswith: 선}

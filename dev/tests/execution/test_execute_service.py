@@ -9,6 +9,9 @@ LLM 이 혼자 하고, 여기서는 고른 것을 지금 부를 수 있는지만
 
 셋 중 하나라도 아니면 다른 recipe 로 갈아타지 않고 실행을 시작하지 않는다.
 
+**셋 다 recipe 에 게시된 execution 이 말한다.** 고른 recipe 를 부르려고 온톨로지를
+다시 훑어 계획을 만들지 않고, 블록이 없으면 오류로 멈춘다.
+
 LLM 도 Gateway 도 부르지 않는다. resolve 결과와 vendor 실행기는 가짜로 준다.
 """
 
@@ -16,8 +19,9 @@ import asyncio
 
 import pytest
 
-from execution import execute_service, step_service
-from ontology import graph
+import paths
+from execution import execute_service, plan_service, step_service
+from ontology import graph, store
 
 # resolve 역할 설정 대역. 해석을 가짜로 주므로 읽히지 않고, 받은 그대로 넘어가는지만 본다.
 ROLE = object()
@@ -243,7 +247,7 @@ def test_a_context_only_recipe_still_runs_without_a_spoken_argument(
     """발화에서 뽑을 말이 없는 recipe 는 인자가 null 이어도 그대로 돎.
 
     "지금 보이는 곳 CCTV" 에는 뽑을 말이 없고 조회할 곳은 이미 문맥이 말했음.
-    판정은 step_service.spoken_needed 의 일반 규칙이 하고, recipe id 를 여기
+    판정은 게시된 execution 의 spoken_needed 가 하고, recipe id 를 여기
     적지 않는다.
     """
     resolved(monkeypatch, recipe_id="recipe_026", argument=None)
@@ -282,7 +286,9 @@ def test_an_unknown_start_node_falls_back_to_the_place_wording(monkeypatch, no_e
     """모르는 경로면 장소 문구 그대로다. 줄이 사라지는 것보다 낫다."""
     resolved(monkeypatch, recipe_id="recipe_없음", argument=None)
     monkeypatch.setattr(
-        execute_service.step_service, "spoken_needed", lambda recipe_id: True
+        execute_service.plan_service,
+        "load",
+        lambda recipe_id: {"spoken_needed": True, "context_needs": {}, "workflow": []},
     )
 
     events = collect(execute_service.process("찾아줘", None, ROLE, continue_after_resolve=True))
@@ -381,7 +387,9 @@ def test_a_recipe_with_an_unwired_node_calls_nothing(monkeypatch):
         execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called)
     )
     monkeypatch.setattr(
-        execute_service.step_service, "unwired", lambda recipe_id: ["find_cctv"]
+        execute_service.plan_service,
+        "load",
+        lambda recipe_id: {"spoken_needed": False, "unwired": ["find_cctv"], "context_needs": {}, "workflow": []},
     )
 
     events = collect(execute_service.run("recipe_001", "오송역"))
@@ -389,6 +397,71 @@ def test_a_recipe_with_an_unwired_node_calls_nothing(monkeypatch):
     assert called == []
     assert len(events) == 1
     assert "아직 붙지 않아" in events[0]["answer"]
+
+
+# ── 게시된 계획만 읽는다 ────────────────────────────────────────────
+
+
+def _untouchable(*args, **kwargs):
+    raise AssertionError("요청 중에 온톨로지를 읽거나 계획을 다시 compile 했다")
+
+
+def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_ontology(monkeypatch):
+    """**고른 recipe 를 실행하려고 온톨로지를 다시 훑지 않는다.**
+
+    요청 중에 온톨로지를 읽으면 게시된 블록과 온톨로지 중 무엇이 실행을 정하는지
+    다시 둘이 된다. 해석부터 vendor 에 넘기는 steps 까지 온톨로지 읽기와 compile 을
+    막아 두고 돈다. 넘긴 steps 는 게시된 블록을 채운 것 그대로다.
+    """
+    spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
+    published = plan_service.bind(plan_service.load(spoken), "오송역")["steps"]
+    called = []
+    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    resolved(monkeypatch, recipe_id=spoken, argument="오송역")
+
+    for name in ("read", "raw_bytes", "nodes"):
+        monkeypatch.setattr(store, name, _untouchable)
+    monkeypatch.setattr(step_service, "compile_execution", _untouchable)
+
+    events = collect(execute_service.process("오송역 CCTV 보여줘", None, ROLE, continue_after_resolve=True))
+
+    assert [intent["steps"] for intent in called] == [published]
+    assert [event["node"] for event in events if event["type"] == "step_start"] == [
+        "resolve", "geocode_place", "find_cctv",
+    ]
+    assert events[-1]["type"] == "result"
+
+
+def test_a_recipe_file_with_no_published_plan_stops_with_an_error_instead_of_planning_again(
+    monkeypatch, tmp_path
+):
+    """execution 이 없는 recipe 파일은 게시 오류다. 온톨로지로 계획을 짜서 대신 부르지 않는다.
+
+    대신 부르는 길이 있으면 블록이 낡거나 빠져도 아무도 모르고, 원천이 다시 둘이 된다.
+    """
+    (tmp_path / "recipe_900.yaml").write_text(
+        "steps:\n\n  - node: place_name\n\n  - node: geocode_place\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(paths, "RECIPES_DIR", tmp_path)
+    monkeypatch.setattr(step_service, "compile_execution", _untouchable)
+    called = []
+    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called))
+
+    with pytest.raises(plan_service.PlanError, match="블록이 없다"):
+        collect(execute_service.run("recipe_900", "오송역"))
+
+    assert called == []
+
+
+def test_an_id_that_is_not_an_accepted_recipe_calls_nothing(monkeypatch):
+    """resolve 응답 schema 에는 recipe id 목록이 없다. 없는 번호가 오면 부를 것이 없다고만 답한다."""
+    called = []
+    monkeypatch.setattr(execute_service, "_execute_generic_mcp_workflow", _fake_workflow(called))
+
+    events = collect(execute_service.run("recipe_없음", "오송역"))
+
+    assert called == []
+    assert events == [{"type": "result", "answer": execute_service.NO_TOOL_ANSWER, "commands": []}]
 
 
 # ── 도구를 안 부르는 실행 ───────────────────────────────────────────
@@ -536,9 +609,9 @@ def clarify_wire(monkeypatch, paths, unwired=()):
         ],
     )
     monkeypatch.setattr(
-        execute_service.step_service,
-        "unwired",
-        lambda recipe_id: ["x"] if recipe_id in unwired else [],
+        execute_service.plan_service,
+        "load",
+        lambda recipe_id: {"unwired": ["x"] if recipe_id in unwired else []},
     )
 
 
@@ -551,7 +624,7 @@ def no_ontology(monkeypatch):
     monkeypatch.setattr(
         execute_service.graph, "executable_in", lambda recipe_id: []
     )
-    monkeypatch.setattr(execute_service.step_service, "unwired", lambda recipe_id: [])
+    monkeypatch.setattr(execute_service.plan_service, "load", lambda recipe_id: {"unwired": []})
 
 
 def test_two_candidates_give_a_short_preamble_and_numbered_names(monkeypatch, no_ontology):
@@ -662,7 +735,7 @@ def test_the_guidance_words_come_from_the_ontology(no_ontology):
     for name in topics + starts:
         assert name in answer
     nodes = execute_service.store.nodes()
-    for node_id in execute_service.step_service.context_sources():
+    for node_id in step_service.context_sources():
         assert nodes[node_id]["name"] not in starts
 
 

@@ -5,3 +5,20 @@ steps:
   - node: find_assembly_district_by_point
 
 example: 선택한 위치 당선인이랑 정당 알려줘
+
+execution:
+
+  spoken_needed: false
+
+  context_needs:
+    point: {from: context.selectedLocation, fields: {lon: lon, lat: lat}}
+
+  workflow:
+
+    - id: s1
+      node: find_assembly_district_by_point
+      server_id: asap-mcp-core
+      tool: election.findAssemblyDistrictByPoint
+      input:
+        lon: {from: context.point.lon}
+        lat: {from: context.point.lat}

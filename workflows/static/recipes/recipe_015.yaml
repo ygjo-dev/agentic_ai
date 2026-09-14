@@ -5,3 +5,18 @@ steps:
   - node: get_election_district
 
 example: 대전 서구갑 선거구 정보 줘
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: get_election_district
+      server_id: asap-mcp-core
+      tool: election.getDistrict
+      input:
+        name: {from: spoken.argument}

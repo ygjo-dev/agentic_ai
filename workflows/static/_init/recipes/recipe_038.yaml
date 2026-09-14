@@ -7,3 +7,28 @@ steps:
   - node: find_election_district_by_point
 
 example: 대전역은 무슨 선거구에 들어가
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: geocode_place
+      server_id: asap-mcp-core
+      tool: geo.geocode
+      input:
+        query: {from: spoken.argument}
+      outputs:
+        point: {fields: {lon: location.0, lat: location.1}}
+
+    - id: s2
+      node: find_election_district_by_point
+      server_id: asap-mcp-core
+      tool: election.findDistrictByPoint
+      input:
+        lon: {from: s1.point.lon}
+        lat: {from: s1.point.lat}

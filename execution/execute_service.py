@@ -1,14 +1,19 @@
-"""발화를 recipe 로 해석하고, 그 노드 순서를 vendor 실행기에 넘긴다.
+"""발화를 recipe 로 해석하고, 그 recipe 에 게시된 실행 계획을 vendor 실행기에 넘긴다.
 
 여기 남은 일은 셋이다.
 
-    발화에서 recipe 를 고르고          resolve_service
-    recipe 를 steps 로 바꾸고           step_service
-    vendor 가 준 것을 이벤트로 흘린다   아래
+    발화에서 recipe 를 고르고                    resolve_service
+    recipe 에 게시된 execution 을 steps 로 채우고  plan_service
+    vendor 가 준 것을 이벤트로 흘린다             아래
+
+**실행 계획을 여기서 만들지 않는다.** 고른 recipe 파일의 execution 블록이 무엇을
+어떤 차례로 부를지 이미 말한다. 온톨로지를 다시 훑어 계획을 짜지 않고, 블록이
+없으면 오류다(plan_service.PlanError). 온톨로지를 읽는 곳은 사람에게 보일 이름 ·
+안내 문구뿐이다.
 
 **고르는 것과 부를 수 있는 것을 가른다.** recipe 선택은 resolve_service 의
 LLM 이 혼자 한다. 고른 것을 실제로 부를 수 있는지(배선이 붙었는가 · 인자가
-있는가 · 화면 문맥이 왔는가)는 실행 직전에 여기서 본다. 못 부르면 다른
+있는가 · 화면 문맥이 왔는가)는 실행 직전에 게시된 블록으로 본다. 못 부르면 다른
 recipe 로 갈아타지 않고 실행을 시작하지 않는다.
 
 **실행 · 배선 해석 · 답 조합은 vendor 것이다.**
@@ -32,7 +37,7 @@ run 이 trace 로 다시 부른다. 같은 함수라 문구가 갈라지지 않�
 
 from collections import Counter
 
-from execution import step_service
+from execution import plan_service
 from ontology import graph, store
 from orchestrator import resolve_service
 from vendor_to_be_deleted.asap.generic_mcp_executor import _execute_generic_mcp_workflow
@@ -99,8 +104,11 @@ NO_ARGUMENT_ANSWER = {
 # 도구가 아직 안 붙은 노드가 경로에 있을 때의 답. 이름을 적어 무엇이 없는지 알린다.
 UNWIRED_ANSWER = "{names} 기능이 아직 붙지 않아 실행할 수 없습니다."
 
+# 부를 도구도 지도 명령도 없을 때의 답. 받아들인 recipe 가 아닌 id 를 골랐을 때도 이것이다.
+NO_TOOL_ANSWER = "부를 도구가 없습니다."
+
 # 실행에 필요한 화면 문맥이 안 왔을 때의 안내. key 는 source 가 화면(context.…)인
-# 온톨로지 노드 id 이고 step_service.context_sources() 와 같은 자리를 가리킨다.
+# 온톨로지 노드 id 이고 게시된 execution 의 context_needs 와 같은 자리를 가리킨다.
 #
 # **고른 것을 바꾸지 않고 실행만 멈춘다.** 무엇을 골랐는지는 LLM 이 정했고,
 # 지금 부를 수 있는지는 값이 왔는가의 문제라 사람에게 그대로 말한다.
@@ -151,18 +159,16 @@ def _no_argument_answer(recipe_id: str) -> str:
     return NO_ARGUMENT_ANSWER.get(start, NO_PLACE_ANSWER)
 
 
-def _no_context_answer(absent: set[str]) -> str:
+def _no_context_answer(absent: list[str]) -> str:
     """화면에서 와야 하는 값이 없을 때의 답.
 
-    입력  값을 못 받은 시작 노드 id 집합
+    입력  값을 못 받은 시작 노드 id 목록. plan_service.absent_context 의 차례
     출력  무엇이 없는지 적은 문장. 여럿이면 줄바꿈으로 이음
-    규칙  차례는 step_service.context_sources() 를 따름. 집합 차례로 내면 요청마다
-          순서가 바뀜
+    규칙  차례는 받은 목록 그대로임. 게시된 context_needs 의 차례이고 그것은 온톨로지에
+          적힌 차례로 compile 됨. 집합 차례로 내면 요청마다 순서가 바뀜
     """
     return "\n".join(
-        NO_CONTEXT_ANSWER.get(node_id, NO_CONTEXT_DEFAULT)
-        for node_id in step_service.context_sources()
-        if node_id in absent
+        NO_CONTEXT_ANSWER.get(node_id, NO_CONTEXT_DEFAULT) for node_id in absent
     ) or NO_CONTEXT_DEFAULT
 
 
@@ -213,14 +219,19 @@ def _offer_names() -> tuple[list[str], list[str]]:
     규칙  대상은 about 의 대상으로 등장하는 노드. 시작 데이터는 경로가 시작할
           수 있는 노드에서 화면에서 오는 둘을 뺀 것
           화면에서 오는 둘을 빼는 것은 사람이 더 말해 줄 것이 없기 때문임.
-          어느 것이 그것인지는 step_service.context_sources() 가 앎
+          어느 것이 그것인지는 온톨로지 source 의 from 이 말함(context.…)
           (NO_ARGUMENT_ANSWER 가 그 둘을 빼 둔 것과 같은 까닭임)
+          고른 recipe 가 없는 답이라 실행 계획과 무관함
     제약  이름을 코드에 적지 않는다.
           노드를 등록하면 안내도 함께 늘어야 함
     """
     nodes = store.nodes()
     topics = [nodes[node_id]["name"] for node_id in graph.group_ids() if node_id in nodes]
-    from_screen = step_service.context_sources()
+    from_screen = {
+        node_id
+        for node_id in graph.start_ids()
+        if graph.source_of(node_id)["from"].startswith(plan_service.CONTEXT_SOURCE)
+    }
     starts = [
         nodes[node_id]["name"]
         for node_id in graph.start_ids()
@@ -276,7 +287,7 @@ def _candidate_labels(candidates: list[str], paths: dict) -> list[str]:
         else:
             label = chain[-1]
 
-        if step_service.unwired(recipe_id):
+        if (plan_service.load(recipe_id) or {}).get("unwired"):
             label += UNWIRED_MARK
         labels.append(label)
 
@@ -351,11 +362,14 @@ async def run(
           발화 해석이 함께 내놓은 이름 있는 값(options). 안 주면 배선 기본값
     출력  이벤트 dict 를 순서대로 냄. 마지막은 반드시 type=result
           step_start / step_end 는 실제로 불린 단계마다 한 쌍
-    규칙  경로에 도구가 안 붙은 노드가 있으면 하나도 안 부르고 그렇다고 답함.
+    규칙  recipe 파일에 게시된 execution 을 읽음(plan_service.load). 파일이 없으면
+          받아들인 recipe 가 아니라 부를 것이 없다고 답함. 파일은 있는데 execution 이
+          없거나 깨졌으면 PlanError 가 그대로 올라감
+          경로에 도구가 안 붙은 노드가 있으면 하나도 안 부르고 그렇다고 답함.
           부르는 것만 부르면 반쪽 결과를 온전한 답인 것처럼 내놓게 됨
           배선이 실제로 읽는 화면 문맥이 안 왔으면 시작하지 않음. 없는 좌표로
           부르면 전국이 나오거나 required 가 빈 채로 도구가 거부함.
-          무엇을 읽는지는 step_service.context_needs 가 실행 계획으로 셈
+          무엇을 읽는지는 게시된 execution 의 context_needs 가 말함
           부를 도구가 없고 지도 명령만 있으면 vendor 를 안 지남. 빈 steps 를
           넘기면 vendor 가 실패로 봄
           지도 명령이 도구 단계와 함께 있으면 도구 응답에서 나온 명령 뒤에
@@ -367,22 +381,27 @@ async def run(
           본문을 그대로 담음(실측 : "… Server error '500 Internal Server Error'
           for url '<ASAP_GATEWAY_URL>/api/tools/execute' … Response body: …").
           무엇이 비었는지만 trace 로 다시 만들어 씀
+          게시된 execution 이 없다고 온톨로지로 계획을 다시 만들지 않는다.
+          원천이 게시된 블록과 온톨로지 둘이 됨
     """
-    missing = step_service.unwired(recipe_id)
+    execution = plan_service.load(recipe_id)
+    if execution is None:
+        yield _result(NO_TOOL_ANSWER, [])
+        return
+
+    missing = execution.get("unwired", [])
     if missing:
         yield _result(_unwired_answer(recipe_id, missing), [])
         return
 
-    absent = step_service.context_needs(recipe_id) - set(
-        step_service.context_starts(context)
-    )
+    absent = plan_service.absent_context(execution, context)
     if absent:
         yield _result(_no_context_answer(absent), [])
         return
 
-    plan = step_service.plan(recipe_id, argument, options)
+    plan = plan_service.bind(execution, argument, options)
     if not plan["steps"] and not plan["commands"]:
-        yield _result("부를 도구가 없습니다.", [])
+        yield _result(NO_TOOL_ANSWER, [])
         return
 
     if not plan["steps"]:
@@ -468,7 +487,8 @@ def process(
           않았는데 부르면 엉뚱한 곳이 나옴
           실행 계획이 발화에서 온 값을 안 쓰는 recipe 는 인자가 없어도 부름.
           "지금 보이는 곳 CCTV 보여줘" 에는 뽑을 말이 없고 조회할 곳은 이미
-          문맥이 말했음. 그 판정은 step_service.spoken_needed 가 함
+          문맥이 말했음. 그 판정은 게시된 execution 의 spoken_needed 가 말함.
+          받아들인 recipe 가 아닌 id 는 인자를 안 따지고 run 이 부를 것이 없다고 답함
           이름 있는 값(SPOKEN_OPTIONS)은 그대로 run 에 넘김. 말하지 않아 null
           인 것을 여기서 채우지 않음. 무엇이 기본인가는 온톨로지 tool.parameters 의
           default 가 앎
@@ -501,7 +521,8 @@ def process(
             return
 
         argument = resolved.get("argument")
-        if not argument and step_service.spoken_needed(recipe_id):
+        execution = plan_service.load(recipe_id)
+        if not argument and execution is not None and execution["spoken_needed"]:
             yield _result(_no_argument_answer(recipe_id), [])
             return
 

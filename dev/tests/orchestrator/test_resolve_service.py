@@ -259,12 +259,12 @@ def test_a_recipe_reading_the_screen_context_is_not_dropped_from_the_candidates(
     (execute_service 의 실행 전제), 여기서 미리 빼면 「무엇을 골랐는가」와
     「지금 부를 수 있는가」가 한 값에 섞인다.
     """
-    from execution import step_service
+    from execution import plan_service
 
     screen = next(
         recipe_id
         for recipe_id in _recipe_ids()
-        if step_service.context_needs(recipe_id)
+        if plan_service.load(recipe_id)["context_needs"]
     )
     result = resolved(stub_llm_client, recipe_id=screen, candidate_recipe_ids=[screen])
 

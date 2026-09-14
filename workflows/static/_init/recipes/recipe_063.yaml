@@ -3,3 +3,22 @@ steps:
   - node: point
 
   - node: compute_isochrone
+
+execution:
+
+  spoken_needed: false
+
+  context_needs:
+    point: {from: context.selectedLocation, fields: {lon: lon, lat: lat}}
+
+  workflow:
+
+    - id: s1
+      node: compute_isochrone
+      server_id: r5-server
+      tool: compute_isochrone
+      input:
+        origin_lon: {from: context.point.lon}
+        origin_lat: {from: context.point.lat}
+        cutoffs_minutes: {from: spoken.minutes, default: [30]}
+        mode: {from: spoken.travel_mode, default: 대중교통, map: {도보: WALK, 자전거: BICYCLE, 승용차: CAR, 대중교통: TRANSIT}}

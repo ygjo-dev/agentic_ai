@@ -11,8 +11,8 @@
 dev/tools/check_resolve.py · dev/tools/probe_tools.py 와 같은 성격이라 그 파일들의
 짜임새를 따른다 — 파일 하나에 담고 저장소의 다른 곳을 건드리지 않는다.
 
-**규칙을 복사하지 않는다.** 실행 계획과 tool 해석은 execution/step_service 에서
-그대로 가져온다. 여기에 옮겨 적으면 온톨로지를 고칠 때 두 곳이 조용히 어긋나고,
+**규칙을 복사하지 않는다.** 실행 계획은 recipe 에 게시된 execution(execution/plan_service)
+에서, tool 해석은 execution/step_service 에서 그대로 가져온다. 여기에 옮겨 적으면 온톨로지를 고칠 때 두 곳이 조용히 어긋나고,
 그러면 이 도구가 세는 숫자를 믿을 수 없게 된다.
 
 세는 규칙은 셋이다.
@@ -46,11 +46,11 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from app.api.services.streamlit import screen_service  # noqa: E402
+from execution import plan_service  # noqa: E402
 from execution.step_service import (  # noqa: E402
     binding_of,
     bound_inputs,
     check_bindings,
-    plan,
     unwired,
 )
 from ontology.graph import inputs_of, is_executable  # noqa: E402
@@ -148,7 +148,7 @@ def findings() -> tuple:
           kind 는 DISCARDS_SPOKEN 또는 IGNORES_PREVIOUS. previous 는 앞 도구
           노드 id 이고 첫 단계면 None
     규칙  unwired 가 빈 recipe 만 봄
-          실행 계획(step_service.plan)을 PROBE 인자로 만들어 step 마다 봄.
+          게시된 실행 계획(plan_service.bind)을 PROBE 인자로 채워 step 마다 봄.
           builtin 은 뒤 단계에 얹혀 step 이 없고 지도 명령은 step 이 아님
           첫 단계가 앞 단계 참조만 쓰면 A. 발화 · 화면 값이 갈 곳이 없음
           앞 단계가 있는데 발화 인자만 쓰면 B. 앞 단계 결과가 버려짐
@@ -164,7 +164,7 @@ def findings() -> tuple:
             continue
         wired += 1
 
-        result = plan(recipe_id, PROBE)
+        result = plan_service.bind(plan_service.load(recipe_id), PROBE)
         previous = None
         for node_id, step in zip(result["nodes"], result["steps"]):
             marks = marks_in(step["input"])

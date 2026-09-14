@@ -5,3 +5,18 @@ steps:
   - node: search_assembly_pledge_districts
 
 example: 대중교통 공약 내놓은 의원 모아줘
+
+execution:
+
+  spoken_needed: true
+
+  context_needs: {}
+
+  workflow:
+
+    - id: s1
+      node: search_assembly_pledge_districts
+      server_id: asap-mcp-core
+      tool: election.searchAssemblyPledgeDistricts
+      input:
+        query: {from: spoken.argument}

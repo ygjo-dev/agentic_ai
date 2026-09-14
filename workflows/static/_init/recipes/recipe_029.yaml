@@ -5,3 +5,19 @@ steps:
   - node: search_assembly_pledge_districts
 
 example: 현재 화면 안 국민의힘 공약 검색해줘
+
+execution:
+
+  spoken_needed: false
+
+  context_needs:
+    map_extent: {from: context.view.bbox, fields: {minLon: '0.0', minLat: '0.1', maxLon: '1.0', maxLat: '1.1'}}
+
+  workflow:
+
+    - id: s1
+      node: search_assembly_pledge_districts
+      server_id: asap-mcp-core
+      tool: election.searchAssemblyPledgeDistricts
+      input:
+        bbox: [{from: context.map_extent.minLon}, {from: context.map_extent.minLat}, {from: context.map_extent.maxLon}, {from: context.map_extent.maxLat}]

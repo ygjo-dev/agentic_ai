@@ -411,6 +411,9 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
 
     사람이 받아들인 recipe 에는 example 이 붙을 수 있음. 사람이 쓴 발화 예시라
     새로 만든 파일에는 없음.
+
+    파일에 쓰는 순간 받아들인 recipe 라 execution 이 함께 게시됨. 실행은 그 칸만 읽고,
+    그 칸은 온톨로지로 compile 한 것이라 사람이 적은 원천이 아님.
     """
     nodes = nodes_now()
     chains = [["place_name", "geocode_place"]]
@@ -435,8 +438,8 @@ def test_new_recipes_get_new_numbers_and_the_old_files_never_change():
     new = yaml.safe_load(
         (paths.RECIPES_DIR / f"{created[0]}.yaml").read_text(encoding="utf-8")
     )
-    assert set(new) == {"steps"}
-    assert set(old) <= {"steps", "example"}
+    assert set(new) == {"steps", "execution"}
+    assert set(old) <= {"steps", "example", "execution"}
     assert set(new["steps"][0]) == set(old["steps"][0]) == {"node"}
     assert [step["node"] for step in new["steps"]] == chains[0]
 

@@ -13,7 +13,8 @@
 여기서 지키는 것은 그 길의 이음매다.
 
     LLM 은 MCP 도구 순서를 만들지 않는다 — recipe 를 고른다
-    recipe 는 노드만 적는다 — 서버 · 도구 · 인자를 안 가진다
+    recipe 의 steps 는 사람이 받아들인 노드만 적는다 — 실행 계획은 온톨로지로 compile 해 게시한다
+    요청 중에는 게시된 실행 계획만 읽는다 — 온톨로지로 계획을 다시 만들지 않는다
     도메인은 서비스 계층을 모듈 수준에서 안 부른다
 
 이음매의 **반대쪽 끝**은 각 subsystem 이 본다. 여기서 다시 안 본다.
@@ -102,18 +103,20 @@ def test_the_spoken_options_handed_to_execution_are_fields_the_llm_fills():
     )
 
 
-# ── recipe 는 노드 목록일 뿐이다 ────────────────────────────────────
+# ── recipe 는 사람이 받아들인 노드 목록과 게시된 실행 계획이다 ────────
 
 
-def test_a_recipe_is_only_an_ordered_list_of_ontology_nodes():
-    """**recipe 파일이 실행을 안 가진다.** 무엇으로 수행하는지는 온톨로지 노드의 tool 이 안다.
+def test_a_recipe_is_an_accepted_node_list_with_its_plan_compiled_and_published():
+    """**사람이 적는 것은 노드 목록과 example 뿐이다.** 실행 계획(execution)은 게시가 붙인다.
 
-    recipe 에 서버 · 도구 · 인자를 적으면 진실의 원천이 둘이 된다 — 도구를
-    갈아끼울 때 recipe 를 전부 함께 고쳐야 하고, 어긋났을 때 어느 쪽이
-    맞는지 알 수 없다.
+    execution 은 온톨로지 노드의 tool 과 사람이 받아들인 steps 로 compile 한 것이라
+    원천은 여전히 온톨로지다. 사람이 recipe 에 서버 · 도구 · 인자를 손으로 적으면 진실의
+    원천이 둘이 된다 — 도구를 갈아끼울 때 recipe 를 전부 함께 고쳐야 하고, 어긋났을 때
+    어느 쪽이 맞는지 알 수 없다. 게시된 블록이 compile 과 같은지는
+    dev/tests/execution/test_published_execution.py 가 본다.
 
-    steps 말고 둘 수 있는 칸은 example 하나다. 사람이 그 recipe 를 받아들이며
-    적은 발화 예시라 실행이 아니다.
+    steps 와 execution 말고 둘 수 있는 칸은 example 하나다. 사람이 그 recipe 를
+    받아들이며 적은 발화 예시라 실행이 아니다.
 
     개수를 안 센다. 「전부 그렇다」가 요구사항이고 recipe 가 늘어도 그대로다.
     """
@@ -124,7 +127,7 @@ def test_a_recipe_is_only_an_ordered_list_of_ontology_nodes():
     어긋난_것 = []
     for path in files:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))
-        if not set(document) <= {"steps", "example"}:
+        if not set(document) <= {"steps", "example", "execution"} or "execution" not in document:
             어긋난_것.append(f"{path.stem}: 칸이 {sorted(document)} 이다")
         steps = document["steps"]
         for index, step in enumerate(steps):
@@ -133,7 +136,55 @@ def test_a_recipe_is_only_an_ordered_list_of_ontology_nodes():
             elif step["node"] not in nodes:
                 어긋난_것.append(f"{path.stem}[{index}]: 온톨로지에 없는 노드 {step['node']}")
 
-    assert 어긋난_것 == [], "recipe 가 노드 말고 다른 것을 적었다:\n  " + "\n  ".join(어긋난_것)
+    assert 어긋난_것 == [], "recipe 가 노드 · example · 게시된 execution 말고 다른 것을 적었다:\n  " + "\n  ".join(어긋난_것)
+
+
+# ── 요청 중에는 게시된 계획만 읽는다 ────────────────────────────────
+
+# 요청 중에 고른 recipe 를 실행하는 모듈.
+RUNTIME_MODULES = ("execution/execute_service.py", "execution/plan_service.py")
+
+
+def imported_names(tree):
+    """모듈 안 어디서든(함수 안까지) import 하는 이름. "execution.step_service" 꼴."""
+    names = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            names += [alias.name for alias in node.names]
+        elif isinstance(node, ast.ImportFrom) and node.level == 0:
+            names += [f"{node.module}.{alias.name}" for alias in node.names]
+    return names
+
+
+def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontology():
+    """**고른 recipe 를 실행하려고 온톨로지를 다시 훑어 계획을 만들지 않는다.**
+
+    요청 중에 계획을 다시 만들면 사람이 받아들여 게시한 실행 계획과 온톨로지 중 무엇이
+    실행을 정하는지 둘이 된다. 그래서 실행 모듈은 compile 하는 step_service 를 import
+    하지 않고, 게시된 블록을 읽는 plan_service 는 온톨로지도 게시도 import 하지 않는다.
+
+    execute_service 가 온톨로지를 읽는 것은 사람에게 보일 이름 · 안내 문구다. 그것은
+    계획이 아니라 여기서 막지 않는다. 계획을 안 지나는지는
+    dev/tests/execution/test_execute_service.py 가 온톨로지 읽기를 막고 돌려 본다.
+    """
+    from paths import REPO_ROOT
+
+    offenders = []
+    for relative in RUNTIME_MODULES:
+        tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"))
+        names = imported_names(tree)
+        offenders += [f"{relative} -> {name}" for name in names if "step_service" in name]
+        offenders += [
+            f"{relative} -> step_service.{node.attr}"
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "step_service"
+        ]
+        if relative.endswith("plan_service.py"):
+            offenders += [
+                f"{relative} -> {name}" for name in names if name.split(".")[0] in ("ontology", "registration")
+            ]
+
+    assert offenders == [], "요청 중의 실행이 계획을 다시 만들 수 있다:\n  " + "\n  ".join(offenders)
 
 
 # ── 도메인이 서비스를 안 부른다 ─────────────────────────────────────
