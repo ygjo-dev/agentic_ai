@@ -3229,6 +3229,34 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-15 · 게시 자산을 바깥 뿌리(AGENTIC_ARTIFACT_ROOT)에서도 읽는다 — KRRI_Ontology_Registry baseline
+
+환경 오프라인(LLM · Gateway · MCP 안 부름) · 시작 HEAD f70d6e5 · 브랜치 feature/mcp-expansion.
+바깥 뿌리 = `/home/ubuntu/source/KRRI_Ontology_Registry` 3b81744 (f70d6e5 작업본을 cmp 로 전 파일 동일하게 옮긴 것).
+**온톨로지 · recipe · menu 를 한 글자도 안 바꿨다.** 바뀐 것은 `paths.py` 가 경로를 정하는 자리 하나다.
+
+```
+읽는 곳      store.py · graph.py · screen_service · workflow_materializer · menu/load.py 는 전부 paths 를 통함.
+             코드 경로를 새로 안 만들었다
+값 없음      이 저장소 작업본 (옮기는 동안의 호환)
+값 있음      <뿌리>/ontology/ontology.yaml · <뿌리>/menu/ · <뿌리>/recipes/
+값이 틀림    ArtifactRootError. 작업본으로 안 돌아감
+```
+
+차등 (같은 사본 · 같은 프로세스 코드, 환경변수만 갈라 두 번. 시각 고정 2026-09-15 21:00 KST).
+
+```
+단위        store.read · raw sha · recipe_ids · paths_for 39 · menu 원문 sha/길이 4681 · ontology_version ·
+            load(execution) 39 · materialize (39+없는 1) × 발화 5 × 문맥 5 = 1000 ·
+            resolve(가짜 LLM, 프롬프트 sha 포함) 39 · GET /screen 본문 sha
+            합 1127 단위   작업본 vs 바깥 뿌리   차이 0
+대조        바깥 뿌리 사본에서 recipe_061 기본 minutes [30]->[45] · menu 한 문장만 고침   차이 58
+            (load 1 · materialize 15 · menu 2 · resolve 39 · ontology_version 1). 이빨이 있다
+```
+
+테스트. 전체 394 통과 · 1 실패 — test_dense_graph_would_move_if_overlap_removal_were_used
+(Graphviz 판 차이, 전과 같음). 값 없음 · 값 있음 두 번 모두 같은 결과. 새 시험 셋은 `dev/tests/test_paths.py`.
+
 ### 2026-09-15 · ExecutionRequest 를 걷고 Recipe.execution 을 곧장 KRRI native call_mcp_workflow 로 만든다 — execute_service 를 창구로 녹인다
 
 환경 오프라인(LLM · Gateway · MCP 안 부름 · 서비스 재시작 0) · 시작 HEAD b4c9af5 · 브랜치 feature/mcp-expansion.

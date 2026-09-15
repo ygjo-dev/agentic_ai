@@ -87,6 +87,8 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
   게시된 파일이다** — `ontology/ontology.yaml` · `workflows/static/menu/` ·
   `workflows/static/recipes/`(각 recipe 의 `execution` 칸)
 - 그 저장소의 Python 모듈을 import 하지 않는다. 호환 wrapper 도 두지 않는다
+- 게시 파일을 어디서 읽을지는 `AGENTIC_ARTIFACT_ROOT` 하나가 정한다(`paths.py`). 비우면 이 저장소
+  안의 작업본을 읽는다 — 옮기는 동안의 호환이다. 적은 폴더가 없으면 멈춘다
 - 게시된 자산을 요청 중에 다시 계획하지 않는다. 블록이 없거나 틀리면 오류다
 
 ---
