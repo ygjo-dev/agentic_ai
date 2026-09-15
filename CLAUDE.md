@@ -240,8 +240,8 @@ execution 칸은 등록 저장소가 게시한 것을 그대로 받는다. 온�
 고쳤을 때도 거기서 다시 게시한다. 후보를 받아들이는 것도 거기 일이다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
-`dev/tools/check_resolve.py` 의 `UTTERANCES` 이고, 발화를 더하면 묶음
-경계(`BASELINE_LAST` · `EXTENSION_LAST`)도 함께 센다.
+`dev/evaluation/resolve_regression.yaml` 이고, 발화를 더하면 그 발화의 묶음(`group`)도
+함께 적는다.
 
 ---
 
@@ -260,7 +260,8 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 - runtime 이 읽는 것은 **작업본뿐이다.** 온톨로지 · recipe · menu 의 `_init` 은 옛 등록 ·
   초기화 기능의 되돌릴 원본이었고, 그 기능은 agentic_ai 밖으로 나갔다
 - 지금 그 `_init` 을 읽는 곳은 `dev/tools/check_resolve.py`(표 머리의 recipe 상태)뿐이다.
-  정답표를 evaluation suite 로 옮길 때 함께 정리한다. 그 전에 지우지 않는다
+  정답표는 evaluation suite(`dev/evaluation/`)로 옮겼지만 이 표 머리는 아직 남아 있다.
+  지울지는 사람이 정한다. 그 전에 지우지 않는다
 - `_init` 을 코드가 자동으로 다시 만들지 않는다
 - `app/ui/graph/_init/layout.json` 은 좌표 작업본이 없는 기계의 첫 배치다
   (`layout_store.ensure_positions` 가 복사한다). 추적한다. 사람이 눈으로 골라 확정한 배치라 지우면 그
@@ -404,7 +405,7 @@ streamlit run app/ui/main.py                   화면 (8501)
 아무것도 안 띄우고        check_wiring · pytest
 Gateway 만               probe_tools · probe_shapes
 LLM 만                   check_llm  (창구를 안 지나고 resolve_service 를 직접 부른다)
-창구(8000) + LLM         check_resolve · check_demo
+창구(8000) + LLM         check_resolve · check_demo · dev/evaluation/runner.py
 창구 + LLM + Gateway     check_argument  (도구를 실제로 불러 본다)
 ```
 

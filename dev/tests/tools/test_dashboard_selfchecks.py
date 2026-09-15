@@ -47,3 +47,13 @@ def test_the_group_label_chooser_does_not_miss_the_screen_utterances():
             raise AssertionError("두 갈래로 되돌렸는데 자체 검사가 안 죽었다")
     finally:
         check_resolve._group_label = was
+
+
+def test_the_evaluation_runner_runs_the_whole_suite_to_the_end_and_grades_like_check_resolve():
+    """runner 는 check_resolve 의 판정을 그대로 부른다. 정답표 전체를 가짜 resolve 로 돌려 판정이 어긋나면 여기서 빨간불.
+
+    정답표가 YAML 로 바뀌어도 계기판과 runner 가 같은 파일 · 같은 판정을 쓰는지를 커밋마다 본다.
+    """
+    from dev.evaluation import runner
+
+    runner._selfcheck()

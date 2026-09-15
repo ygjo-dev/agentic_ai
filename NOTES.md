@@ -3229,6 +3229,39 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-15 · 정답표를 YAML(dev/evaluation/resolve_regression.yaml)로 옮기고 공통 evaluation runner 를 둔다
+
+환경 오프라인(LLM 안 부름 — resolve 역할 vLLM solar-open2-250b · 192.168.68.231:18000 이 못 닿음) ·
+시작 HEAD 951e3f7 · 브랜치 feature/mcp-expansion. **발화 · 기대 recipe · 이름 있는 값 · 표시를 한 글자도 안 바꿨다.**
+
+```
+옮긴 것     check_resolve.UTTERANCES 48 · SPOKEN_VALUES 14 · MARKS 6 · 묶음 경계 29/40
+            -> dev/evaluation/resolve_regression.yaml (cases[].group 이 묶음. 경계 숫자는 계산값으로만 남김)
+            그 자리의 주석 469 줄도 글자 그대로 YAML 로 (빠진 것 0)
+읽는 곳     dev/evaluation/suite.py 하나. check_resolve · runner 가 같은 파일을 읽음
+runner      dev/evaluation/runner.py. /resolve -> 판정(check_resolve._grade) · 이름 있는 값 · 오프라인
+            materialize -> JSON 한 벌. MCP 안 부름. 결과는 dev/tools/sweep_out/
+```
+
+차등 (base = `git archive 951e3f7` 의 check_resolve, 같은 가짜 결과).
+
+```
+옮기기 전후   UTTERANCES(타입까지) · MARKS · _groups · _group_label(0..59) · 경계 · 이름 목록   같음
+              SPOKEN_VALUES 내용 같음. dict 순회 순서만 case 순서로 바뀜 (순서에 기대는 곳 0)
+              표 여섯 × 묶음 조합 7 을 찍은 stdout 128,353자 sha 같음 · _selfcheck 통과
+runner 호환   가짜 HTTP 로 같은 /resolve 원문 240(48 × 5, SELECT · CLARIFY · NO_MATCH · 500 섞음)을
+              check_resolve._measure 와 runner.resolve_via_api 에 먹임
+              발화별 적중 · 근접 · 빗나감 · 못 붙음 · 이름 있는 값 적중 차이 0 (64 · 37 · 70 · 69 · 41)
+live          runner CLI --only 1,24,41 이 창구 8000 을 불러 끝까지 돎. /resolve 500(LLM 못 닿음) -> 못 붙음 + error
+              ★ LLM 을 살려 check_resolve 와 runner 점수를 맞대는 것은 못 했다
+```
+
+기존 문제 그대로: `check_argument --help` 는 ASAP_GATEWAY_URL 이 없으면 멈추고 `sweep_utterances` 는 스크립트로
+돌리면 `tools` 를 못 찾는다 (951e3f7 에서도 같음).
+
+테스트. 전체 395 통과 · 1 실패 — test_dense_graph_would_move_if_overlap_removal_were_used (Graphviz 판 차이,
+전과 같음). 새 시험 하나(runner._selfcheck)를 test_dashboard_selfchecks.py 에 붙임.
+
 ### 2026-09-15 · 게시 자산을 바깥 뿌리(AGENTIC_ARTIFACT_ROOT)에서도 읽는다 — KRRI_Ontology_Registry baseline
 
 환경 오프라인(LLM · Gateway · MCP 안 부름) · 시작 HEAD f70d6e5 · 브랜치 feature/mcp-expansion.
