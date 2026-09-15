@@ -30,7 +30,6 @@
 실선 끄기 · 점선 굵기 · 상단 스타일이 좌표를 안 바꾼다는 짝들이다. 그 인자가
 build_dot 에서 통째로 사라져 **이제 구조로 불가능하다** — DOT 에는 강조라는
 개념이 없다. 후보를 좁혀도 좌표가 같다는 것은 지금
-`dev/tests/app/api/test_register_colours.py` 와
 `dev/tests/app/ui/test_graph_library.py` 가 화면 쪽에서 지킨다.
 """
 

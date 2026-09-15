@@ -1,7 +1,7 @@
-"""대상 : 온톨로지의 tool — 지금 적힌 실행 수단이 실제로 실행 가능한가
+"""대상 : 게시된 Recipe.execution — 지금 부르는 도구 · 칸이 실제로 실행 가능한가
 
-로더와 계획의 규칙은 dev/tests/registration/test_recipe_execution_builder.py 가 본다. 여기서 보는 것은 **지금 파일에
-적힌 것**이 온톨로지 · Gateway 스키마 · 실행 권한과 맞느냐다.
+compile 규칙은 agentic_ai 밖의 등록 저장소가 본다. 여기서 보는 것은 **지금 게시된 것**이
+온톨로지 · Gateway 스키마 · 실행 권한과 맞느냐다.
 
 **개수를 박지 않는다.** recipe 가 몇 개인지 서버가 몇 개인지는 요구사항이
 바뀌면 함께 바뀌는 값이라 빨간불이 아무것도 알려주지 않는다. 대신 전부를
@@ -22,16 +22,12 @@ import pytest
 
 import paths
 from execution import legacy_vendor, workflow_materializer
-from registration import recipe_execution_builder
 from ontology import graph, store
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
 
-# 어댑터가 걸리면 중심 좌표 · 반경 대신 bbox 넷이 나간다. 걸린 벌은 스키마 대조에서
-# 중심 · 반경을 빼고 bbox 넷을 넣어 맞댄다 — vendor 의 _point_radius_to_bbox_input 이
-# 하는 그대로다.
+# 지도 범위를 평평한 네 칸으로 받는 도구의 칸 이름.
 BBOX_FIELDS = ("minLon", "minLat", "maxLon", "maxLat")
-ADAPTER_CONSUMES = set(workflow_materializer.CENTER_KEYS) | {"radiusMeters", "radius"}
 
 
 def _schemas():
@@ -54,37 +50,32 @@ def _props(tool):
     return _schemas()[tool][0]
 
 
-def _tool_nodes():
-    """tool 이 있는 노드와 그 binding."""
-    for node_id in graph.node_ids():
-        binding = recipe_execution_builder.binding_of(node_id)
-        if binding is not None:
-            yield node_id, binding
+def _tool_ids():
+    """온톨로지 노드에 적힌 tool.id 전부."""
+    return [tool["id"] for tool in (graph.tool_of(node_id) for node_id in graph.node_ids()) if tool]
+
+
+def _published_steps():
+    """(recipe id, 게시된 도구 단계) 를 죽 편다. 지도 명령은 도구 단계가 아님."""
+    for recipe_id in graph.recipe_ids():
+        for entry in workflow_materializer.load(recipe_id)["workflow"]:
+            if "server_id" in entry:
+                yield recipe_id, entry
 
 
 def _rows():
-    """(노드, 타입, 출처, 어미, 도구 이름, 보내는 칸 집합, 스키마 칸) 을 죽 편다."""
+    """(recipe, 노드, 도구 이름, 보내는 칸 집합, 스키마 칸) 을 죽 편다.
+
+    transform 이 걸린 단계의 input 은 이미 transform 뒤의 칸(범위 네 칸)으로 게시돼 있다.
+    """
     schemas = _schemas()
-    for node_id, binding in _tool_nodes():
-        if binding["kind"] != recipe_execution_builder.MCP or binding["tool"] not in schemas:
+    for recipe_id, entry in _published_steps():
+        if entry["tool"] not in schemas:
             continue
-        props, _required = schemas[binding["tool"]]
-        for row in recipe_execution_builder.variants(node_id):
-            fields = set(row["input"])
-            if row["adapter"]:
-                fields = (fields - ADAPTER_CONSUMES) | set(BBOX_FIELDS)
-            yield node_id, row["type"], row["origin"], row["suffix"], binding["tool"], fields, props
+        yield recipe_id, entry["node"], entry["tool"], set(entry["input"]), schemas[entry["tool"]][0]
 
 
 # ── 표의 구조 ───────────────────────────────────────────────────────
-
-
-def test_the_tools_and_sources_agree():
-    """tool · source 가 읽히고, 받는 노드가 읽는 칸을 내놓는 쪽이 적었다.
-
-    안 적었으면 그 자리가 조용히 unwired 가 된다.
-    """
-    assert recipe_execution_builder.check_bindings() == []
 
 
 def test_no_wiring_table_stands_beside_the_ontology_and_the_published_plan():
@@ -97,8 +88,6 @@ def test_no_wiring_table_stands_beside_the_ontology_and_the_published_plan():
     assert not (paths.REPO_ROOT / "execution" / "wiring.yaml").exists()
     assert not hasattr(paths, "WIRING_PATH")
     for module, name in [
-        (recipe_execution_builder, "PREVIOUS_RESULT_PATHS"),
-        (recipe_execution_builder, "SOURCE_FIELD_BASES"),
         (workflow_materializer, "HEADLINE"),
         (workflow_materializer, "reload_wiring"),
     ]:
@@ -110,7 +99,7 @@ def test_every_tool_names_its_server_and_the_ontology_holds_no_address():
 
     온톨로지에 주소를 적으면 서비스를 다른 기계로 옮길 때 도메인을 고쳐야 한다.
     """
-    ids = [binding["id"] for _node, binding in _tool_nodes()]
+    ids = _tool_ids()
     assert ids, "tool 이 하나도 없다 — 이 검사가 무력하다"
 
     for tool_id in ids:
@@ -135,21 +124,21 @@ def test_every_start_node_is_a_semantic_type_with_a_known_source():
         origin = graph.source_of(node_id).get("from")
         assert not graph.is_executable(node_id), node_id
         assert node_id not in graph.group_ids(), node_id
-        assert origin == recipe_execution_builder.SPOKEN_ARGUMENT or origin.startswith(recipe_execution_builder.CONTEXT_SOURCE), origin
+        assert origin == workflow_materializer.SPOKEN_ARGUMENT or origin.startswith(workflow_materializer.CONTEXT_SOURCE), origin
 
 
 # ── 지금 recipe 를 다 부를 수 있는가 ────────────────────────────────
 
 
 def test_every_active_recipe_is_fully_wired():
-    """하나라도 실행 수단이 비면 그 recipe 는 골라도 실행이 안 된다.
+    """게시된 블록에 실행 수단이 빈 노드(unwired)가 있으면 그 recipe 는 골라도 실행이 안 된다.
 
     개수를 안 센다. 「전부 붙어 있다」가 요구사항이고 recipe 가 늘어도 그대로다.
     """
     붙지_않은_것 = {
-        recipe_id: recipe_execution_builder.unwired(recipe_id)
+        recipe_id: workflow_materializer.load(recipe_id).get("unwired")
         for recipe_id in graph.recipe_ids()
-        if recipe_execution_builder.unwired(recipe_id)
+        if workflow_materializer.load(recipe_id).get("unwired")
     }
 
     assert 붙지_않은_것 == {}, f"실행 수단이 빈 recipe 가 있다: {붙지_않은_것}"
@@ -170,12 +159,7 @@ def _servers_recipes_call():
     tool 이 남아 있는 것은 권한이 열리면 되살릴 자리라는 뜻이지 지금 부른다는
     뜻이 아니다.
     """
-    return {
-        entry["server_id"]
-        for recipe_id in graph.recipe_ids()
-        for entry in workflow_materializer.load(recipe_id)["workflow"]
-        if "server_id" in entry
-    }
+    return {entry["server_id"] for _recipe_id, entry in _published_steps()}
 
 
 def test_every_server_a_recipe_calls_is_inside_the_permission_scope():
@@ -212,40 +196,22 @@ def test_the_permission_scope_holds_no_server_no_recipe_calls():
 def test_every_field_the_tool_sends_exists_in_the_schema():
     """없는 칸은 버려진다. 조용히 전국을 뒤지는 길이 그것이다."""
     없는_칸 = [
-        f"{node} × {kind} ({origin}{' …' + suffix if suffix else ''}) -> {tool} : {sorted(fields - props)}"
-        for node, kind, origin, suffix, tool, fields, props in _rows()
+        f"{recipe_id} × {node} -> {tool} : {sorted(fields - props)}"
+        for recipe_id, node, tool, fields, props in _rows()
         if fields - props
     ]
     assert 없는_칸 == [], "스키마에 없는 칸을 보내는 자리:\n  " + "\n  ".join(없는_칸)
 
 
 def test_the_check_actually_has_schemas_to_compare_against():
-    """대조할 snapshot 이 없으면 위 시험이 조용히 아무것도 안 본다.
-
-    dev/tools/check_inputs.py 가 쓰는 것과 같은 파일이라 계기판과 시험이 같은
-    근거를 본다.
-    """
+    """대조할 snapshot 이 없으면 위 시험이 조용히 아무것도 안 본다."""
     assert SCHEMA_PATH.exists(), f"도구 스키마 snapshot 이 없다: {SCHEMA_PATH}"
     assert list(_rows()), "대조된 자리가 하나도 없다"
 
 
-# 지도 범위를 받는 두 모양. **실행 계획이 원천이고 여기는 기대값이다.**
-BBOX_FROM_PREVIOUS = [
-    "$s1.bbox.0.0",
-    "$s1.bbox.0.1",
-    "$s1.bbox.1.0",
-    "$s1.bbox.1.1",
-]
-BBOX_FROM_CONTEXT = [
-    "$context.view.bbox.0.0",
-    "$context.view.bbox.0.1",
-    "$context.view.bbox.1.0",
-    "$context.view.bbox.1.1",
-]
-
-
-def _by_origin(node_id, type_id):
-    return {row["origin"]: row for row in recipe_execution_builder.variants(node_id) if row["type"] == type_id and not row["suffix"]}
+def _published_inputs(node_id):
+    """그 노드가 게시된 도구 단계로 나가는 input 전부."""
+    return [entry["input"] for _recipe_id, entry in _published_steps() if entry["node"] == node_id]
 
 
 @pytest.mark.parametrize(
@@ -253,7 +219,6 @@ def _by_origin(node_id, type_id):
     [
         ("get_railway_lines", "geo.getRailwayLines"),
         ("search_admin_boundaries", "adminBoundary.searchBoundaries"),
-        ("get_vworld_boundaries", "vworld.getAdministrativeBoundaries"),
         ("search_population_statistics", "population.searchStatistics"),
     ],
 )
@@ -267,21 +232,22 @@ def test_a_tool_whose_schema_really_takes_a_bbox_array_gets_one_field(node, tool
     (행정구역 조회의 layer 가 그것이다) 그것은 이 시험이 보는 것이 아니다.
     보는 것은 **좌표가 한 칸으로 가느냐 넷으로 흩어지느냐** 하나다.
     """
-    rows = _by_origin(node, "map_extent")
+    inputs = _published_inputs(node)
 
     assert "bbox" in _props(tool)
-    assert rows[recipe_execution_builder.SOURCE]["input"]["bbox"] == BBOX_FROM_CONTEXT
-    assert rows[recipe_execution_builder.STEP]["input"]["bbox"] == BBOX_FROM_PREVIOUS
-    for row in rows.values():
-        assert not set(BBOX_FIELDS) & set(row["input"]), "좌표가 넷으로 흩어졌다"
+    assert any("bbox" in fields for fields in inputs), f"{node} 가 범위를 받는 게시된 recipe 가 없다 — 이 검사가 무력하다"
+    for fields in inputs:
+        assert not set(BBOX_FIELDS) & set(fields), "좌표가 넷으로 흩어졌다"
 
 
 def test_a_tool_without_a_bbox_field_gets_the_flat_four():
     """ev.searchStations 에는 bbox 라는 칸이 없다. 보내면 버려진다."""
-    rows = _by_origin("search_ev_stations", "map_extent")
+    inputs = [fields for fields in _published_inputs("search_ev_stations") if set(BBOX_FIELDS) & set(fields)]
 
     assert "bbox" not in _props("ev.searchStations")
-    assert rows[recipe_execution_builder.SOURCE]["input"] == dict(zip(BBOX_FIELDS, BBOX_FROM_CONTEXT))
+    assert inputs, "충전소를 범위로 찾는 게시된 recipe 가 없다 — 이 검사가 무력하다"
+    for fields in inputs:
+        assert set(BBOX_FIELDS) <= set(fields) and "bbox" not in fields
 
 
 # ── 도구 이름이 발화 해석 프롬프트로 새지 않는가 ────────────────────
@@ -289,9 +255,9 @@ def test_a_tool_without_a_bbox_field_gets_the_flat_four():
 
 def _tool_names():
     names = set()
-    for _node, binding in _tool_nodes():
-        names.add(binding["id"])
-        names.add(binding.get("tool") or binding.get("command") or binding["id"].split("/", 1)[1])
+    for tool_id in _tool_ids():
+        names.add(tool_id)
+        names.add(tool_id.split("/", 1)[1])
     return names
 
 

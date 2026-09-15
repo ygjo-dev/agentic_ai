@@ -513,13 +513,12 @@ def test_the_screen_contract_is_only_what_the_screen_reads():
     서버가 그리게 된 뒤로 그것을 읽는 화면 코드가 0 이었고, 노드 · 엣지 모형은
     POST /render 의 network 가 좌표까지 함께 들고 간다.
 
-    남은 둘을 읽는 자리도 함께 못 박는다 — 없어지면 등록 폼의 선택지가
-    비고 칩 · 그래프가 기본색으로 떨어진다.
+    남은 하나를 읽는 자리도 함께 못 박는다 — 없어지면 칩 · 그래프가 기본색으로
+    떨어진다.
     """
     payload = screen_service.screen_payload()
 
-    assert set(payload) == {"colors", "types"}
-    assert payload["types"] and set(payload["types"][0]) == {"id", "name"}
+    assert set(payload) == {"colors"}
     assert payload["colors"]["highlight"]
 
 

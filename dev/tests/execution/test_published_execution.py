@@ -1,14 +1,11 @@
 """대상 : 받아들인 recipe 파일에 게시된 execution — 요청 중에 실행이 읽는 원천
 
-    온톨로지 + 사람이 받아들인 steps  ->  recipe_execution_builder.compile_execution  ->  recipe 파일의 execution
+    agentic_ai 밖의 등록 저장소  ->  recipe 파일의 execution(Recipe.execution) 게시
+    agentic_ai                   ->  게시된 블록을 읽어 materialize
 
-**온톨로지는 compile 의 원천이고 게시된 블록은 요청 중의 원천이다.** 온톨로지 · steps 를
-고치고 다시 게시하지 않으면 여기서 빨개진다. 다시 적는 법은 둘이다.
-
-    python -m registration.publish          작업본
-    python -m registration.publish --init   _init 사본
-
-**후보는 게시 대상이 아니다.** 후보는 파일이 아니고 사람이 받아들인 것만 execution 을 갖는다.
+**compile · 게시는 agentic_ai 가 하지 않는다.** 여기서 보는 것은 게시된 블록을 runtime 이
+받아 주는가, 그 블록이 semantic IR 로 남아 있는가, materialize 한 결과가 exact server ·
+tool · 명시한 inputAdapter 를 갖는가다. 온톨로지로 다시 compile 해 맞대지 않는다.
 
 개수를 박지 않는다. 사슬로 recipe 를 찾는다 — 번호가 밀려도 그대로다.
 LLM 도 Gateway 도 부르지 않는다.
@@ -20,11 +17,8 @@ import json
 import pytest
 import yaml
 
-import paths
 from execution import workflow_materializer
-from ontology import graph, store
-from registration import publish, recipe_execution_builder
-from registration.registry import accepted_recipes, candidate_recipes
+from ontology import graph
 from workflows.static.menu.load import load_menu
 
 
@@ -36,35 +30,20 @@ def recipe_of(chain):
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 
 
-def recipe_files():
-    files = sorted(paths.RECIPES_DIR.glob("recipe_*.yaml"))
-    assert files, "recipe 파일이 없다 — 이 검사가 무력하다"
-    return files
+# ── 게시된 블록을 runtime 이 받아 주는가 ─────────────────────────────
 
 
-# ── 게시된 것이 지금 compile 한 것과 같은가 ──────────────────────────
+def test_every_accepted_recipe_carries_a_published_block_the_runtime_accepts():
+    """받아들인 recipe 마다 execution 이 있고 요청 중에 읽는 검사를 통과한다.
 
-
-@pytest.mark.parametrize("pair", ["work", "init"])
-def test_every_accepted_recipe_file_is_exactly_what_publishing_writes_now(monkeypatch, pair):
-    """게시된 블록 == 지금 온톨로지와 steps 로 다시 compile 한 블록. 글자까지 본다.
-
-    낡은 블록이 남으면 온톨로지를 고친 것이 실행에 안 닿고, 아무도 모른 채 옛 도구 ·
-    옛 칸으로 부른다. _init 짝도 본다 — 초기화가 그 사본을 작업본으로 복사한다.
+    블록이 없거나 알아볼 수 없으면 골라도 실행이 안 된다. 없다고 온톨로지로 다시 계획을
+    만들지 않으므로 여기서 먼저 빨개져야 한다.
     """
-    if pair == "init":
-        monkeypatch.setattr(paths, "ONTOLOGY_PATH", paths.INIT_ONTOLOGY_PATH)
-        monkeypatch.setattr(paths, "RECIPES_DIR", paths.INIT_RECIPES_DIR)
+    recipe_ids = graph.recipe_ids()
+    assert recipe_ids, "recipe 파일이 없다 — 이 검사가 무력하다"
 
-    stale = [path.stem for path in recipe_files() if publish.published_text(path.read_text(encoding="utf-8")) != path.read_text(encoding="utf-8")]
-
-    assert stale == [], f"다시 게시해야 할 recipe 가 있다 (python -m registration.publish{' --init' if pair == 'init' else ''}): {stale}"
-
-
-def test_every_published_block_passes_the_runtime_check_and_equals_a_fresh_compile():
-    """요청 중에 읽는 모양으로도 같다. 실행이 받아 주지 않는 블록은 게시된 것이 아니다."""
-    for recipe_id in graph.recipe_ids():
-        assert workflow_materializer.load(recipe_id) == recipe_execution_builder.compile_execution(graph.recipe_nodes(recipe_id)), recipe_id
+    for recipe_id in recipe_ids:
+        assert isinstance(workflow_materializer.load(recipe_id), dict), recipe_id
 
 
 # KRRI native workflow 에만 있는 표현과 옛 vendor 답 지시. Recipe.execution 에 보이면 IR 이 native 로 샌 것이다.
@@ -75,7 +54,7 @@ NATIVE_MARKERS = (
 
 
 def test_every_published_execution_stays_semantic_with_no_krri_native_form():
-    """Recipe.execution 은 agentic_ai 안의 semantic IR 이다. native 표현은 요청 중에 materializer 가 적는다.
+    """Recipe.execution 은 semantic IR 이다. native 표현은 요청 중에 materializer 가 적는다.
 
     "$s1.location.0" · inputAdapter 가 게시된 블록에 보이면 raw 참조와 어댑터 이름이 게시 계약으로
     새어 든 것이고, 실행기가 바뀌는 날 받아들인 recipe 를 전부 다시 게시해야 한다.
@@ -84,32 +63,6 @@ def test_every_published_execution_stays_semantic_with_no_krri_native_form():
         text = json.dumps(workflow_materializer.load(recipe_id), ensure_ascii=False)
 
         assert [marker for marker in NATIVE_MARKERS if marker in text] == [], recipe_id
-
-
-def test_publishing_leaves_the_human_accepted_part_as_it_was():
-    """steps · example 은 사람의 판정이다. 게시는 파일 끝의 execution 칸만 붙인다.
-
-    execution 칸을 떼면 사람이 쓴 원문이 글자 그대로 남아야 한다. yaml 로 통째로
-    다시 쓰면 모양과 주석이 날아간다.
-    """
-    for path in recipe_files():
-        text = path.read_text(encoding="utf-8")
-        human = publish._without_execution(text).rstrip("\n")
-        document = yaml.safe_load(text)
-
-        assert text.startswith(human + "\n\nexecution:\n"), path.stem
-        assert yaml.safe_load(human) == {key: value for key, value in document.items() if key != "execution"}, path.stem
-
-
-def test_a_candidate_is_computed_not_published():
-    """후보를 계산해도 recipe 파일은 늘지도 바뀌지도 않는다. 받아들이지 않은 후보는 execution 을 안 갖는다."""
-    before = {path.name: path.read_bytes() for path in paths.RECIPES_DIR.glob("*.yaml")}
-
-    candidates = candidate_recipes(store.nodes())
-    accepted = {tuple(chain) for chain in accepted_recipes().values()}
-
-    assert {path.name: path.read_bytes() for path in paths.RECIPES_DIR.glob("*.yaml")} == before
-    assert [chain for chain in candidates if tuple(chain) not in accepted], "안 받아들인 후보가 없으면 이 검사가 무력하다"
 
 
 def test_the_menu_the_llm_reads_carries_no_execution():

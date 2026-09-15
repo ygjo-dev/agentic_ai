@@ -144,14 +144,14 @@ def test_a_domain_error_still_says_what_was_wrong(monkeypatch):
     500 과 함께 뭉뚱그리면 화면이 사람에게 무엇을 고치라고 말할 수 없다.
     """
 
-    def refuse(mode, recipe_ids, mark):
+    def refuse(mode, recipe_ids):
         raise UnknownRenderMode("그런 mode 는 없다: 이상한것")
 
     monkeypatch.setattr(backend_main.screen_service, "render", refuse)
 
     with TestClient(backend_main.app) as client:
         response = client.post(
-            "/render", json={"mode": "이상한것", "recipe_ids": [], "mark": None}
+            "/render", json={"mode": "이상한것", "recipe_ids": []}
         )
 
     assert response.status_code == 422

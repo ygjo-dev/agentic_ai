@@ -1,4 +1,4 @@
-"""하단 패널. 발화가 어떤 실행 경로가 됐는지, 또는 무엇이 새로 생겼는지 보여준다.
+"""하단 패널. 발화가 어떤 실행 경로가 됐는지 보여준다.
 
 상단 그래프는 온톨로지 전체(지식)를, 여기는 거기서 뽑아낸 답(결과)을 맡는다.
 
@@ -92,26 +92,6 @@ def utterance_markup(utterance: str | None) -> str:
     return f'<div class="utterance">“{html.escape(utterance)}”</div>'
 
 
-def registration_header(result: dict) -> str:
-    """등록 결과의 머리말. 새로 생긴 노드의 이름.
-
-    입력  POST /nodes 응답
-    출력  .utterance div 마크업. 이름도 id 도 없으면 빈 문자열
-    규칙  발화 자리에 이름이 들어감. 등록 장면의 주인공이 그것임
-    이력  한동안 이름을 뽑아 놓고 안 쓴 채 여는 태그만 돌려줬음
-          (`<div class="utterance">` 하나). 닫히지 않은 태그라 화면에
-          아무것도 안 뜨고 뒤 마크업까지 그 안에 빨려 들어갔음.
-          2026-09-06 에 고쳤다 — 새 디자인이 아니라 utterance_markup 과
-          같은 틀이다
-    """
-    node = result.get("node") or {}
-    name = node.get("name") or result.get("node_id", "")
-    if not name:
-        return ""
-
-    return f'<div class="utterance">{html.escape(str(name))}</div>'
-
-
 def skeleton_markup() -> str:
     """응답을 기다리는 동안. LLM 지연이 길어 스피너만으로는 멈춘 것처럼 보임."""
     bars = "".join(f'<div class="skel-row" style="--i:{i}"></div>' for i in range(3))
@@ -119,7 +99,7 @@ def skeleton_markup() -> str:
 
 
 def band_markup(view: dict | None) -> str:
-    """하단 위쪽 얇은 띠. 발화(또는 새 노드 이름)뿐.
+    """하단 위쪽 얇은 띠. 발화뿐.
 
     입력  지금 장면
     출력  마크업. 장면이 없으면 빈 문자열
@@ -128,9 +108,6 @@ def band_markup(view: dict | None) -> str:
     """
     if not isinstance(view, dict):
         return ""
-
-    if view.get("kind") == "register":
-        return registration_header(view["result"])
 
     return utterance_markup(view.get("utterance"))
 

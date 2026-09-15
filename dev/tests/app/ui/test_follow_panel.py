@@ -79,7 +79,7 @@ def test_a_followed_view_is_highlighted_by_the_same_path_as_a_resolve_view():
 
     view = follow_panel.follow_view(TURN)
 
-    assert render_mode(view) == ("resolve", None)
+    assert render_mode(view) == "resolve"
     assert recipe_ids_to_show(view) == ["recipe_002"]
 
 

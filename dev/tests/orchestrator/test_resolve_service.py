@@ -273,19 +273,25 @@ def test_a_recipe_reading_the_screen_context_is_not_dropped_from_the_candidates(
 
 
 def test_the_no_match_guidance_names_come_from_the_ontology():
-    """안내를 코드에 박지 않음. 노드를 등록하면 안내도 함께 늘어야 함.
+    """안내를 코드에 박지 않음. 온톨로지에 노드가 늘면 안내도 함께 늘어야 함.
 
     대상 이름과 시작 데이터 이름을 그대로 낸다. 화면에서 오는 둘(지점 좌표 ·
     지도 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다. 문장은 workflow_answer 가 만든다.
+    화면에서 오는 시작 노드는 게시된 execution 의 context_needs 가 말한다.
     """
+    from execution import workflow_materializer
     from ontology import store
-    from registration import recipe_execution_builder
 
     names = resolve_service.answer_names({"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}})
+    from_screen = {
+        node_id
+        for recipe_id in _recipe_ids()
+        for node_id in workflow_materializer.load(recipe_id)["context_needs"]
+    }
 
-    assert names["topics"] and names["starts"]
+    assert names["topics"] and names["starts"] and from_screen
     nodes = store.nodes()
-    for node_id in recipe_execution_builder.context_sources():
+    for node_id in from_screen:
         assert nodes[node_id]["name"] not in names["starts"]
 
 

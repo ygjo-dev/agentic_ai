@@ -285,16 +285,14 @@ def test_a_path_that_crosses_subjects_is_blocked():
     """★ 대상을 넘나드는 경로는 등록되지 않음. 이것이 그 판정.
 
     철도 구간의 지도 범위로 충전소를 찾는 경로는 타입상 만들 수 있지만
-    실행할 수 없음. registry 가 이 판정으로 그런 경로를 버림. 파일이 안 생기고
-    화면에도 안 나옴.
+    실행할 수 없음. 그런 경로는 recipe 파일로 게시되지 않아 화면에도 안 나옴.
 
     넘나든다의 정의 : 대상이 붙은 노드가 둘 이상인데 공통 대상이 하나도 없음.
     하나 이하면 거짓. 어긋날 상대가 없음. 이 조건이 넓어지면 멀쩡한 경로가
     조용히 사라지므로 양쪽을 다 못 박음.
 
     지금 온톨로지에는 대상이 둘 붙은 노드가 없어 교집합은 "둘이 같은 대상"
-    으로만 잼. 여럿 붙는 경우는 dev/tests/registration/test_registry.py 의
-    test_several_subjects_all_become_dotted_lines 가 등록으로 만들어 잼.
+    으로만 잼.
     """
     assert crosses_groups(
         ["place_name", "get_railway_section", "search_ev_stations"]

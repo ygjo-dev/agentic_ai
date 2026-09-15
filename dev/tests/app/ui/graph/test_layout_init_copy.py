@@ -1,14 +1,13 @@
-"""대상 : app/ui/graph/ · registration/registry.py — 좌표의 _init 사본
+"""대상 : app/ui/graph/ — 좌표의 _init 사본
 
-**눈이 못 보는 것을 본다.** 초기화가 좌표를 안 되돌리면 화면은 멀쩡하다 —
-첫 시연에서는 아무 일도 없고, **두 번째 시연에서 지도가 첫 배치가 아니다.**
-그것이 리허설과 본 시연 사이에 벌어지면 무대 위에서 알게 된다.
+**눈이 못 보는 것을 본다.** 새로 설치한 기계에 작업본 좌표가 없으면 화면은
+멀쩡하게 뜨지만 사람이 고른 배치가 아니라 새로 계산한 지도가 뜬다.
 
 좌표 파일이 둘이 된 이유는 `layout_store` 머리말에 있다. 여기서는 그 둘이
-온톨로지 · recipe · menu 와 같은 규칙으로 도는지만 본다.
+같은 규칙으로 도는지만 본다.
 
     작업본이 없으면   _init 에서 온다
-    초기화하면        _init 으로 돌아간다
+    되돌리면          _init 으로 돌아간다
     _init 사본은      어느 경우에도 안 바뀐다
 """
 
@@ -70,7 +69,7 @@ def test_reading_does_not_create_the_working_copy(layouts):
 
 
 def test_restoring_brings_the_init_copy_back(layouts):
-    """등록으로 늘어난 좌표가 사라져야 함."""
+    """작업본에서 늘어난 좌표가 사라져야 함."""
     work, _ = layouts
     write(work, CHANGED)
 
@@ -100,27 +99,8 @@ def test_restoring_without_an_init_copy_does_not_raise(monkeypatch, tmp_path):
     assert layout_store.load() == {}
 
 
-def test_resetting_the_ontology_also_resets_the_coordinates(isolated_workspace):
-    """★ 이번에 막은 구멍. 초기화가 좌표를 안 되돌리면 두 번째 시연이 다름.
-
-    layouts 가 아니라 isolated_workspace 를 씀. reset_to_init() 은 온톨로지 ·
-    menu · recipe 도 함께 갈아끼우므로 그쪽까지 격리해야 진짜 저장소가 안 바뀜.
-    """
-    from registration.registry import reset_to_init
-
-    before = layout_store.load()
-    write(layout_store.LAYOUT_PATH, {**{k: list(v) for k, v in before.items()},
-                                     "zz_added_node": [99.0, 99.0]})
-    assert "zz_added_node" in layout_store.load()
-
-    reset_to_init()
-
-    assert "zz_added_node" not in layout_store.load()
-    assert layout_store.load() == before
-
-
-def test_a_registration_leaves_the_init_copy_alone(layouts):
-    """등록은 작업본만 바꿔야 함. 그래야 초기화로 되돌아옴."""
+def test_saving_leaves_the_init_copy_alone(layouts):
+    """저장은 작업본만 바꿔야 함. 그래야 되돌릴 곳이 남음."""
     work, init = layouts
     before = init.read_bytes()
 

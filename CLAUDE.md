@@ -17,7 +17,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 → LLM 이 static recipe 를 고른다 (만들지 않는다)
 → recipe = 사람이 받아들인 온톨로지 노드 목록 + 게시된 execution
 → 온톨로지 관계가 이을 수 있는지 말한다
-→ 게시할 때 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다 (compile = Recipe.execution)
+→ 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
+  (agentic_ai 밖의 등록 저장소가 compile 해 게시한다 = Recipe.execution)
 → 요청 중에는 Recipe.execution 에 이번 요청의 값을 채워 KRRI native call_mcp_workflow 로 만든다
   (지금은 legacy 다리가 vendoring 한 KRRI 실행기로 Gateway 실행)
 → 답 · API · 화면
@@ -29,7 +30,7 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 1  LLM 은 MCP 도구 순서를 만들지 않는다. recipe 를 고른다
 2  recipe 의 steps 는 노드만 적는다 (사람이 적은 example 은 둔다). 서버 · 도구 · 인자는
    사람이 안 적는다 — 온톨로지로 compile 해 execution 칸에 게시한다
-   (python -m registration.publish · --init). 요청 중에는 그 칸만 읽고, 없으면 오류다.
+   (compile · 게시는 등록 저장소가 한다). 요청 중에는 그 칸만 읽고, 없으면 오류다.
    온톨로지로 계획을 다시 만들지 않는다
 3  도구 식별과 입력 배선은 온톨로지 노드의 tool 에 둔다. 관계(hasInput)를 대신하지 않는다.
    도구 이름은 tool 칸에만 있다 — name · description · source.description 은 menu
@@ -40,7 +41,7 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 7  화면이 가짜 선택 문맥을 지어내지 않는다
 ```
 
-`dev/tests/test_architecture_contract.py` 가 1 · 2 와 계층 규칙을 지킨다.
+`dev/tests/test_architecture_contract.py` 가 1 · 2 와 계층 규칙 · 저장소 책임 경계를 지킨다.
 나머지는 각 subsystem 의 시험이 본다 (`dev/tests/orchestrator/` ·
 `dev/tests/execution/`).
 
@@ -52,7 +53,7 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 
 ```
 Recipe.execution    게시된 정적 기호 계획. agentic_ai 안의 semantic IR 이고 요청과 무관하다
-                    (registration/recipe_execution_builder.compile_execution 이 만든다)
+                    (등록 저장소가 compile 해 recipe 파일에 게시한다)
 materialize         Recipe.execution + spoken · context · runtime -> 완성된 KRRI native
                     call_mcp_workflow (execution/workflow_materializer.materialize)
 ```
@@ -73,7 +74,24 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
 
 ---
 
-## 폴더가 말하는 여섯 갈래
+## 저장소 책임 경계 — agentic_ai 는 runtime 이다
+
+```
+agentic_ai 가 갖는 것        온톨로지 · runtime 자산 읽기 · resolve · workflow materialize ·
+                             실행 다리 · 답 · 화면(runtime 관찰)
+agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받아들인 recipe 게시 ·
+                             Recipe.execution compile
+```
+
+- 등록 capability 는 agentic_ai 밖의 별도 저장소가 갖는다. **두 저장소 사이의 계약은
+  게시된 파일이다** — `ontology/ontology.yaml` · `workflows/static/menu/` ·
+  `workflows/static/recipes/`(각 recipe 의 `execution` 칸)
+- 그 저장소의 Python 모듈을 import 하지 않는다. 호환 wrapper 도 두지 않는다
+- 게시된 자산을 요청 중에 다시 계획하지 않는다. 블록이 없거나 틀리면 오류다
+
+---
+
+## 폴더가 말하는 다섯 갈래
 
 ```
 도메인      오래 남는다
@@ -95,12 +113,6 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
   app/ui/components/network.py
                      화면 그래프. interactive graph library
                      (pyvis · vis-network)가 그린다. 좌표는 위에서 온다
-
-등록
-  registration/      한 폴더로 모았다. 나중에 다른 저장소로 나간다.
-                     게시할 execution 은 recipe_execution_builder 가 compile 한다.
-                     도메인과 같은 규칙을 진다 — app/ 을 모듈 수준에서 부르지
-                     않는다. 창구(/nodes)와 화면(node_form)은 app/ 에 남는다
 
 빌려온 것
   vendor_to_be_deleted/  아래 「저장소 경계」를 본다
@@ -207,11 +219,11 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 `workflows/static/recipes/` 의 번호는 **다시 안 매긴다.** 밀리면 정답표
 기대값과 시험이 함께 움직이고, 다른 가지에서 recipe 를 다시 붙일 때 어긋난다.
 
-**recipe 파일이 사람의 판정 결과다.** 온톨로지는 후보를 만들 뿐이고
-(`registration.registry.candidate_recipes`), 그중 무엇을 서비스에 올릴지는 사람이
-정한다. 따로 목록 파일(catalog · whitelist)을 두지 않는다 — 원천이 둘이 된다.
+**recipe 파일이 사람의 판정 결과다.** 온톨로지는 후보를 만들 뿐이고(후보 생성은
+등록 저장소의 일이다), 그중 무엇을 서비스에 올릴지는 사람이 정한다. 따로 목록
+파일(catalog · whitelist)을 두지 않는다 — 원천이 둘이 된다.
 **후보를 한꺼번에 recipe 파일로 쓰지 않는다.** 사람이 지운 경로가 되살아나고 번호가
-흔들리고 사람이 쓴 example 이 사라진다. 대조는 `dev/tools/rebuild_init.py` 가 한다.
+흔들리고 사람이 쓴 example 이 사라진다.
 example 은 온톨로지가 아니라 recipe 파일에 사람이 적는다.
 
 ★ **비어 있는 번호를 새 기능이 차지하지 않는다.** 그 자리는 지운 recipe 를
@@ -222,9 +234,8 @@ example 은 온톨로지가 아니라 recipe 파일에 사람이 적는다.
 
 ★ **recipe 하나를 되살리면 넷이 함께 움직인다** — `recipes/` 와
 `_init/recipes/` 의 파일(example 까지), 그리고 두 `menu.yaml` · 두 `menu.md` 의 해당 줄.
-파일을 되살린 뒤 `python -m registration.publish` 와 `--init` 으로 execution 을 게시한다.
-온톨로지의 tool · source 를 고쳤을 때도 두 짝을 다시 게시한다.
-후보를 받아들이는 것도 이 절차다.
+execution 칸은 등록 저장소가 게시한 것을 그대로 받는다. 온톨로지의 tool · source 를
+고쳤을 때도 거기서 다시 게시한다. 후보를 받아들이는 것도 거기 일이다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
 `dev/tools/check_resolve.py` 의 `UTTERANCES` 이고, 발화를 더하면 묶음
@@ -234,25 +245,23 @@ menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
 
 ## active 와 `_init`
 
-작업본과 초기화 원본이 짝으로 있다. **뜻이 다르다.**
+작업본과 `_init` 사본이 짝으로 있다. **뜻이 다르다.**
 
 ```
-작업본                          _init 사본
+작업본(게시된 runtime 자산)     _init 사본
 ontology/ontology.yaml          ontology/_init/ontology.yaml
 workflows/static/recipes/       workflows/static/_init/recipes/
 workflows/static/menu/          workflows/static/_init/menu/
 app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .gitignore)
 ```
 
-- 노드를 등록하면 **작업본만** 바뀐다. `_init` 은 되돌릴 곳이라 안 건드린다
-- 화면의 초기화(`registration.registry.reset_to_init`)가 `_init` 을 작업본으로
-  복사한다. 좌표까지 함께 되돌린다 — 안 되돌리면 시연을 두 번 할 때 두 번째가
-  첫 배치가 아니다
-- `_init` 을 코드가 자동으로 다시 만들지 않는다. 재생성하면 등록된 노드가 섞인
-  상태가 원본이 되어 되돌릴 수 없고, 온톨로지 후보로 다시 만들면 사람이 지운
-  recipe 가 되살아난다. `dev/tools/rebuild_init.py` 는 **후보와 받아들인 recipe ·
-  menu 를 대조만 하고 쓰지 않는다**
-- `_init/layout.json` 은 추적한다. 사람이 눈으로 골라 확정한 배치라 지우면 그
+- runtime 이 읽는 것은 **작업본뿐이다.** 온톨로지 · recipe · menu 의 `_init` 은 옛 등록 ·
+  초기화 기능의 되돌릴 원본이었고, 그 기능은 agentic_ai 밖으로 나갔다
+- 지금 그 `_init` 을 읽는 곳은 `dev/tools/check_resolve.py`(표 머리의 recipe 상태)뿐이다.
+  정답표를 evaluation suite 로 옮길 때 함께 정리한다. 그 전에 지우지 않는다
+- `_init` 을 코드가 자동으로 다시 만들지 않는다
+- `app/ui/graph/_init/layout.json` 은 좌표 작업본이 없는 기계의 첫 배치다
+  (`layout_store.ensure_positions` 가 복사한다). 추적한다. 사람이 눈으로 골라 확정한 배치라 지우면 그
   선택이 사라진다. `.gitignore` 패턴에서 앞의 `/app/ui/graph/` 를 빼면 `_init`
   사본까지 함께 무시된다
 
@@ -268,7 +277,7 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 - 핀이 있는 실행에 `overlap` 금지 — 고정을 무시하고 388~710pt 밀어낸다.
 - `inputscale=72` 없으면 좌표 왕복이 깨진다 (delta 14657).
 - 좌표 회전은 **최초 배치에만**. 두 번 걸리면 지도가 뒤집힌다.
-- **노드를 등록해도 기존 노드가 0.0000pt 움직여야 한다** ← 시연의 핵심 장면.
+- **노드가 늘어도 기존 노드가 0.0000pt 움직여야 한다** ← 시연의 핵심 장면.
 
 ### 렌더
 
@@ -276,7 +285,7 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
   없앴다. 화면 그래프는 `app/ui/components/network.py` 가 라이브러리로 그린다.
   아래 DOT 규칙은 여전히 유효하다 — 좌표를 재는 DOT 을 만드는 자리이기 때문이다.
 - `st.graphviz_chart` 금지. 브라우저 WASM Graphviz 가 멈춘다.
-- **라이브러리에서 물리 시뮬레이션을 켜지 않는다.** 켜면 노드를 등록할 때마다
+- **라이브러리에서 물리 시뮬레이션을 켜지 않는다.** 켜면 노드가 늘 때마다
   지도가 통째로 흔들려 위의 「0.0000pt」가 없어진다. 좌표는 서버의
   `layout.json` 을 그대로 박는다. y 는 뒤집는다 — Graphviz 는 위로,
   vis-network 는 아래로 y 가 커진다.
@@ -328,7 +337,7 @@ schema 판 중 하나라도 뜻을 갖고 바꾸면 그 역할의 `version` 을 
 schema 는 판 번호를 올린 새 파일로 더한다. 경로는 manifest 에 적지 않는다 — 역할
 이름과 판 번호가 위치를 정한다. 읽는 곳은 `llm_engine/role_config.py` 하나다.
 
-- **요청이 물리 모델을 갈아 끼우지 않는다.** `/resolve` · `/nodes` 에 model 인자가
+- **요청이 물리 모델을 갈아 끼우지 않는다.** `/resolve` 에 model 인자가
   없고 환경변수로도 못 바꾼다. 계기판에도 `--model` 이 없다. 다른 모델을 재려면
   manifest 를 고치고 판을 올린다
 - **전역 defaults · 모델 목록을 따로 두지 않는다.** 역할마다 필요한 값을 적는다.
@@ -390,8 +399,8 @@ streamlit run app/ui/main.py                   화면 (8501)
 계기판이 무엇을 요구하는지는 갈린다. **서버가 필요한 것과 아닌 것을 섞지 않는다.**
 
 ```
-아무것도 안 띄우고        check_wiring · rebuild_init(대조) · registration.publish · pytest
-Gateway 만               check_inputs(캐시 없을 때) · probe_tools · probe_shapes
+아무것도 안 띄우고        check_wiring · pytest
+Gateway 만               probe_tools · probe_shapes
 LLM 만                   check_llm  (창구를 안 지나고 resolve_service 를 직접 부른다)
 창구(8000) + LLM         check_resolve · check_demo
 창구 + LLM + Gateway     check_argument  (도구를 실제로 불러 본다)

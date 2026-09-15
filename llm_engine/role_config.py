@@ -1,7 +1,7 @@
 """역할 설정. llm_engine/roles/ 를 읽는 유일한 파일.
 
 **역할 하나가 logical model 하나다.** 애플리케이션이 LLM 을 부르는 목적
-(resolve · node_registration)마다 무엇으로 · 어떻게 · 무엇을 묻고 · 어떤 모양으로
+(지금은 resolve)마다 무엇으로 · 어떻게 · 무엇을 묻고 · 어떤 모양으로
 받는지가 한 판으로 묶인다.
 
     roles/<역할>/<역할>.yaml                       manifest. 아래를 이름과 판으로 가리킴
@@ -33,11 +33,10 @@ VLLM = "vllm"
 
 # 애플리케이션이 LLM 을 부르는 목적. roles/ 아래 폴더 이름과 같은 글자다.
 #
-# **둘뿐이다.** 계기판과 시험이 LLM 을 부르는 것은 이 둘 중 하나를 재는 것이지
+# **지금은 하나뿐이다.** 계기판과 시험이 LLM 을 부르는 것은 이것을 재는 것이지
 # 새 역할이 아니다. 역할을 더하려면 그 목적으로 LLM 을 부르는 애플리케이션
 # 코드가 먼저 있어야 한다.
 RESOLVE = "resolve"
-NODE_REGISTRATION = "node_registration"
 
 # provider 마다 inference 에 적는 값. 더 적거나 덜 적으면 오류다.
 # vLLM 에 num_ctx 가 없는 것은 컨텍스트를 서버가 --max-model-len 으로 정해서다.
@@ -133,7 +132,7 @@ def _inference(manifest: dict, provider: str, role: str) -> dict:
 def get_role_config(role: str) -> RoleConfig:
     """역할 하나의 설정. manifest · prompt · response schema 가 함께 옴.
 
-    입력  역할 이름(RESOLVE · NODE_REGISTRATION)
+    입력  역할 이름(RESOLVE)
     출력  RoleConfig
     규칙  roles/<역할>/<역할>.yaml 을 읽음. 폴더가 없으면 UnknownRole
           manifest 의 role 은 폴더 이름과 같아야 함

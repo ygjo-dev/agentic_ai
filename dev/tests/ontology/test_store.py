@@ -1,7 +1,7 @@
 """대상 : ontology/store.py — 온톨로지 저장소와 맞닿는 유일한 파일
 
 지금은 `ontology.yaml` 을 읽고 쓴다. 저장소를 바꿀 때 고칠 곳을 이 경계에
-모으려는 것이다 — `graph.py` · `registry.py` · `app/` 이 파일 형식을 모르게
+모으려는 것이다 — `graph.py` · `app/` 이 파일 형식을 모르게
 두는 것이 여기의 일이다.
 
 여기서 지키는 것은 **파일 형식 보존**이다. `yaml.dump` 로 다시 쓰면 파일 상단의
@@ -66,7 +66,7 @@ def test_reading_gives_the_ontology_as_written(ontology_file):
             imported |= {alias.name.split(".")[0] for alias in node.names}
         elif isinstance(node, ast.ImportFrom):
             imported.add((node.module or "").split(".")[0])
-    assert imported == {"shutil", "yaml", "paths"}, imported
+    assert imported == {"yaml", "paths"}, imported
 
 
 def test_adding_a_node_preserves_the_existing_file(ontology_file):
@@ -157,17 +157,3 @@ def test_an_added_node_reads_back_unchanged(ontology_file):
     assert len(nodes) == len(before) + 2
     for node_id, node in before.items():
         assert nodes[node_id] == node, node_id
-
-
-def test_restoring_brings_back_the_init_copy(ontology_file):
-    """_init 사본은 절대 안 건드림. 그것이 망가지면 되돌릴 곳이 없음."""
-    init_before = paths.INIT_ONTOLOGY_PATH.read_bytes()
-    store.append_node("analyze_crack_trend", NEW, ontology_file)
-
-    store.restore_from_init(ontology_file)
-
-    assert ontology_file.read_text(encoding="utf-8") == (
-        paths.INIT_ONTOLOGY_PATH.read_text(encoding="utf-8")
-    )
-    assert "analyze_crack_trend" not in store.nodes(ontology_file)
-    assert paths.INIT_ONTOLOGY_PATH.read_bytes() == init_before

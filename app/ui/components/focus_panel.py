@@ -64,17 +64,6 @@ def _candidate_order(rendered: dict) -> list[str]:
     return [key for key in variants if key]
 
 
-def chip_color(view: dict | None) -> str:
-    """칩 색.
-
-    출력  등록 장면이면 theme.new(), 그 밖에는 theme.highlight()
-    규칙  등록 장면만 다른 색을 씀. 무엇이 새로 생겼는지가 주인공
-    """
-    if isinstance(view, dict) and view.get("kind") == "register":
-        return theme.new()
-    return theme.highlight()
-
-
 def render_focus_section(
     rendered: dict | None = None,
     view: dict | None = None,
@@ -83,7 +72,7 @@ def render_focus_section(
     """하단 본문. 해석 그래프와 recipe 칩 목록을 한 iframe 에 담음.
 
     입력  rendered  POST /render 응답. network · chips 가 들어 있음
-          view      지금 장면. 칩 색을 고르는 데만 씀
+          view      지금 장면. 서명을 만드는 데만 씀
           ratios    config.layout_ratios() 결과
     규칙  후보가 없어도 그림. 실행 전에는 위아래가 같은 지도로 채워진 채
           시작하고, NO_MATCH 에서는 지도는 떠 있는데 켜지는 길이 하나도 없음.
@@ -93,7 +82,7 @@ def render_focus_section(
     if not rendered or not rendered.get("network"):
         return
 
-    color = chip_color(view)
+    color = theme.highlight()
     ratios = ratios or config.LAYOUT
     height = styles.panel_heights(ratios)["bottom"]
 

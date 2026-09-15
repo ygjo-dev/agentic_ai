@@ -11,7 +11,7 @@
   SELECT 가 아니거나 지금 부를 수 없으면 도구를 안 부르고 그렇다고 답한다
   요청 중에 온톨로지로 계획을 다시 만들지 않는다
   회차로 남는 것은 /chat/stream 뿐이다
-  역할 설정은 요청마다 한 번 읽고, 그 한 벌이 LLM 클라이언트와 해석(등록)에 함께 간다
+  역할 설정은 요청마다 한 번 읽고, 그 한 벌이 LLM 클라이언트와 해석에 함께 간다
   요청이 물리 모델을 갈아 끼우는 인자가 없다
 
 LLM 도 Gateway 도 부르지 않는다. resolve · vendor 실행기 · 역할 설정을 대역으로 바꾼다.
@@ -26,9 +26,8 @@ from fastapi.testclient import TestClient
 from app.api import main
 from app.api.services.bridge import recent_service
 from execution import legacy_vendor, workflow_materializer
-from llm_engine.role_config import NODE_REGISTRATION, RESOLVE
+from llm_engine.role_config import RESOLVE
 from ontology import graph, store
-from registration import recipe_execution_builder
 from vendor_to_be_deleted.asap import workflow_answer
 
 UTTERANCE = "오송역 CCTV 보여줘"
@@ -40,9 +39,6 @@ LLM = object()
 
 # 역할 설정 대역. 창구가 읽은 그 한 벌이 끝까지 가는지를 동일성으로 본다.
 ROLE = object()
-
-FORM = {"name": "주변 CCTV 조회", "description": "지도 범위 주변의 CCTV 목록을 조회한다.",
-        "inputs": ["map_extent"], "outputs": ["item_list"]}
 
 RESOLVED = {
     "status": "SELECT",
@@ -308,14 +304,14 @@ def test_an_id_that_is_not_an_accepted_recipe_calls_nothing(counted):
 
 # ================================================================ 게시된 계획만
 def _untouchable(*args, **kwargs):
-    raise AssertionError("요청 중에 온톨로지를 읽거나 계획을 다시 compile 했다")
+    raise AssertionError("요청 중에 온톨로지를 읽었다")
 
 
 def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_ontology(monkeypatch):
     """**고른 recipe 를 실행하려고 온톨로지를 다시 훑지 않는다.**
 
     요청 중에 온톨로지를 읽으면 게시된 블록과 온톨로지 중 무엇이 실행을 정하는지
-    다시 둘이 된다. 해석부터 실행기에 넘기는 workflow 까지 온톨로지 읽기와 compile 을
+    다시 둘이 된다. 해석부터 실행기에 넘기는 workflow 까지 온톨로지 읽기를
     막아 두고 돈다. 넘긴 workflow 는 게시된 블록을 채운 것 그대로다.
     """
     spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
@@ -334,7 +330,6 @@ def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_onto
     )
     for name in ("read", "raw_bytes", "nodes"):
         monkeypatch.setattr(store, name, _untouchable)
-    monkeypatch.setattr(recipe_execution_builder, "compile_execution", _untouchable)
 
     events = stream()
 
@@ -361,28 +356,6 @@ def test_each_request_loads_the_resolve_role_once_and_hands_that_one_down(counte
     assert [call[2] for call in counted["resolve"]] == [ROLE, ROLE]
 
 
-def test_the_node_registration_loads_its_role_once_and_hands_that_one_down(monkeypatch, no_turns):
-    """등록도 역할 설정을 한 번 읽고, 그 한 벌이 LLM 클라이언트와 등록에 함께 간다.
-
-    registry 가 prompt 를 위해 다시 읽으면 LLM 클라이언트를 만든 판과 prompt 판이 갈린다.
-    """
-    seen = []
-
-    def fake_register(form, llm_client, role):
-        seen.append((form, llm_client, role))
-        return {}
-
-    monkeypatch.setattr(main.node_service, "register", fake_register)
-
-    with TestClient(main.app) as client:
-        response = client.post("/nodes", json=FORM)
-
-    assert response.status_code == 200
-    assert no_turns["roles"] == [NODE_REGISTRATION]
-    assert no_turns["llm_for"] == [ROLE]
-    assert seen == [(FORM, LLM, ROLE)]
-
-
 def test_no_endpoint_takes_a_model_to_swap_the_role_for():
     """요청이 물리 모델을 갈아 끼우는 길이 없다. 역할 manifest 가 정한 판으로만 돈다.
 
@@ -390,7 +363,6 @@ def test_no_endpoint_takes_a_model_to_swap_the_role_for():
     """
     for endpoint, expected in (
         (main.resolve_endpoint, ["utterance"]),
-        (main.register_node_endpoint, ["form"]),
         (main.chat_stream_endpoint, ["form"]),
     ):
         assert list(inspect.signature(endpoint).parameters) == expected, endpoint.__name__

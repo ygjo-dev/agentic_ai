@@ -137,17 +137,6 @@ html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
   margin: 0.1rem 0 0.5rem 0;
   line-height: 1.35;
 }}
-.new-badge {{
-  display: inline-block;
-  background: {theme.new()};
-  color: #12141A;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 0.1rem 0.45rem;
-  border-radius: 6px;
-  vertical-align: 0.18em;
-  margin-right: 0.4rem;
-}}
 /* 오류 한 줄. 정상일 때는 아예 안 나온다. */
 .note {{
   color: {theme.plain()};

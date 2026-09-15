@@ -89,7 +89,7 @@ def answer_names(resolved: dict) -> dict:
     제약  후보를 거르거나 차례를 바꾸지 않는다.
           여기서 거르면 「무엇을 골랐는가」에 표시 규칙이 섞임
           이름을 코드에 적지 않는다.
-          노드를 등록하면 안내도 함께 늘어야 함
+          온톨로지에 노드가 늘면 안내도 함께 늘어야 함
     """
     candidates = resolved.get("candidate_recipe_ids") or []
     if not candidates:

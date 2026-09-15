@@ -4,7 +4,6 @@
 """
 
 import builtins
-import hashlib
 import os
 import shutil
 from pathlib import Path
@@ -48,24 +47,6 @@ VALID_STATUSES = {SELECT, CLARIFY, NO_MATCH}
 
 # LLM 에 Context 로 전달하는 Menu 원문.
 MENU_YAML_PATH = paths.MENU_YAML_PATH.resolve()
-
-# 진짜 저장소 파일. monkeypatch 로 paths 가 바뀌어도 이 값은 그대로다 —
-# 격리가 실제로 되는지 검사할 때 쓴다.
-REAL_ONTOLOGY_PATH = paths.ONTOLOGY_PATH.resolve()
-REAL_RECIPES_DIR = paths.RECIPES_DIR.resolve()
-
-
-def workspace_digest() -> str:
-    """진짜 저장소의 온톨로지 + recipe 내용 해시.
-
-    등록 테스트가 저장소를 건드리지 않았는지 확인하는 데 씀.
-    """
-    digest = hashlib.sha1()
-    digest.update(REAL_ONTOLOGY_PATH.read_bytes())
-    for recipe in sorted(REAL_RECIPES_DIR.glob("*.yaml")):
-        digest.update(recipe.name.encode("utf-8"))
-        digest.update(recipe.read_bytes())
-    return digest.hexdigest()
 
 
 # ------------------------------------------------------------ 공통 Helper
@@ -155,53 +136,35 @@ def stub_llm_client():
 
 @pytest.fixture
 def isolated_workspace(monkeypatch, tmp_path):
-    """등록이 건드리는 파일을 전부 임시 디렉터리 사본으로 바꿈.
+    """시험이 고쳐 쓰는 게시 자산(온톨로지 · menu · recipe)과 좌표를 임시 사본으로 바꿈.
 
-    격리를 안 하면 리허설로 시연 상태를 만들어 둔 뒤 누가 pytest 를 돌릴 때
-    등록해둔 노드가 전부 날아감.
+    격리를 안 하면 시험이 온톨로지에 붙인 노드 · 관계가 진짜 저장소에 남음.
 
-    register_node 는 paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 됨.
-    프롬프트 경로는 읽기만 하므로 그대로 둠.
-
-    **노드 좌표도 여기서 막는다.** reset_to_init() 이 좌표까지 되돌리므로
-    격리를 안 하면 pytest 가 시연용 작업본을 _init 으로 덮어쓴다. 좌표는
-    paths 가 아니라 layout_store 가 들고 있어 그쪽 모듈 속성을 바꾼다.
+    paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 됨.
+    좌표는 paths 가 아니라 layout_store 가 들고 있어 그쪽 모듈 속성을 바꾼다.
     """
     work = tmp_path / "work"
-    init = tmp_path / "init"
     work.mkdir()
-    init.mkdir()
 
-    # 작업본과 _init 사본 둘 다 만든다. reset_to_init() 이 init -> work 로 복사한다.
     for source, target in (
-        (paths.INIT_ONTOLOGY_PATH, work / "ontology.yaml"),
-        (paths.INIT_MENU_YAML_PATH, work / "menu.yaml"),
-        (paths.INIT_MENU_MD_PATH, work / "menu.md"),
-        (paths.INIT_ONTOLOGY_PATH, init / "ontology.yaml"),
-        (paths.INIT_MENU_YAML_PATH, init / "menu.yaml"),
-        (paths.INIT_MENU_MD_PATH, init / "menu.md"),
+        (paths.ONTOLOGY_PATH, work / "ontology.yaml"),
+        (paths.MENU_YAML_PATH, work / "menu.yaml"),
+        (paths.MENU_MD_PATH, work / "menu.md"),
     ):
         shutil.copy2(source, target)
-    shutil.copytree(paths.INIT_RECIPES_DIR, work / "recipes")
-    shutil.copytree(paths.INIT_RECIPES_DIR, init / "recipes")
+    shutil.copytree(paths.RECIPES_DIR, work / "recipes")
 
     for name, value in (
         ("ONTOLOGY_PATH", work / "ontology.yaml"),
         ("MENU_YAML_PATH", work / "menu.yaml"),
         ("MENU_MD_PATH", work / "menu.md"),
         ("RECIPES_DIR", work / "recipes"),
-        ("INIT_ONTOLOGY_PATH", init / "ontology.yaml"),
-        ("INIT_MENU_YAML_PATH", init / "menu.yaml"),
-        ("INIT_MENU_MD_PATH", init / "menu.md"),
-        ("INIT_RECIPES_DIR", init / "recipes"),
     ):
         monkeypatch.setattr(paths, name, value)
 
     from app.ui.graph import layout_store
 
-    shutil.copy2(layout_store.INIT_LAYOUT_PATH, init / "layout.json")
     shutil.copy2(layout_store.INIT_LAYOUT_PATH, work / "layout.json")
     monkeypatch.setattr(layout_store, "LAYOUT_PATH", work / "layout.json")
-    monkeypatch.setattr(layout_store, "INIT_LAYOUT_PATH", init / "layout.json")
 
     return work

@@ -1,24 +1,20 @@
 """온톨로지 저장소와 맞닿는 유일한 파일.
 
 지금은 `ontology.yaml` 을 읽고 쓴다. **저장소를 바꿀 때 고칠 곳을 이 경계에
-모으는 것**이 이 파일의 존재 이유다 — `graph.py` · `registry.py` · `app/` 이
+모으는 것**이 이 파일의 존재 이유다 — `graph.py` · `app/` 이
 파일 형식을 모르게 두려는 것이다.
 
 ★ 한 파일만 고치면 된다고 보장하지는 않는다. `raw_bytes()` 처럼 파일이라는
-것을 전제한 API 가 여기 남아 있고, `_init` 사본을 복사로 되돌리는 길도 그렇다.
-저장소를 바꾸는 날 그 자리들은 함께 봐야 한다.
+것을 전제한 API 가 여기 남아 있다. 저장소를 바꾸는 날 그 자리들은 함께 봐야 한다.
 
 `paths` 외에 아무것도 import 하지 않는다. 저장소가 도메인을 알면 순환이 생기고,
 교체할 때 무엇을 버리고 무엇을 남길지 다시 뒤져야 한다.
 
 **recipe 와 menu 는 아직 여기 있지 않다.** `workflows/static/` 아래에서
-`graph.py` 와 `registry.py` 가 각자 읽고 쓴다. 그것들을 여기로 모을지는
-아직 정해지지 않았다.
+`graph.py` 가 읽는다. 그것들을 여기로 모을지는 아직 정해지지 않았다.
 
-캐시를 두지 않는다. 등록하면 파일이 바뀌고 그 다음 읽기가 새 내용을 봐야 한다.
+캐시를 두지 않는다. 파일이 바뀌면 그 다음 읽기가 새 내용을 봐야 한다.
 """
-
-import shutil
 
 import yaml
 
@@ -48,8 +44,8 @@ def nodes(path=None) -> dict:
 
     출력  {node_id: {name, description, source?, tool?}}
     규칙  종류를 나누는 필드가 없음. 성격은 관계가 말하고 판정은 graph.py 가 함
-          source · tool 은 그 노드 자신의 사실이라 노드에 붙음. 뜻은 graph.py 와
-          registration/recipe_execution_builder.py 가 읽음
+          source · tool 은 그 노드 자신의 사실이라 노드에 붙음. 뜻은 graph.py 가
+          꺼내 주고, 실행은 게시된 Recipe.execution 을 읽음
     """
     return read(path)["nodes"]
 
@@ -82,7 +78,7 @@ def append_node(node_id: str, node: dict, path=None) -> None:
     제약  yaml.dump 로 다시 쓰지 않는다.
           파일 상단의 구조 원칙 주석과 손으로 맞춘 들여쓰기가 통째로 날아감
           중복 · 인터페이스 검사를 하지 않는다.
-          도메인 규칙이라 registry.add_node() 가 맡음. 여기는 쓰기만 앎
+          도메인 규칙이라 부르는 쪽이 맡음. 여기는 쓰기만 앎
     """
     path = path or paths.ONTOLOGY_PATH
     text = path.read_text(encoding="utf-8")
@@ -103,7 +99,7 @@ def append_edge(frm: str, to: str, predicate: str, path=None) -> None:
 
     규칙  edges 가 파일 마지막이라 끝에 붙이면 됨. 블록이 없으면 만들어 붙임
     제약  한 줄 형식을 기존 항목과 다르게 적지 않는다.
-          형식이 갈라지면 파일을 읽을 때 새로 등록된 것만 튀어 보임
+          형식이 갈라지면 파일을 읽을 때 새로 붙인 것만 튀어 보임
     """
     path = path or paths.ONTOLOGY_PATH
     text = path.read_text(encoding="utf-8").rstrip("\n")
@@ -129,20 +125,10 @@ def node_block(node_id: str, node: dict) -> str:
     제약  무엇을 받고 내놓는지 여기 적지 않는다.
           노드가 아니라 관계에 적힘. hasInput / hasOutput edge 로 따로 붙음
           source · tool 을 여기서 적지 않는다.
-          등록 폼이 그 칸을 안 받음. 밖에서 들어오는 자리와 도구 식별은 사람이
-          파일에 적음
+          밖에서 들어오는 자리와 도구 식별은 사람이 파일에 적음
     """
     return "\n".join([
         f"  {node_id}:",
         f"    name: {node['name']}",
         f"    description: {node['description']}",
     ])
-
-
-def restore_from_init(path=None) -> None:
-    """_init 사본으로 되돌림. 온톨로지만.
-
-    규칙  recipe 와 menu 는 registry.reset_to_init() 이 이어서 되돌림
-    제약  _init 사본 자체를 건드리지 않는다. 망가지면 되돌릴 곳이 없음
-    """
-    shutil.copy2(paths.INIT_ONTOLOGY_PATH, path or paths.ONTOLOGY_PATH)

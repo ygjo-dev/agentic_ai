@@ -18,45 +18,40 @@ import streamlit as st
 from app.ui import config, styles, theme
 from app.ui.components import network
 
-# 새로 생긴 것이 잠깐 두근거린다. 짧게 두 번만 — 계속 깜빡이면 시선을 뺏는다.
-def graph_fill_html(model: dict, colors: dict, height: int, pulse: bool = False) -> str:
+
+def graph_fill_html(model: dict, colors: dict, height: int) -> str:
     """고정 높이 패널을 꽉 채우는 iframe 문서.
 
-    입력  network 모형 · 색 · 픽셀 높이 · 방금 등록했는지
+    입력  network 모형 · 색 · 픽셀 높이
     출력  iframe 에 넣을 HTML 문서
-    규칙  두근거림은 방금 등록된 것에만 줌. CSS 애니메이션이라 JS 가 없음
     제약  발화 해석 결과를 상단에 칠하지 않는다.
           강조 · 흐르는 표시 · 좁혀 들어가기는 전부 하단의 일임
     """
-    return network.top_html(model, colors, height=height, pulse=pulse)
+    return network.top_html(model, colors, height=height)
 
 
-def show_network(model: dict, height: int, pulse: bool = False, colors: dict | None = None):
+def show_network(model: dict, height: int, colors: dict | None = None):
     """모형을 라이브러리로 그려 iframe 에 띄움.
 
-    입력  network 모형 · 픽셀 높이 · 방금 등록했는지 · 색
+    입력  network 모형 · 픽셀 높이 · 색
     제약  높이를 CSS 로 주지 않는다.
           iframe 은 height 속성으로 고정되므로 CSS 로 덮을 수 없음.
           예전에 그래프가 420px 에 갇혀 폭까지 눌렸던 원인
     """
     st.components.v1.html(
-        graph_fill_html(model, colors or theme.colors(), height, pulse), height=height
+        graph_fill_html(model, colors or theme.colors(), height), height=height
     )
 
 
 def render_graph_section(
     rendered: dict | None = None,
-    pulse: bool = False,
     ratios: dict | None = None,
 ):
     """온톨로지 그래프. 무엇을 골랐는지는 하단 경로 패널이 보여줌.
 
     입력  rendered  POST /render 응답. network 에 그래프 모형이 들어 있음
-          pulse     방금 등록했는가. 두근거림은 그때만 줌
           ratios    config.layout_ratios() 결과
     제약  발화 해석으로 이 그래프를 강조하지 않는다.
-          노드를 등록했을 때만 새로 생긴 것을 강조함. 그때가 "어디에
-          들어갔는지" 를 보여줄 장면임
     """
     if not rendered or not rendered.get("network"):
         st.markdown(
@@ -66,4 +61,4 @@ def render_graph_section(
         return
 
     height = styles.panel_heights(ratios or config.LAYOUT)["top"]
-    show_network(rendered["network"], height, pulse=pulse)
+    show_network(rendered["network"], height)

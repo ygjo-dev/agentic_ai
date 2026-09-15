@@ -114,14 +114,14 @@ def test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_scree
     번호가 밀리면 조용히 옆 recipe 를 가리키게 된다. 경로 첫 칸으로 지킨다.
     """
     from app.api.services.streamlit import screen_service
-    from registration import recipe_execution_builder
+    from execution import workflow_materializer
 
     for number, _u, expected, _d in check_resolve.UTTERANCES:
         if number <= check_resolve.EXTENSION_LAST:
             continue
         for recipe_id in expected:
             path = screen_service.path_of(recipe_id)
-            assert path[0]["node_id"] in recipe_execution_builder.context_sources()
+            assert path[0]["node_id"] in workflow_materializer.load(recipe_id)["context_needs"]
 
 
 def test_each_utterance_falls_into_exactly_one_group():

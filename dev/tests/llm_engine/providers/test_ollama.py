@@ -130,8 +130,7 @@ def test_the_raw_answer_comes_back_untouched(sent_request):
 def test_clients_of_different_roles_live_side_by_side(sent_request):
     """역할마다 모델과 값이 다른 클라이언트가 한 프로세스에 함께 삶.
 
-    resolve 와 node_registration 이 한 서버에서 서로 다른 모델 · num_ctx ·
-    timeout 으로 돔. 전역 상수를 읽으면 나중에 만든 쪽 값이 앞의 것을 덮음.
+    역할이 여럿이면 한 서버에서 서로 다른 모델 · num_ctx · timeout 으로 돔. 전역 상수를 읽으면 나중에 만든 쪽 값이 앞의 것을 덮음.
     """
     def sent_body():
         return json.loads(sent_request["request"].data.decode("utf-8"))

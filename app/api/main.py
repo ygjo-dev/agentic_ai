@@ -29,22 +29,12 @@ if REPO_ROOT not in sys.path:
 # bind 주소를 읽으면 배포 방법이 코드에 박힌다.
 load_dotenv(Path(REPO_ROOT) / ".env")
 
-from app.api.schemas.requests import (
-    ChatRequest,
-    NodeRegisterRequest,
-    RenderRequest,
-)
+from app.api.schemas.requests import ChatRequest, RenderRequest
 from app.api.services.bridge import recent_service
-from app.api.services.streamlit import node_service, screen_service
+from app.api.services.streamlit import screen_service
 from app.api.services.streamlit.screen_service import UnknownRenderMode
 from llm_engine.llm_selector import get_llm_for
-from llm_engine.role_config import NODE_REGISTRATION, RESOLVE, get_role_config
-from registration.registry import (
-    DuplicateNode,
-    InvalidInference,
-    UnknownGroup,
-    UnknownType,
-)
+from llm_engine.role_config import RESOLVE, get_role_config
 from execution import legacy_vendor, workflow_materializer
 from execution.legacy_vendor import workflow_answer
 from orchestrator import resolve_service
@@ -78,15 +68,8 @@ RESOLVE_NODE = "resolve"
 # (int("x") 같은 것)까지 422 로 나가 "요청이 잘못됐다" 로 읽힌다.
 DOMAIN_ERRORS = (
     RouteResolutionError,
-    DuplicateNode,
-    UnknownType,
-    UnknownGroup,
-    InvalidInference,
     UnknownRenderMode,
 )
-
-# 이 경로만 예외 이름을 detail 에 남긴다.
-NAMED_ERROR_PATHS = ("/nodes",)
 
 # 예상 못 한 오류에서 client 로 나가는 문구. 원인은 서버 로그에만 남는다.
 #
@@ -101,8 +84,7 @@ async def errors_to_json(request: Request, call_next):
     """오류 매핑을 한 곳에 모음. 엔드포인트는 라우팅만 함.
 
     출력  DOMAIN_ERRORS 는 422, 나머지는 500
-    규칙  NAMED_ERROR_PATHS 만 detail 에 예외 이름을 남김
-          500 의 detail 은 고정 문구임. 실제 예외와 traceback 은 서버 로그로 감
+    규칙  500 의 detail 은 고정 문구임. 실제 예외와 traceback 은 서버 로그로 감
     제약  예상 못 한 예외의 원문을 응답에 담지 않는다.
           내부 URL · vendor HTTP 원문 · 저장소 경로가 그대로 실려 나감
           @app.exception_handler 로 옮기지 않는다.
@@ -114,11 +96,7 @@ async def errors_to_json(request: Request, call_next):
     try:
         return await call_next(request)
     except DOMAIN_ERRORS as exc:
-        # 등록 경로만 예외 이름을 남긴다. 화면이 원인을 그대로 보여주는데
-        # "이미 있는 노드다" 만으로는 무엇이 잘못됐는지 안 읽힌다.
-        named = request.url.path in NAMED_ERROR_PATHS
-        detail = f"{type(exc).__name__}: {exc}" if named else str(exc)
-        return JSONResponse(status_code=422, content={"detail": detail})
+        return JSONResponse(status_code=422, content={"detail": str(exc)})
     except Exception:  # noqa: BLE001 — 예상 못 한 것은 전부 500 이다.
         logger.exception("처리하지 못한 오류: %s %s", request.method, request.url.path)
         return JSONResponse(
@@ -128,11 +106,10 @@ async def errors_to_json(request: Request, call_next):
 
 @app.get("/screen")
 async def screen_endpoint() -> dict:
-    """화면이 그리기 전에 받아 두는 것. 고를 수 있는 타입과 색.
+    """화면이 그리기 전에 받아 두는 것. 색.
 
     출력  colors  칩 · 배지 · 안내 문구 · 그래프에 쓸 색. 출처는
                   app/ui/graph/dot.py 한 곳뿐임
-          types   등록 폼의 입출력 선택지
     """
     return screen_service.screen_payload()
 
@@ -148,7 +125,7 @@ async def render_endpoint(form: RenderRequest) -> dict:
           어느 후보를 강조하든 안 흔들림
           그림을 만들지 않음. 그리는 것은 화면의 라이브러리임
     """
-    return screen_service.render(form.mode, form.recipe_ids, form.mark)
+    return screen_service.render(form.mode, form.recipe_ids)
 
 
 @app.post("/resolve")
@@ -252,26 +229,6 @@ async def _stream(text: str, llm_client, role, context: dict | None):
         yield payload
 
 
-@app.post("/nodes")
-async def register_node_endpoint(form: NodeRegisterRequest) -> dict:
-    """노드 등록. 온톨로지 · recipe · menu 가 함께 갱신됨.
-
-    출력  새로 생긴 것. node_id · node · groups · reason · recipe_ids ·
-          new_solid_edges · new_dotted_edges
-    규칙  node_registration 역할 설정을 요청마다 한 번 읽음. 그 한 벌이 LLM
-          클라이언트와 등록의 prompt · schema 로 함께 감
-    제약  대상이 어긋나는 경로를 등록하지 않는다.
-          화각이 안 맞는 것(궤도 검측차 영상으로 승강장 승객을 보는 식)은
-          recipe 가 되지 않고 응답에도 안 담김
-          버린 경로를 응답에 담지 않는다.
-          화면이 쓰지 않는 키를 만들지 않음
-    """
-    role = get_role_config(NODE_REGISTRATION)
-    return node_service.register(
-        form.model_dump(), llm_client=get_llm_for(role), role=role
-    )
-
-
 @app.post("/chat/stream")
 async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
     """발화 한 건의 답을 SSE 로 흘려보냄. **KRRI_ASAP 시스템이 부르는 유일한 창구다.**
@@ -317,9 +274,3 @@ async def recent_endpoint(since: int | None = None) -> dict:
           commands 를 아예 안 읽음. geojson 과 좌표 배열이 거기 있음
     """
     return recent_service.since(since)
-
-
-@app.post("/nodes/reset")
-async def reset_nodes_endpoint() -> dict:
-    """_init 사본으로 되돌림. 등록한 노드와 recipe 가 모두 사라짐."""
-    return node_service.reset()

@@ -6,16 +6,17 @@
     → LLM 이 static recipe 를 **고른다** (만들지 않는다)
     → recipe = 순서 있는 온톨로지 노드 목록
     → 온톨로지 관계가 이어질 수 있는지 말한다
-    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다 (게시할 때 compile = Recipe.execution)
+    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다 (agentic_ai 밖에서 compile 해 게시 = Recipe.execution)
     → 요청 중에 Recipe.execution + 이번 요청의 값 = KRRI native call_mcp_workflow (materialize)
     → 지금은 legacy 다리가 vendoring 한 KRRI 실행기로 Gateway 실행
     → 답 · API · 화면
 
-여기서 지키는 것은 그 길의 이음매다.
+여기서 지키는 것은 그 길의 이음매와 저장소 경계다.
 
     LLM 은 MCP 도구 순서를 만들지 않는다 — recipe 를 고른다
-    recipe 의 steps 는 사람이 받아들인 노드만 적는다 — 실행 계획은 온톨로지로 compile 해 게시한다
+    recipe 의 steps 는 사람이 받아들인 노드만 적는다 — 실행 계획은 게시된 execution 칸에 있다
     요청 중에는 게시된 실행 계획만 읽는다 — 온톨로지로 계획을 다시 만들지 않는다
+    노드 등록 · 후보 생성 · recipe 게시 · Recipe.execution compile 은 agentic_ai 가 갖지 않는다
     KRRI native 표현은 workflow_materializer 만 만들고 vendor 를 아는 제품 코드는 legacy 다리 하나다
     도메인은 서비스 계층을 모듈 수준에서 안 부른다
 
@@ -108,14 +109,14 @@ def test_the_spoken_options_handed_to_execution_are_fields_the_llm_fills():
 # ── recipe 는 사람이 받아들인 노드 목록과 게시된 실행 계획이다 ────────
 
 
-def test_a_recipe_is_an_accepted_node_list_with_its_plan_compiled_and_published():
+def test_a_recipe_is_an_accepted_node_list_with_its_published_plan():
     """**사람이 적는 것은 노드 목록과 example 뿐이다.** 실행 계획(execution)은 게시가 붙인다.
 
     execution 은 온톨로지 노드의 tool 과 사람이 받아들인 steps 로 compile 한 것이라
     원천은 여전히 온톨로지다. 사람이 recipe 에 서버 · 도구 · 인자를 손으로 적으면 진실의
     원천이 둘이 된다 — 도구를 갈아끼울 때 recipe 를 전부 함께 고쳐야 하고, 어긋났을 때
-    어느 쪽이 맞는지 알 수 없다. 게시된 블록이 compile 과 같은지는
-    dev/tests/execution/test_published_execution.py 가 본다.
+    어느 쪽이 맞는지 알 수 없다. compile 과 게시는 agentic_ai 밖의 등록 저장소 일이고,
+    게시된 블록을 runtime 이 받아 주는지는 dev/tests/execution/test_published_execution.py 가 본다.
 
     steps 와 execution 말고 둘 수 있는 칸은 example 하나다. 사람이 그 recipe 를
     받아들이며 적은 발화 예시라 실행이 아니다.
@@ -146,12 +147,12 @@ def test_a_recipe_is_an_accepted_node_list_with_its_plan_compiled_and_published(
 # 요청 중에 고른 recipe 를 실행하는 모듈.
 RUNTIME_MODULES = ("app/api/main.py", "execution/workflow_materializer.py", "execution/legacy_vendor.py")
 
-# 게시할 때만 부르는 compile 모듈의 이름.
-BUILDER = "recipe_execution_builder"
+# agentic_ai 밖으로 나간 등록 capability 의 옛 패키지 이름. 되살아나면 경계가 무너진 것이다.
+REGISTRATION = "registration"
 
 
 def imported_names(tree):
-    """모듈 안 어디서든(함수 안까지) import 하는 이름. "registration.recipe_execution_builder" 꼴."""
+    """모듈 안 어디서든(함수 안까지) import 하는 이름. "execution.workflow_materializer" 꼴."""
     names = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -165,9 +166,8 @@ def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontolo
     """**고른 recipe 를 실행하려고 온톨로지를 다시 훑어 계획을 만들지 않는다.**
 
     요청 중에 계획을 다시 만들면 사람이 받아들여 게시한 실행 계획과 온톨로지 중 무엇이
-    실행을 정하는지 둘이 된다. 그래서 요청 중의 모듈은 compile 하는 recipe_execution_builder 를
-    import 하지 않는다. 게시된 블록을 workflow 로 만드는 workflow_materializer 와 그것을 부르는
-    legacy_vendor 는 온톨로지도 게시도 import 하지 않고, 창구(main)는 온톨로지를 import 하지 않는다.
+    실행을 정하는지 둘이 된다. 그래서 창구(main) · 게시된 블록을 workflow 로 만드는
+    workflow_materializer · 그것을 부르는 legacy_vendor 는 온톨로지를 import 하지 않는다.
 
     고른 recipe 가 없는 답에 적을 온톨로지 이름은 resolve_service 가 모은다. 그것은
     계획이 아니라 여기서 막지 않는다. 계획을 안 지나는지는
@@ -178,17 +178,47 @@ def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontolo
     offenders = []
     for relative in RUNTIME_MODULES:
         tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"))
-        names = imported_names(tree)
-        offenders += [f"{relative} -> {name}" for name in names if BUILDER in name]
         offenders += [
-            f"{relative} -> {BUILDER}.{node.attr}"
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == BUILDER
+            f"{relative} -> {name}" for name in imported_names(tree) if name.split(".")[0] == "ontology"
         ]
-        forbidden = ("ontology", "registration") if relative.startswith("execution/") else ("ontology",)
-        offenders += [f"{relative} -> {name}" for name in names if name.split(".")[0] in forbidden]
 
     assert offenders == [], "요청 중의 실행이 계획을 다시 만들 수 있다:\n  " + "\n  ".join(offenders)
+
+
+def test_agentic_ai_does_not_own_node_registration_or_recipe_publication():
+    """**agentic_ai 는 게시된 자산을 읽는 runtime 이다.** 등록 · 게시는 밖의 저장소가 갖는다.
+
+    agentic_ai 가 갖는 것은 게시된 온톨로지 · menu · recipe 를 읽고, resolve 하고, workflow 로
+    만들고, 실행 다리를 부르고, 답하고, 그것을 화면에 보여주는 일이다. 노드 등록 · 후보 생성 ·
+    받아들인 recipe 게시 · Recipe.execution compile 은 갖지 않는다. 두 저장소 사이의 계약은
+    게시된 파일이고, 저쪽 Python 모듈을 import 하지 않는다.
+
+    이 경계가 무너지면 게시된 파일과 이쪽 코드 중 무엇이 실행을 정하는지 다시 둘이 된다.
+    그래서 등록 패키지 · 등록 LLM 역할 · 등록 창구가 이 저장소에 없고, 제품 · 계기판 · 시험
+    어디서도 등록 패키지를 import 하지 않는다.
+    """
+    from paths import REPO_ROOT, ROLES_DIR
+
+    from app.api.main import app
+
+    assert not (REPO_ROOT / REGISTRATION).exists(), "등록 패키지가 되살아났다"
+    assert not (ROLES_DIR / "node_registration").exists(), "등록 LLM 역할이 되살아났다"
+    assert [route.path for route in app.routes if route.path.startswith("/nodes")] == [], "등록 창구가 되살아났다"
+
+    importers, scanned = [], 0
+    for folder in DOMAIN_DIRS + SERVICE_PACKAGES + ("dev",):
+        for path in sorted((REPO_ROOT / folder).rglob("*.py")):
+            if "__pycache__" in path.parts:
+                continue
+            scanned += 1
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            relative = path.relative_to(REPO_ROOT).as_posix()
+            importers += [
+                f"{relative} -> {name}" for name in imported_names(tree) if name.split(".")[0] == REGISTRATION
+            ]
+
+    assert scanned, "훑은 파일이 없다 — 이 검사가 무력하다"
+    assert importers == [], "등록 패키지를 import 한다:\n  " + "\n  ".join(importers)
 
 
 # ── native 표현은 materializer 가, vendor 는 legacy 다리가 ─────────────
@@ -240,7 +270,7 @@ def test_only_the_materializer_writes_native_forms_and_only_the_legacy_bridge_kn
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
             if relative != LEGACY_ADAPTER:
                 importers += [f"{relative} -> {name}" for name in imported_names(tree) if name.startswith("vendor_to_be_deleted")]
-            if folder in ("execution", "registration"):
+            if folder == "execution":
                 forms = (LEGACY_ANSWER_FORM,) if relative == MATERIALIZER else NATIVE_FORMS + (LEGACY_ANSWER_FORM,)
                 leaks += [
                     f"{relative}:{node.lineno} -> {node.value!r}"
@@ -257,9 +287,9 @@ def test_only_the_materializer_writes_native_forms_and_only_the_legacy_bridge_kn
 
 # ── 도메인이 서비스를 안 부른다 ─────────────────────────────────────
 #
-# CLAUDE.md 「폴더가 말하는 여섯 갈래」에서 그대로 온다.
+# CLAUDE.md 「폴더가 말하는 다섯 갈래」에서 그대로 온다.
 # 이름이 또 갈리면 아래 exists 확인이 먼저 빨간불이 된다 — 조용히 통과하지 않는다.
-DOMAIN_DIRS = ("ontology", "registration", "orchestrator", "execution",
+DOMAIN_DIRS = ("ontology", "orchestrator", "execution",
                "llm_engine", "workflows")
 SERVICE_PACKAGES = ("app",)
 

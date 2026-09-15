@@ -1,6 +1,6 @@
 """온톨로지를 화면이 쓰는 모양으로 바꾼다.
 
-    GET  /screen  고를 수 있는 타입과 색 (screen_payload)
+    GET  /screen  색 (screen_payload)
     POST /render  그래프 모형 한 벌 (render)
 
 둘이 하는 일은 하나다. 출력이 목록이냐 그림이냐만 다르다. 예전에는
@@ -32,7 +32,6 @@ from ontology.graph import (
     is_executable,
     load_ontology,
     solid_edges,
-    type_ids,
 )
 
 
@@ -43,7 +42,7 @@ def ontology_version() -> str:
     규칙  파일명도 해시에 넣음. 내용이 같은 recipe 가 다른 번호로 늘어나는
           경우를 내용만으로는 구분할 수 없음
     제약  mtime 으로 계산하지 않는다.
-          reset_to_init 은 파일을 복사하므로 내용이 같아도 mtime 이 바뀜.
+          파일을 복사하면 내용이 같아도 mtime 이 바뀜.
           화면이 「같은 해석인가」를 이 값으로 세므로 헛돌면 그래프가 깜빡임
     """
     digest = hashlib.sha1()
@@ -82,12 +81,10 @@ def drawn_nodes() -> dict:
           kind 를 여기서 만들어 붙임. 온톨로지에는 종류가 안 적혀 있고,
           그리는 쪽은 그룹을 다르게 칠해야 함
     제약  실행할 수 있는 노드를 실선 조건에 맡기지 않는다.
-          등록한 노드의 경로가 전부 버려질 수 있음. 대상이 어긋나는 경로는
-          등록되지 않으므로(crosses_groups) 그런 노드는 어느 recipe 에도
-          안 들어감. 빼면 그 노드가 화면에서 사라지고, 새 점선이 좌표 없는
-          노드를 가리켜 neato -n 이 그림을 통째로 거부함
+          어느 받아들인 recipe 에도 안 들어간 실행 노드가 있음. 빼면 그
+          노드가 화면에서 사라지고, 점선이 좌표 없는 노드를 가리켜
+          neato -n 이 그림을 통째로 거부함
           (실측 : "node ... has no position as required by the -n flag").
-          등록 직후에 그 노드를 보여주는 것이 등록 장면 자체임
           형식 노드(영상 · 이미지 · 문서 · 분석결과)를 그리지 않는다.
           실행하지 않고, recipe 에 나오지 않아 실선이 없고, about 도 안 붙어
           점선도 없음. 그리면 아무 선도 없는 점 다섯 개가 떠 있게 되고 사람은
@@ -133,30 +130,20 @@ def screen_payload() -> dict:
     """화면이 그리기 전에 받아 두는 것. **화면이 실제로 읽는 것만 담는다.**
 
     출력  colors  칩 테두리 · 배지 · 그래프 색. 팔레트의 주인은 dot.COLORS 하나
-          types   등록 폼의 입출력 선택지
     규칙  노드 · 엣지 모형과 version 은 여기 없음. POST /render 의 network 가
           좌표까지 함께 들고 감
     제약  화면이 안 읽는 키를 만들지 않는다.
           창구에 있는 키는 「누군가 이것을 읽는다」는 뜻이고, 안 읽히는 키는
           도메인이 바뀔 때 함께 고쳐야 하는지를 아무도 판단할 수 없음
     """
-    all_nodes = load_ontology()["nodes"]
-
     return {
         # 색은 app/ui/graph/dot.py 가 정한다. UI 가 자기 팔레트를 따로 들면 두 곳이
         # 조용히 어긋나고, 그때 사람은 화면을 보고 코드를 의심한다.
         "colors": dict(COLORS),
-        # 등록 폼의 입출력 선택지. **이름이 아니라 id 를 고르게 한다** —
-        # 예전에는 인터페이스 이름(자유 문자열)이라 한 글자만 달라도 아무와도
-        # 안 이어졌다. 이름은 사람이 읽으라고 같이 보낸다.
-        "types": [
-            {"id": type_id, "name": all_nodes[type_id]["name"]}
-            for type_id in type_ids()
-        ],
     }
 
 
-MODES = ("plain", "resolve", "register")
+MODES = ("plain", "resolve")
 
 
 class UnknownRenderMode(ValueError):
@@ -167,19 +154,13 @@ class UnknownRenderMode(ValueError):
 def render(
     mode: str = "plain",
     recipe_ids: list[str] | None = None,
-    mark: dict | None = None,
 ) -> dict:
     """화면 한 장에 필요한 그래프 모형과 칩 데이터.
 
-    입력  mode        "plain" 실행 전 · "resolve" 발화 해석 결과 ·
-                      "register" 노드 등록 직후
-                      **register 만 실제로 갈림** — 그때만 mark 를 줄여 넘김.
-                      나머지 둘은 지금 같은 응답을 냄. 장면 이름을 남겨 두는
-                      것은 화면이 무엇을 보여주는 중인지가 창구에 적혀야 하기
-                      때문임
+    입력  mode        "plain" 실행 전 · "resolve" 발화 해석 결과
+                      둘은 지금 같은 응답을 냄. 장면 이름을 남겨 두는 것은
+                      화면이 무엇을 보여주는 중인지가 창구에 적혀야 하기 때문임
           recipe_ids  강조할 recipe. plain 이면 비어 있음
-          mark        POST /nodes 응답(또는 이미 줄어든
-                      {nodes, solid, dotted}). register 가 아니면 None
     출력  build.render_payload 한 벌
     규칙  모르는 모드면 UnknownRenderMode. 422 로 나감
     """
@@ -192,7 +173,6 @@ def render(
     ids = list(recipe_ids or [])
 
     positions = layout_store.ensure_positions(nodes, solid, dotted)
-    reduced = build.mark_from_registration(mark) if mode == "register" else None
 
     return build.render_payload(
         nodes=nodes,
@@ -201,7 +181,5 @@ def render(
         positions=positions,
         paths=paths_for(ids, nodes),
         recipe_ids=ids,
-        mark=reduced,
         version=ontology_version(),
-        registering=mode == "register",
     )

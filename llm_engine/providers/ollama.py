@@ -2,7 +2,7 @@
 
 qwen 이 이 길로 간다. 요청 한 건에 model · prompt · schema 를 실어 보내고
 response JSON 에서 content 원문만 꺼낸다. 그 문자열을 파싱하고 계약을 검증하는
-것은 부르는 쪽(orchestrator · registration)의 몫이다.
+것은 부르는 쪽(orchestrator)의 몫이다.
 """
 
 import json

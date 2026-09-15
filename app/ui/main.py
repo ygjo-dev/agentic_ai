@@ -33,45 +33,27 @@ from app.ui.components.focus_panel import render_focus_section
 from app.ui.components.follow_panel import render_follow_panel, render_follow_switch
 from app.ui.components.graph_section import render_graph_section
 from app.ui.components.input_section import render_input_section
-from app.ui.components.node_form import render_node_form
 from app.ui.components.path_panel import render_band, skeleton_markup
-
-ASK, REGISTER = "사용자 질문", "노드 등록"
 
 
 # ================================================================ Helper
-def _is_registration(view) -> bool:
-    """지금 화면이 등록 결과를 보여주는 중인가.
+def render_mode(view) -> str:
+    """지금 장면의 render 모드.
 
-    출력  참이면 등록 장면
-    규칙  강조는 그동안만 켜짐. 상단과 하단이 같은 장면을 말하게 하려는 것
+    출력  발화 해석 결과면 "resolve", 그 밖에는 "plain"
+    제약  무엇을 강조로 바꿀지 여기서 정하지 않는다. 서버가 정함
     """
-    return isinstance(view, dict) and view.get("kind") == "register" and "result" in view
-
-
-def render_mode(view) -> tuple[str, dict | None]:
-    """지금 장면의 render 모드와 강조 원본.
-
-    출력  (mode, mark). 등록 결과일 때만 mark 가 있음
-    제약  무엇을 강조로 바꿀지 여기서 정하지 않는다.
-          서버가 정함. 화면이 new_solid_edges 같은 도메인 형태를 알 필요가 없음
-    """
-    if _is_registration(view):
-        return "register", view["result"]
     if isinstance(view, dict) and view.get("kind") == "resolve":
-        return "resolve", None
-    return "plain", None
+        return "resolve"
+    return "plain"
 
 
 def recipe_ids_to_show(view) -> list[str]:
-    """강조할 recipe 목록. 등록은 새로 생긴 것, 해석은 고른 것과 후보들."""
+    """강조할 recipe 목록. 해석이 고른 것과 후보들."""
     if not isinstance(view, dict) or "error" in view:
         return []
 
     result = view.get("result") or {}
-    if view.get("kind") == "register":
-        return list(result.get("recipe_ids") or [])
-
     wanted = [result.get("recipe_id"), *(result.get("candidate_recipe_ids") or [])]
     return list(dict.fromkeys(r for r in wanted if r))
 
@@ -97,17 +79,12 @@ if config.DEBUG:
     st.caption("Backend 호출을 통한 Recipe 선택")
 
 st.session_state.setdefault("utterance", "")
-# 화면은 한 번에 한 장면만 말한다. view 하나로 상단 강조와 하단 내용이 함께 정해진다.
+# 화면은 한 번에 한 장면만 말한다. view 하나로 상단과 하단 내용이 함께 정해진다.
 #   kind="resolve"  -> 상단 기본 그래프 + 하단 경로 사슬
-#   kind="register" -> 상단 새 노드 강조 + 하단 등록 결과
-# 등록 뒤 Run 을 누르면 view 가 덮여 강조가 자연히 꺼진다.
 st.session_state.setdefault("view", None)
-# 탭은 st.tabs 가 아니라 session_state 에 묶는다. 노드 등록 뒤 st.rerun() 이
-# 돌 때 선택이 초기화되면 시연이 끊긴다.
-st.session_state.setdefault("side_tab", ASK)
 
 # ================================================================ 그래프 조회
-# 노드 등록 폼이 인터페이스 목록을 쓰므로 화면을 그리기 전에 한 번 받아둔다.
+# 색을 쓰므로 화면을 그리기 전에 한 번 받아둔다.
 try:
     graph, graph_stale = api_client.get_screen()
 except ApiError:
@@ -120,9 +97,8 @@ st.markdown(styles.page_css(ratios), unsafe_allow_html=True)
 view = st.session_state.get("view")
 
 # 그리기는 백엔드가 한다. 여기서 정하는 것은 "무엇을 강조할 장면인가" 뿐이다.
-mode, mark = render_mode(view)
 try:
-    rendered = api_client.render(mode, recipe_ids_to_show(view), mark)
+    rendered = api_client.render(render_mode(view), recipe_ids_to_show(view))
     render_error = None
 except ApiError as exc:
     rendered, render_error = None, str(exc)
@@ -135,19 +111,11 @@ with top:
     with left:
         side = st.container(key="side_panel")
         with side:
-            st.segmented_control(
-                "화면", [ASK, REGISTER], key="side_tab", label_visibility="collapsed"
-            )
-            if st.session_state["side_tab"] == REGISTER:
-                render_node_form(graph)
-                run_clicked = False
-                follow_slot = None
-            else:
-                _, run_clicked = render_input_section()
-                # 자리만 잡아 둔다. 채우는 것은 화면 맨 끝이다 — 따라 보기
-                # 조각이 새 회차를 보면 전체 rerun 을 걸기 때문에, 여기서
-                # 채우면 Run 클릭이 그 rerun 에 삼켜진다.
-                follow_slot = st.container(key="follow_slot")
+            _, run_clicked = render_input_section()
+            # 자리만 잡아 둔다. 채우는 것은 화면 맨 끝이다 — 따라 보기
+            # 조각이 새 회차를 보면 전체 rerun 을 걸기 때문에, 여기서
+            # 채우면 Run 클릭이 그 rerun 에 삼켜진다.
+            follow_slot = st.container(key="follow_slot")
 
     with right:
         graph_panel = st.container(key="graph_panel")
@@ -161,7 +129,7 @@ with top:
             if render_error:
                 st.markdown(styles.note_markup(f"그래프를 그릴 수 없습니다 — {render_error}"),
                             unsafe_allow_html=True)
-            render_graph_section(rendered, pulse=_is_registration(view), ratios=ratios)
+            render_graph_section(rendered, ratios=ratios)
 
 # ================================================================ 하단
 # 위쪽 얇은 띠(발화·범례·오류·스켈레톤)는 Streamlit, 아래 본문은 iframe 하나다.
@@ -213,8 +181,7 @@ with bottom:
 
 # ================================================================ 따라 보기
 # 맨 끝이다. 조각이 새 회차를 보면 전체 rerun 을 걸므로, 앞쪽에서 부르면
-# Run 클릭과 노드 등록이 그 rerun 에 삼켜진다.
-if follow_slot is not None:
-    with follow_slot:
-        render_follow_switch()
-        render_follow_panel(st.session_state.get("view"))
+# Run 클릭이 그 rerun 에 삼켜진다.
+with follow_slot:
+    render_follow_switch()
+    render_follow_panel(st.session_state.get("view"))

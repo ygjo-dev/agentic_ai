@@ -39,11 +39,6 @@ def highlight() -> str:
     return get("highlight")
 
 
-def new() -> str:
-    """새로 등록된 것."""
-    return get("new")
-
-
 def plain() -> str:
     """그 밖의 모든 것."""
     return get("plain")

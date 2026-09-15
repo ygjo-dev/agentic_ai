@@ -63,7 +63,6 @@ GROUP_BORDER_WIDTH = 2
 EDGE_WIDTH = 1.6
 EDGE_WIDTH_TOP = 4.5
 EDGE_WIDTH_HIGHLIGHT = 8
-EDGE_WIDTH_MARK = 8
 
 # 배경 실선을 얼마나 물러나게 둘까. 강조가 그 위에 떠 보여야 한다.
 DIM_OPACITY = 0.45
@@ -82,12 +81,6 @@ ARROW_NONE = {"to": {"enabled": False}}
 
 # 서버 좌표를 라이브러리 화면 좌표로 옮길 때의 배율. 1.0 이면 그대로다.
 COORD_SCALE = 1.0
-
-# 등록 장면의 주황 둘. **원천은 dot.COLORS 이고 /screen 이 실어 보낸다** —
-# 2026-09-06 에 그 두 키(new_path · new_path_dim)를 창구에 더했다. 여기 값은
-# 다른 색과 같은 자리의 대비책이다. 팔레트를 여기서 정하지 않는다.
-PATH_NEW = "#E8862A"
-PATH_NEW_DIM = "#8A6234"
 
 # ------------------------------------------------------------ 흐르는 표시
 # **옛 app/ui/components/flow.py 의 값 그대로다.** 단위도 같다 — 그때는 SVG
@@ -216,8 +209,6 @@ def node_styles(model: dict, colors: dict, variant: str, *, top: bool) -> list[d
     입력  network 모형 · 색 · 변형 키 · 상단인가
     출력  vis-network 노드 dict 목록. id · shape · color · borderWidth · font
     규칙  대상(group) 노드는 타원에 금색. 상단은 한 단계 낮은 금색을 씀
-          새 노드(분홍)가 강조(teal)를 이김. 「무엇이 새로 생겼는가」는 어느
-          후보를 보든 같은 사실이라 좁혀도 안 변함
     제약  상단에 강조를 칠하지 않는다.
           상단은 「무엇이 무엇과 관련되는가」를 말하는 중립 지도임.
           발화 해석 결과는 하단이 보여줌
@@ -232,12 +223,9 @@ def node_styles(model: dict, colors: dict, variant: str, *, top: bool) -> list[d
     out = []
     for node_id, node in (model.get("nodes") or {}).items():
         대상 = node.get("kind") == "group"
-        새것 = bool(node.get("new"))
-        짚음 = 새것 or node_id in 강조_노드
+        짚음 = node_id in 강조_노드
 
-        if 새것:
-            선색 = colors.get("new", "#F2589D")
-        elif node_id in 강조_노드:
+        if 짚음:
             선색 = colors.get("highlight", "#14B8A6")
         elif 대상:
             선색 = 금색
@@ -271,8 +259,7 @@ def solid_styles(model: dict, colors: dict, variant: str) -> list[dict]:
     """한 변형에서 배경 실선이 어떻게 보여야 하는가. **하단만 쓴다.**
 
     출력  vis-network 엣지 dict 목록. id · from · to · color · width
-    규칙  짙은 주황(등록한 경로) > 옅은 주황(빠진 경로) > teal(해석 경로) >
-          물러난 배경 차례로 걸림. 옛 build_dot 의 우선순위와 같음
+    규칙  teal(해석 경로) > 물러난 배경 차례로 걸림
     제약  무엇이 강조인지 여기서 판단하지 않는다.
           서버(build.network_payload)가 이미 갈라 보냄
           순번을 붙이지 않는다. 그래프 위의 숫자는 흐르는 표시가 대신함
@@ -282,17 +269,11 @@ def solid_styles(model: dict, colors: dict, variant: str) -> list[dict]:
     칸 = (model.get("variants") or {}).get(variant) or {}
     실선색 = colors.get("edge", "#4A5262")
     강조 = {tuple(e) for e in 칸.get("highlight") or ()}
-    표시 = {tuple(e) for e in 칸.get("mark") or ()}
-    물러남 = {tuple(e) for e in 칸.get("dim") or ()}
     끝 = {tuple(e) for e in 칸.get("final") or ()}
 
     out = []
     for a, b in (tuple(e) for e in model.get("solid") or ()):
-        if (a, b) in 표시:
-            색, 굵기 = colors.get("new_path", PATH_NEW), EDGE_WIDTH_MARK
-        elif (a, b) in 물러남:
-            색, 굵기 = colors.get("new_path_dim", PATH_NEW_DIM), EDGE_WIDTH
-        elif (a, b) in 강조:
+        if (a, b) in 강조:
             색, 굵기 = colors.get("highlight", "#14B8A6"), EDGE_WIDTH_HIGHLIGHT
         else:
             색, 굵기 = _rgba(실선색, DIM_OPACITY), EDGE_WIDTH
@@ -313,8 +294,6 @@ def flowing_edges(model: dict, variant: str) -> list[dict]:
           방향이 읽힘
           arrow 는 그 구간이 어디서 멈춰야 하는지를 말함. 화살촉이 있으면
           그 앞에서, 없으면 노드 경계에서 멈춤
-          등록 장면에는 없음. 그때 강조는 teal 이 아니라 주황이고
-          「실행 방향」이 아니라 「무엇이 새로 생겼나」를 말함
     """
     칸 = (model.get("variants") or {}).get(variant) or {}
     끝 = {tuple(e) for e in 칸.get("final") or ()}
@@ -389,7 +368,7 @@ def build_network(model, colors, *, top, variant="", height=480):
         a, b = entry["edge"]
         net.add_edge(
             a, b,
-            color=colors.get("new", "#F2589D") if entry.get("new") else 점선색,
+            color=점선색,
             width=EDGE_WIDTH_TOP if top else EDGE_WIDTH,
             dashes=True,
             arrows="",
@@ -501,15 +480,6 @@ CHIP_CSS = """
 
 # 오른쪽 칩 칸. body 의 자식이라 pyvis 의 .card 와 나란히 선다.
 CHIP_BOX = '<div id="list"></div>'
-
-PULSE_CSS = """
-@keyframes markpulse {
-  0%   { opacity: 1; }
-  50%  { opacity: 0.55; }
-  100% { opacity: 1; }
-}
-#mynetwork { animation: markpulse 0.6s ease-in-out 2; }
-"""
 
 
 def embed_json(payload) -> str:
@@ -1178,10 +1148,10 @@ def _document(model, colors, *, top, height, extra_css, script) -> str:
     return re.sub(r"</body>", script + "</body>", html, count=1)
 
 
-def top_html(model, colors, *, height, pulse=False) -> str:
+def top_html(model, colors, *, height) -> str:
     """상단 문서. **중립 overview 다.**
 
-    입력  network 모형 · 색 · 픽셀 높이 · 방금 등록했는지
+    입력  network 모형 · 색 · 픽셀 높이
     출력  iframe 에 넣을 HTML 문서
     규칙  점선(about)과 대상 노드 금색만 보여줌
           노드를 끌면 그 좌표가 하단에도 간다
@@ -1191,11 +1161,10 @@ def top_html(model, colors, *, height, pulse=False) -> str:
     제약  발화 해석 결과를 여기 칠하지 않는다.
           강조 · 흐르는 표시 · 좁혀 들어가기 전부 하단의 일임
     """
-    css = PULSE_CSS if pulse else ""
     script = graph_script(side="top", split=False, flow=False, overview=True,
                           signature="",
                           data={"patches": {}, "chips": "", "order": [], "picks": {}})
-    return _document(model, colors, top=True, height=height, extra_css=css, script=script)
+    return _document(model, colors, top=True, height=height, extra_css="", script=script)
 
 
 def bottom_html(model, colors, chips, *, left_ratio, order=(), height,

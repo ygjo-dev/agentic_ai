@@ -15,7 +15,7 @@ recipe 는 파일에서 읽는다. 계산은 그 위에 순수하게 얹혀 있�
 
 노드 자신이 말하는 사실은 둘이다. 여기서는 꺼내 주기만 한다.
   source  밖(발화 · 화면)에서 곧장 들어오는 자리. 경로의 시작점을 정한다
-  tool    무엇으로 실행하는가. 뜻을 읽는 것은 registration/recipe_execution_builder.py 다
+  tool    무엇으로 실행하는가. 요청 중의 실행은 이것이 아니라 게시된 Recipe.execution 을 읽는다
 """
 
 import yaml
@@ -47,10 +47,10 @@ def _snapshot() -> tuple[bytes, dict, list[dict]]:
     """nodes · edges 스냅샷.
 
     규칙  캐시 키는 파일 원문 바이트. 내용이 그대로면 다시 파싱하지 않음
-          경로 생성이 can_connect() 를 수천 번 부름. 매번 파싱하면 등록 한 번이
-          몇 분씩 걸림(실측)
+          경로 계산이 can_connect() 를 수천 번 부름. 매번 파싱하면 몇 분씩
+          걸림(실측)
     제약  키를 mtime 으로 바꾸지 않는다.
-          reset_to_init() 은 파일을 복사하고 등록은 같은 초 안에 여러 번 씀
+          파일을 복사하거나 같은 초 안에 여러 번 쓰면 mtime 이 내용을 못 가름
           store 에 캐시를 두지 않는다.
           저장소는 쓰는 쪽이라 "방금 쓴 것이 다음 읽기에 보인다" 를 어기면 안 됨
     """
@@ -103,8 +103,8 @@ def tool_of(node_id: str) -> dict | None:
 
     출력  온톨로지에 적힌 tool 그대로({id, parameters, outputs?}). 없으면 None
     제약  여기서 뜻을 풀지 않는다.
-          도구 id 의 namespace · parameters · outputs 문법은 실행 계층의 계약이라
-          registration/recipe_execution_builder.py 가 읽음
+          도구 id 의 namespace · parameters · outputs 문법은 Recipe.execution 을
+          compile 하는 쪽(agentic_ai 밖의 등록 저장소)이 읽음
     """
     node = _snapshot()[1].get(node_id) or {}
     tool = node.get("tool")
@@ -256,8 +256,7 @@ def crosses_groups(node_ids) -> bool:
           예 : 승강장 CCTV → 프레임 추출 → 궤도 균열 검출.
                타입은 이어지나 화각이 안 맞아 실행 불가
           ★ 이 값을 recipe 생성 정책에서 최종적으로 어떻게 쓸지는 아직
-            확정되지 않았음. 지금 registration 구현은 참인 경로를 recipe 로
-            만들지 않음(registry.register_node · registry.candidate_recipes)
+            확정되지 않았음. recipe 생성은 agentic_ai 밖의 등록 저장소 일임
     제약  계산을 다른 데로 옮기지 않는다.
           about 을 읽는 곳이 여기뿐임. 정책이 바뀌어도 이 계산은 그대로 씀
     """

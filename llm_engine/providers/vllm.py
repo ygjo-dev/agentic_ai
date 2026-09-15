@@ -79,7 +79,7 @@ def call_vllm(
           reasoning_effort="none" 이 Ollama 의 think=False 자리임
     제약  응답을 파싱하지 않는다.
           provider 는 HTTP request · response envelope 까지만 앎. JSON 파싱과
-          계약 검증은 부르는 쪽(orchestrator · registration)의 몫임
+          계약 검증은 부르는 쪽(orchestrator)의 몫임
           /v1/completions 를 부르지 않는다.
           맨 prompt 로는 JSON 강제가 안 걸림(실측)
     """

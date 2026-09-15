@@ -125,8 +125,8 @@ def test_resolve_on_a_fresh_install_reports_everything_missing(tmp_path):
 #
 # **온톨로지에 노드를 더하면 여기서 걸린다.** `layout.json` 에 좌표가 없으면
 # 그래프가 통째로 안 그려진다 — `neato -n` 이 `node ... has no position as
-# required by the -n flag` 로 거부한다. 등록 화면(POST /nodes)을 거치면 좌표가
-# 붙지만 파일을 직접 고치면 안 붙는다. 2026-08-28 시연에서 그렇게 깨졌다
+# required by the -n flag` 로 거부한다. 화면을 한 번 그리면(ensure_positions)
+# 좌표가 붙지만 파일만 고치면 안 붙는다. 2026-08-28 시연에서 그렇게 깨졌다
 # (NOTES.md 「마흔여섯째」).
 #
 # 좌표 파일은 gitignore 라 저장소에 안 들어간다. 그래서 「커밋에 좌표가 들어
@@ -142,7 +142,7 @@ def test_every_drawn_node_has_coordinates():
 
     assert missing == [], (
         f"좌표 없는 노드 {missing} — app/ui/graph/layout_store.ensure_positions 를 "
-        "한 번 돌리거나 화면에서 노드를 등록한다"
+        "한 번 돌린다"
     )
     assert positions
 

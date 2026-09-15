@@ -1,8 +1,8 @@
 """게시된 Recipe.execution 과 요청 하나의 값으로 KRRI_ASAP native call_mcp_workflow 를 만든다.
 
 **여기는 계획을 만들지 않는다.** 어느 노드를 어느 서버 · 도구로 부르고 칸마다 값이
-어디서 오는지는 게시할 때 registration/recipe_execution_builder.compile_execution 이 온톨로지와
-사람이 받아들인 노드 사슬로 정해 recipe 파일에 적어 두었다. 요청 중에는 그 블록만 읽는다.
+어디서 오는지는 agentic_ai 밖의 등록 저장소가 온톨로지와 사람이 받아들인 노드 사슬로
+compile 해 recipe 파일에 게시해 두었다. 요청 중에는 그 블록만 읽는다.
 온톨로지를 import 하지 않는다.
 
     Recipe.execution    게시된 정적 기호 계획. agentic_ai 안의 semantic IR 이고 요청과 무관하다
@@ -201,7 +201,7 @@ def load(recipe_id: str) -> dict | None:
           파일이 있는데 execution 이 없거나 알아볼 수 없으면 PlanError
     제약  execution 이 없다고 온톨로지로 계획을 다시 만들지 않는다.
           그러면 게시한 블록과 온톨로지 중 무엇이 원천인지 다시 둘이 됨.
-          블록은 registration/publish.py 가 다시 적음
+          블록은 등록 저장소가 다시 게시함
     """
     document = _document(recipe_id)
     if document is None:
@@ -226,7 +226,7 @@ def validate(execution, where: str) -> None:
         return PlanError(f"{where}: execution {message}")
 
     if not isinstance(execution, dict):
-        raise fail("블록이 없다. registration/publish.py 로 게시한다")
+        raise fail("블록이 없다. 게시된 Recipe.execution 이 필요하다")
     unknown = [key for key in execution if key not in _EXECUTION_FIELDS]
     if unknown:
         raise fail(f"에 모르는 칸 {unknown}")

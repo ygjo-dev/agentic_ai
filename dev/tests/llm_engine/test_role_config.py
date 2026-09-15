@@ -1,6 +1,6 @@
 """대상 : llm_engine/role_config.py — 역할 하나가 logical model 한 판이다
 
-역할(resolve · node_registration)마다 물리 모델 · provider · inference 값 · prompt ·
+역할(지금은 resolve)마다 물리 모델 · provider · inference 값 · prompt ·
 응답 schema 가 한 벌로 묶이고, manifest 의 판 번호가 prompt 와 schema 파일을 고른다.
 경로는 manifest 에 없다. 역할 이름과 판 번호가 위치를 정한다.
 
@@ -18,7 +18,6 @@ import yaml
 import paths
 from llm_engine import role_config
 from llm_engine.role_config import (
-    NODE_REGISTRATION,
     RESOLVE,
     InvalidRoleConfig,
     UnknownRole,
@@ -247,12 +246,11 @@ def test_the_physical_model_cannot_be_swapped_at_run_time(roles, monkeypatch):
 # 값이 통째로 안 실린다.
 PLACEHOLDERS = {
     RESOLVE: ("{menu}", "{utterance}"),
-    NODE_REGISTRATION: ("{existing_nodes}", "{new_node}", "{groups}"),
 }
 
 
 def test_the_live_roles_resolve_with_the_placeholders_the_code_fills():
-    """실물 역할 둘이 실제로 풀리고, 코드가 채우는 치환자를 prompt 가 가짐.
+    """실물 역할이 실제로 풀리고, 코드가 채우는 치환자를 prompt 가 가짐.
 
     임시 폴더 시험은 규칙만 봄. 저장소에 적힌 역할이 실제 판 파일로 이어지는지는
     여기서만 걸림. 판 번호를 올리고 파일을 안 만들면 이 줄이 먼저 빨개짐.
@@ -270,9 +268,6 @@ def test_the_live_roles_resolve_with_the_placeholders_the_code_fills():
             f"{role} schema 의 required 와 properties 가 갈렸다"
         )
 
-    assert get_role_config(RESOLVE).prompt != get_role_config(NODE_REGISTRATION).prompt, (
-        "목적이 다른 두 역할이 같은 프롬프트를 쓰면 한 역할로 합친 것과 같다"
-    )
     assert not (paths.REPO_ROOT / "models.yaml").exists(), (
         "역할 밖에 모델 목록을 되살리지 않는다. 역할 manifest 한 곳이 모델을 정한다"
     )

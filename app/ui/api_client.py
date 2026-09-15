@@ -1,8 +1,8 @@
 """Backend 와 통신하는 유일한 창구.
 
-프론트엔드는 도메인을 모른다 — 온톨로지도, 등록도, LLM 도 여기를 거쳐
-백엔드에 묻는다. 온톨로지를 직접 읽지 않으므로 저장소가 바뀌어도 여기가
-고쳐야 할 것은 응답 모양이 바뀔 때뿐이다.
+프론트엔드는 도메인을 모른다 — 온톨로지도 LLM 도 여기를 거쳐 백엔드에
+묻는다. 온톨로지를 직접 읽지 않으므로 저장소가 바뀌어도 여기가 고쳐야 할
+것은 응답 모양이 바뀔 때뿐이다.
 
 예외는 삼키지 않는다. requests 의 여러 예외를 ApiError 하나로 모으되,
 화면이 원인별로 다른 문장을 보여줘야 하므로 kind 를 남긴다.
@@ -17,7 +17,6 @@ import endpoints
 SCREEN_TIMEOUT = 10
 RENDER_TIMEOUT = 30  # 좌표가 이미 있으면 사전 몇 벌을 만들 뿐이라 즉시 온다.
 RESOLVE_TIMEOUT = 180
-NODES_TIMEOUT = 180
 # 주기 갱신이라 오래 매달리면 안 된다. LLM 이 안 끼는 메모리 조회다.
 RECENT_TIMEOUT = 5
 
@@ -80,20 +79,19 @@ def get_screen() -> tuple[dict, bool]:
     return payload, False
 
 
-def render(mode: str = "plain", recipe_ids=None, mark: dict | None = None) -> dict:
+def render(mode: str = "plain", recipe_ids=None) -> dict:
     """화면 한 장에 필요한 그래프 모형과 칩 데이터.
 
-    입력  모드 · 강조할 recipe · mark(POST /nodes 응답 그대로)
+    입력  모드 · 강조할 recipe
     출력  POST /render 응답
     제약  여기서 그리지 않는다. 그리기는 전부 백엔드가 하고 여기는 무엇을
           강조할지만 말함
-          mark 를 여기서 줄이지 않는다. 줄이는 일은 서버가 함
     """
     return _call(
         "POST",
         "/render",
         timeout=RENDER_TIMEOUT,
-        json={"mode": mode, "recipe_ids": list(recipe_ids or []), "mark": mark},
+        json={"mode": mode, "recipe_ids": list(recipe_ids or [])},
     )
 
 
@@ -120,27 +118,3 @@ def recent(since: int | None = None) -> dict:
     """
     params = {} if since is None else {"since": since}
     return _call("GET", "/recent", timeout=RECENT_TIMEOUT, params=params)
-
-
-def register_node(name: str, description: str, inputs: list[str], outputs: list[str]) -> dict:
-    """노드 등록. 온톨로지가 바뀌므로 그래프 캐시를 버림."""
-    result = _call(
-        "POST",
-        "/nodes",
-        timeout=NODES_TIMEOUT,
-        json={
-            "name": name,
-            "description": description,
-            "inputs": inputs,
-            "outputs": outputs,
-        },
-    )
-    st.session_state.pop(SCREEN_CACHE_KEY, None)
-    return result
-
-
-def reset_nodes() -> dict:
-    """_init 사본으로 되돌림. 등록과 마찬가지로 캐시를 버림."""
-    result = _call("POST", "/nodes/reset", timeout=NODES_TIMEOUT)
-    st.session_state.pop(SCREEN_CACHE_KEY, None)
-    return result
