@@ -44,7 +44,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 import yaml  # noqa: E402
 
 import paths  # noqa: E402
-from execution import step_service  # noqa: E402
+from registration import recipe_execution_builder  # noqa: E402
 from ontology import store  # noqa: E402
 from registration.registry import (  # noqa: E402
     MAX_STEPS,
@@ -97,7 +97,7 @@ def _tool_names() -> set[str]:
     """온톨로지 tool 에 적힌 도구 이름 · 명령 이름. 문장에 샜는지 볼 때 씀."""
     names = set()
     for node_id in store.nodes():
-        binding = step_service.binding_of(node_id)
+        binding = recipe_execution_builder.binding_of(node_id)
         if binding is None:
             continue
         names.add(binding["id"])
@@ -120,13 +120,13 @@ def review(quiet: bool) -> int:
         for index, chain in enumerate(candidates, start=1):
             status = by_chain.get(tuple(chain), "미게시")
             names = " → ".join(nodes[node_id]["name"] for node_id in chain)
-            missing = step_service.unwired_in(chain)
+            missing = recipe_execution_builder.unwired_in(chain)
             mark = f"   (실행 수단 없음: {' · '.join(missing)})" if missing else ""
             print(f"  {index:>3}  {status:<{STATUS_WIDTH}} {names}{mark}")
 
     candidate_set = {tuple(chain) for chain in candidates}
     stranded = [recipe_id for recipe_id, chain in accepted.items() if tuple(chain) not in candidate_set]
-    unwired = {recipe_id: step_service.unwired(recipe_id) for recipe_id in accepted}
+    unwired = {recipe_id: recipe_execution_builder.unwired(recipe_id) for recipe_id in accepted}
     unwired = {recipe_id: missing for recipe_id, missing in unwired.items() if missing}
 
     # ---------------------------------------------------------- menu 문장 대조
@@ -162,7 +162,7 @@ def review(quiet: bool) -> int:
     print()
     print("## 요약")
     print()
-    runnable = sum(1 for chain in candidates if not step_service.unwired_in(chain))
+    runnable = sum(1 for chain in candidates if not recipe_execution_builder.unwired_in(chain))
     print(f"  경로 {len(every)} · 대상이 어긋나 뺀 것 {crossing} · 후보 {len(candidates)} (MAX_STEPS {MAX_STEPS})"
           f" · 그중 지금 실행 수단이 다 붙는 것 {runnable}")
     print(f"  받아들인 recipe {len(accepted)} · 그중 후보로 만들 수 있는 것 {len(accepted) - len(stranded)}"

@@ -1,6 +1,6 @@
 """대상 : 온톨로지의 tool — 지금 적힌 실행 수단이 실제로 실행 가능한가
 
-로더와 계획의 규칙은 test_step_service.py 가 본다. 여기서 보는 것은 **지금 파일에
+로더와 계획의 규칙은 dev/tests/registration/test_recipe_execution_builder.py 가 본다. 여기서 보는 것은 **지금 파일에
 적힌 것**이 온톨로지 · Gateway 스키마 · 실행 권한과 맞느냐다.
 
 **개수를 박지 않는다.** recipe 가 몇 개인지 서버가 몇 개인지는 요구사항이
@@ -21,7 +21,8 @@ from pathlib import Path
 import pytest
 
 import paths
-from execution import execute_service, legacy_vendor, plan_service, step_service
+from execution import legacy_vendor, workflow_materializer
+from registration import recipe_execution_builder
 from ontology import graph, store
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
@@ -30,7 +31,7 @@ SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "too
 # 중심 · 반경을 빼고 bbox 넷을 넣어 맞댄다 — vendor 의 _point_radius_to_bbox_input 이
 # 하는 그대로다.
 BBOX_FIELDS = ("minLon", "minLat", "maxLon", "maxLat")
-ADAPTER_CONSUMES = set(legacy_vendor.CENTER_KEYS) | {"radiusMeters", "radius"}
+ADAPTER_CONSUMES = set(workflow_materializer.CENTER_KEYS) | {"radiusMeters", "radius"}
 
 
 def _schemas():
@@ -56,7 +57,7 @@ def _props(tool):
 def _tool_nodes():
     """tool 이 있는 노드와 그 binding."""
     for node_id in graph.node_ids():
-        binding = step_service.binding_of(node_id)
+        binding = recipe_execution_builder.binding_of(node_id)
         if binding is not None:
             yield node_id, binding
 
@@ -65,10 +66,10 @@ def _rows():
     """(노드, 타입, 출처, 어미, 도구 이름, 보내는 칸 집합, 스키마 칸) 을 죽 편다."""
     schemas = _schemas()
     for node_id, binding in _tool_nodes():
-        if binding["kind"] != step_service.MCP or binding["tool"] not in schemas:
+        if binding["kind"] != recipe_execution_builder.MCP or binding["tool"] not in schemas:
             continue
         props, _required = schemas[binding["tool"]]
-        for row in step_service.variants(node_id):
+        for row in recipe_execution_builder.variants(node_id):
             fields = set(row["input"])
             if row["adapter"]:
                 fields = (fields - ADAPTER_CONSUMES) | set(BBOX_FIELDS)
@@ -83,7 +84,7 @@ def test_the_tools_and_sources_agree():
 
     안 적었으면 그 자리가 조용히 unwired 가 된다.
     """
-    assert step_service.check_bindings() == []
+    assert recipe_execution_builder.check_bindings() == []
 
 
 def test_no_wiring_table_stands_beside_the_ontology_and_the_published_plan():
@@ -96,10 +97,10 @@ def test_no_wiring_table_stands_beside_the_ontology_and_the_published_plan():
     assert not (paths.REPO_ROOT / "execution" / "wiring.yaml").exists()
     assert not hasattr(paths, "WIRING_PATH")
     for module, name in [
-        (step_service, "PREVIOUS_RESULT_PATHS"),
-        (step_service, "SOURCE_FIELD_BASES"),
-        (plan_service, "HEADLINE"),
-        (plan_service, "reload_wiring"),
+        (recipe_execution_builder, "PREVIOUS_RESULT_PATHS"),
+        (recipe_execution_builder, "SOURCE_FIELD_BASES"),
+        (workflow_materializer, "HEADLINE"),
+        (workflow_materializer, "reload_wiring"),
     ]:
         assert not hasattr(module, name), name
 
@@ -134,7 +135,7 @@ def test_every_start_node_is_a_semantic_type_with_a_known_source():
         origin = graph.source_of(node_id).get("from")
         assert not graph.is_executable(node_id), node_id
         assert node_id not in graph.group_ids(), node_id
-        assert origin == step_service.SPOKEN_ARGUMENT or origin.startswith(step_service.CONTEXT_SOURCE), origin
+        assert origin == recipe_execution_builder.SPOKEN_ARGUMENT or origin.startswith(recipe_execution_builder.CONTEXT_SOURCE), origin
 
 
 # ── 지금 recipe 를 다 부를 수 있는가 ────────────────────────────────
@@ -146,9 +147,9 @@ def test_every_active_recipe_is_fully_wired():
     개수를 안 센다. 「전부 붙어 있다」가 요구사항이고 recipe 가 늘어도 그대로다.
     """
     붙지_않은_것 = {
-        recipe_id: step_service.unwired(recipe_id)
+        recipe_id: recipe_execution_builder.unwired(recipe_id)
         for recipe_id in graph.recipe_ids()
-        if step_service.unwired(recipe_id)
+        if recipe_execution_builder.unwired(recipe_id)
     }
 
     assert 붙지_않은_것 == {}, f"실행 수단이 빈 recipe 가 있다: {붙지_않은_것}"
@@ -158,7 +159,7 @@ def _permitted_servers():
     """refs 가 열어 준 서버. 「무엇을 왜 열었나」의 원천이다."""
     return {
         ref.split("/", 1)[0]
-        for ref in execute_service.USER_CONTEXT["selected_mcp_tool_refs"]
+        for ref in legacy_vendor.USER_CONTEXT["selected_mcp_tool_refs"]
     }
 
 
@@ -172,7 +173,7 @@ def _servers_recipes_call():
     return {
         entry["server_id"]
         for recipe_id in graph.recipe_ids()
-        for entry in plan_service.load(recipe_id)["workflow"]
+        for entry in workflow_materializer.load(recipe_id)["workflow"]
         if "server_id" in entry
     }
 
@@ -244,7 +245,7 @@ BBOX_FROM_CONTEXT = [
 
 
 def _by_origin(node_id, type_id):
-    return {row["origin"]: row for row in step_service.variants(node_id) if row["type"] == type_id and not row["suffix"]}
+    return {row["origin"]: row for row in recipe_execution_builder.variants(node_id) if row["type"] == type_id and not row["suffix"]}
 
 
 @pytest.mark.parametrize(
@@ -269,8 +270,8 @@ def test_a_tool_whose_schema_really_takes_a_bbox_array_gets_one_field(node, tool
     rows = _by_origin(node, "map_extent")
 
     assert "bbox" in _props(tool)
-    assert rows[step_service.SOURCE]["input"]["bbox"] == BBOX_FROM_CONTEXT
-    assert rows[step_service.STEP]["input"]["bbox"] == BBOX_FROM_PREVIOUS
+    assert rows[recipe_execution_builder.SOURCE]["input"]["bbox"] == BBOX_FROM_CONTEXT
+    assert rows[recipe_execution_builder.STEP]["input"]["bbox"] == BBOX_FROM_PREVIOUS
     for row in rows.values():
         assert not set(BBOX_FIELDS) & set(row["input"]), "좌표가 넷으로 흩어졌다"
 
@@ -280,7 +281,7 @@ def test_a_tool_without_a_bbox_field_gets_the_flat_four():
     rows = _by_origin("search_ev_stations", "map_extent")
 
     assert "bbox" not in _props("ev.searchStations")
-    assert rows[step_service.SOURCE]["input"] == dict(zip(BBOX_FIELDS, BBOX_FROM_CONTEXT))
+    assert rows[recipe_execution_builder.SOURCE]["input"] == dict(zip(BBOX_FIELDS, BBOX_FROM_CONTEXT))
 
 
 # ── 도구 이름이 발화 해석 프롬프트로 새지 않는가 ────────────────────

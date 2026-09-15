@@ -15,7 +15,7 @@ recipe 는 파일에서 읽는다. 계산은 그 위에 순수하게 얹혀 있�
 
 노드 자신이 말하는 사실은 둘이다. 여기서는 꺼내 주기만 한다.
   source  밖(발화 · 화면)에서 곧장 들어오는 자리. 경로의 시작점을 정한다
-  tool    무엇으로 실행하는가. 뜻을 읽는 것은 execution/step_service.py 다
+  tool    무엇으로 실행하는가. 뜻을 읽는 것은 registration/recipe_execution_builder.py 다
 """
 
 import yaml
@@ -104,7 +104,7 @@ def tool_of(node_id: str) -> dict | None:
     출력  온톨로지에 적힌 tool 그대로({id, parameters, outputs?}). 없으면 None
     제약  여기서 뜻을 풀지 않는다.
           도구 id 의 namespace · parameters · outputs 문법은 실행 계층의 계약이라
-          execution/step_service.py 가 읽음
+          registration/recipe_execution_builder.py 가 읽음
     """
     node = _snapshot()[1].get(node_id) or {}
     tool = node.get("tool")

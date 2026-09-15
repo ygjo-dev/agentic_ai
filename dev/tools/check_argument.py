@@ -52,7 +52,7 @@ LLM 이 뽑은 값만 재면 0건이 나왔을 때 **인자 탓인지 데이터�
 ## 이 파일이 안 하는 것
 
 표를 옮겨 적지 않는다. 발화 목록은 check_resolve 에서, 배선은 게시된 execution 에서,
-user_context 는 execute_service 에서 그대로 가져온다. 여기에 베껴 적으면
+user_context 는 legacy_vendor 에서 그대로 가져온다. 여기에 베껴 적으면
 KRRI_ASAP 을 고쳤을 때 이 도구가 세는 숫자를 믿을 수 없게 된다.
 
 Gateway 주소만은 여기서 직접 환경변수를 읽는다. 제품 코드에 그것만 하는
@@ -73,8 +73,8 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
-from execution import legacy_vendor, plan_service  # noqa: E402
-from execution.execute_service import USER_CONTEXT  # noqa: E402
+from execution import workflow_materializer  # noqa: E402
+from execution.legacy_vendor import USER_CONTEXT  # noqa: E402
 # check_resolve 의 밑줄 이름을 그대로 가져온다. 발화 목록과 /resolve 부르는
 # 자리를 여기 베껴 적으면 "같은 경로" 가 아니게 되고, 그러면 이 표의 인자가
 # check_resolve 표의 인자와 다른 것을 재게 된다. 같은 tools/ 안이라 밑줄을
@@ -239,15 +239,15 @@ def _first_step(recipe_id: str) -> dict | None:
     """그 recipe 의 첫 실행 단계. 발화 인자 자리를 PROBE 로 표시한 채.
 
     입력  recipe id
-    출력  게시된 execution 을 ExecutionRequest 로 묶어 legacy_vendor.to_legacy 로 채운 첫 step.
+    출력  게시된 execution 을 workflow_materializer.workflow_of 로 채운 KRRI native workflow 의 첫 step.
           부를 것이 없으면 None
-    규칙  실행이 쓰는 request · to_legacy 를 그대로 부름. 배선을 여기서 다시 읽지 않음 — 실행이 지나는
+    규칙  실행이 쓰는 workflow_of 를 그대로 부름. 배선을 여기서 다시 읽지 않음 — 실행이 지나는
           것과 같은 자리를 봐야 표를 믿을 수 있음
           인자 자리에 PROBE 를 넣어 두면 발화 인자를 쓰는지 아닌지가 값으로 드러남
     """
     try:
-        request = plan_service.request(recipe_id, plan_service.load(recipe_id), PROBE)
-        steps = legacy_vendor.to_legacy(request)["steps"]
+        built = workflow_materializer.workflow_of(workflow_materializer.load(recipe_id), {"argument": PROBE})
+        steps = built["workflow"]["steps"]
     except Exception:  # noqa: BLE001 — 표에 남기고 계속 간다.
         return None
     return steps[0] if steps else None
@@ -306,8 +306,8 @@ def _execute(step: dict, argument: str) -> tuple:
     출력  (건수 문자열, 본문). 실패하면 ("오류", 사유 문자열)
     규칙  본문 모양은 vendor_to_be_deleted/asap/mcp_client.execute_tool 과 같음.
           **user_context 를 반드시 넣는다** — 빠뜨리면 요청마다 새 guest 가
-          만들어지고 adminBoundary 셋 말고는 전부 거부됨(execute_service 주석)
-          그 값을 여기 베껴 적지 않고 execute_service.USER_CONTEXT 를 씀
+          만들어지고 adminBoundary 셋 말고는 전부 거부됨(legacy_vendor 주석)
+          그 값을 여기 베껴 적지 않고 legacy_vendor.USER_CONTEXT 를 씀
     제약  실패해도 멈추지 않는다. 아홉 발화를 끝까지 재는 것이 목적임
     """
     payload = {
@@ -432,9 +432,9 @@ def _one_call(picker, recipe_id, status, step, argument, count) -> dict:
         "body": None,
     }
     if step is None:
-        # 배선이 안 붙은 노드가 있으면 execute_service.run 이 하나도 안 부른다.
+        # 배선이 안 붙은 노드가 있으면 실행이 하나도 안 부른다.
         # recipe 는 맞았는데 화면에 아무것도 안 나오는 자리라 이름을 적는다.
-        missing = (plan_service.load(recipe_id) or {}).get("unwired", []) if recipe_id else []
+        missing = (workflow_materializer.load(recipe_id) or {}).get("unwired", []) if recipe_id else []
         row["hits"] = f"배선 없음 {'·'.join(missing)}" if missing else "부를 것 없음"
         return row
 

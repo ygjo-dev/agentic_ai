@@ -1,8 +1,10 @@
 """Backend FastAPI 진입점.
 
-**라우팅만 둔다.** 도메인 로직은 app/api/services/ 가, 오류 매핑은 아래
-미들웨어가 맡는다. 엔드포인트마다 같은 try/except 를 반복하면 한 곳을 고칠 때
-나머지를 빠뜨리게 된다.
+**라우팅과 요청 한 건의 얇은 흐름만 둔다.** 발화 한 건은 _process 에서
+해석(orchestrator.resolve_service) -> workflow(execution.workflow_materializer) ->
+실행(execution.legacy_vendor) 차례로 지나고, 답 문구는 workflow_answer 가 만든다.
+도메인 로직은 각 모듈과 app/api/services/ 가, 오류 매핑은 아래 미들웨어가 맡는다.
+엔드포인트마다 같은 try/except 를 반복하면 한 곳을 고칠 때 나머지를 빠뜨리게 된다.
 """
 
 import json
@@ -43,7 +45,8 @@ from registration.registry import (
     UnknownGroup,
     UnknownType,
 )
-from execution import execute_service
+from execution import legacy_vendor, workflow_materializer
+from execution.legacy_vendor import workflow_answer
 from orchestrator import resolve_service
 from orchestrator.resolve_service import RouteResolutionError
 
@@ -55,15 +58,18 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# 지나간 회차를 기억하려고 두 자리를 감싼다. **값을 안 바꾸는 껍데기다.**
+# 지나간 회차를 기억하려고 해석 자리를 감싼다. **값을 안 바꾸는 껍데기다.**
 #
-# 후보와 인자는 resolve 안에만 있고 실제로 부른 recipe 는 run 안에만 있다.
-# 둘 다 이벤트로는 안 나온다. 씌우는 자리를 여기 한 곳에 두고, --reload 로
-# 모듈을 다시 읽어도 두 번 씌우지 않는다.
+# 후보와 인자는 resolve 안에만 있고 이벤트로는 안 나온다. 씌우는 자리를 여기 한
+# 곳에 두고, --reload 로 모듈을 다시 읽어도 두 번 씌우지 않는다.
 if not hasattr(resolve_service.resolve, "__wrapped__"):
     resolve_service.resolve = recent_service.watch_resolve(resolve_service.resolve)
-if not hasattr(execute_service.run, "__wrapped__"):
-    execute_service.run = recent_service.watch_run(execute_service.run)
+
+# resolve 가 recipe 하나를 골랐다는 판정. 이것만 실행으로 이어진다.
+SELECT = "SELECT"
+
+# 해석 단계의 진행 표시가 붙는 노드 이름.
+RESOLVE_NODE = "resolve"
 
 # 422 로 내보낼 예외. "요청이 잘못됐거나 LLM 이 계약을 어겼다" 는 뜻이고,
 # 서버가 고장난 것이 아니다.
@@ -168,12 +174,13 @@ def _process(
     context: dict | None = None,
     continue_after_resolve: bool,
 ):
-    """창구 둘이 지나는 한 자리. resolve 역할 설정을 읽어 LLM 클라이언트와 함께 넘김.
+    """창구 둘이 지나는 한 자리. 발화 한 건을 해석하고, 이어 가면 부르고 답을 냄.
 
-    출력  execute_service.process 가 낸 것 그대로. continue_after_resolve=False
-          면 resolve 결과 dict, True 면 이벤트 흐름
+    출력  continue_after_resolve=False 면 resolve 결과 dict 그대로
+          continue_after_resolve=True 면 이벤트 dict 를 순서대로 내는
+          async generator(_stream). 마지막은 반드시 type=result
     규칙  POST /resolve 는 continue_after_resolve=False, POST /chat/stream 은
-          True 로 부름
+          True 로 부름. 두 창구의 차이는 해석 뒤에 실행을 이어 가느냐 하나뿐임
           역할 설정을 읽고 LLM 클라이언트를 만드는 자리가 여기 하나임. 창구마다
           따로 두면 한쪽 모델 · prompt · schema 만 바뀌어도 안 보임
           역할 설정은 요청마다 한 번 읽음. 그 한 벌이 LLM 클라이언트와 해석의
@@ -182,17 +189,67 @@ def _process(
           파일을 고치는 중에 요청이 오면 모델과 prompt 가 서로 다른 판이 됨
           요청 경로를 보고 가르지 않는다.
           어느 창구인지는 continue_after_resolve 로만 말함
-          해석을 여기서 부르지 않는다.
-          resolve_service.resolve 를 부르는 곳은 execute_service._resolve 한 곳임
+          흐름을 만들기 전에 해석하지 않는다.
+          LLM 이 끝난 뒤에야 화면에 해석 단계가 뜸
     """
     role = get_role_config(RESOLVE)
-    return execute_service.process(
-        text,
-        llm_client=get_llm_for(role),
-        role=role,
-        context=context,
-        continue_after_resolve=continue_after_resolve,
-    )
+    llm_client = get_llm_for(role)
+    if not continue_after_resolve:
+        return _resolve(text, llm_client, role)
+    return _stream(text, llm_client, role, context)
+
+
+def _resolve(text: str, llm_client, role) -> dict:
+    """발화 한 건의 해석. resolve_service.resolve 를 부르는 유일한 자리.
+
+    규칙  두 창구 모두 _process 를 거쳐 여기로 옴. 받는 값이 늘 같음
+    제약  문맥을 넘기지 않는다.
+          무엇을 고를지는 발화와 menu 만 보고 LLM 이 정함
+    """
+    return resolve_service.resolve(text, llm_client=llm_client, role=role)
+
+
+async def _stream(text: str, llm_client, role, context: dict | None):
+    """/chat/stream 한 건. 해석 -> 실행 전제 -> workflow -> 실행 -> result.
+
+    출력  해석 단계의 step_start / step_end, 실행 단계마다 한 쌍, 마지막은 type=result
+    규칙  해석 단계의 step_start 가 LLM 을 부르기 전에 나감. 부르는 화면이 기다리는
+          동안 진행 상황을 그림
+          해석은 한 번만 하고 그 결과 하나로 끝까지 감
+          SELECT 가 아니면 도구를 하나도 안 부름. CLARIFY 는 무엇을 부를지
+          정해지지 않았고 NO_MATCH 는 부를 것이 없음
+          고른 recipe 의 게시된 execution 과 해석 결과 · 화면 문맥으로
+          workflow_materializer 가 workflow 를 만듦. READY 가 아니면 부르지 않음
+          READY 면 legacy_vendor 가 KRRI 실행기로 부름
+          답 문구는 workflow_answer 가 만듦
+    제약  여기서 문장을 만들지 않는다
+          고른 recipe 를 문맥으로 다시 고르지 않는다
+          상태를 두지 않는다.
+          발화 한 건이 한 건으로 끝남. 앞 발화를 안 기억하므로 「1번」도 다른
+          말과 똑같이 새 발화로 해석됨
+    """
+    yield {"type": "step_start", "node": RESOLVE_NODE, "message": workflow_answer.RESOLVE_START}
+    resolved = _resolve(text, llm_client, role)
+    recipe_id = resolved.get("recipe_id")
+    yield {
+        "type": "step_end",
+        "node": RESOLVE_NODE,
+        "message": workflow_answer.resolve_end(resolved.get("status"), recipe_id),
+    }
+
+    if resolved.get("status") != SELECT or not recipe_id:
+        answer = workflow_answer.unresolved_answer(resolved, resolve_service.answer_names(resolved))
+        yield {"type": "result", "answer": answer, "commands": []}
+        return
+
+    materialized = workflow_materializer.materialize(recipe_id, resolved, context)
+    if materialized["status"] != workflow_materializer.READY:
+        answer = workflow_answer.unready_answer(materialized, resolved.get("paths"))
+        yield {"type": "result", "answer": answer, "commands": []}
+        return
+
+    async for payload in legacy_vendor.run(materialized, text):
+        yield payload
 
 
 @app.post("/nodes")

@@ -4,17 +4,20 @@
 부르면 한쪽만 고쳐져도 안 보이고, 화면에서 본 해석과 KRRI_ASAP 이 받은 답이
 갈린다.
 
-지키는 것은 셋이다.
-  두 창구가 같은 진입점(execute_service.process)을 지나고 continue_after_resolve 만 다르다
-  한 요청에서 해석은 한 번이다
+지키는 것은 이것이다.
+  두 창구가 같은 진입점(main._process)을 지나고 continue_after_resolve 만 다르다
+  한 요청에서 해석은 한 번이고, 해석 단계의 step_start 가 LLM 보다 먼저 나간다
   /resolve 는 실행을 안 하고, /chat/stream 은 그 해석 결과를 그대로 실행에 넘긴다
+  SELECT 가 아니거나 지금 부를 수 없으면 도구를 안 부르고 그렇다고 답한다
+  요청 중에 온톨로지로 계획을 다시 만들지 않는다
   회차로 남는 것은 /chat/stream 뿐이다
   역할 설정은 요청마다 한 번 읽고, 그 한 벌이 LLM 클라이언트와 해석(등록)에 함께 간다
   요청이 물리 모델을 갈아 끼우는 인자가 없다
 
-LLM 도 Gateway 도 부르지 않는다. 진입점 · resolve · run · 역할 설정을 대역으로 바꾼다.
+LLM 도 Gateway 도 부르지 않는다. resolve · vendor 실행기 · 역할 설정을 대역으로 바꾼다.
 """
 
+import asyncio
 import inspect
 
 import pytest
@@ -22,7 +25,11 @@ from fastapi.testclient import TestClient
 
 from app.api import main
 from app.api.services.bridge import recent_service
+from execution import legacy_vendor, workflow_materializer
 from llm_engine.role_config import NODE_REGISTRATION, RESOLVE
+from ontology import graph, store
+from registration import recipe_execution_builder
+from vendor_to_be_deleted.asap import workflow_answer
 
 UTTERANCE = "오송역 CCTV 보여줘"
 
@@ -56,6 +63,23 @@ EVENTS = [
 ]
 
 
+def collect(events):
+    """async generator 가 낸 이벤트를 순서대로 모음."""
+
+    async def pump():
+        return [event async for event in events]
+
+    return asyncio.run(pump())
+
+
+def recipe_of(chain):
+    """그 사슬을 가진 recipe id. 번호를 박지 않으려고 찾아서 쓴다."""
+    for recipe_id in graph.recipe_ids():
+        if graph.recipe_nodes(recipe_id) == list(chain):
+            return recipe_id
+    raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
+
+
 @pytest.fixture(autouse=True)
 def no_turns(monkeypatch):
     """회차 기록이 다른 시험에 안 섞이게 비움. 역할 설정과 LLM 클라이언트도 대역으로 둠.
@@ -81,52 +105,45 @@ def no_turns(monkeypatch):
 
 @pytest.fixture
 def entry(monkeypatch):
-    """공통 진입점을 대역으로 바꿈. 누가 어떤 값으로 불렀는지만 남김."""
+    """진입점 뒤의 두 갈래(해석만 · 실행까지)를 대역으로 바꿈. 누가 어떤 값으로 불렀는지만 남김."""
     calls = []
 
-    def fake_process(
-        text, llm_client, role, context=None, *, continue_after_resolve
-    ):
-        calls.append(
-            {
-                "text": text,
-                "llm_client": llm_client,
-                "role": role,
-                "context": context,
-                "continue_after_resolve": continue_after_resolve,
-            }
-        )
-        if not continue_after_resolve:
-            return RESOLVED
+    def fake_resolve(text, llm_client, role):
+        calls.append({"text": text, "llm_client": llm_client, "role": role, "continue_after_resolve": False})
+        return RESOLVED
 
-        async def events():
-            for payload in EVENTS:
-                yield payload
+    async def fake_stream(text, llm_client, role, context):
+        calls.append({"text": text, "llm_client": llm_client, "role": role, "context": context,
+                      "continue_after_resolve": True})
+        for payload in EVENTS:
+            yield payload
 
-        return events()
-
-    monkeypatch.setattr(main.execute_service, "process", fake_process)
+    monkeypatch.setattr(main, "_resolve", fake_resolve)
+    monkeypatch.setattr(main, "_stream", fake_stream)
     return calls
 
 
 @pytest.fixture
 def counted(monkeypatch):
-    """진짜 진입점을 두고 resolve 와 run 만 대역으로 바꿈. 몇 번 불렸는지 셈."""
-    seen = {"resolve": [], "run": []}
+    """진짜 진입점을 두고 resolve 와 실행 다리만 대역으로 바꿈. 몇 번 불렸고 무엇을 받았는지 셈."""
+    seen = {"resolve": [], "run": [], "answer": dict(RESOLVED)}
 
     def fake_resolve(text, llm_client, role):
         seen["resolve"].append((text, llm_client, role))
-        return dict(RESOLVED)
+        return seen["answer"]
 
-    async def fake_run(recipe_id, argument, text="", context=None, options=None):
-        seen["run"].append(
-            {"recipe_id": recipe_id, "argument": argument, "context": context, "options": options}
-        )
+    async def fake_run(materialized, text):
+        seen["run"].append(materialized)
         yield {"type": "result", "answer": "끝", "commands": []}
 
     monkeypatch.setattr(main.resolve_service, "resolve", fake_resolve)
-    monkeypatch.setattr(main.execute_service, "run", fake_run)
+    monkeypatch.setattr(main.legacy_vendor, "run", fake_run)
     return seen
+
+
+def stream(text=UTTERANCE, context=None):
+    """진짜 _process 흐름을 끝까지 돌림. 역할 설정 · LLM 은 대역."""
+    return collect(main._process(text, context=context, continue_after_resolve=True))
 
 
 # ================================================================ 한 진입점
@@ -137,15 +154,7 @@ def test_the_resolve_endpoint_goes_through_the_common_entry_without_executing(en
 
     assert response.status_code == 200
     assert response.json() == RESOLVED
-    assert entry == [
-        {
-            "text": UTTERANCE,
-            "llm_client": LLM,
-            "role": ROLE,
-            "context": None,
-            "continue_after_resolve": False,
-        }
-    ]
+    assert entry == [{"text": UTTERANCE, "llm_client": LLM, "role": ROLE, "continue_after_resolve": False}]
 
 
 def test_the_chat_stream_endpoint_goes_through_the_same_entry_and_executes(entry):
@@ -155,13 +164,7 @@ def test_the_chat_stream_endpoint_goes_through_the_same_entry_and_executes(entry
 
     assert response.status_code == 200
     assert entry == [
-        {
-            "text": UTTERANCE,
-            "llm_client": LLM,
-            "role": ROLE,
-            "context": CONTEXT,
-            "continue_after_resolve": True,
-        }
+        {"text": UTTERANCE, "llm_client": LLM, "role": ROLE, "context": CONTEXT, "continue_after_resolve": True}
     ]
 
 
@@ -176,19 +179,21 @@ def test_the_resolve_endpoint_resolves_once_and_runs_nothing(counted):
 
 
 def test_the_chat_stream_resolves_once_and_hands_that_result_to_execution(counted):
-    """실행 쪽이 다시 해석하면 LLM 을 두 번 부르고, 화면에 보인 해석과 실제로 부른 recipe 가 갈릴 수 있다."""
+    """실행 쪽이 다시 해석하면 LLM 을 두 번 부르고, 화면에 보인 해석과 실제로 부른 recipe 가 갈릴 수 있다.
+
+    해석이 낸 recipe · 인자가 그대로 workflow 가 되고 화면 문맥이 실행기까지 간다.
+    "충북대" 처럼 끝 글자가 장소답지 않은 말도 그대로 간다 — 무엇이 인자인지는 발화 해석 LLM 이 안다.
+    """
+    counted["answer"] = {**RESOLVED, "argument": "충북대"}
+
     with TestClient(main.app) as client:
         client.post("/chat/stream", json={"text": UTTERANCE, "context": CONTEXT})
 
     assert len(counted["resolve"]) == 1
-    assert counted["run"] == [
-        {
-            "recipe_id": RESOLVED["recipe_id"],
-            "argument": RESOLVED["argument"],
-            "context": CONTEXT,
-            "options": {"travel_mode": None, "minutes": None, "admin_level": None},
-        }
-    ]
+    (materialized,) = counted["run"]
+    assert (materialized["status"], materialized["recipe_id"]) == (workflow_materializer.READY, RESOLVED["recipe_id"])
+    assert materialized["workflow"]["steps"][0]["input"]["query"] == "충북대"
+    assert materialized["context"] == CONTEXT
 
 
 def test_both_endpoints_hand_the_resolution_the_same_inputs(counted):
@@ -200,6 +205,144 @@ def test_both_endpoints_hand_the_resolution_the_same_inputs(counted):
     only_resolve, with_execution = counted["resolve"]
     assert only_resolve == with_execution
     assert only_resolve == (UTTERANCE, LLM, ROLE)
+
+
+def test_the_resolution_starts_only_after_its_step_start_goes_out(counted):
+    """KRRI_ASAP 화면은 step_start 를 보고 지금 도는 단계를 그린다.
+
+    해석을 먼저 하고 흐름을 만들면 LLM 이 도는 동안 화면에 아무것도 안 뜬다.
+    """
+
+    async def pump():
+        events = main._process(UTTERANCE, continue_after_resolve=True)
+        before_reading = len(counted["resolve"])
+        first = await events.__anext__()
+        after_first = len(counted["resolve"])
+        rest = [event async for event in events]
+        return before_reading, first, after_first, rest
+
+    before_reading, first, after_first, rest = asyncio.run(pump())
+
+    assert before_reading == 0, "흐름을 읽기도 전에 해석했다"
+    assert first == EVENTS[0]
+    assert after_first == 0, "step_start 가 나가기 전에 해석했다"
+    assert len(counted["resolve"]) == 1
+    assert rest[0] == EVENTS[1]
+    assert rest[-1]["type"] == "result"
+
+
+# ================================================================ 부르지 않는 자리
+@pytest.mark.parametrize("status", ["CLARIFY", "NO_MATCH"])
+def test_a_status_that_is_not_select_calls_no_tool(counted, status):
+    """CLARIFY 는 무엇을 부를지 정해지지 않았고 NO_MATCH 는 부를 것이 없음."""
+    counted["answer"] = {**RESOLVED, "status": status, "recipe_id": None, "candidate_recipe_ids": [], "reason": ""}
+
+    events = stream()
+
+    assert counted["run"] == [], "SELECT 가 아닌데 도구를 불렀다"
+    assert events[-1]["type"] == "result"
+    assert events[-1]["answer"].startswith(workflow_answer.NO_MATCH_HEADLINE)
+
+
+@pytest.mark.parametrize(
+    "chain, fragment",
+    [
+        (["place_name", "geocode_place"], "장소를 함께"),
+        (["keyword", "search_admin_boundaries"], "찾을 것을 함께"),
+        (["district_code", "get_election_district"], "이름이나 코드를 함께"),
+    ],
+    ids=["place", "keyword", "identifier"],
+)
+def test_a_null_argument_stops_the_call_with_the_guidance_matching_the_start_node(counted, chain, fragment):
+    """**LLM 이 인자를 null 로 냈으면 파이썬이 발화를 다시 훑지 않는다.**
+
+    장소 문구 하나로 두면 "선거구 찾아줘" 에 장소를 대라고 답하게 됨. 무엇으로 시작하는 경로인지는
+    게시된 recipe 가 말한다 — 여기서 다시 안 적는다.
+    """
+    recipe_id = recipe_of(chain)
+    counted["answer"] = {**RESOLVED, "recipe_id": recipe_id, "argument": None}
+
+    events = stream("오송역 찾아줘")
+
+    assert counted["run"] == [], "인자가 없는데 도구를 불렀다"
+    assert fragment in events[-1]["answer"]
+
+
+def test_a_context_only_recipe_still_runs_without_a_spoken_argument(counted):
+    """"지금 보이는 곳 CCTV" 에는 뽑을 말이 없고 조회할 곳은 이미 문맥이 말했음."""
+    counted["answer"] = {**RESOLVED, "recipe_id": recipe_of(["map_extent", "find_cctv"]), "argument": None}
+
+    stream(context=CONTEXT)
+
+    assert counted["run"], "문맥으로 도는 recipe 인데 안 불렀다"
+
+
+@pytest.mark.parametrize(
+    "chain, context, fragment",
+    [
+        (["point", "point_to_map_extent", "find_cctv"], None, "찍어"),
+        (["map_extent", "find_cctv"], {"selectedLocation": {"lon": 1, "lat": 2}}, "지도 범위"),
+    ],
+    ids=["point", "map_extent"],
+)
+def test_a_recipe_needing_the_screen_context_does_not_start_without_it(counted, chain, context, fragment):
+    """**고른 것을 바꾸지 않고 실행만 멈춘다.** 무엇이 없어서 못 부르는지 사람이 읽을 수 있어야 함."""
+    counted["answer"] = {**RESOLVED, "recipe_id": recipe_of(chain), "argument": None}
+
+    events = stream(context=context)
+
+    assert counted["run"] == []
+    assert events[-1]["commands"] == []
+    assert fragment in events[-1]["answer"]
+
+
+def test_an_id_that_is_not_an_accepted_recipe_calls_nothing(counted):
+    """resolve 응답 schema 에는 recipe id 목록이 없다. 없는 번호가 오면 부를 것이 없다고만 답한다."""
+    counted["answer"] = {**RESOLVED, "recipe_id": "recipe_없음"}
+
+    events = stream()
+
+    assert counted["run"] == []
+    assert events[-1] == {"type": "result", "answer": workflow_answer.NO_TOOL_ANSWER, "commands": []}
+
+
+# ================================================================ 게시된 계획만
+def _untouchable(*args, **kwargs):
+    raise AssertionError("요청 중에 온톨로지를 읽거나 계획을 다시 compile 했다")
+
+
+def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_ontology(monkeypatch):
+    """**고른 recipe 를 실행하려고 온톨로지를 다시 훑지 않는다.**
+
+    요청 중에 온톨로지를 읽으면 게시된 블록과 온톨로지 중 무엇이 실행을 정하는지
+    다시 둘이 된다. 해석부터 실행기에 넘기는 workflow 까지 온톨로지 읽기와 compile 을
+    막아 두고 돈다. 넘긴 workflow 는 게시된 블록을 채운 것 그대로다.
+    """
+    spoken = recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"])
+    published = workflow_materializer.workflow_of(workflow_materializer.load(spoken), {"argument": "오송역"})["workflow"]
+    called = []
+
+    async def fake_workflow(state, intent):
+        called.append(intent)
+        trace = [{"id": step["id"], "tool": step["tool"], "status": "success"} for step in intent["steps"]]
+        return {"answer_draft": "답", "errors": [], "commands": [], "artifacts": {"mcp_workflow_trace": trace}}
+
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", fake_workflow)
+    monkeypatch.setattr(
+        main.resolve_service, "resolve",
+        lambda text, llm_client, role: {**RESOLVED, "recipe_id": spoken, "candidate_recipe_ids": [spoken]},
+    )
+    for name in ("read", "raw_bytes", "nodes"):
+        monkeypatch.setattr(store, name, _untouchable)
+    monkeypatch.setattr(recipe_execution_builder, "compile_execution", _untouchable)
+
+    events = stream()
+
+    assert called == [published]
+    assert [event["node"] for event in events if event["type"] == "step_start"] == [
+        "resolve", "geocode_place", "find_cctv",
+    ]
+    assert events[-1]["type"] == "result"
 
 
 # ================================================================ 역할 설정은 요청마다 한 벌

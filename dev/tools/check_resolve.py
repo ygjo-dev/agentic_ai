@@ -1193,7 +1193,7 @@ def _measure(
 # 되묻기가 나는 발화는 화면에서 사람이 번호를 골라야 실행된다. 그 자리를
 # `?` 로 두면 29~31 번 같은 「애매」 자리가 영영 안 재어진다. 그래서
 # **기대 recipe 가 후보에 있으면 그 번호를 골라 이어 누른다.** 고르기는
-# 해석을 다시 하지 않으므로(execute_service._run_choice) 부르는 것은 정확히
+# 해석을 다시 하지 않으므로 부르는 것은 정확히
 # 기대 recipe 다. 사람이 화면에서 하는 것과 같은 동작이고, 표에는 「되묻기→고름」
 # 이라고 밝혀 곧장 실행된 자리와 갈라 적는다.
 #
@@ -1214,15 +1214,13 @@ def _measure(
 # 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 그쪽
 # 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
 # 표는 ✓ 로 찍히는 식이다.
-from execution.execute_service import (  # noqa: E402
-    NO_ARGUMENT_ANSWER,
-    UNWIRED_ANSWER,
-)
 from vendor_to_be_deleted.asap.workflow_answer import (  # noqa: E402
     EMPTY_HEADLINE,
     ERROR_HEADLINE,
     MISSING_STATUS,
+    NO_ARGUMENT_ANSWER,
     NO_PERMISSION_REASON,
+    UNWIRED_ANSWER,
 )
 
 RAN, EMPTY, UNMEASURED = "✓", "✗", "?"

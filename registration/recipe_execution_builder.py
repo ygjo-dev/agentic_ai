@@ -2,8 +2,11 @@
 
     온톨로지 + 사람이 받아들인 노드 사슬
       -> compile_execution
-      -> recipe 파일의 execution 블록        (registration/publish.py 가 적는다)
-      -> execution/plan_service.py 가 요청마다 ExecutionRequest 로 묶는다
+      -> recipe 파일의 execution 블록(Recipe.execution)   (registration/publish.py 가 적는다)
+      -> execution/workflow_materializer.py 가 요청마다 KRRI native workflow 로 만든다
+
+게시할 때 한 번 온톨로지를 훑는 자리가 여기다. 요청 중의 실행은 이 모듈을 import 하지
+않고 게시된 블록만 읽는다.
 
 **도구 식별과 입력 배선은 온톨로지 노드의 tool 이 갖는다.** 여기는 그것을 읽어
 경로의 한 자리에서 칸마다 값이 어디서 오는지를 기호로 적는다.
@@ -42,8 +45,8 @@ import datetime
 import re
 
 import paths
-from execution import plan_service
-from execution.plan_service import (
+from execution import workflow_materializer
+from execution.workflow_materializer import (
     CONTEXT_SOURCE,
     RUNTIME_NOW,
     SPOKEN_ARGUMENT,
@@ -68,7 +71,7 @@ COMMAND = "command"
 #
 # 온톨로지에는 논리 식별(builtin/geo.pointRadiusToBbox)만 적는다. builtin 노드는 따로
 # 부르지 않고 바로 뒤 도구 단계의 transform 으로 얹힌다. 계산은 실행 계층이 id 를 보고
-# 한다(지금은 legacy_vendor 가 vendor 의 _point_radius_to_bbox_input 으로 옮긴다).
+# 한다(workflow_materializer 가 inputAdapter 로 명시하고 KRRI 실행기의 point_radius_to_bbox 가 계산한다).
 #
 # **만드는 칸이 정해져 있다.** 그 계산은 중심 · 반경 칸을 지우고 minLon · minLat ·
 # maxLon · maxLat 넷을 평평하게 만든다. 뒤 도구가 지도 범위를 bbox 배열 한 칸으로
@@ -203,7 +206,7 @@ def _check_expression(where: str, expression, inputs: list[str], known: set, in_
     if isinstance(expression, str):
         if expression.startswith(RUNTIME_NOW.split(".")[0] + "."):
             try:
-                plan_service.now_field(expression, None)
+                workflow_materializer.now_field(expression, None)
             except ValueError as error:
                 raise ValueError(f"{where}: {error}") from None
             return
@@ -614,7 +617,7 @@ def _screen_reference(node_id: str, source: str, state: dict) -> dict:
 def _symbolic(expression, node_id: str, type_id: str, origin, state: dict):
     """parameters 의 값 하나를 이 자리의 기호로.
 
-    출력  plan_service 가 읽는 꼴의 기호. 이 자리에서 안 보내는 칸이면 _OMIT
+    출력  workflow_materializer 가 읽는 꼴의 기호. 이 자리에서 안 보내는 칸이면 _OMIT
     규칙  runtime.now.<이름>   {from: runtime.now.<이름>}
           semantic 참조        이 자리에서 받는 타입이면 _reference. 다른 타입이면 _OMIT
           그 밖의 문자열 · 수  {value: …}
@@ -631,7 +634,7 @@ def _symbolic(expression, node_id: str, type_id: str, origin, state: dict):
 
     if isinstance(expression, str):
         if expression.startswith(RUNTIME_NOW + "."):
-            plan_service.now_field(expression, None)
+            workflow_materializer.now_field(expression, None)
             return {"from": expression}
         root, _, field = expression.partition(".")
         if root not in graph.inputs_of(node_id):
@@ -709,7 +712,7 @@ def _finish(workflow: list[dict], state: dict) -> dict:
         needs[start] = declaration
 
     return copy.deepcopy({
-        "spoken_needed": plan_service.mentions_argument(workflow),
+        "spoken_needed": workflow_materializer.mentions_argument(workflow),
         "context_needs": needs,
         "workflow": workflow,
     })
@@ -722,7 +725,7 @@ def compile_execution(chain: list[str]) -> dict:
     """노드 사슬 하나를 게시할 execution 블록으로.
 
     입력  사람이 받아들인 recipe 의 노드 id 목록
-    출력  plan_service 가 읽는 execution dict. 같은 온톨로지 · 같은 사슬이면 늘 같은 것
+    출력  workflow_materializer 가 읽는 execution dict. 같은 온톨로지 · 같은 사슬이면 늘 같은 것
     규칙  실행 수단이 없는 노드가 있으면(unwired_in) 그 목록만 적고 workflow 는 비움.
           부르는 쪽이 하나도 안 부르고 그렇다고 답함
           step id 는 s1 · s2 … 로 붙음
@@ -844,21 +847,18 @@ def variants(node_id: str) -> list[dict]:
           suffix 는 조건 칸의 어미 갈래. 기본 벌은 빈 문자열
           spoken 은 발화 인자가 들어갔는지
     규칙  출처마다 compile 과 같은 함수로 그 자리의 기호를 적고, 요청 중에 쓰는
-          legacy_vendor.bind_input 으로 채움. 계기판이 규칙을 따로 옮겨 적으면
+          workflow_materializer.bind_input 으로 채움. 계기판이 규칙을 따로 옮겨 적으면
           실행과 표가 조용히 어긋남
-          도구 스키마와 맞대는 벌이라 지금 Gateway 에 실리는 옛 입력 모양으로 채움
+          도구 스키마와 맞대는 벌이라 지금 Gateway 에 실리는 native input 모양으로 채움
           출처는 _origins 가 정함. 이 노드가 그 타입에서 읽는 칸을 줄 수 있는 출처만 담음
           조건 칸이 있으면 그 어미로 끝나는 인자로 한 벌을 더 만듦. 같은 벌은 안 담음
           이름 있는 값은 전부 default 로 채움. 부르는 순간은 고정된 한 시각임
     """
-    # 계기판 · 시험만 부른다. compile · 게시가 import 할 때 vendor 가 딸려 오지 않게 여기서 읽는다.
-    from execution import legacy_vendor
-
     binding = binding_of(node_id)
     if binding is None:
         return []
 
-    now = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=plan_service.RUNTIME_ZONE)
+    now = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=workflow_materializer.RUNTIME_ZONE)
     inputs = graph.inputs_of(node_id)
     arguments = [("", _SPOKEN_PROBE)] + [
         (suffix, _SPOKEN_PROBE + suffix) for suffix in _suffixes(binding["parameters"])
@@ -869,8 +869,7 @@ def variants(node_id: str) -> list[dict]:
         for origin_name, execution, entry in _origins(node_id, binding, type_id):
             seen = []
             for suffix, argument in arguments:
-                request = {"spoken": {"argument": argument}, **execution}
-                filled, adapter = legacy_vendor.bind_input(entry, request, now)
+                filled, adapter = workflow_materializer.bind_input(entry, execution, {"argument": argument}, now)
                 if (filled, adapter) in seen:
                     continue
                 seen.append((filled, adapter))

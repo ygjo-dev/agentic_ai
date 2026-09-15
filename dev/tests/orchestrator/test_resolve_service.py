@@ -256,20 +256,37 @@ def test_a_recipe_reading_the_screen_context_is_not_dropped_from_the_candidates(
 
     화면 문맥에서 값을 받는 recipe 를 LLM 이 골랐을 때, 해석은 그것을 그대로
     돌려준다. 문맥이 실제로 왔는지는 execution 이 실행 직전에 보는 것이고
-    (execute_service 의 실행 전제), 여기서 미리 빼면 「무엇을 골랐는가」와
+    (workflow_materializer 의 MISSING_CONTEXT), 여기서 미리 빼면 「무엇을 골랐는가」와
     「지금 부를 수 있는가」가 한 값에 섞인다.
     """
-    from execution import plan_service
+    from execution import workflow_materializer
 
     screen = next(
         recipe_id
         for recipe_id in _recipe_ids()
-        if plan_service.load(recipe_id)["context_needs"]
+        if workflow_materializer.load(recipe_id)["context_needs"]
     )
     result = resolved(stub_llm_client, recipe_id=screen, candidate_recipe_ids=[screen])
 
     assert result["recipe_id"] == screen
     assert result["candidate_recipe_ids"] == [screen]
+
+
+def test_the_no_match_guidance_names_come_from_the_ontology():
+    """안내를 코드에 박지 않음. 노드를 등록하면 안내도 함께 늘어야 함.
+
+    대상 이름과 시작 데이터 이름을 그대로 낸다. 화면에서 오는 둘(지점 좌표 ·
+    지도 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다. 문장은 workflow_answer 가 만든다.
+    """
+    from ontology import store
+    from registration import recipe_execution_builder
+
+    names = resolve_service.answer_names({"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}})
+
+    assert names["topics"] and names["starts"]
+    nodes = store.nodes()
+    for node_id in recipe_execution_builder.context_sources():
+        assert nodes[node_id]["name"] not in names["starts"]
 
 
 def test_the_result_carries_the_paths_of_the_candidates(stub_llm_client):

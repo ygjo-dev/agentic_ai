@@ -1,82 +1,154 @@
-"""대상 : execution/legacy_vendor.py — ExecutionRequest 를 지금 KRRI_ASAP vendor 가 받는 옛 입력으로 바꾼다
+"""대상 : execution/legacy_vendor.py — 완성된 KRRI native workflow 를 vendoring 한 실행기로 부르는 임시 다리
 
-임시 호환 계층이다. 옛 입력의 표현("$s1.location.0" · "$context.…" · inputAdapter · 채운
-조건 · 시각)은 여기서만 생긴다. 계약 쪽은 test_plan_service.py 가 본다.
+여기서 판단하지 않는다. workflow 를 고치지 않고 넘기고, 돌아온 trace 로 단계 이벤트와
+마지막 result 를 낸다. workflow 를 만드는 규칙은 test_workflow_materializer.py 가 본다.
 
-여기 블록은 test_plan_service.py 의 손으로 쓴 것을 쓴다. 부르는 흐름(이벤트 · 답)은
-test_execute_service.py 가 본다.
-
-LLM 도 Gateway 도 부르지 않는다.
+LLM 도 Gateway 도 부르지 않는다. vendor 실행기는 가짜로 준다.
 """
 
+import asyncio
 import copy
-import datetime
-import zoneinfo
 
-import pytest
+from execution import legacy_vendor, workflow_materializer
+from ontology import graph
 
-from execution import legacy_vendor, plan_service
-
-from dev.tests.execution.test_plan_service import EXECUTION, SCREEN
-
-NOW = datetime.datetime(2026, 1, 1, 23, 59, tzinfo=zoneinfo.ZoneInfo("Asia/Seoul"))
+CCTV_AROUND_A_PLACE = ["place_name", "geocode_place", "point_to_map_extent", "find_cctv"]
 
 
-def legacy(argument, options=None, execution=EXECUTION):
-    return legacy_vendor.to_legacy(plan_service.request("recipe_x", execution, argument, options, SCREEN), NOW)
+def collect(events):
+    """async generator 가 낸 이벤트를 순서대로 모음."""
+
+    async def pump():
+        return [event async for event in events]
+
+    return asyncio.run(pump())
 
 
-def test_only_the_argument_the_named_values_and_the_moment_are_filled():
-    """앞 단계 결과와 화면 값은 참조로 적어 vendor 가 푼다. 채우는 것은 셋뿐이다."""
-    plan = legacy("오송역", {"travel_mode": "도보"})
-
-    assert plan["steps"][0]["input"] == {"query": "오송역", "mode": "WALK"}
-    assert plan["steps"][2]["input"] == {
-        "from_lon": "$context.selectedLocation.lon",
-        "to_lon": "$s1.location.0",
-        "date": "2026-01-01",
-    }
-    assert plan["nodes"] == ["geo", "cctv", "trip"]
+def recipe_of(chain):
+    """그 사슬을 가진 recipe id. 번호를 박지 않으려고 찾아서 쓴다."""
+    for recipe_id in graph.recipe_ids():
+        if graph.recipe_nodes(recipe_id) == list(chain):
+            return recipe_id
+    raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 
 
-def test_the_same_type_from_two_producers_is_filled_from_each_producer():
-    """화면에서 찍은 지점과 앞 단계가 찾은 지점은 같은 타입이다. 참조가 누가 내놓았는지로 갈린다."""
-    sent = legacy("오송역")["steps"][2]["input"]
+def ready(chain, argument, context=None):
+    """진짜 게시된 recipe 를 READY 로 만든 것."""
+    materialized = workflow_materializer.materialize(recipe_of(chain), {"argument": argument}, context)
+    assert materialized["status"] == workflow_materializer.READY
+    return materialized
 
-    assert sent["from_lon"].startswith("$context.")
-    assert sent["to_lon"].startswith("$s1.")
+
+def _fake_workflow(called):
+    """vendor 실행기 대역. 받은 state · intent 를 남기고 성공 trace 를 돌려준다."""
+
+    async def fake(state, intent):
+        called.append((state, copy.deepcopy(intent)))
+        return {
+            "answer_draft": "답",
+            "errors": [],
+            "commands": [],
+            "artifacts": {"mcp_workflow_trace": [
+                {"id": step["id"], "tool": step["tool"], "status": "success"}
+                for step in intent["steps"]
+            ]},
+        }
+
+    return fake
 
 
-def test_a_transform_becomes_the_vendor_input_adapter_and_its_outputs_are_not_sent():
-    """transform 을 여기서 계산하지 않는다. 그 입력을 앞에 두고 vendor 어댑터 이름을 건다.
+def test_the_workflow_goes_to_the_executor_as_it_was_materialized(monkeypatch):
+    """다리는 기호를 풀거나 참조 · inputAdapter 를 정하지 않는다. 받은 한 벌이 그대로 intent 다."""
+    called = []
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
 
-    transform 이 만드는 칸(minLon …)은 어댑터가 만들므로 안 보낸다. 상수 칸은 뒤에 붙는다.
+    collect(legacy_vendor.run(materialized, "오송역 CCTV 보여줘"))
+
+    (state, intent), = called
+    assert intent == materialized["workflow"]
+    assert state["user_text"] == "오송역 CCTV 보여줘"
+    assert state["context"] == materialized["context"]
+
+
+def test_a_step_pair_goes_out_for_every_step_the_vendor_ran(monkeypatch):
+    """단계마다 한 쌍이 recipe 순서대로 나감. 마지막은 반드시 result."""
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow([]))
+
+    events = collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    starts = [event for event in events if event["type"] == "step_start"]
+    ends = [event for event in events if event["type"] == "step_end"]
+
+    assert [event["node"] for event in starts] == ["geocode_place", "find_cctv"]
+    assert [event["node"] for event in ends] == ["geocode_place", "find_cctv"]
+    assert events[-1]["type"] == "result"
+
+
+def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
+    """Gateway 가 이 값으로 권한을 찾는다. 빠뜨리면 workflow 가 맞아도 거부된다.
+
+    실측 — refs 에 없는 서버는 HTTP 500 "MCP tool '<서버>/<도구>' is not
+    applied for this user." 다.
     """
-    step = legacy("오송역")["steps"][1]
+    called = []
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
 
-    assert step["input"] == {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 15000, "k": 3}
-    assert step["inputAdapter"] == legacy_vendor.POINT_RADIUS_TO_BBOX
+    collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
-
-@pytest.mark.parametrize("argument, sent", [("경부선", True), ("오송역", False), (None, False)])
-def test_a_condition_is_decided_by_the_argument_when_the_call_is_made(argument, sent):
-    step = legacy(argument)["steps"][0]
-
-    assert ("railwayName" in step["input"]) is sent
+    user_context = called[0][0]["user_context"]
+    assert user_context["user_id"]
+    assert user_context["selected_mcp_tool_refs"] == legacy_vendor.USER_CONTEXT["selected_mcp_tool_refs"]
 
 
-def test_a_named_value_that_was_not_said_takes_the_default():
-    for said in (None, {"travel_mode": None}, {"travel_mode": "비행기"}):
-        assert legacy("오송역", said)["steps"][0]["input"]["mode"] == "TRANSIT"
+def test_a_failed_run_never_shows_the_vendor_wording(monkeypatch):
+    """vendor 의 answer_draft 가 HTTP 오류 원문 · 내부 URL 을 그대로 담는다(실측).
+
+    errors 가 있으면 trace 로 우리가 다시 만든다.
+    """
+    async def failing(state, intent):
+        return {
+            "answer_draft": "Server error '500' for url 'http://localhost:3000/api/tools/execute'",
+            "errors": ["터졌다"],
+            "commands": [],
+            "artifacts": {"mcp_workflow_trace": []},
+        }
+
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", failing)
+
+    events = collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    answer = events[-1]["answer"]
+    assert "localhost:3000" not in answer
+    assert "Server error" not in answer
 
 
-def test_the_request_is_not_changed_by_turning_it_into_the_legacy_form():
-    """옛 표현은 새 dict 에만 적는다. 요청이 바뀌면 계약 쪽에 옛 표현이 남는다."""
-    request = plan_service.request("recipe_x", EXECUTION, "오송역", {"travel_mode": "도보"}, SCREEN)
-    before = copy.deepcopy(request)
+def test_a_map_command_only_run_never_reaches_the_vendor(monkeypatch):
+    """넘길 steps 가 비고 vendor 는 빈 steps 를 실패로 본다.
 
-    plan = legacy_vendor.to_legacy(request, NOW)
-    plan["steps"][1]["input"]["center"].append("x")
+    KRRI_ASAP 의 show-facility plugin 에도 `## Run` 절이 없다.
+    """
+    called = []
+    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
 
-    assert request == before
-    plan_service.validate_request(request)
+    events = collect(legacy_vendor.run(ready(["place_name", "show_facility"], "오송 테스트트랙"), ""))
+
+    assert called == []
+    assert events[-1]["type"] == "result"
+    assert events[-1]["commands"][0] == {"op": "digitalTwin.showFacility", "args": {"facilityName": "오송 테스트트랙"}}
+    assert events[-1]["answer"] == legacy_vendor.workflow_answer.NOTHING_RAN
+
+
+def test_the_step_pair_goes_out_in_the_same_shape_as_a_tool_step():
+    """부르는 화면이 진행 표시를 따로 알아볼 것이 없어야 함.
+
+    도구 이름이 오던 자리에 지도 명령 op 이 온다.
+    """
+    events = collect(legacy_vendor.run(ready(["place_name", "show_facility"], "오송 테스트트랙"), ""))
+
+    starts = [event for event in events if event["type"] == "step_start"]
+    ends = [event for event in events if event["type"] == "step_end"]
+
+    assert len(starts) == len(ends) == 1
+    assert starts[0]["node"] == ends[0]["node"] == "show_facility"
+    assert "digitalTwin.showFacility" in starts[0]["message"]

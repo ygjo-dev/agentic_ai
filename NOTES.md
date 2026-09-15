@@ -3229,6 +3229,42 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-15 · ExecutionRequest 를 걷고 Recipe.execution 을 곧장 KRRI native call_mcp_workflow 로 만든다 — execute_service 를 창구로 녹인다
+
+환경 오프라인(LLM · Gateway · MCP 안 부름 · 서비스 재시작 0) · 시작 HEAD b4c9af5 · 브랜치 feature/mcp-expansion.
+**받아들인 recipe 의 id · steps · example · execution · 후보 · menu 를 한 글자도 안 바꿨다.**
+
+```
+execution/step_service.py    -> registration/recipe_execution_builder.py   (게시할 때만. compile 그대로)
+execution/plan_service.py    -> execution/workflow_materializer.py         (+ legacy_vendor 의 bind_input · to_legacy)
+execution/execute_service.py -> 지움. 흐름은 app/api/main._process · _stream, 문구는 workflow_answer,
+                                없는 답 이름은 resolve_service.answer_names, USER_CONTEXT 는 legacy_vendor
+없앤 것  plan_service.request · validate_request · ExecutionRequest · legacy_vendor.to_legacy ·
+         recent_service.watch_run · _note_run · CHOICE (되묻기 번호 고르기가 없어져 해석과 같은 값만 적던 자리)
+```
+
+차등 (base = `git archive b4c9af5` 사본, 시각 고정 2026-09-14 23:59 KST, 같은 harness 로 main._process 를 지남).
+
+```
+계획        (work 39 + _init 39) × 인자 6 × 이름 있는 값 4 × 시각 2 = 3744
+            base request -> to_legacy == work workflow_of  (steps · nodes · commands)   차이 0
+            action 이 call_mcp_workflow 가 아닌 것                                     0
+장면        가짜 resolve(paths 는 진짜) · 가짜 vendor. SELECT (39+1)×6×4×문맥3×성공/실패 + CLARIFY · NO_MATCH 162
+            = 5922. vendor 호출 3200 == 3200. 단계 이벤트 · 답 · commands · intent · state ·
+            /recent 회차 · /resolve 결과 차이 0
+진짜 vendor mcp_client 만 fixture. 39 × 인자 3 × 값 2 × 문맥 3 × 응답 3 = 2106
+            Gateway 호출 1692 == 1692 · 이벤트 · 답 · 회차 차이 0
+추론 끔     vendor 의 짧은 도구 이름 정규화 · 자동 bbox · web.search 보수 · 참조 이름 특례를 끄고 같은 2106
+            normal == strict 차이 0. 대조: 켠 vendor 에서 $s1.lon -> 127.3 · getCctv -> road.getCctv ·
+            중심+반경 road.getCctv 자동 bbox True (끄는 것에 이빨이 있다)
+정적        348 step 모두 tools.json 의 (serverId, name) 과 정확히 같음 · inputAdapter 명시 18 · 자동 추론 후보 0
+```
+
+의도한 문구 차이 0. 문구는 옮기기만 했다.
+
+테스트. 대상 350 통과 · 전체 505 통과 · 1 실패 — test_dense_graph_would_move_if_overlap_removal_were_used
+(Graphviz 판 차이, 전과 같음).
+
 ### 2026-09-14 · 실행 출력을 ExecutionRequest 로 두고 vendor 입력은 legacy 어댑터에 가둔다 — headline · wiring.yaml 을 걷는다
 
 환경 오프라인(LLM · Gateway · MCP 안 부름) · 시작 HEAD c7b0cd3.

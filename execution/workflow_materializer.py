@@ -1,26 +1,25 @@
-"""agentic_ai 의 공식 실행 출력. 게시된 recipe 의 execution 과 요청 하나의 값을 묶은 ExecutionRequest.
+"""게시된 Recipe.execution 과 요청 하나의 값으로 KRRI_ASAP native call_mcp_workflow 를 만든다.
 
 **여기는 계획을 만들지 않는다.** 어느 노드를 어느 서버 · 도구로 부르고 칸마다 값이
-어디서 오는지는 게시할 때 execution/step_service.compile_execution 이 온톨로지와 사람이
-받아들인 노드 사슬로 정해 recipe 파일에 적어 두었다. 요청 중에는 그 블록만 읽는다.
+어디서 오는지는 게시할 때 registration/recipe_execution_builder.compile_execution 이 온톨로지와
+사람이 받아들인 노드 사슬로 정해 recipe 파일에 적어 두었다. 요청 중에는 그 블록만 읽는다.
 온톨로지를 import 하지 않는다.
 
-    Recipe.execution    게시된 정적 기호 계획. 요청과 무관하다
+    Recipe.execution    게시된 정적 기호 계획. agentic_ai 안의 semantic IR 이고 요청과 무관하다
       spoken_needed     발화 인자를 쓰는가. 안 말했으면 부르지 않는다
       unwired           실행 수단이 없는 노드. 있으면 workflow 가 비고 부르지 않는다
       context_needs     화면에서 받아야 하는 시작 노드 -> {from: context.<경로>, fields}
       workflow          차례대로. 도구 단계 {id, node, server_id, tool, transform?, input, outputs?}
                         지도 명령 {node, command, transform?, input}
 
-    ExecutionRequest    request() 가 만든다. 실행 계층에 넘기는 한 벌
-      recipe_id         고른 recipe
-      spoken            발화 해석이 뽑은 값. {argument, travel_mode, minutes, admin_level}
-      context           화면이 보낸 문맥 그대로
-      context_needs     게시된 것 그대로. context.<시작 노드>.<칸> 이 화면 값의 어디인지
-      workflow          게시된 것 그대로
+    materialize         Recipe.execution + 이번 요청의 spoken · context · 부르는 순간
+      status            READY 가 아니면 무엇이 모자란지(missing)만 적고 workflow 가 없다
+      workflow          {action: call_mcp_workflow, steps}. KRRI_ASAP 실행기가 받는 한 벌 그대로
+      nodes             steps 와 같은 길이. steps[i] 를 만든 노드
+      commands          도구를 안 부르고 곧장 내는 지도 명령. command_nodes 가 같은 길이
+      context           실행기가 $context.… 를 풀 화면 문맥
 
-**ExecutionRequest 는 workflow 를 다시 적지 않는다.** 게시된 workflow 와 context_needs 에
-이번 요청의 spoken · context 를 봉투로 붙일 뿐이다. 실제 값은 기호 안에 넣지 않는다.
+Recipe.execution 의 값 하나는 이 꼴 중 하나다.
 
     {value: <상수>}
     {from: spoken.argument}                         발화 인자
@@ -35,15 +34,24 @@
 **같은 타입이라도 누가 내놓았는지가 기호에 남는다.** 화면에서 찍은 지점은
 context.point.lat, 앞 단계가 찾은 지점은 s1.point.lat 이다.
 
-**raw 응답의 어디를 읽을지는 agentic_ai 가 정해 내놓는 쪽에 적는다.** 앞 단계는 그 단계의
+**raw 응답의 어디를 읽을지는 내놓는 쪽에 적는다.** 앞 단계는 그 단계의
 outputs(point.lon -> location.0), 화면 값은 context_needs 의 fields 다. 받는 쪽은 semantic
-칸만 가리킨다. 실행 계층은 적힌 경로에서 값을 꺼낼 뿐 경로를 짐작하지 않는다.
+칸만 가리키고, 여기서 두 선언을 이어 raw 참조를 적는다. 경로를 짐작하지 않는다.
 
-**transform 은 선언이다.** id 와 입력만 적고 계산은 실행 계층이 id 를 보고 한다.
+KRRI native 표현은 여기서만 생긴다.
 
-지금 KRRI_ASAP 은 이 계약을 직접 받지 않는다. execution/legacy_vendor.py 가 옛 입력
-(steps · "$s1.location.0" · inputAdapter)으로 바꿔 vendor 실행기에 넘긴다. 그 표현은 여기
-오지 않는다.
+    발화 인자 · 이름 있는 값 · 부르는 순간     값으로 채움
+    조건(if_endswith · unless_endswith)      지금 인자로 가려 칸을 빼거나 둠
+    앞 단계 참조 s1.point.lon                 그 단계 outputs 의 경로로 "$s1.location.0"
+    화면 값 context.point.lon                 context_needs 의 선언으로 "$context.selectedLocation.lon"
+    transform                                 그 입력을 칸에 두고 inputAdapter 를 명시로 걺
+    지도 명령                                 인자를 채워 workflow 밖 commands 로 냄
+
+**KRRI 실행기의 편의 추론에 기대지 않는다.** 서버 · 도구 이름은 게시된 그대로 적고,
+참조는 dict 키 · 목록 번호 경로만 쓰고, 범위 변환은 inputAdapter 로 건다. 짧은 도구 이름
+정규화 · 자동 bbox 변환 · 참조 이름 특례 · web.search 질의 보수가 없어도 같은 호출이 나간다.
+
+**사람에게 보일 문장을 만들지 않는다.** 부를 수 없으면 status 와 missing 만 돌려준다.
 """
 
 import copy
@@ -63,6 +71,17 @@ SPOKEN_SOURCE = "spoken."
 CONTEXT_SOURCE = "context."
 TRANSFORM = "transform"
 
+# 발화 해석 결과에서 spoken.<이름> 으로 읽는 이름 있는 값.
+#
+# 칸의 모양(type · enum)은 resolve 역할의 response schema 가 갖는다. 여기는
+# 무엇을 받아 가는가만 적는다. 온톨로지 노드의 tool.parameters 가 그 이름을
+# {from: spoken.<이름>} 으로 불러 제 칸에 넣는다.
+SPOKEN_OPTIONS = (
+    "travel_mode",
+    "minutes",
+    "admin_level",
+)
+
 # 부르는 순간의 값을 가리키는 기호. 고정된 날짜를 박으면 그날이 지나는 순간
 # 거짓이 된다.
 #
@@ -78,8 +97,36 @@ RUNTIME_FIELDS = {
     "time": "%H:%M",
 }
 
-# 계약이 아는 transform id. 실행 계층이 이 id 를 보고 계산한다.
-TRANSFORMS = ("builtin/geo.pointRadiusToBbox",)
+# 중심 좌표와 반경을 bbox 넷으로 바꾸는 KRRI 실행기 inputAdapter 의 이름.
+POINT_RADIUS_TO_BBOX = "point_radius_to_bbox"
+
+# 계약이 아는 transform id -> 그것을 계산하는 KRRI 실행기 inputAdapter.
+TRANSFORM_ADAPTERS = {
+    "builtin/geo.pointRadiusToBbox": POINT_RADIUS_TO_BBOX,
+}
+TRANSFORMS = tuple(TRANSFORM_ADAPTERS)
+
+# point_radius_to_bbox 가 중심 좌표를 찾는 칸 이름. KRRI 실행기의
+# _extract_center_point 가 보는 것과 같은 순서 · 같은 이름이다.
+#
+# 이 중 하나도 안 남으면 어댑터가 ValueError 를 올린다("point_radius_to_bbox에는
+# center/location 좌표가 필요합니다"). 그래서 어댑터를 걸기 전에 본다.
+CENTER_KEYS = ("center", "point", "coordinate", "coordinates", "location")
+
+# KRRI 실행기가 steps 를 workflow 로 알아보게 하는 이름.
+WORKFLOW_ACTION = "call_mcp_workflow"
+
+# native 참조의 머리. KRRI 실행기가 state["context"] 를 scope["context"] 에, 앞 단계
+# 결과를 scope["s<N>"] 에 얹고 제자리에서 푼다.
+REFERENCE = "$"
+
+# materialize 의 판정. READY 말고는 부르지 않는다.
+READY = "READY"
+NOT_ACCEPTED = "NOT_ACCEPTED"          # recipe 파일이 없다. 받아들인 recipe 가 아님
+MISSING_ARGUMENT = "MISSING_ARGUMENT"  # 발화 인자가 필요한데 없다. missing = [시작 노드]
+UNWIRED = "UNWIRED"                    # 실행 수단이 없는 노드가 있다. missing = 그 노드들
+MISSING_CONTEXT = "MISSING_CONTEXT"    # 화면 값이 안 왔다. missing = 그 시작 노드들
+NOTHING_TO_CALL = "NOTHING_TO_CALL"    # 부를 도구도 지도 명령도 없다
 
 # 칸 이름 · 경로 마디. 점으로 이은 dict 키 · 목록 번호다(location.0 · bbox.1.0).
 _SEGMENT = r"[0-9A-Za-z_-]+"
@@ -95,8 +142,11 @@ _TRANSFORM_FIELDS = ("id", "node", "input")
 _CONTEXT_FIELDS = ("from", "fields")
 _CONDITIONS = ("if_endswith", "unless_endswith")
 
-# ExecutionRequest 의 칸. 차례도 이것이다.
-_REQUEST_FIELDS = ("recipe_id", "spoken", "context", "context_needs", "workflow")
+# _bound 가 "이 칸은 이 자리에서 안 보낸다" 를 알리는 표시.
+#
+# None 을 쓰지 않는다. None 은 도구가 받는 값일 수 있어 "빼라" 와 "null 을
+# 보내라" 가 안 갈린다.
+_OMIT = object()
 
 
 class PlanError(ValueError):
@@ -134,6 +184,15 @@ def mentions_argument(value) -> bool:
 # ── recipe 파일에서 읽는다 ──────────────────────────────────────────
 
 
+def _document(recipe_id: str) -> dict | None:
+    """recipe 파일 한 벌. 파일이 없으면 None."""
+    path = paths.RECIPES_DIR / f"{recipe_id}.yaml"
+    if not path.exists():
+        return None
+    document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    return document if isinstance(document, dict) else {}
+
+
 def load(recipe_id: str) -> dict | None:
     """그 recipe 의 execution 블록.
 
@@ -144,11 +203,10 @@ def load(recipe_id: str) -> dict | None:
           그러면 게시한 블록과 온톨로지 중 무엇이 원천인지 다시 둘이 됨.
           블록은 registration/publish.py 가 다시 적음
     """
-    path = paths.RECIPES_DIR / f"{recipe_id}.yaml"
-    if not path.exists():
+    document = _document(recipe_id)
+    if document is None:
         return None
-    document = yaml.safe_load(path.read_text(encoding="utf-8"))
-    execution = document.get("execution") if isinstance(document, dict) else None
+    execution = document.get("execution")
     validate(execution, recipe_id)
     return execution
 
@@ -355,7 +413,7 @@ def _check_field(at: str, origin: str, fields, rest: list[str], fail) -> None:
         raise fail(f"{at}: {origin} 의 칸이 선언에 없다")
 
 
-# ── 요청 하나로 묶는다 ──────────────────────────────────────────
+# ── 요청 하나를 KRRI native workflow 로 ─────────────────────────────
 
 
 def absent_context(execution: dict, context: dict | None) -> list[str]:
@@ -366,7 +424,7 @@ def absent_context(execution: dict, context: dict | None) -> list[str]:
     규칙  칸이 있고 비어 있지 않아야 준 것으로 셈. selectedLocation 이 null 로 오는 것이
           KRRI_ASAP 의 평상시 모양임(우클릭을 안 했을 때)
     제약  값이 좌표로 쓸 만한지 여기서 보지 않는다.
-          범위를 재는 것은 vendor 의 _parse_lon_lat 이고, 여기가 또 재면
+          범위를 재는 것은 KRRI 실행기의 _parse_lon_lat 이고, 여기가 또 재면
           두 곳이 다른 기준을 갖게 됨
     """
     absent = []
@@ -379,56 +437,195 @@ def absent_context(execution: dict, context: dict | None) -> list[str]:
     return absent
 
 
-def request(recipe_id: str, execution: dict, argument, options: dict | None = None, context: dict | None = None) -> dict:
-    """게시된 execution 한 벌과 이번 요청의 값을 ExecutionRequest 로.
+def materialize(recipe_id: str, spoken: dict, context: dict | None = None, now: datetime.datetime | None = None) -> dict:
+    """고른 recipe 하나를 이번 요청의 값으로 KRRI native workflow 로.
 
-    입력  recipe id · 검사를 통과한 execution · 발화 인자 · 발화 해석이 함께 내놓은
-          이름 있는 값 · 화면 문맥
-    출력  _REQUEST_FIELDS 차례의 dict. validate_request 를 통과한 것
-    규칙  workflow 와 context_needs 는 게시된 것을 복사만 함. 기호를 값으로 안 바꿈
-          spoken 은 argument 를 먼저 두고 이름 있는 값을 받은 차례대로 붙임.
-          말하지 않은 값(None)도 그대로 둠. 기본값은 기호의 default 가 앎
+    입력  recipe id · 발화 해석 결과(argument 와 SPOKEN_OPTIONS 만 읽음) · 화면 문맥 ·
+          부르는 순간(안 주면 지금)
+    출력  {status, recipe_id, missing, workflow, nodes, commands, command_nodes, context}
+          READY 가 아니면 workflow 가 None 이고 목록들이 빔
+    규칙  판정 차례는 NOT_ACCEPTED · MISSING_ARGUMENT · UNWIRED · MISSING_CONTEXT ·
+          NOTHING_TO_CALL · READY
+          recipe 파일이 없으면 NOT_ACCEPTED. 받아들인 recipe 가 아님
+          인자는 발화 해석 LLM 이 argument 로 준 것 하나뿐임. 비었는데 게시된
+          execution 이 발화 인자를 쓰면 MISSING_ARGUMENT 이고 missing 은 recipe 의
+          시작 노드임. 무엇을 더 말해야 하는지가 그 노드임
+          발화 인자를 안 쓰는 recipe 는 인자가 없어도 감
+          경로에 도구가 안 붙은 노드가 있으면 UNWIRED. 부르는 것만 부르면 반쪽 결과를
+          온전한 답인 것처럼 내놓게 됨
+          게시된 context_needs 가 읽는 화면 값이 안 왔으면 MISSING_CONTEXT. 없는 좌표로
+          부르면 전국이 나오거나 required 가 빈 채로 도구가 거부함
           context 는 dict 가 아니면 빈 dict
-          spoken_needed · unwired 는 안 담음. 실행 전에 부를 수 있는지 가르는 데 쓰였고
-          실행 계층이 볼 것이 아님
-    제약  조건 · 부르는 순간 · 앞 단계 참조를 여기서 풀지 않는다.
-          실행 계층이 받는 모양이 곧 게시된 모양이어야 경로 소유가 안 흐려짐
-          게시된 블록을 바꾸지 않는다. 요청마다 같은 블록을 읽음
+    제약  파일은 있는데 execution 이 없거나 깨졌으면 status 로 삼키지 않는다.
+          PlanError 가 그대로 올라감. 게시 오류라 조용히 넘기면 아무도 모름
+          게시된 execution 이 없다고 온톨로지로 계획을 다시 만들지 않는다
+          고른 recipe 를 다른 recipe 로 바꾸지 않는다. 못 부르면 그렇다고만 돌려줌
+          사람에게 보일 문장을 만들지 않는다
     """
-    built = copy.deepcopy({
+    document = _document(recipe_id)
+    if document is None:
+        return _unready(recipe_id, NOT_ACCEPTED)
+
+    execution = document.get("execution")
+    validate(execution, recipe_id)
+
+    said = {"argument": spoken.get("argument"), **{name: spoken.get(name) for name in SPOKEN_OPTIONS}}
+    if not said["argument"] and execution["spoken_needed"]:
+        start = [step.get("node") for step in document.get("steps") or []][:1]
+        return _unready(recipe_id, MISSING_ARGUMENT, start)
+
+    if execution.get("unwired"):
+        return _unready(recipe_id, UNWIRED, execution["unwired"])
+
+    absent = absent_context(execution, context)
+    if absent:
+        return _unready(recipe_id, MISSING_CONTEXT, absent)
+
+    if not execution["workflow"]:
+        return _unready(recipe_id, NOTHING_TO_CALL)
+
+    return {
+        "status": READY,
         "recipe_id": recipe_id,
-        "spoken": {"argument": argument, **(options or {})},
-        "context": context if isinstance(context, dict) else {},
-        "context_needs": execution["context_needs"],
-        "workflow": execution["workflow"],
-    })
-    validate_request(built)
-    return built
+        "missing": [],
+        **workflow_of(execution, said, now),
+        "context": copy.deepcopy(context) if isinstance(context, dict) else {},
+    }
 
 
-def validate_request(built) -> None:
-    """ExecutionRequest 한 벌이 계약의 꼴인지.
+def _unready(recipe_id: str, status: str, missing: list[str] | None = None) -> dict:
+    """부를 수 없는 요청의 결과. workflow 없이 판정과 모자란 것만."""
+    return {
+        "status": status,
+        "recipe_id": recipe_id,
+        "missing": list(missing or []),
+        "workflow": None,
+        "nodes": [],
+        "commands": [],
+        "command_nodes": [],
+        "context": {},
+    }
 
-    규칙  칸은 _REQUEST_FIELDS 그대로. recipe_id 는 빈 문자열이 아님
-          spoken 은 argument 가 있는 dict, context 는 dict
-          context_needs · workflow 는 validate 와 같은 규칙으로 봄
-    제약  실행 계층마다 다른 칸을 받으려고 넓히지 않는다
+
+def workflow_of(execution: dict, spoken: dict, now: datetime.datetime | None = None) -> dict:
+    """검사를 통과한 execution 한 벌을 KRRI native workflow 로.
+
+    입력  execution · 발화 값({argument, 이름 있는 값...}) · 부르는 순간(안 주면 지금)
+    출력  workflow  {action: call_mcp_workflow, steps}. steps 는 KRRI 실행기의 intent["steps"] 그대로
+          nodes  steps 와 같은 길이. steps[i] 를 만든 노드 id
+          commands  도구를 안 부르고 곧장 내는 지도 명령
+          command_nodes  commands 와 같은 길이
+    규칙  workflow 차례 그대로 step · 명령을 냄. step id · server_id · tool 은 게시된 것 그대로
+          부르는 순간은 계획 하나에 한 번만 읽음
+          실행 전제(인자 · 화면 값 · 배선)는 안 봄. materialize 가 먼저 봄
+    제약  execution 을 바꾸지 않는다. native 표현은 새 dict 에만 적음
     """
-    where = built.get("recipe_id") if isinstance(built, dict) else None
+    # 계획 하나에 한 번만 읽는다. 단계마다 읽으면 자정 언저리에서 date 와
+    # time 이 서로 다른 날을 가리킬 수 있다.
+    now = now or datetime.datetime.now(RUNTIME_ZONE)
 
-    def fail(message):
-        return PlanError(f"{where}: request {message}")
+    steps: list[dict] = []
+    nodes: list[str] = []
+    commands: list[dict] = []
+    command_nodes: list[str] = []
 
-    if not isinstance(built, dict) or tuple(built) != _REQUEST_FIELDS:
-        raise fail(f"칸은 {list(_REQUEST_FIELDS)} 다")
-    if not isinstance(where, str) or not where:
-        raise fail("recipe_id 가 비었다")
-    if not isinstance(built["spoken"], dict) or "argument" not in built["spoken"]:
-        raise fail("spoken 에 argument 가 없다")
-    if not isinstance(built["context"], dict):
-        raise fail("context 가 dict 가 아니다")
-    validate({
-        "spoken_needed": mentions_argument(built["workflow"]),
-        "context_needs": built["context_needs"],
-        "workflow": built["workflow"],
-    }, where)
+    for entry in execution["workflow"]:
+        filled, adapter = bind_input(entry, execution, spoken, now)
+
+        if "command" in entry:
+            commands.append({"op": entry["command"], "args": filled})
+            command_nodes.append(entry["node"])
+            continue
+
+        step = {"id": entry["id"], "server_id": entry["server_id"], "tool": entry["tool"], "input": filled}
+        if adapter:
+            step["inputAdapter"] = adapter
+        steps.append(step)
+        nodes.append(entry["node"])
+
+    return {
+        "workflow": {"action": WORKFLOW_ACTION, "steps": steps},
+        "nodes": nodes,
+        "commands": commands,
+        "command_nodes": command_nodes,
+    }
+
+
+def bind_input(entry: dict, execution: dict, spoken: dict, now: datetime.datetime) -> tuple[dict, str | None]:
+    """workflow 항목 하나의 native input 과 걸 inputAdapter.
+
+    입력  workflow 항목 · 그 항목이 든 execution(context_needs · workflow 를 읽음) · 발화 값 · 부르는 순간
+    출력  (input, inputAdapter 이름 또는 None)
+    규칙  input 차례대로 _bound 를 부르고 _OMIT 인 칸은 뺌
+          transform 이 있으면 그 입력을 먼저 두고 이 항목의 나머지 칸을 이어 붙임.
+          transform 이 만드는 칸(transform.<타입>.<칸>)은 inputAdapter 가 만들어 안 보냄
+          중심 좌표 칸이 남았을 때만 inputAdapter 를 명시로 걺
+    """
+    outputs = {item["id"]: item.get("outputs") or {} for item in execution["workflow"] if "id" in item}
+
+    def fill(fields):
+        filled = {}
+        for field, expression in fields.items():
+            value = _bound(expression, execution, spoken, outputs, now)
+            if value is not _OMIT:
+                filled[field] = value
+        return filled
+
+    filled = fill(entry["input"])
+    transform = entry.get("transform")
+    if transform is None:
+        return filled, None
+    filled = {**fill(transform["input"]), **filled}
+    return filled, TRANSFORM_ADAPTERS[transform["id"]] if _has_center(filled) else None
+
+
+def _bound(expression, execution: dict, spoken: dict, outputs: dict, now):
+    """기호 하나를 KRRI 실행기에 넘길 값으로. 이 자리에서 안 보내면 _OMIT."""
+    if isinstance(expression, list):
+        values = [_bound(item, execution, spoken, outputs, now) for item in expression]
+        return _OMIT if any(value is _OMIT for value in values) else values
+
+    if "value" in expression:
+        return copy.deepcopy(expression["value"])
+
+    origin = expression["from"]
+    if origin == SPOKEN_ARGUMENT:
+        argument = spoken.get("argument")
+        text = str(argument or "")
+        if "if_endswith" in expression and not text.endswith(expression["if_endswith"]):
+            return _OMIT
+        if "unless_endswith" in expression and text.endswith(expression["unless_endswith"]):
+            return _OMIT
+        return copy.deepcopy(argument)
+
+    if origin.startswith(SPOKEN_SOURCE):
+        said = spoken.get(origin[len(SPOKEN_SOURCE):])
+        chosen = said if said not in (None, "", [], {}) else expression["default"]
+        mapping = expression.get("map")
+        if mapping is None:
+            return copy.deepcopy(chosen)
+        return mapping.get(chosen, mapping[expression["default"]])
+
+    head, *rest = origin.split(".")
+    if origin.startswith(RUNTIME_NOW + "."):
+        return now_field(origin, now)
+    if head == TRANSFORM:
+        return _OMIT
+    if head == "context":
+        declaration = execution["context_needs"][rest[0]]
+        base = f"{REFERENCE}{declaration['from']}"
+        return f"{base}.{declaration['fields'][rest[1]]}" if len(rest) > 1 else base
+
+    reading = outputs[head][rest[0]]
+    path = reading["fields"][rest[1]] if len(rest) > 1 else reading["value"]
+    return f"{REFERENCE}{head}.{path}"
+
+
+def _has_center(tool_input: dict) -> bool:
+    """point_radius_to_bbox 가 걸 중심 좌표가 input 에 남았는지.
+
+    규칙  CENTER_KEYS 중 하나라도 있으면 참. 값이 무엇인지는 안 봄.
+          ["$s1.location.0", "$s1.location.1"] 처럼 실행기가 나중에 푸는 참조라
+          지금 판정할 수 없음
+    """
+    return any(key in tool_input for key in CENTER_KEYS)

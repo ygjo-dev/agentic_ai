@@ -81,7 +81,7 @@ def test_a_missing_permission_is_recorded_apart_from_a_crash():
 
 def test_failing_to_extract_an_argument_means_no_tool_was_called():
     """단계가 하나도 없다. Gateway 쪽 데이터 탓이 아니라 우리 해석 탓이다."""
-    from execution.execute_service import NO_ARGUMENT_ANSWER
+    from vendor_to_be_deleted.asap.workflow_answer import NO_ARGUMENT_ANSWER
 
     turn = {"answer": NO_ARGUMENT_ANSWER["place_name"], "steps": []}
 
@@ -114,14 +114,14 @@ def test_the_expected_recipes_of_the_five_screen_utterances_start_from_the_scree
     번호가 밀리면 조용히 옆 recipe 를 가리키게 된다. 경로 첫 칸으로 지킨다.
     """
     from app.api.services.streamlit import screen_service
-    from execution import step_service
+    from registration import recipe_execution_builder
 
     for number, _u, expected, _d in check_resolve.UTTERANCES:
         if number <= check_resolve.EXTENSION_LAST:
             continue
         for recipe_id in expected:
             path = screen_service.path_of(recipe_id)
-            assert path[0]["node_id"] in step_service.context_sources()
+            assert path[0]["node_id"] in recipe_execution_builder.context_sources()
 
 
 def test_each_utterance_falls_into_exactly_one_group():

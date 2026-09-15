@@ -49,7 +49,7 @@ def nodes(path=None) -> dict:
     출력  {node_id: {name, description, source?, tool?}}
     규칙  종류를 나누는 필드가 없음. 성격은 관계가 말하고 판정은 graph.py 가 함
           source · tool 은 그 노드 자신의 사실이라 노드에 붙음. 뜻은 graph.py 와
-          execution/step_service.py 가 읽음
+          registration/recipe_execution_builder.py 가 읽음
     """
     return read(path)["nodes"]
 

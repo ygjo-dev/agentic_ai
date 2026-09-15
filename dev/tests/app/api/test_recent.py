@@ -116,18 +116,16 @@ def resolved(**overrides):
     return answer
 
 
-def turn_of(text, payloads, resolve=None, ran=None):
+def turn_of(text, payloads, resolve=None):
     """회차 하나를 통째로 흘려 넣음. 훔쳐보는 자리도 함께 부름.
 
-    입력  발화 · 이벤트 목록 · resolve 가 냈다고 할 것 · run 이 불렸다고 할 것
+    입력  발화 · 이벤트 목록 · resolve 가 냈다고 할 것
     출력  흘러나온 이벤트 목록
     """
 
     async def events():
         if resolve is not None:
             recent_service._note_resolve(resolve)
-        if ran is not None:
-            recent_service._note_run(*ran)
         for payload in payloads:
             yield payload
 
@@ -236,17 +234,6 @@ def test_a_clarify_keeps_its_candidates_verbatim_too():
 
     assert turn["status"] == "CLARIFY"
     assert turn["candidate_recipe_ids"] == ["recipe_011", "recipe_045"]
-
-
-def test_a_choice_turn_gets_its_recipe_from_run():
-    """되묻기 뒤에 번호로 고르면 해석을 안 거친다. 그때는 run 만 지나간다."""
-    turn_of("2번", executed(), ran=("recipe_045", "오송역"))
-
-    turn = recent_service.since()["turns"][-1]
-
-    assert turn["status"] == recent_service.CHOICE
-    assert turn["recipe_id"] == "recipe_045"
-    assert turn["argument"] == "오송역"
 
 
 def test_a_resolve_called_outside_a_turn_keeps_nothing():

@@ -1,6 +1,6 @@
 """대상 : 받아들인 recipe 파일에 게시된 execution — 요청 중에 실행이 읽는 원천
 
-    온톨로지 + 사람이 받아들인 steps  ->  step_service.compile_execution  ->  recipe 파일의 execution
+    온톨로지 + 사람이 받아들인 steps  ->  recipe_execution_builder.compile_execution  ->  recipe 파일의 execution
 
 **온톨로지는 compile 의 원천이고 게시된 블록은 요청 중의 원천이다.** 온톨로지 · steps 를
 고치고 다시 게시하지 않으면 여기서 빨개진다. 다시 적는 법은 둘이다.
@@ -14,15 +14,16 @@
 LLM 도 Gateway 도 부르지 않는다.
 """
 
+import datetime
 import json
 
 import pytest
 import yaml
 
 import paths
-from execution import legacy_vendor, plan_service, step_service
+from execution import workflow_materializer
 from ontology import graph, store
-from registration import publish
+from registration import publish, recipe_execution_builder
 from registration.registry import accepted_recipes, candidate_recipes
 from workflows.static.menu.load import load_menu
 
@@ -63,28 +64,26 @@ def test_every_accepted_recipe_file_is_exactly_what_publishing_writes_now(monkey
 def test_every_published_block_passes_the_runtime_check_and_equals_a_fresh_compile():
     """요청 중에 읽는 모양으로도 같다. 실행이 받아 주지 않는 블록은 게시된 것이 아니다."""
     for recipe_id in graph.recipe_ids():
-        assert plan_service.load(recipe_id) == step_service.compile_execution(graph.recipe_nodes(recipe_id)), recipe_id
+        assert workflow_materializer.load(recipe_id) == recipe_execution_builder.compile_execution(graph.recipe_nodes(recipe_id)), recipe_id
 
 
-# 옛 vendor 입력에만 있는 표현. ExecutionRequest 에 보이면 옛 계약이 역류한 것이다.
-LEGACY_MARKERS = ('"$', "inputAdapter", "answer_instruction", "headline", legacy_vendor.POINT_RADIUS_TO_BBOX)
+# KRRI native workflow 에만 있는 표현과 옛 vendor 답 지시. Recipe.execution 에 보이면 IR 이 native 로 샌 것이다.
+NATIVE_MARKERS = (
+    '"$', "inputAdapter", "answer_instruction", "headline",
+    workflow_materializer.POINT_RADIUS_TO_BBOX, workflow_materializer.WORKFLOW_ACTION,
+)
 
 
-def test_every_accepted_recipe_goes_out_as_its_published_plan_with_no_legacy_vendor_form():
-    """ExecutionRequest 의 workflow 는 게시된 것 그대로다. 옛 vendor 표현은 legacy 어댑터 뒤에만 생긴다.
+def test_every_published_execution_stays_semantic_with_no_krri_native_form():
+    """Recipe.execution 은 agentic_ai 안의 semantic IR 이다. native 표현은 요청 중에 materializer 가 적는다.
 
-    봉투가 workflow 를 다시 적으면 게시된 계획과 실행이 받는 계획이 두 모양이 된다.
-    "$s1.location.0" · inputAdapter 가 여기 보이면 raw 경로와 어댑터 이름이 agentic_ai 의
-    계약으로 역류한 것이고, KRRI_ASAP 이 계약을 직접 받는 날 어댑터를 못 걷는다.
+    "$s1.location.0" · inputAdapter 가 게시된 블록에 보이면 raw 참조와 어댑터 이름이 게시 계약으로
+    새어 든 것이고, 실행기가 바뀌는 날 받아들인 recipe 를 전부 다시 게시해야 한다.
     """
     for recipe_id in graph.recipe_ids():
-        execution = plan_service.load(recipe_id)
-        request = plan_service.request(recipe_id, execution, "오송역", {"travel_mode": None}, {"selectedLocation": None})
-        text = json.dumps(request, ensure_ascii=False)
+        text = json.dumps(workflow_materializer.load(recipe_id), ensure_ascii=False)
 
-        assert request["workflow"] == execution["workflow"], recipe_id
-        assert request["context_needs"] == execution["context_needs"], recipe_id
-        assert [marker for marker in LEGACY_MARKERS if marker in text] == [], recipe_id
+        assert [marker for marker in NATIVE_MARKERS if marker in text] == [], recipe_id
 
 
 def test_publishing_leaves_the_human_accepted_part_as_it_was():
@@ -147,7 +146,7 @@ def test_the_menu_the_llm_reads_carries_no_execution():
     ids=["spoken_to_tool", "context_to_tool", "previous_to_next", "literal", "named_default"],
 )
 def test_a_published_input_says_where_its_value_comes_from(chain, index, field, symbol):
-    execution = plan_service.load(recipe_of(chain))
+    execution = workflow_materializer.load(recipe_of(chain))
 
     assert execution["workflow"][index]["input"][field] == symbol
 
@@ -160,11 +159,11 @@ def test_the_radius_widening_stays_a_declared_transform_of_the_cctv_call_not_a_c
 
     지점 주변 범위 변환은 builtin 이라 따로 부르는 도구가 아니다. 가짜 MCP 단계로 늘리지
     않고 CCTV 단계의 transform 으로 선언한다. 좌표 변환이 내놓은 지점이 transform 의
-    입력이고 transform 이 만드는 범위가 CCTV 의 칸이다. 계약에는 transform id 로 남고, vendor
-    어댑터 이름은 legacy 어댑터를 지난 뒤에만 나온다.
+    입력이고 transform 이 만드는 범위가 CCTV 의 칸이다. 게시된 블록에는 transform id 로 남고,
+    KRRI native workflow 에서는 명시한 inputAdapter 가 된다. 실행기의 자동 bbox 추론에 기대지 않는다.
     """
     recipe_id = recipe_of(CCTV_AROUND_A_PLACE)
-    execution = plan_service.load(recipe_id)
+    execution = workflow_materializer.load(recipe_id)
     geocode, cctv = execution["workflow"]
 
     assert graph.recipe_nodes(recipe_id) == CCTV_AROUND_A_PLACE
@@ -177,14 +176,23 @@ def test_the_radius_widening_stays_a_declared_transform_of_the_cctv_call_not_a_c
     }
     assert cctv["input"] == {field: {"from": f"transform.map_extent.{field}"} for field in ("minLon", "minLat", "maxLon", "maxLat")}
 
-    request = plan_service.request(recipe_id, execution, "오송역")
-    assert [entry.get("transform", {}).get("id") for entry in request["workflow"]] == [None, "builtin/geo.pointRadiusToBbox"]
-    assert "inputAdapter" not in json.dumps(request)
-
-    steps = legacy_vendor.to_legacy(request)["steps"]
-    assert len(steps) == 2
-    assert steps[1]["input"] == {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 15000}
-    assert steps[1]["inputAdapter"] == legacy_vendor.POINT_RADIUS_TO_BBOX
+    materialized = workflow_materializer.materialize(recipe_id, {"argument": "오송역"})
+    assert materialized["status"] == workflow_materializer.READY
+    assert materialized["workflow"] == {
+        "action": "call_mcp_workflow",
+        "steps": [
+            {"id": "s1", "server_id": "asap-mcp-core", "tool": "geo.geocode", "input": {"query": "오송역"}},
+            {
+                "id": "s2",
+                "server_id": "asap-mcp-core",
+                "tool": "road.getCctv",
+                "input": {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 15000},
+                "inputAdapter": workflow_materializer.POINT_RADIUS_TO_BBOX,
+            },
+        ],
+    }
+    assert materialized["nodes"] == ["geocode_place", "find_cctv"]
+    assert materialized["commands"] == []
 
 
 ROUTE = ["place_name", "geocode_place", "plan_trip"]
@@ -197,9 +205,10 @@ def test_the_origin_point_and_the_destination_point_keep_their_own_producers():
     지점이다. 타입만 보고 아무 지점이나 이으면 반대 방향 길이 나오고 도구는 오류를 안 낸다.
 
     raw 경로(location.0)는 내놓는 쪽 s1 의 outputs 에만 있고 받는 쪽은 semantic 칸만 가리킨다.
-    옛 vendor 참조("$s1.location.0")는 legacy 어댑터를 지난 뒤에만 나온다.
+    native 참조("$s1.location.0")는 materializer 가 두 선언을 이어 적을 때만 나온다.
+    부르는 순간은 실제 날짜 · 시각 글자로 나간다.
     """
-    execution = plan_service.load(recipe_of(ROUTE))
+    execution = workflow_materializer.load(recipe_of(ROUTE))
     trip = execution["workflow"][-1]["input"]
 
     assert execution["context_needs"] == {
@@ -212,10 +221,25 @@ def test_the_origin_point_and_the_destination_point_keep_their_own_producers():
     assert "outputs" not in execution["workflow"][-1]
     assert "location" not in json.dumps(trip)
 
-    request = plan_service.request(recipe_of(ROUTE), execution, "조치원역", None, {"selectedLocation": {"lon": 127.29, "lat": 36.61}})
-    assert request["workflow"] == execution["workflow"]
-    assert "$" not in json.dumps(request)
+    now = datetime.datetime(2026, 1, 1, 23, 59, tzinfo=workflow_materializer.RUNTIME_ZONE)
+    picked = {"selectedLocation": {"lon": 127.29, "lat": 36.61}}
+    materialized = workflow_materializer.materialize(recipe_of(ROUTE), {"argument": "조치원역"}, picked, now)
 
-    sent = legacy_vendor.to_legacy(request)["steps"][-1]["input"]
-    assert (sent["from_lon"], sent["to_lon"]) == ("$context.selectedLocation.lon", "$s1.location.0")
-    assert plan_service.absent_context(execution, {"selectedLocation": None}) == ["point"]
+    assert materialized["status"] == workflow_materializer.READY
+    assert materialized["workflow"]["steps"][-1] == {
+        "id": "s2",
+        "server_id": "otp-router",
+        "tool": "otp_plan_trip",
+        "input": {
+            "from_lat": "$context.selectedLocation.lat",
+            "from_lon": "$context.selectedLocation.lon",
+            "to_lat": "$s1.location.1",
+            "to_lon": "$s1.location.0",
+            "date": "2026-01-01",
+            "time_kst": "23:59",
+        },
+    }
+    assert materialized["context"] == picked
+
+    unpicked = workflow_materializer.materialize(recipe_of(ROUTE), {"argument": "조치원역"}, {"selectedLocation": None})
+    assert (unpicked["status"], unpicked["missing"]) == (workflow_materializer.MISSING_CONTEXT, ["point"])

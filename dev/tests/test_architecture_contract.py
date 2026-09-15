@@ -6,9 +6,9 @@
     → LLM 이 static recipe 를 **고른다** (만들지 않는다)
     → recipe = 순서 있는 온톨로지 노드 목록
     → 온톨로지 관계가 이어질 수 있는지 말한다
-    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다 (게시할 때 compile)
-    → 게시된 계획 + 이번 요청의 값 = ExecutionRequest (agentic_ai 의 공식 실행 출력)
-    → 지금은 legacy 어댑터가 옛 입력으로 바꿔 vendor/Gateway 실행
+    → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다 (게시할 때 compile = Recipe.execution)
+    → 요청 중에 Recipe.execution + 이번 요청의 값 = KRRI native call_mcp_workflow (materialize)
+    → 지금은 legacy 다리가 vendoring 한 KRRI 실행기로 Gateway 실행
     → 답 · API · 화면
 
 여기서 지키는 것은 그 길의 이음매다.
@@ -16,13 +16,13 @@
     LLM 은 MCP 도구 순서를 만들지 않는다 — recipe 를 고른다
     recipe 의 steps 는 사람이 받아들인 노드만 적는다 — 실행 계획은 온톨로지로 compile 해 게시한다
     요청 중에는 게시된 실행 계획만 읽는다 — 온톨로지로 계획을 다시 만들지 않는다
-    vendor 를 아는 제품 코드는 legacy 어댑터 하나다 — 옛 입력 표현이 계약으로 역류하지 않는다
+    KRRI native 표현은 workflow_materializer 만 만들고 vendor 를 아는 제품 코드는 legacy 다리 하나다
     도메인은 서비스 계층을 모듈 수준에서 안 부른다
 
 이음매의 **반대쪽 끝**은 각 subsystem 이 본다. 여기서 다시 안 본다.
 
     고른 것을 문맥으로 안 거른다      dev/tests/orchestrator/test_resolve_service.py
-    실행 전제는 실행이 본다            dev/tests/execution/test_execute_service.py
+    실행 전제는 실행이 본다            dev/tests/execution/test_workflow_materializer.py
     tool 이 스키마 · 권한과 맞나      dev/tests/execution/test_wiring_contract.py
     온톨로지 관계가 무엇을 뜻하나      dev/tests/ontology/test_graph.py
 
@@ -90,12 +90,12 @@ def test_the_llm_is_asked_to_choose_a_recipe_not_a_tool_sequence():
 
 
 def test_the_spoken_options_handed_to_execution_are_fields_the_llm_fills():
-    """실행이 run 에 넘기는 이름 있는 값은 resolve 응답 schema 에 실제로 있는 칸이다.
+    """실행이 spoken.<이름> 으로 읽는 이름 있는 값은 resolve 응답 schema 에 실제로 있는 칸이다.
 
-    칸의 모양은 schema 가 갖고 실행은 이름만 적는다. 이름이 schema 와 갈리면 run
-    에 늘 null 이 가는데, 말하지 않은 값도 null 이라 표에서 안 보인다.
+    칸의 모양은 schema 가 갖고 실행은 이름만 적는다. 이름이 schema 와 갈리면 workflow
+    에 늘 기본값이 가는데, 말하지 않은 값도 기본값이라 표에서 안 보인다.
     """
-    from execution.execute_service import SPOKEN_OPTIONS
+    from execution.workflow_materializer import SPOKEN_OPTIONS
 
     properties = get_role_config(RESOLVE).response_schema["properties"]
 
@@ -144,11 +144,14 @@ def test_a_recipe_is_an_accepted_node_list_with_its_plan_compiled_and_published(
 # ── 요청 중에는 게시된 계획만 읽는다 ────────────────────────────────
 
 # 요청 중에 고른 recipe 를 실행하는 모듈.
-RUNTIME_MODULES = ("execution/execute_service.py", "execution/plan_service.py", "execution/legacy_vendor.py")
+RUNTIME_MODULES = ("app/api/main.py", "execution/workflow_materializer.py", "execution/legacy_vendor.py")
+
+# 게시할 때만 부르는 compile 모듈의 이름.
+BUILDER = "recipe_execution_builder"
 
 
 def imported_names(tree):
-    """모듈 안 어디서든(함수 안까지) import 하는 이름. "execution.step_service" 꼴."""
+    """모듈 안 어디서든(함수 안까지) import 하는 이름. "registration.recipe_execution_builder" 꼴."""
     names = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -162,13 +165,13 @@ def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontolo
     """**고른 recipe 를 실행하려고 온톨로지를 다시 훑어 계획을 만들지 않는다.**
 
     요청 중에 계획을 다시 만들면 사람이 받아들여 게시한 실행 계획과 온톨로지 중 무엇이
-    실행을 정하는지 둘이 된다. 그래서 실행 모듈은 compile 하는 step_service 를 import
-    하지 않고, 게시된 블록을 읽는 plan_service 와 그것을 옛 입력으로 바꾸는 legacy_vendor 는
-    온톨로지도 게시도 import 하지 않는다.
+    실행을 정하는지 둘이 된다. 그래서 요청 중의 모듈은 compile 하는 recipe_execution_builder 를
+    import 하지 않는다. 게시된 블록을 workflow 로 만드는 workflow_materializer 와 그것을 부르는
+    legacy_vendor 는 온톨로지도 게시도 import 하지 않고, 창구(main)는 온톨로지를 import 하지 않는다.
 
-    execute_service 가 온톨로지를 읽는 것은 사람에게 보일 이름 · 안내 문구다. 그것은
+    고른 recipe 가 없는 답에 적을 온톨로지 이름은 resolve_service 가 모은다. 그것은
     계획이 아니라 여기서 막지 않는다. 계획을 안 지나는지는
-    dev/tests/execution/test_execute_service.py 가 온톨로지 읽기를 막고 돌려 본다.
+    dev/tests/app/api/test_common_entry.py 가 온톨로지 읽기를 막고 돌려 본다.
     """
     from paths import REPO_ROOT
 
@@ -176,27 +179,29 @@ def test_the_runtime_executes_the_published_plan_and_never_plans_from_the_ontolo
     for relative in RUNTIME_MODULES:
         tree = ast.parse((REPO_ROOT / relative).read_text(encoding="utf-8"))
         names = imported_names(tree)
-        offenders += [f"{relative} -> {name}" for name in names if "step_service" in name]
+        offenders += [f"{relative} -> {name}" for name in names if BUILDER in name]
         offenders += [
-            f"{relative} -> step_service.{node.attr}"
+            f"{relative} -> {BUILDER}.{node.attr}"
             for node in ast.walk(tree)
-            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "step_service"
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == BUILDER
         ]
-        if relative.endswith(("plan_service.py", "legacy_vendor.py")):
-            offenders += [
-                f"{relative} -> {name}" for name in names if name.split(".")[0] in ("ontology", "registration")
-            ]
+        forbidden = ("ontology", "registration") if relative.startswith("execution/") else ("ontology",)
+        offenders += [f"{relative} -> {name}" for name in names if name.split(".")[0] in forbidden]
 
     assert offenders == [], "요청 중의 실행이 계획을 다시 만들 수 있다:\n  " + "\n  ".join(offenders)
 
 
-# ── vendor 는 legacy 어댑터 뒤에만 있다 ─────────────────────────────
+# ── native 표현은 materializer 가, vendor 는 legacy 다리가 ─────────────
 
-# 옛 vendor 입력에만 있는 표현. 코드 속 문자열(docstring · 주석 제외)로 판다.
-LEGACY_VENDOR_FORMS = ("inputAdapter", "answer_instruction", "point_radius_to_bbox", "$s", "$context")
+# KRRI native workflow 에만 있는 표현과 옛 vendor 답 지시. 코드 속 문자열(docstring · 주석 제외)로 판다.
+NATIVE_FORMS = ("inputAdapter", "point_radius_to_bbox", "call_mcp_workflow", "$s", "$context")
+LEGACY_ANSWER_FORM = "answer_instruction"
 
 # vendor 를 아는 유일한 제품 모듈.
 LEGACY_ADAPTER = "execution/legacy_vendor.py"
+
+# KRRI native 표현을 적는 유일한 제품 모듈.
+MATERIALIZER = "execution/workflow_materializer.py"
 
 
 def code_strings(tree):
@@ -213,12 +218,13 @@ def code_strings(tree):
     ]
 
 
-def test_only_the_legacy_adapter_knows_the_vendor_and_its_forms_do_not_flow_back_into_the_request():
-    """**agentic_ai 의 실행 출력은 ExecutionRequest 다. 옛 vendor 입력은 어댑터 뒤에만 있다.**
+def test_only_the_materializer_writes_native_forms_and_only_the_legacy_bridge_knows_the_vendor():
+    """**KRRI native workflow 는 workflow_materializer 가 만들고, vendor 는 legacy 다리 뒤에만 있다.**
 
-    vendor 를 여러 곳에서 부르면 KRRI_ASAP Gateway 가 계약을 직접 받게 됐을 때 걷어낼 자리를
-    못 찾는다. "$s1.location.0" · inputAdapter 를 compile · 계약 · 실행 흐름이 만들기 시작하면
-    raw 경로와 어댑터 이름이 agentic_ai 의 계약이 되고, 어댑터를 걷는 날 계약이 깨진다.
+    vendor 를 여러 곳에서 부르면 KRRI_ASAP 실행기에 workflow 를 직접 넘기게 됐을 때 걷어낼
+    자리를 못 찾는다. "$s1.location.0" · inputAdapter 를 compile · 다리 · 창구가 적기 시작하면
+    raw 참조와 어댑터 결정이 여러 곳에 흩어지고, 게시된 Recipe.execution 이 semantic IR 로
+    남지 않는다. 옛 vendor 답 지시(answer_instruction)는 어디에도 되살리지 않는다.
 
     import 문과 코드 속 문자열을 판다. 제품 폴더(도메인 · 서비스) 전부를 훑는다.
     """
@@ -232,19 +238,21 @@ def test_only_the_legacy_adapter_knows_the_vendor_and_its_forms_do_not_flow_back
             scanned += 1
             relative = path.relative_to(REPO_ROOT).as_posix()
             tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            if relative == LEGACY_ADAPTER:
-                continue
-            importers += [f"{relative} -> {name}" for name in imported_names(tree) if name.startswith("vendor_to_be_deleted")]
-            if folder == "execution":
+            if relative != LEGACY_ADAPTER:
+                importers += [f"{relative} -> {name}" for name in imported_names(tree) if name.startswith("vendor_to_be_deleted")]
+            if folder in ("execution", "registration"):
+                forms = (LEGACY_ANSWER_FORM,) if relative == MATERIALIZER else NATIVE_FORMS + (LEGACY_ANSWER_FORM,)
                 leaks += [
                     f"{relative}:{node.lineno} -> {node.value!r}"
                     for node in code_strings(tree)
-                    if any(form in node.value for form in LEGACY_VENDOR_FORMS)
+                    if any(form in node.value for form in forms)
                 ]
 
-    assert scanned and (REPO_ROOT / LEGACY_ADAPTER).is_file(), "훑은 파일이 없거나 어댑터가 없다 — 이 검사가 무력하다"
-    assert importers == [], "legacy 어댑터 밖에서 vendor 를 부른다:\n  " + "\n  ".join(importers)
-    assert leaks == [], "옛 vendor 표현을 어댑터 밖 실행 코드가 만든다:\n  " + "\n  ".join(leaks)
+    assert scanned and (REPO_ROOT / LEGACY_ADAPTER).is_file() and (REPO_ROOT / MATERIALIZER).is_file(), (
+        "훑은 파일이 없거나 다리 · materializer 가 없다 — 이 검사가 무력하다"
+    )
+    assert importers == [], "legacy 다리 밖에서 vendor 를 부른다:\n  " + "\n  ".join(importers)
+    assert leaks == [], "KRRI native 표현을 materializer 밖 코드가 적는다:\n  " + "\n  ".join(leaks)
 
 
 # ── 도메인이 서비스를 안 부른다 ─────────────────────────────────────

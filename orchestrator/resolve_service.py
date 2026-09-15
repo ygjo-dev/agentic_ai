@@ -7,14 +7,18 @@
     menu 전문 + 발화  ->  LLM  ->  status · recipe_id · candidate_recipe_ids
 
 **고르는 것과 부를 수 있는 것을 가른다.** 실행에 화면 문맥이 실제로 필요한지는
-execution/execute_service 가 실행 직전에 본다. 여기서 미리 빼면 「무엇을
+execution/workflow_materializer 가 실행 직전에 본다. 여기서 미리 빼면 「무엇을
 골랐는가」와 「지금 부를 수 있는가」가 한 값에 섞여 어느 쪽이 결정했는지
 읽을 수 없다.
+
+고른 recipe 가 없는 답(되묻기 · 영역 밖)에 적을 온톨로지 이름은 answer_names 가
+모은다. paths 를 붙이는 것과 같은 자리의 읽기다. 문장은 workflow_answer 가 만든다.
 """
 
 import json
 
-from ontology import graph
+from execution import workflow_materializer
+from ontology import graph, store
 from workflows.static.menu.load import load_menu
 
 
@@ -68,6 +72,56 @@ def resolve(utterance: str, llm_client, role) -> dict:
         **result,
         "candidate_recipe_ids": spoken,
         "paths": graph.paths_for(spoken),
+    }
+
+
+def answer_names(resolved: dict) -> dict:
+    """고른 recipe 가 없는 답에 적을 온톨로지 이름. 문장은 안 만듦.
+
+    입력  resolve 결과. candidate_recipe_ids · paths 를 읽음
+    출력  후보가 있으면 {steps: {recipe id: 부를 노드 이름 목록}, unwired: [배선이 없는 recipe id]}
+          후보가 없으면 {topics: 대상 이름 목록, starts: 발화로 시작할 수 있는 데이터 이름 목록}
+    규칙  부를 노드는 경로(paths)에서 실행 노드만 뺀 것. 시작 데이터 노드(장소 이름)는
+          부를 것이 없고 모든 후보에 똑같이 들어 있어 후보를 가르는 데 쓸모가 없음
+          배선 여부는 게시된 execution 의 unwired 가 말함
+          대상은 about 의 대상으로 등장하는 노드. 시작 데이터는 경로가 시작할 수 있는
+          노드에서 화면에서 오는 둘을 뺀 것. 사람이 더 말해 줄 것이 없음
+    제약  후보를 거르거나 차례를 바꾸지 않는다.
+          여기서 거르면 「무엇을 골랐는가」에 표시 규칙이 섞임
+          이름을 코드에 적지 않는다.
+          노드를 등록하면 안내도 함께 늘어야 함
+    """
+    candidates = resolved.get("candidate_recipe_ids") or []
+    if not candidates:
+        nodes = store.nodes()
+        from_screen = {
+            node_id
+            for node_id in graph.start_ids()
+            if graph.source_of(node_id)["from"].startswith(workflow_materializer.CONTEXT_SOURCE)
+        }
+        return {
+            "topics": [nodes[node_id]["name"] for node_id in graph.group_ids() if node_id in nodes],
+            "starts": [
+                nodes[node_id]["name"]
+                for node_id in graph.start_ids()
+                if node_id in nodes and node_id not in from_screen
+            ],
+        }
+
+    paths = resolved.get("paths") or {}
+    steps = {}
+    for recipe_id in candidates:
+        executable = set(graph.executable_in(recipe_id))
+        steps[recipe_id] = [
+            entry["name"] for entry in (paths.get(recipe_id) or []) if entry["node_id"] in executable
+        ]
+    return {
+        "steps": steps,
+        "unwired": [
+            recipe_id
+            for recipe_id in candidates
+            if (workflow_materializer.load(recipe_id) or {}).get("unwired")
+        ],
     }
 
 

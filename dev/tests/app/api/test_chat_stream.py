@@ -14,8 +14,8 @@
 **진짜 서버를 띄워 부르지 않는다.** 시연 중에 pytest 가 돌면 8000 을 쓰는
 KRRI_ASAP 화면과 부딪히고, LLM 이 회차마다 다른 답을 내면 이 시험이 답의 내용에 흔들린다.
 여기서 볼 것은 「창구가 계약을 지키는가」지 「답이 맞는가」가 아니다. 그래서
-TestClient(프로세스 안)로 진짜 창구 함수를 부르되 공통 진입점
-(execute_service.process)과 LLM 클라이언트만 대역으로 바꾼다 — main._process ·
+TestClient(프로세스 안)로 진짜 창구 함수를 부르되 실행 흐름
+(main._stream)과 LLM 클라이언트만 대역으로 바꾼다 — main._process ·
 회차 기록 · SSE 직렬화는 진짜가 돌고 LLM · 온톨로지 · vendor 실행기는 안 돈다.
 
 이벤트 모양은 dev/tests/app/api/test_recent.py 의 `executed()` 와 같은 것을 쓴다 —
@@ -69,17 +69,12 @@ BODY = {
 def client(monkeypatch):
     """공통 진입점과 LLM 클라이언트만 대역으로 바꾼 진짜 앱. 남긴 회차는 치움."""
 
-    def fake_process(
-        text, llm_client, role, context=None, *, continue_after_resolve
-    ):
-        async def events():
-            for payload in EVENTS:
-                yield payload
-
-        return events()
+    async def fake_stream(text, llm_client, role, context):
+        for payload in EVENTS:
+            yield payload
 
     monkeypatch.setattr(main, "get_llm_for", lambda role: object())
-    monkeypatch.setattr(main.execute_service, "process", fake_process)
+    monkeypatch.setattr(main, "_stream", fake_stream)
     recent_service.clear()
     yield TestClient(main.app)
     recent_service.clear()

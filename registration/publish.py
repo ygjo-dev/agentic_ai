@@ -5,7 +5,7 @@
     python -m registration.publish --check    쓰지 않는다. 다시 적어야 할 recipe 만 찍고 있으면 1
 
 **recipe 파일의 steps 와 example 은 사람의 판정이다.** 여기는 그것을 안 고친다.
-steps 의 노드 사슬을 execution/step_service.compile_execution 에 넘겨 나온 블록을
+steps 의 노드 사슬을 registration/recipe_execution_builder.compile_execution 에 넘겨 나온 블록을
 파일 끝의 execution 칸에 적을 뿐이다. 같은 온톨로지 · 같은 사슬이면 같은 글자가 나온다.
 
 **yaml.dump 로 파일을 통째로 다시 쓰지 않는다.** 사람이 쓴 칸의 모양과 주석이
@@ -29,7 +29,7 @@ import sys
 import yaml
 
 import paths
-from execution import step_service
+from registration import recipe_execution_builder
 
 EXECUTION_KEY = "execution"
 
@@ -49,7 +49,7 @@ def published_text(text: str) -> str:
     """
     document = yaml.safe_load(text) or {}
     chain = [step["node"] for step in document.get("steps") or []]
-    execution = step_service.compile_execution(chain)
+    execution = recipe_execution_builder.compile_execution(chain)
 
     body = _without_execution(text).rstrip("\n") + "\n\n" + render(execution) + "\n"
 

@@ -22,11 +22,9 @@ KRRI_ASAP 은 `POST /chat/stream` 으로 발화를 넣고 Streamlit 은 `GET /re
 **기록 때문에 `/chat/stream` 이 깨지면 안 된다.** 훔쳐보는 자리도 남기는 자리도
 전부 감싸서 삼킨다. 답이 먼저다.
 
-훔쳐보는 자리가 둘이고 `app/api/main.py` 가 한 번 씌운다.
-
-    resolve_service.resolve   인자 · 고른 recipe · 후보들
-    execute_service.run       실제로 부른 recipe 와 인자. 해석을 안 거치고
-                              run 만 지나는 회차는 이 자리에서만 보인다
+훔쳐보는 자리는 `resolve_service.resolve` 하나다(인자 · 고른 recipe · 후보들).
+`app/api/main.py` 가 한 번 씌운다. 발화 한 건은 늘 해석을 거치고 그 결과 그대로
+실행되므로 실제로 부른 recipe 와 인자도 거기서 보인다.
 """
 
 import re
@@ -63,10 +61,6 @@ _TURNS: "deque[dict]" = deque(maxlen=MAX_TURNS)
 
 # 회차 번호. 늘기만 한다. 화면이 "새 것이 왔는지" 를 이것으로 안다.
 _SEQ = 0
-
-# 해석을 안 거치고 run 만 지난 회차의 status. SELECT · CLARIFY · NO_MATCH 는
-# 발화 해석이 쓰는 값이라 그 자리에 채울 것이 없다.
-CHOICE = "CHOICE"
 
 
 # ================================================================ 남기기
@@ -164,7 +158,7 @@ def _keep(slot: dict) -> None:
                 "seq": _SEQ,
                 "at": slot["at"],
                 "utterance": slot["utterance"],
-                "status": slot["status"] or CHOICE,
+                "status": slot["status"],
                 "argument": slot["argument"],
                 "recipe_id": slot["recipe_id"],
                 "candidate_recipe_ids": list(slot["candidate_recipe_ids"]),
@@ -240,23 +234,6 @@ def watch_resolve(resolve):
     return watching
 
 
-def watch_run(run):
-    """`execute_service.run` 을 감싸 실제로 부른 recipe 와 인자를 훔쳐봄.
-
-    출력  같은 이벤트를 그대로 내는 async generator 함수
-    규칙  해석을 안 거치고 run 만 지나는 회차의 recipe 는 이 자리에서만 보임
-    제약  이벤트를 고치거나 버리지 않는다
-    """
-
-    async def watching(recipe_id, argument, *args, **kwargs):
-        _note_run(recipe_id, argument)
-        async for payload in run(recipe_id, argument, *args, **kwargs):
-            yield payload
-
-    watching.__wrapped__ = run
-    return watching
-
-
 def _note_resolve(result) -> None:
     """해석 결과에서 남길 칸만 옮겨 적음. 회차 밖이면 아무 일도 안 함."""
     slot = _SLOT.get()
@@ -268,18 +245,6 @@ def _note_resolve(result) -> None:
         slot["candidate_recipe_ids"] = list(result.get("candidate_recipe_ids") or [])
         slot["argument"] = result.get("argument") or ""
     except Exception:  # noqa: BLE001 — 훔쳐보다 터져서 해석을 막지 않는다.
-        pass
-
-
-def _note_run(recipe_id, argument) -> None:
-    """실제로 부른 recipe 와 인자. 회차 밖이면 아무 일도 안 함."""
-    slot = _SLOT.get()
-    if slot is None:
-        return
-    try:
-        slot["recipe_id"] = recipe_id
-        slot["argument"] = argument or slot["argument"]
-    except Exception:  # noqa: BLE001
         pass
 
 

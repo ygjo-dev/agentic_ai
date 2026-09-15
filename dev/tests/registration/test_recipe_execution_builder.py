@@ -1,4 +1,4 @@
-"""대상 : execution/step_service.py — recipe 의 노드 사슬을 게시할 execution 블록으로 compile 한다
+"""대상 : registration/recipe_execution_builder.py — recipe 의 노드 사슬을 게시할 execution 블록으로 compile 한다
 
 온톨로지 노드의 tool 을 읽어 노드마다 무엇을 부르고 칸마다 값이 어디서 오는지 기호로
 적는다. 여기서 보는 것은 그 규칙이지 온톨로지에 적힌 값이 도구와 맞느냐가 아니다 —
@@ -11,7 +11,7 @@ test_published_execution.py 가 본다.
     step      앞 도구 단계. {from: s1.<타입>.<칸>}
     adapter   앞 노드가 builtin 계산. 뒤 단계의 transform 과 {from: transform.<타입>.<칸>}
 
-vendor 에 실제로 무엇이 나가는지는 compile 한 블록을 ExecutionRequest 로 묶어 legacy_vendor.to_legacy 로 채워 본다.
+KRRI 실행기에 실제로 무엇이 나가는지는 compile 한 블록을 workflow_materializer.workflow_of 로 채워 본다.
 요청 중에 실행이 지나는 것과 같은 함수다.
 
 LLM 도 Gateway 도 부르지 않는다. 온톨로지와 배선표만 읽는다.
@@ -22,7 +22,8 @@ import zoneinfo
 
 import pytest
 
-from execution import legacy_vendor, plan_service, step_service
+from execution import workflow_materializer
+from registration import recipe_execution_builder
 from ontology import graph
 
 PROBE_NOW = datetime.datetime(2026, 1, 1, 9, 0, tzinfo=zoneinfo.ZoneInfo("Asia/Seoul"))
@@ -40,13 +41,13 @@ def recipe_of(chain):
 
 def compiled(recipe_id):
     """그 recipe 의 사슬을 지금 온톨로지로 compile 한 블록."""
-    return step_service.compile_execution(graph.recipe_nodes(recipe_id))
+    return recipe_execution_builder.compile_execution(graph.recipe_nodes(recipe_id))
 
 
 def plan(recipe_id, argument, options=None, now=None):
-    """compile 한 블록을 실행이 쓰는 ExecutionRequest · legacy 어댑터로 채운 계획. vendor 가 받는 모양."""
-    request = plan_service.request(recipe_id, compiled(recipe_id), argument, options)
-    return legacy_vendor.to_legacy(request, now)
+    """compile 한 블록을 실행이 쓰는 workflow_of 로 채운 계획. steps 는 KRRI 실행기가 받는 모양."""
+    built = workflow_materializer.workflow_of(compiled(recipe_id), {"argument": argument, **(options or {})}, now)
+    return {**built, "steps": built["workflow"]["steps"]}
 
 
 def fake(monkeypatch, path, tools, inputs, outputs=None, sources=None):
@@ -83,9 +84,9 @@ SPOKEN = {"from": "spoken.argument"}
 @pytest.mark.parametrize(
     "tool_id, kind, fields",
     [
-        ("asap-mcp-core/geo.geocode", step_service.MCP, {"server_id": "asap-mcp-core", "tool": "geo.geocode"}),
-        ("builtin/geo.pointRadiusToBbox", step_service.BUILTIN, {"produces": ("minLon", "minLat", "maxLon", "maxLat")}),
-        ("frontend/digitalTwin.showFacility", step_service.COMMAND, {"command": "digitalTwin.showFacility"}),
+        ("asap-mcp-core/geo.geocode", recipe_execution_builder.MCP, {"server_id": "asap-mcp-core", "tool": "geo.geocode"}),
+        ("builtin/geo.pointRadiusToBbox", recipe_execution_builder.BUILTIN, {"produces": ("minLon", "minLat", "maxLon", "maxLat")}),
+        ("frontend/digitalTwin.showFacility", recipe_execution_builder.COMMAND, {"command": "digitalTwin.showFacility"}),
     ],
     ids=["gateway", "builtin", "frontend"],
 )
@@ -97,7 +98,7 @@ def test_the_namespace_of_the_tool_id_decides_how_it_runs(monkeypatch, tool_id, 
     """
     fake(monkeypatch, ["a", "n"], tools={"n": {"id": tool_id, "parameters": {}}}, inputs={})
 
-    binding = step_service.binding_of("n")
+    binding = recipe_execution_builder.binding_of("n")
 
     assert binding["kind"] == kind
     for key, value in fields.items():
@@ -147,7 +148,7 @@ def test_a_tool_that_cannot_be_trusted_raises(monkeypatch, tool, fragment):
     )
 
     with pytest.raises(ValueError, match=fragment):
-        step_service.binding_of("n")
+        recipe_execution_builder.binding_of("n")
 
 
 def test_the_ontology_tools_and_sources_agree():
@@ -155,7 +156,7 @@ def test_the_ontology_tools_and_sources_agree():
 
     안 적었으면 그 자리가 조용히 unwired 가 된다.
     """
-    assert step_service.check_bindings() == []
+    assert recipe_execution_builder.check_bindings() == []
 
 
 # ── 어느 타입을 받는가 — binding_at ────────────────────────────────
@@ -167,8 +168,8 @@ def test_the_type_is_chosen_by_what_the_previous_node_hands_over():
     같은 노드가 두 자리에 온다 — 전기차 충전소 검색은 키워드 뒤(keyword)에도
     오고 지점 주변 범위 변환 뒤(map_extent)에도 온다.
     """
-    _, by_keyword = step_service.binding_at("search_ev_stations", "keyword")
-    _, by_extent = step_service.binding_at("search_ev_stations", "point_to_map_extent")
+    _, by_keyword = recipe_execution_builder.binding_at("search_ev_stations", "keyword")
+    _, by_extent = recipe_execution_builder.binding_at("search_ev_stations", "point_to_map_extent")
 
     assert by_keyword == "keyword"
     assert by_extent == "map_extent"
@@ -176,13 +177,13 @@ def test_the_type_is_chosen_by_what_the_previous_node_hands_over():
 
 def test_no_matching_type_is_none_not_an_error():
     """맞는 타입이 없으면 None. 여기서 터지면 unwired 가 셀 것이 없어진다."""
-    assert step_service.binding_at("find_cctv", "keyword") is None
+    assert recipe_execution_builder.binding_at("find_cctv", "keyword") is None
 
 
 # ── 게시할 블록의 기호 ──────────────────────────────────────────────
 #
 # **실제 값을 적지 않는다.** 출처와 내놓은 쪽을 기호로 적고, 값은 요청 중에
-# plan_service 가 채우거나 vendor 가 푼다.
+# workflow_materializer 가 채우거나 KRRI 실행기가 푼다.
 
 
 def test_the_utterance_argument_is_written_as_a_symbol_not_a_value():
@@ -243,13 +244,13 @@ def test_the_same_chain_compiles_to_the_same_block():
     """게시한 블록과 다시 compile 한 블록을 글자로 맞대므로 차례까지 늘 같아야 한다."""
     chain = graph.recipe_nodes(recipe_of(["place_name", "geocode_place", "point_to_map_extent", "find_cctv"]))
 
-    assert repr(step_service.compile_execution(chain)) == repr(step_service.compile_execution(list(chain)))
+    assert repr(recipe_execution_builder.compile_execution(chain)) == repr(recipe_execution_builder.compile_execution(list(chain)))
 
 
 def test_a_node_that_is_not_in_the_ontology_fails_the_compile():
     """없는 노드는 tool 이 없는 노드처럼 조용히 건너뛰면 안 된다. 사람이 받아들인 사슬이 틀린 것이다."""
     with pytest.raises(ValueError, match="온톨로지에 없는 노드"):
-        step_service.compile_execution(["place_name", "없는노드"])
+        recipe_execution_builder.compile_execution(["place_name", "없는노드"])
 
 
 def test_a_reference_with_no_step_to_point_at_fails_the_compile(monkeypatch):
@@ -271,7 +272,7 @@ def test_a_reference_with_no_step_to_point_at_fails_the_compile(monkeypatch):
     )
 
     with pytest.raises(ValueError, match="내놓은 도구 단계가 없다"):
-        step_service.compile_execution(["start", "widen", "lonely"])
+        recipe_execution_builder.compile_execution(["start", "widen", "lonely"])
 
 
 def test_a_screen_path_that_matches_no_single_declared_field_fails_the_compile(monkeypatch):
@@ -292,7 +293,7 @@ def test_a_screen_path_that_matches_no_single_declared_field_fails_the_compile(m
     )
 
     with pytest.raises(ValueError, match="하나로 안 정해진다"):
-        step_service.compile_execution(["place", "judge"])
+        recipe_execution_builder.compile_execution(["place", "judge"])
 
 
 # ── 발화에서 온 값 ──────────────────────────────────────────────────
@@ -552,7 +553,7 @@ def test_an_output_reading_that_cannot_be_trusted_raises(monkeypatch, outputs, f
     fake_reader(monkeypatch, outputs)
 
     with pytest.raises(ValueError, match=fragment):
-        step_service.binding_of("geo")
+        recipe_execution_builder.binding_of("geo")
 
 
 UNTRUSTWORTHY_SOURCES = [
@@ -570,7 +571,7 @@ def test_a_source_reading_that_cannot_be_trusted_raises(monkeypatch, source, fra
     fake(monkeypatch, ["start", "n"], tools={}, inputs={}, sources={"start": source})
 
     with pytest.raises(ValueError, match=fragment):
-        step_service._source_of("start")
+        recipe_execution_builder._source_of("start")
 
 
 @pytest.mark.parametrize(
@@ -587,22 +588,22 @@ def test_a_field_the_producer_does_not_declare_is_not_guessed_from_its_name(monk
     """
     fake_reader(monkeypatch, outputs)
 
-    assert step_service.unwired_in(READER_CHAIN) == ["judge"]
-    assert step_service.compile_execution(READER_CHAIN) == {
+    assert recipe_execution_builder.unwired_in(READER_CHAIN) == ["judge"]
+    assert recipe_execution_builder.compile_execution(READER_CHAIN) == {
         "spoken_needed": False,
         "unwired": ["judge"],
         "context_needs": {},
         "workflow": [],
     }
-    assert any("geo" in problem and "judge" in problem for problem in step_service.check_bindings())
+    assert any("geo" in problem and "judge" in problem for problem in recipe_execution_builder.check_bindings())
 
 
 def test_a_type_nobody_reads_needs_no_reading(monkeypatch):
     """geo 는 목록도 내놓지만 아무도 목록을 안 읽는다. 그 읽는 법까지 적으라고 하지 않는다."""
     fake_reader(monkeypatch, {"point": {"fields": {"lon": "location.0", "lat": "location.1"}}})
 
-    assert step_service.check_bindings() == []
-    assert step_service.unwired_in(READER_CHAIN) == []
+    assert recipe_execution_builder.check_bindings() == []
+    assert recipe_execution_builder.unwired_in(READER_CHAIN) == []
     assert plan("recipe_x", "오송역")["steps"][1]["input"] == {
         "lon": "$s1.location.0",
         "lat": "$s1.location.1",
@@ -636,7 +637,7 @@ def test_starting_from_the_visible_extent_the_first_step_takes_the_context_bbox(
 def test_the_picked_point_is_read_by_the_fields_its_source_declares():
     """찍은 점은 {lon, lat} 이다. 우클릭 전에는 null 이라 칸이 빈다.
 
-    null 인 요청은 실행이 먼저 막는다(plan_service.absent_context). 여기서 좌표를 채우지 않는다.
+    null 인 요청은 실행이 먼저 막는다(workflow_materializer.absent_context). 여기서 좌표를 채우지 않는다.
     """
     sent = step_input(["point", "find_admin_boundary_by_point"], 0, "")
 
@@ -702,11 +703,11 @@ def test_the_point_is_widened_by_the_next_step_not_called_on_its_own():
         "center": ["$context.selectedLocation.lon", "$context.selectedLocation.lat"],
         "radiusMeters": 15000,
     }
-    assert picked["steps"][0]["inputAdapter"] == legacy_vendor.POINT_RADIUS_TO_BBOX
+    assert picked["steps"][0]["inputAdapter"] == workflow_materializer.POINT_RADIUS_TO_BBOX
 
     assert spoken["nodes"] == ["geocode_place", "search_ev_stations", "get_ev_station"]
     assert spoken["steps"][1]["input"] == {"center": ["$s1.location.0", "$s1.location.1"], "radiusMeters": 15000}
-    assert spoken["steps"][1]["inputAdapter"] == legacy_vendor.POINT_RADIUS_TO_BBOX
+    assert spoken["steps"][1]["inputAdapter"] == workflow_materializer.POINT_RADIUS_TO_BBOX
     assert spoken["steps"][2]["input"] == {"statId": "$s2.items.0.stationId"}
 
     # 어댑터가 받는 중심은 화면에서 왔든 장소에서 왔든 [경도, 위도] 다.
@@ -723,9 +724,9 @@ def test_a_tool_that_takes_the_extent_in_another_shape_is_not_wired_behind_the_b
     """
     behind_builtin = ["point", "point_to_map_extent", "search_admin_boundaries"]
 
-    assert step_service.unwired_in(behind_builtin) == ["search_admin_boundaries"]
-    assert step_service.unwired_in(["map_extent", "search_admin_boundaries"]) == []
-    assert step_service.unwired_in(["point", "point_to_map_extent", "find_cctv"]) == []
+    assert recipe_execution_builder.unwired_in(behind_builtin) == ["search_admin_boundaries"]
+    assert recipe_execution_builder.unwired_in(["map_extent", "search_admin_boundaries"]) == []
+    assert recipe_execution_builder.unwired_in(["point", "point_to_map_extent", "find_cctv"]) == []
 
 
 # ── 부르는 순간 ─────────────────────────────────────────────────────
@@ -741,7 +742,7 @@ def test_the_date_and_time_are_taken_when_the_call_is_made():
     자정 근처에서 하루가 어긋날 수 있다". 블록에는 기호만 있고 값은 부를 때 찍힌다.
     """
     execution = compiled(recipe_of(ROUTE_CHAIN))
-    sent = legacy_vendor.to_legacy(plan_service.request("recipe_x", execution, "조치원역"))["steps"][-1]["input"]
+    sent = workflow_materializer.workflow_of(execution, {"argument": "조치원역"})["workflow"]["steps"][-1]["input"]
     now = datetime.datetime.now(zoneinfo.ZoneInfo("Asia/Seoul"))
 
     assert execution["workflow"][-1]["input"]["date"] == {"from": "runtime.now.date"}
@@ -763,7 +764,7 @@ def test_the_runtime_marker_is_resolved_before_the_vendor_sees_it():
 def test_an_unknown_runtime_field_is_not_passed_through_silently():
     """모르는 이름을 그대로 두면 그 문자열이 도구에 실려 나감."""
     with pytest.raises(ValueError):
-        plan_service.now_field("runtime.now.datetime", PROBE_NOW)
+        workflow_materializer.now_field("runtime.now.datetime", PROBE_NOW)
 
 
 def test_the_origin_comes_from_the_screen_and_the_destination_from_the_utterance():
@@ -872,11 +873,11 @@ def test_a_node_without_a_gateway_tool_becomes_a_map_command_not_a_step():
     frontend 노드는 지도 명령이 되고 vendor 에 넘길 step 이 안 된다.
     vendor 에 빈 steps 를 넘기면 실패로 보므로 step 이 되어서도 안 된다.
     """
-    binding = step_service.binding_of("show_facility")
+    binding = recipe_execution_builder.binding_of("show_facility")
     facility = recipe_of(["place_name", "show_facility"])
     plan_result = plan(facility, "오송 테스트트랙")
 
-    assert binding["kind"] == step_service.COMMAND
+    assert binding["kind"] == recipe_execution_builder.COMMAND
     assert compiled(facility)["workflow"][0] == {
         "node": "show_facility",
         "command": binding["command"],
@@ -890,7 +891,7 @@ def test_a_node_without_a_gateway_tool_becomes_a_map_command_not_a_step():
 
 def test_a_map_command_node_is_not_counted_as_unwired():
     """도구가 없는 것과 실행 수단이 없는 것은 다름. tool 이 있으면 붙은 것임."""
-    assert step_service.unwired(recipe_of(["place_name", "show_facility"])) == []
+    assert recipe_execution_builder.unwired(recipe_of(["place_name", "show_facility"])) == []
 
 
 # ── 이 recipe 를 지금 부를 수 있는가 ────────────────────────────────
@@ -934,7 +935,7 @@ def test_context_needs_looks_past_the_first_step():
 def test_unwired_names_the_executable_nodes_with_no_tool(monkeypatch):
     """실행 수단이 없는 실행 노드를 경로 순서로 셈. 시작 노드는 안 셈.
 
-    게시된 블록의 unwired 가 비어 있지 않으면 execute_service.run 이 도구를 하나도 안 부른다.
+    게시된 블록의 unwired 가 비어 있지 않으면 실행이 도구를 하나도 안 부른다(workflow_materializer.materialize 가 UNWIRED).
     """
     fake(
         monkeypatch,
@@ -944,5 +945,5 @@ def test_unwired_names_the_executable_nodes_with_no_tool(monkeypatch):
         outputs={"없는노드": ["item_list"]},
     )
 
-    assert step_service.unwired("recipe_x") == ["없는노드"]
-    assert step_service.compile_execution(["start", "없는노드"])["unwired"] == ["없는노드"]
+    assert recipe_execution_builder.unwired("recipe_x") == ["없는노드"]
+    assert recipe_execution_builder.compile_execution(["start", "없는노드"])["unwired"] == ["없는노드"]

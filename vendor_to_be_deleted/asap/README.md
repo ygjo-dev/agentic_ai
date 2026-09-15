@@ -121,8 +121,8 @@ Gateway 는 실패를 `200` + `{"error": {...}}` 로도 돌려주고(실물 :
 ## 이 코드가 무엇을 해주는가
 
 ```
-steps 배열                     우리가 만든다 (execution/legacy_vendor 가 ExecutionRequest
-                               에서). 앞 단계 응답 · 화면 값의 칸은 게시된 execution 의
+steps 배열                     우리가 만든다 (execution/workflow_materializer 가 게시된
+                               execution 에서). 앞 단계 응답 · 화면 값의 칸은 게시된 execution 의
                                outputs · context_needs 가 적은 경로로 적는다
                                ($s1.location.0 · $s2.items.0.code · $context.view.bbox.0.0)
   ↓
