@@ -5,6 +5,7 @@
     python dev/evaluation/runner.py --context bbox         materialize 에 실을 지도 문맥
     python dev/evaluation/runner.py --no-materialize       /resolve 만
     python dev/evaluation/runner.py --out 결과.json        결과 파일 자리
+    python dev/evaluation/runner.py --cooldown-every 6     6번마다 5초 쉼 (발열 · 팬 소음)
 
 **check_resolve 와 같은 자를 쓴다.** 정답표는 `dev/evaluation/suite.py` 로 읽고, 판정(`_grade`) ·
 이름 있는 값 표기(`_spoken_values_of` · `NULL_MARK`) · 지도 문맥(`_context_payload`) · 부르는
@@ -232,6 +233,8 @@ def run(
     context_label: str | None = None,
     materialize: bool = True,
     now: datetime.datetime | None = None,
+    cooldown_every: int = 0,
+    cooldown_seconds: float = 5.0,
 ) -> dict:
     """정답표를 재서 결과 한 벌.
 
@@ -240,9 +243,23 @@ def run(
           발화마다 runs 회
           서버에 못 닿거나 끊기면 거기서 멈추고 거기까지의 결과와 까닭(meta.stopped)을 냄
           materialize 의 부르는 순간은 now 하나로 고정함. 안 주면 시작 시각
+          cooldown_every 가 0 보다 크면 그만큼 부른 뒤 cooldown_seconds 초 쉼.
+          센 수는 발화 × runs 전체를 통틀어서임. 0 이면 안 쉼(기본)
     제약  MCP 도구를 부르지 않는다.
+          쉬는 것을 재는 값에 섞지 않는다.
+          다음 요청 **앞에서만** 쉬므로 마지막 요청 뒤에는 안 쉼. resolve_s 는
+          resolve 호출 하나만 감싸 재므로 쉬어도 시간이 안 늘어나고 판정도 안 바뀜
+          쉬려고 GPU 를 보지 않는다.
+          nvidia-smi · 온도 조회 · 병렬 실행 · vLLM 재기동을 넣지 않음. 부르는
+          횟수만 세어 time.sleep 한다 — 재는 자에 기계 상태를 섞으면 같은 정답표가
+          기계마다 다른 것을 재게 됨
     """
     import paths
+
+    if cooldown_every < 0 or cooldown_seconds < 0:
+        raise ValueError(
+            f"쉬는 설정은 0 이상이다: cooldown_every={cooldown_every} · cooldown_seconds={cooldown_seconds}"
+        )
 
     path = Path(suite_path or suite_module.SUITE_PATH)
     labels = suite_module.group_labels(suite)
@@ -252,10 +269,16 @@ def run(
     started = datetime.datetime.now(KST)
     now = now or started
     rows, stopped = [], None
+    called = 0
     try:
         for case in cases:
             for number in range(1, runs + 1):
+                # 다음 요청 앞에서 쉰다. 뒤에서 쉬면 마지막 요청 뒤에도 쉬게 되고,
+                # 그만큼은 아무도 기다릴 이유가 없는 시간이다.
+                if cooldown_every and called and called % cooldown_every == 0:
+                    time.sleep(cooldown_seconds)
                 rows.append(run_case(case, label_of[case["group"]], number, resolve, context, materialize, now))
+                called += 1
     except check_resolve.ServerDown as exc:
         stopped = f"ServerDown: {exc}"
     except KeyboardInterrupt:
@@ -345,7 +368,15 @@ def main() -> int:
     )
     parser.add_argument("--no-materialize", action="store_true", help="/resolve 만 잰다")
     parser.add_argument("--out", default="", help="결과 JSON 경로 (기본 dev/tools/sweep_out/evaluation-<시각>.json)")
+    parser.add_argument("--cooldown-every", type=int, default=0, help="몇 번 부르고 쉴까. 0 이면 안 쉼 (기본 0)")
+    parser.add_argument("--cooldown-seconds", type=float, default=5.0, help="쉬는 시간 초 (기본 5)")
     args = parser.parse_args()
+
+    # --only 와 같은 자리에서 막는다. 정답표를 읽기 전에 죽어야 오래 도는 회귀평가가
+    # 한참 뒤에 설정 오타로 멈추는 일이 없다.
+    if args.cooldown_every < 0 or args.cooldown_seconds < 0:
+        print(f"쉬는 설정은 0 이상이다 : --cooldown-every {args.cooldown_every} · --cooldown-seconds {args.cooldown_seconds}")
+        return 2
 
     suite_path = Path(args.suite)
     suite = suite_module.load(suite_path)
@@ -365,6 +396,8 @@ def main() -> int:
         context=check_resolve._context_payload(),
         context_label=args.context,
         materialize=not args.no_materialize,
+        cooldown_every=args.cooldown_every,
+        cooldown_seconds=args.cooldown_seconds,
     )
 
     out = Path(args.out) if args.out else OUT_DIR / f"evaluation-{datetime.datetime.now(KST):%Y%m%d-%H%M%S}.json"

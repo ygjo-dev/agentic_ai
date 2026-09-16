@@ -57,3 +57,99 @@ def test_the_evaluation_runner_runs_the_whole_suite_to_the_end_and_grades_like_c
     from dev.evaluation import runner
 
     runner._selfcheck()
+
+
+# ── 오래 도는 회귀평가의 쉼표 ────────────────────────────────────────
+#
+# 48 × 3 을 쉬지 않고 돌리면 GPU 넷이 계속 물려 있어 팬이 시끄럽다. 쉬는 것은
+# **부르는 사이의 간격일 뿐**이라 재는 값에 섞이면 안 된다 — 아래 셋이 그것을
+# 못 박는다. 진짜로 기다리지 않는다. time.sleep 을 바꿔 끼워 호출만 센다.
+def _fake_suite():
+    """발화 다섯 · 묶음 하나짜리 정답표. 진짜 정답표를 안 쓴다 — 여기서 재는 것은
+    판정이 아니라 부르는 사이의 간격이고, 발화가 늘면 기대 횟수가 흔들린다."""
+    from dev.evaluation import suite as suite_module
+
+    return {
+        "version": 1,
+        "groups": [{"id": name, "label": f"묶음{name}"} for name in suite_module.GROUP_IDS],
+        "cases": [
+            {
+                "id": number,
+                "group": suite_module.GROUP_IDS[0],
+                "utterance": f"발화 {number}",
+                "enabled": True,
+                "expected": {"recipe_ids": ["recipe_002"], "spoken": None},
+            }
+            for number in range(1, 6)
+        ],
+    }
+
+
+def _counted(monkeypatch, **kwargs):
+    """가짜 정답표를 가짜 resolve 로 돌리고 (resolve 횟수, 잔 시간들) 을 돌려줌."""
+    from dev.evaluation import runner
+
+    slept = []
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: slept.append(seconds))
+
+    asked = []
+
+    def resolve(utterance):
+        asked.append(utterance)
+        return {"status": "SELECT", "recipe_id": "recipe_002", "candidate_recipe_ids": ["recipe_002"],
+                **{name: None for name in check_resolve.SPOKEN_VALUE_NAMES}}
+
+    result = runner.run(_fake_suite(), resolve=resolve, materialize=False, **kwargs)
+    return asked, slept, result
+
+
+def test_without_a_cooldown_the_runner_never_sleeps(monkeypatch):
+    """기본값은 꺼짐. 옵션을 안 적은 평가는 지금까지와 같은 것을 같은 방식으로 재야 한다."""
+    asked, slept, result = _counted(monkeypatch)
+
+    assert len(asked) == 5
+    assert slept == [], "안 켰는데 쉬었다"
+    assert result["summary"]["total"]["HIT"] == 5
+
+
+def test_a_cooldown_rests_between_bursts_and_not_after_the_last_call(monkeypatch):
+    """다섯 번을 두 번마다 쉬면 쉬는 것은 정확히 두 번이다.
+
+    마지막 요청 뒤에는 안 쉰다. 뒤에서 쉬면 아무도 기다릴 이유가 없는 시간이
+    회차마다 붙는다 — 144회짜리 평가에서 그것만 2분이다.
+    """
+    asked, slept, _ = _counted(monkeypatch, cooldown_every=2, cooldown_seconds=5.0)
+
+    assert len(asked) == 5, "쉬는 것이 부르는 횟수를 바꿨다"
+    assert slept == [5.0, 5.0], slept
+
+    # 딱 떨어질 때도 뒤에 안 붙는다. 다섯 번을 다섯마다 쉬면 쉴 자리가 없다.
+    _, 딱맞음, _ = _counted(monkeypatch, cooldown_every=5, cooldown_seconds=5.0)
+    assert 딱맞음 == []
+
+
+def test_the_cooldown_seconds_reach_sleep_unchanged(monkeypatch):
+    """적은 값이 그대로 간다. 여기서 값을 만지면 사람이 적은 것과 실제가 갈린다."""
+    _, slept, _ = _counted(monkeypatch, cooldown_every=1, cooldown_seconds=0.25)
+
+    assert slept == [0.25, 0.25, 0.25, 0.25], slept
+
+    # 0 초도 받는다. 「켜 두되 지금은 안 기다린다」를 적을 자리다.
+    _, 영초, _ = _counted(monkeypatch, cooldown_every=2, cooldown_seconds=0)
+    assert 영초 == [0, 0]
+
+
+def test_a_negative_cooldown_is_refused_before_anything_is_measured(monkeypatch):
+    """음수는 거부한다. 조용히 0 으로 읽으면 켠 줄 알고 시끄러운 채로 두 시간을 돌린다."""
+    import pytest
+
+    from dev.evaluation import runner
+
+    for kwargs in ({"cooldown_every": -1}, {"cooldown_seconds": -0.5, "cooldown_every": 2}):
+        with pytest.raises(ValueError):
+            _counted(monkeypatch, **kwargs)
+
+    # 창구도 같이 막는다. 정답표를 읽기 전에 2 로 끝나야 한다.
+    for argv in (["runner", "--cooldown-every", "-1"], ["runner", "--cooldown-seconds", "-1"]):
+        monkeypatch.setattr(runner.sys, "argv", argv)
+        assert runner.main() == 2, argv
