@@ -10,7 +10,7 @@ import asyncio
 import copy
 
 from execution import legacy_vendor, workflow_materializer
-from ontology import graph
+from ontology import ONTOLOGY
 
 CCTV_AROUND_A_PLACE = ["place_name", "geocode_place", "point_to_map_extent", "find_cctv"]
 
@@ -26,8 +26,8 @@ def collect(events):
 
 def recipe_of(chain):
     """그 사슬을 가진 recipe id. 번호를 박지 않으려고 찾아서 쓴다."""
-    for recipe_id in graph.recipe_ids():
-        if graph.recipe_nodes(recipe_id) == list(chain):
+    for recipe_id in ONTOLOGY.recipe_ids():
+        if ONTOLOGY.recipe_nodes(recipe_id) == list(chain):
             return recipe_id
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 

@@ -10,7 +10,7 @@
   focus.py         경로 · 칩 데이터 (순수 함수)
   build.py         /render 응답 조립. vis-network 가 받을 모형
 
-`ontology.graph` 와 이름이 같지만 namespace 가 다르다 — 그것은 도메인이고
+`ontology` 패키지와 다루는 것이 겹쳐 보이지만 계층이 다르다 — 그것은 도메인이고
 여기는 화면이 받을 모양이다. 실제로 import 가 부딪히는 자리는 없다.
 
 이 패키지는 ontology 를 import 하지 않는다. 도메인 데이터는 screen_service 가

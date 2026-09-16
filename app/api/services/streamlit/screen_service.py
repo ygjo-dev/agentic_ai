@@ -25,14 +25,7 @@ import hashlib
 import paths
 from app.ui.graph import build, layout_store
 from app.ui.graph.dot import COLORS
-from ontology import graph, store
-from ontology.graph import (
-    dotted_edges,
-    group_ids,
-    is_executable,
-    load_ontology,
-    solid_edges,
-)
+from ontology import ONTOLOGY
 
 
 def ontology_version() -> str:
@@ -46,7 +39,7 @@ def ontology_version() -> str:
           화면이 「같은 해석인가」를 이 값으로 세므로 헛돌면 그래프가 깜빡임
     """
     digest = hashlib.sha1()
-    digest.update(store.raw_bytes())
+    digest.update(ONTOLOGY.raw_bytes())
 
     for recipe_path in sorted(paths.RECIPES_DIR.glob("*.yaml")):
         digest.update(recipe_path.name.encode("utf-8"))
@@ -56,18 +49,18 @@ def ontology_version() -> str:
 
 
 def recipe_ids() -> list[str]:
-    """지금 있는 recipe id 전부. 번호 순. 몸통은 ontology.graph 에 있음."""
-    return graph.recipe_ids()
+    """지금 있는 recipe id 전부. 번호 순. 몸통은 Ontology 에 있음."""
+    return ONTOLOGY.recipe_ids()
 
 
 def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
-    """recipe 한 벌의 실행 경로. 몸통은 ontology.graph 에 있음."""
-    return graph.path_of(recipe_id, nodes)
+    """recipe 한 벌의 실행 경로. 몸통은 Ontology 에 있음."""
+    return ONTOLOGY.path_of(recipe_id, nodes)
 
 
 def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
-    """recipe id 여럿의 경로를 한 번에. 몸통은 ontology.graph 에 있음."""
-    return graph.paths_for(ids, nodes)
+    """recipe id 여럿의 경로를 한 번에. 몸통은 Ontology 에 있음."""
+    return ONTOLOGY.paths_for(ids, nodes)
 
 
 def drawn_nodes() -> dict:
@@ -96,10 +89,10 @@ def drawn_nodes() -> dict:
           노드의 tool · source 를 화면에 넘기지 않는다.
           그리는 데 안 쓰이고, 도구 이름이 화면 응답에 실리는 자리가 됨
     """
-    nodes = load_ontology()["nodes"]
-    groups = set(group_ids())
-    in_paths = {node_id for pair in solid_edges() for node_id in pair}
-    in_dotted = {node_id for pair in dotted_edges() for node_id in pair}
+    nodes = ONTOLOGY.nodes()
+    groups = set(ONTOLOGY.group_ids())
+    in_paths = {node_id for pair in ONTOLOGY.solid_edges() for node_id in pair}
+    in_dotted = {node_id for pair in ONTOLOGY.dotted_edges() for node_id in pair}
 
     return {
         node_id: {
@@ -111,7 +104,7 @@ def drawn_nodes() -> dict:
         if node_id in groups
         or node_id in in_paths
         or node_id in in_dotted
-        or is_executable(node_id)
+        or ONTOLOGY.is_executable(node_id)
     }
 
 
@@ -123,7 +116,7 @@ def domain_graph() -> tuple[dict, dict, dict]:
           JSON 은 튜플 키를 못 담아 screen_payload 는 리스트로 펴지만, 서버
           안에서 그릴 때는 펼 이유가 없음
     """
-    return drawn_nodes(), solid_edges(), dotted_edges()
+    return drawn_nodes(), ONTOLOGY.solid_edges(), ONTOLOGY.dotted_edges()
 
 
 def screen_payload() -> dict:

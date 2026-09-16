@@ -18,14 +18,14 @@ import pytest
 import yaml
 
 from execution import workflow_materializer
-from ontology import graph
+from ontology import ONTOLOGY
 from workflows.static.menu.load import load_menu
 
 
 def recipe_of(chain):
     """그 사슬을 가진 recipe id."""
-    for recipe_id in graph.recipe_ids():
-        if graph.recipe_nodes(recipe_id) == list(chain):
+    for recipe_id in ONTOLOGY.recipe_ids():
+        if ONTOLOGY.recipe_nodes(recipe_id) == list(chain):
             return recipe_id
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 
@@ -39,7 +39,7 @@ def test_every_accepted_recipe_carries_a_published_block_the_runtime_accepts():
     블록이 없거나 알아볼 수 없으면 골라도 실행이 안 된다. 없다고 온톨로지로 다시 계획을
     만들지 않으므로 여기서 먼저 빨개져야 한다.
     """
-    recipe_ids = graph.recipe_ids()
+    recipe_ids = ONTOLOGY.recipe_ids()
     assert recipe_ids, "recipe 파일이 없다 — 이 검사가 무력하다"
 
     for recipe_id in recipe_ids:
@@ -59,7 +59,7 @@ def test_every_published_execution_stays_semantic_with_no_krri_native_form():
     "$s1.location.0" · inputAdapter 가 게시된 블록에 보이면 raw 참조와 어댑터 이름이 게시 계약으로
     새어 든 것이고, 실행기가 바뀌는 날 받아들인 recipe 를 전부 다시 게시해야 한다.
     """
-    for recipe_id in graph.recipe_ids():
+    for recipe_id in ONTOLOGY.recipe_ids():
         text = json.dumps(workflow_materializer.load(recipe_id), ensure_ascii=False)
 
         assert [marker for marker in NATIVE_MARKERS if marker in text] == [], recipe_id
@@ -75,7 +75,7 @@ def test_the_menu_the_llm_reads_carries_no_execution():
 
     for marker in ("execution", "workflow", "server_id", "spoken_needed", "context_needs", "transform"):
         assert marker not in menu, marker
-    assert menu_ids == set(graph.recipe_ids())
+    assert menu_ids == set(ONTOLOGY.recipe_ids())
 
 
 # ── 대표 자리 ───────────────────────────────────────────────────────
@@ -119,7 +119,7 @@ def test_the_radius_widening_stays_a_declared_transform_of_the_cctv_call_not_a_c
     execution = workflow_materializer.load(recipe_id)
     geocode, cctv = execution["workflow"]
 
-    assert graph.recipe_nodes(recipe_id) == CCTV_AROUND_A_PLACE
+    assert ONTOLOGY.recipe_nodes(recipe_id) == CCTV_AROUND_A_PLACE
     assert (geocode["node"], cctv["node"]) == ("geocode_place", "find_cctv")
     assert geocode["outputs"] == {"point": {"fields": {"lon": "location.0", "lat": "location.1"}}}
     assert cctv["transform"] == {

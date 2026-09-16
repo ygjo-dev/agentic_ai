@@ -280,7 +280,7 @@ def test_the_no_match_guidance_names_come_from_the_ontology():
     화면에서 오는 시작 노드는 게시된 execution 의 context_needs 가 말한다.
     """
     from execution import workflow_materializer
-    from ontology import store
+    from ontology import ONTOLOGY
 
     names = resolve_service.answer_names({"status": "NO_MATCH", "candidate_recipe_ids": [], "paths": {}})
     from_screen = {
@@ -290,7 +290,7 @@ def test_the_no_match_guidance_names_come_from_the_ontology():
     }
 
     assert names["topics"] and names["starts"] and from_screen
-    nodes = store.nodes()
+    nodes = ONTOLOGY.nodes()
     for node_id in from_screen:
         assert nodes[node_id]["name"] not in names["starts"]
 
@@ -326,6 +326,6 @@ def test_the_legacy_pre_filter_fields_are_gone(stub_llm_client):
 
 
 def _recipe_ids():
-    from ontology import graph
+    from ontology import ONTOLOGY
 
-    return graph.recipe_ids()
+    return ONTOLOGY.recipe_ids()

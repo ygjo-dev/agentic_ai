@@ -22,7 +22,7 @@ import pytest
 
 import paths
 from execution import legacy_vendor, workflow_materializer
-from ontology import graph, store
+from ontology import ONTOLOGY
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
 
@@ -52,12 +52,12 @@ def _props(tool):
 
 def _tool_ids():
     """온톨로지 노드에 적힌 tool.id 전부."""
-    return [tool["id"] for tool in (graph.tool_of(node_id) for node_id in graph.node_ids()) if tool]
+    return [tool["id"] for tool in (ONTOLOGY.tool_of(node_id) for node_id in ONTOLOGY.node_ids()) if tool]
 
 
 def _published_steps():
     """(recipe id, 게시된 도구 단계) 를 죽 편다. 지도 명령은 도구 단계가 아님."""
-    for recipe_id in graph.recipe_ids():
+    for recipe_id in ONTOLOGY.recipe_ids():
         for entry in workflow_materializer.load(recipe_id)["workflow"]:
             if "server_id" in entry:
                 yield recipe_id, entry
@@ -117,13 +117,13 @@ def test_every_start_node_is_a_semantic_type_with_a_known_source():
     source.from 은 발화 인자 하나와 화면 문맥뿐이다. 모르는 출처는 실행 계획이
     값을 못 만든다.
     """
-    starts = graph.start_ids()
+    starts = ONTOLOGY.start_ids()
     assert starts, "시작점이 없으면 recipe 가 하나도 안 만들어진다"
 
     for node_id in starts:
-        origin = graph.source_of(node_id).get("from")
-        assert not graph.is_executable(node_id), node_id
-        assert node_id not in graph.group_ids(), node_id
+        origin = ONTOLOGY.source_of(node_id).get("from")
+        assert not ONTOLOGY.is_executable(node_id), node_id
+        assert node_id not in ONTOLOGY.group_ids(), node_id
         assert origin == workflow_materializer.SPOKEN_ARGUMENT or origin.startswith(workflow_materializer.CONTEXT_SOURCE), origin
 
 
@@ -137,7 +137,7 @@ def test_every_active_recipe_is_fully_wired():
     """
     붙지_않은_것 = {
         recipe_id: workflow_materializer.load(recipe_id).get("unwired")
-        for recipe_id in graph.recipe_ids()
+        for recipe_id in ONTOLOGY.recipe_ids()
         if workflow_materializer.load(recipe_id).get("unwired")
     }
 
@@ -272,7 +272,7 @@ def test_no_server_or_tool_name_leaks_into_what_the_llm_reads():
     assert 이름들, "tool 이 비었다 — 이 검사가 무력하다"
 
     샌_곳 = []
-    for node_id, node in store.nodes().items():
+    for node_id, node in ONTOLOGY.nodes().items():
         글 = " ".join(
             [node["name"], node["description"], str((node.get("source") or {}).get("description") or "")]
         )

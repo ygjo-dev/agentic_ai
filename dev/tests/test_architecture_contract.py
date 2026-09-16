@@ -25,7 +25,7 @@
     고른 것을 문맥으로 안 거른다      dev/tests/orchestrator/test_resolve_service.py
     실행 전제는 실행이 본다            dev/tests/execution/test_workflow_materializer.py
     tool 이 스키마 · 권한과 맞나      dev/tests/execution/test_wiring_contract.py
-    온톨로지 관계가 무엇을 뜻하나      dev/tests/ontology/test_graph.py
+    온톨로지 관계가 무엇을 뜻하나      dev/tests/ontology/test_ontology.py
 
 LLM 도 Gateway 도 부르지 않는다. 소스와 데이터 파일만 읽는다.
 """
@@ -36,7 +36,7 @@ import yaml
 
 import paths
 from llm_engine.role_config import RESOLVE, get_role_config
-from ontology import graph
+from ontology import ONTOLOGY
 
 # ── LLM 은 recipe 를 고른다 ─────────────────────────────────────────
 
@@ -126,7 +126,7 @@ def test_a_recipe_is_an_accepted_node_list_with_its_published_plan():
     files = sorted(paths.RECIPES_DIR.glob("recipe_*.yaml"))
     assert files, "recipe 파일이 없다 — 이 검사가 무력하다"
 
-    nodes = set(graph.load_ontology()["nodes"])
+    nodes = set(ONTOLOGY.document()["nodes"])
     어긋난_것 = []
     for path in files:
         document = yaml.safe_load(path.read_text(encoding="utf-8"))

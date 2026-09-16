@@ -27,7 +27,7 @@ from app.api import main
 from app.api.services.bridge import recent_service
 from execution import legacy_vendor, workflow_materializer
 from llm_engine.role_config import RESOLVE
-from ontology import graph, store
+from ontology import ONTOLOGY, Ontology
 from vendor_to_be_deleted.asap import workflow_answer
 
 UTTERANCE = "오송역 CCTV 보여줘"
@@ -70,8 +70,8 @@ def collect(events):
 
 def recipe_of(chain):
     """그 사슬을 가진 recipe id. 번호를 박지 않으려고 찾아서 쓴다."""
-    for recipe_id in graph.recipe_ids():
-        if graph.recipe_nodes(recipe_id) == list(chain):
+    for recipe_id in ONTOLOGY.recipe_ids():
+        if ONTOLOGY.recipe_nodes(recipe_id) == list(chain):
             return recipe_id
     raise AssertionError(f"그런 사슬의 recipe 가 없다: {chain}")
 
@@ -328,8 +328,9 @@ def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_onto
         main.resolve_service, "resolve",
         lambda text, llm_client, role: {**RESOLVED, "recipe_id": spoken, "candidate_recipe_ids": [spoken]},
     )
-    for name in ("read", "raw_bytes", "nodes"):
-        monkeypatch.setattr(store, name, _untouchable)
+    # class 에 건다. 창구가 어느 Ontology 를 들고 있든 파일에 닿으면 걸린다.
+    for name in ("document", "raw_bytes", "nodes", "edges"):
+        monkeypatch.setattr(Ontology, name, _untouchable)
 
     events = stream()
 

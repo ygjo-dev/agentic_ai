@@ -97,7 +97,8 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
 
 ```
 도메인      오래 남는다
-  ontology/          온톨로지 도메인. store.py 가 yaml 을 아는 유일한 파일
+  ontology/          온톨로지 도메인. Ontology class 가 게시 자산을 읽는 유일한 자리다.
+                     읽기만 한다 — 등록 · 게시는 밖의 저장소 일이라 쓰는 API 가 없다
   orchestrator/      발화 해석
   execution/         요청 중의 실행. workflow_materializer 가 게시된 execution 을 KRRI native
                      workflow 로 만들고, legacy_vendor 는 그것을 vendoring 한 실행기로 부르는
@@ -309,7 +310,9 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 - 그리기(`app/ui/graph/`)가 `ontology` 를 직접 읽지 않는다 — 도메인 데이터는
   창구의 `screen_service` 에서만 온다. **`app/` 안에서 온톨로지를 읽는 유일한
   지점이 거기다.**
-- `ontology/store.py` 는 `paths` 외의 프로젝트 모듈을 import 하지 않는다.
+- `ontology/ontology.py` 는 `paths` 외의 프로젝트 모듈을 import 하지 않는다.
+- **온톨로지 도메인에 쓰는 API 를 두지 않는다** (append · save · publish). `AGENTIC_ARTIFACT_ROOT`
+  가 공유 Registry 를 가리킨 배포에서 이쪽 코드가 남의 게시 파일을 고칠 수 있으면 안 된다.
 - **`yaml.dump` 로 다시 쓰지 않는다** (상단 주석과 들여쓰기가 날아간다).
   텍스트를 이어 붙이거나 마커 앞에 삽입한다.
 - 데이터 파일(ontology.yaml · menu · recipe)을 스크립트로 고칠 때는

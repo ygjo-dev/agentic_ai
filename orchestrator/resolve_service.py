@@ -18,7 +18,7 @@ execution/workflow_materializer 가 실행 직전에 본다. 여기서 미리 �
 import json
 
 from execution import workflow_materializer
-from ontology import graph, store
+from ontology import ONTOLOGY
 from workflows.static.menu.load import load_menu
 
 
@@ -71,7 +71,7 @@ def resolve(utterance: str, llm_client, role) -> dict:
     return {
         **result,
         "candidate_recipe_ids": spoken,
-        "paths": graph.paths_for(spoken),
+        "paths": ONTOLOGY.paths_for(spoken),
     }
 
 
@@ -93,17 +93,17 @@ def answer_names(resolved: dict) -> dict:
     """
     candidates = resolved.get("candidate_recipe_ids") or []
     if not candidates:
-        nodes = store.nodes()
+        nodes = ONTOLOGY.nodes()
         from_screen = {
             node_id
-            for node_id in graph.start_ids()
-            if graph.source_of(node_id)["from"].startswith(workflow_materializer.CONTEXT_SOURCE)
+            for node_id in ONTOLOGY.start_ids()
+            if ONTOLOGY.source_of(node_id)["from"].startswith(workflow_materializer.CONTEXT_SOURCE)
         }
         return {
-            "topics": [nodes[node_id]["name"] for node_id in graph.group_ids() if node_id in nodes],
+            "topics": [nodes[node_id]["name"] for node_id in ONTOLOGY.group_ids() if node_id in nodes],
             "starts": [
                 nodes[node_id]["name"]
-                for node_id in graph.start_ids()
+                for node_id in ONTOLOGY.start_ids()
                 if node_id in nodes and node_id not in from_screen
             ],
         }
@@ -111,7 +111,7 @@ def answer_names(resolved: dict) -> dict:
     paths = resolved.get("paths") or {}
     steps = {}
     for recipe_id in candidates:
-        executable = set(graph.executable_in(recipe_id))
+        executable = set(ONTOLOGY.executable_in(recipe_id))
         steps[recipe_id] = [
             entry["name"] for entry in (paths.get(recipe_id) or []) if entry["node_id"] in executable
         ]

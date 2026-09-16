@@ -5,7 +5,6 @@
 
 import builtins
 import os
-import shutil
 from pathlib import Path
 
 import pytest
@@ -132,39 +131,3 @@ def read_file_paths(monkeypatch):
 @pytest.fixture
 def stub_llm_client():
     return StubLLMClient
-
-
-@pytest.fixture
-def isolated_workspace(monkeypatch, tmp_path):
-    """시험이 고쳐 쓰는 게시 자산(온톨로지 · menu · recipe)과 좌표를 임시 사본으로 바꿈.
-
-    격리를 안 하면 시험이 온톨로지에 붙인 노드 · 관계가 진짜 저장소에 남음.
-
-    paths 전역을 호출 시점에 읽으므로 모듈 속성만 바꾸면 됨.
-    좌표는 paths 가 아니라 layout_store 가 들고 있어 그쪽 모듈 속성을 바꾼다.
-    """
-    work = tmp_path / "work"
-    work.mkdir()
-
-    for source, target in (
-        (paths.ONTOLOGY_PATH, work / "ontology.yaml"),
-        (paths.MENU_YAML_PATH, work / "menu.yaml"),
-        (paths.MENU_MD_PATH, work / "menu.md"),
-    ):
-        shutil.copy2(source, target)
-    shutil.copytree(paths.RECIPES_DIR, work / "recipes")
-
-    for name, value in (
-        ("ONTOLOGY_PATH", work / "ontology.yaml"),
-        ("MENU_YAML_PATH", work / "menu.yaml"),
-        ("MENU_MD_PATH", work / "menu.md"),
-        ("RECIPES_DIR", work / "recipes"),
-    ):
-        monkeypatch.setattr(paths, name, value)
-
-    from app.ui.graph import layout_store
-
-    shutil.copy2(layout_store.INIT_LAYOUT_PATH, work / "layout.json")
-    monkeypatch.setattr(layout_store, "LAYOUT_PATH", work / "layout.json")
-
-    return work
