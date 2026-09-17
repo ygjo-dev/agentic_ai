@@ -128,6 +128,8 @@ UNTRUSTWORTHY_BLOCKS = [
     pytest.param(_set_input(2, "from_lon", {"from": "context.map_extent.minLon"}), "선언 안 된 화면 값", id="undeclared_context"),
     pytest.param(_set_input(0, "query", {"from": "spoken.argument", "default": "x"}), "조건 하나", id="spoken_argument_with_default"),
     pytest.param(_set_input(0, "mode", {"from": "spoken.travel_mode"}), "default", id="named_value_without_default"),
+    pytest.param(_set_input(0, "mode", {"from": "spoken.장소", "default": "x"}), "발화에서 뽑지 않는", id="unknown_semantic_name"),
+    pytest.param(_set_input(0, "mode", {"from": "spoken.document_names", "default": "x"}), "발화에서 뽑지 않는", id="semantic_from_context"),
     pytest.param(_set_input(2, "date", {"from": "runtime.now.datetime"}), "runtime.now", id="unknown_runtime"),
     pytest.param(lambda e: e.__setitem__("spoken_needed", False), "spoken_needed", id="spoken_needed_disagrees"),
     pytest.param(lambda e: e.__setitem__("unwired", ["cctv"]), "unwired", id="unwired_with_workflow"),
@@ -324,3 +326,134 @@ def test_a_missing_screen_value_is_named_in_the_published_order():
     assert workflow_materializer.absent_context(both, {**SCREEN, "selectedLocation": None}) == ["point"]
     assert workflow_materializer.absent_context(both, {"view": {"bbox": []}}) == ["point", "map_extent"]
     assert workflow_materializer.absent_context(both, None) == ["point", "map_extent"]
+
+
+# ── 발화가 말한 값을 이름으로 받는다 ────────────────────────────────
+#
+# 게시된 39개 Recipe.execution 은 아직 옛 네 이름(argument · travel_mode · minutes ·
+# admin_level)으로 돈다. 그것을 semantic 이름으로 옮기는 것은 Phase C 다. 여기서는
+# **새 이름이 실제로 꽂힌다는 것**과 **옛 이름이 그대로 돈다는 것**을 함께 못 박는다.
+
+SEMANTIC = {
+    "spoken_needed": False,
+    "context_needs": {},
+    "workflow": [
+        {
+            "id": "s1",
+            "node": "near",
+            "server_id": "srv",
+            "tool": "t.near",
+            "input": {
+                "query": {"from": "spoken.place_name", "default": "오송역"},
+                "cutoffs": {"from": "spoken.travel_time_cutoffs_min", "default": [20]},
+                "party": {"from": "spoken.political_party", "default": "전체"},
+                "mode": {"from": "spoken.travel_mode", "default": "대중교통",
+                         "map": {"도보": "WALK", "대중교통": "TRANSIT"}},
+            },
+        },
+    ],
+}
+
+
+def semantic_input(spoken):
+    """semantic 이름으로 배선된 블록 하나를 채운 결과의 input."""
+    return workflow_materializer.workflow_of(SEMANTIC, spoken, NOW)["workflow"]["steps"][0]["input"]
+
+
+def test_a_semantic_name_binds_without_a_line_of_python_for_it():
+    """**이름마다 분기가 없다.** 목록에 있는 이름이면 같은 길로 꽂힌다.
+
+    이름 하나에 파이썬 if 가 붙는 순간 그 이름의 뜻이 게시된 배선표가 아니라
+    materializer 에 생긴다. 그러면 recipe 를 고쳐도 실행이 안 따라온다.
+    """
+    said = {"place_name": "의왕역", "travel_time_cutoffs_min": [15, 30, 60], "political_party": "국민의힘"}
+
+    assert semantic_input(said) == {
+        "query": "의왕역",
+        "cutoffs": [15, 30, 60],
+        "party": "국민의힘",
+        "mode": "TRANSIT",
+    }
+
+
+def test_a_semantic_that_was_not_said_falls_back_to_the_published_default():
+    """**기본값은 게시된 execution 이 갖는다.** 안 말한 값을 해석이 지어내지 않는다."""
+    assert semantic_input({}) == {"query": "오송역", "cutoffs": [20], "party": "전체", "mode": "TRANSIT"}
+
+
+def test_the_spoken_word_becomes_the_tool_word_only_through_the_published_map():
+    """「도보」가 WALK 가 되는 것은 execution 의 map 이 안다. 해석도 검사도 그것을 모른다."""
+    assert semantic_input({"travel_mode": "도보"})["mode"] == "WALK"
+
+
+def test_every_name_in_the_catalog_can_be_wired():
+    """목록에 이름이 늘면 배선할 수 있는 이름도 함께 는다. 두 곳을 따로 고치지 않는다."""
+    from orchestrator import semantic_catalog
+
+    for name in semantic_catalog.NAMES:
+        block = {
+            "spoken_needed": False,
+            "context_needs": {},
+            "workflow": [{"id": "s1", "node": "n", "server_id": "srv", "tool": "t",
+                          "input": {"x": {"from": f"spoken.{name}", "default": "기본"}}}],
+        }
+        workflow_materializer.validate(copy.deepcopy(block), "recipe_x")
+        built = workflow_materializer.workflow_of(block, {name: "말한 값"}, NOW)
+
+        assert built["workflow"]["steps"][0]["input"] == {"x": "말한 값"}
+
+
+def test_the_resolved_semantics_reach_the_published_wiring(monkeypatch, tmp_path):
+    """해석 결과 한 벌을 통째로 줘도 semantic_inputs 안의 값이 제 이름 자리로 간다."""
+    published(monkeypatch, tmp_path, SEMANTIC, steps=("near",))
+    resolved = {
+        "status": "SELECT", "recipe_id": "recipe_x", "reason": "…",
+        "argument": None, "travel_mode": None, "minutes": None, "admin_level": None,
+        "semantic_inputs": {"place_name": "의왕역", "travel_time_cutoffs_min": [15, 30]},
+    }
+
+    materialized = workflow_materializer.materialize("recipe_x", resolved, None, NOW)
+
+    assert materialized["status"] == workflow_materializer.READY
+    assert materialized["workflow"]["steps"][0]["input"]["query"] == "의왕역"
+    assert materialized["workflow"]["steps"][0]["input"]["cutoffs"] == [15, 30]
+
+
+def test_the_legacy_four_still_drive_the_published_recipes(monkeypatch, tmp_path):
+    """**옛 네 이름은 Phase C 까지의 임시 다리다.** 지금 게시된 39개가 그것으로 돈다.
+
+    새 자리가 생겼다고 옛 자리의 뜻을 여기서 바꾸면, 다시 배선하기 전의 recipe 가
+    조용히 기본값으로 떨어진다.
+    """
+    published(monkeypatch, tmp_path)
+    resolved = {"argument": "오송역", "travel_mode": "도보", "minutes": None, "admin_level": None,
+                "semantic_inputs": {}}
+
+    materialized = workflow_materializer.materialize("recipe_x", resolved, SCREEN, NOW)
+
+    assert materialized["status"] == workflow_materializer.READY
+    assert materialized["workflow"] == native("오송역", {"travel_mode": "도보"})["workflow"]
+
+
+def test_the_old_field_wins_while_it_is_still_the_one_the_recipes_read():
+    """옛 칸이 차 있으면 그것이 이기고, 비어 있을 때만 같은 이름의 semantic 이 자리를 메운다.
+
+    지금 게시된 배선이 옛 칸으로 돌기 때문이다. 둘이 뒤집히는 것은 Recipe.execution 을
+    semantic 이름으로 옮기는 Phase C 의 일이다.
+    """
+    said = workflow_materializer._said(
+        {"argument": None, "travel_mode": "승용차", "minutes": None, "admin_level": None,
+         "semantic_inputs": {"travel_mode": "도보", "admin_level": "시군구"}}
+    )
+
+    assert said["travel_mode"] == "승용차"
+    assert said["admin_level"] == "시군구"
+
+
+def test_a_resolution_without_any_semantics_still_materializes(monkeypatch, tmp_path):
+    """semantic_inputs 가 없는 옛 모양의 해석 결과도 그대로 돈다."""
+    published(monkeypatch, tmp_path)
+
+    materialized = workflow_materializer.materialize("recipe_x", {"argument": "오송역"}, SCREEN, NOW)
+
+    assert materialized["status"] == workflow_materializer.READY

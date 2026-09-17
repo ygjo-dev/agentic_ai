@@ -25,6 +25,7 @@ Recipe.execution 의 값 하나는 이 꼴 중 하나다.
     {from: spoken.argument}                         발화 인자
     {from: spoken.argument, if_endswith: 선}         그 어미로 끝날 때만(unless_endswith 는 반대)
     {from: spoken.<이름>, default: …, map: {…}}      발화 해석이 함께 뽑은 이름 있는 값
+                                                    (이름은 orchestrator/semantic_catalog)
     {from: context.<시작 노드>.<칸>}                 context_needs 의 선언으로 읽는 화면 값
     {from: s<N>.<타입>.<칸>}                         앞 단계 s<N> 이 outputs 로 내놓은 값
     {from: transform.<타입>.<칸>}                    이 단계의 transform 이 만드는 값
@@ -62,6 +63,7 @@ import zoneinfo
 import yaml
 
 import paths
+from orchestrator import semantic_catalog
 
 # ── 이름 ──────────────────────────────────────────────────────────
 
@@ -73,14 +75,23 @@ TRANSFORM = "transform"
 
 # 발화 해석 결과에서 spoken.<이름> 으로 읽는 이름 있는 값.
 #
-# 칸의 모양(type · enum)은 resolve 역할의 response schema 가 갖는다. 여기는
-# 무엇을 받아 가는가만 적는다. 온톨로지 노드의 tool.parameters 가 그 이름을
-# {from: spoken.<이름>} 으로 불러 제 칸에 넣는다.
-SPOKEN_OPTIONS = (
-    "travel_mode",
-    "minutes",
-    "admin_level",
-)
+# 이름과 값의 모양은 orchestrator/semantic_catalog 가 갖는다. 여기는 무엇을
+# 받아 가는가만 적는다. 게시된 Recipe.execution 이 그 이름을
+# {from: spoken.<이름>, default, map} 으로 불러 제 도구 칸에 넣는다.
+#
+# **이름마다 분기하지 않는다.** 아래 목록에 있는 이름이면 다 같은 길로 읽는다 —
+# 이름 하나에 파이썬 if 가 붙는 순간 그 이름의 뜻이 게시된 배선표가 아니라
+# 이 파일에 생긴다. 목록 밖의 이름은 게시 오류라 PlanError 로 터진다.
+#
+# minutes 는 semantic_catalog 에 없다. 게시된 39개 Recipe.execution 이 아직
+# spoken.minutes 로 읽고 있어서 남긴 **Phase C 까지의 임시 다리**다. Recipe 의
+# 배선을 semantic 이름(travel_time_cutoffs_min …)으로 옮기면 함께 사라진다.
+LEGACY_SPOKEN = ("minutes",)
+
+# 발화 해석이 top-level 칸으로 내놓는 옛 이름. 같은 이유로 Phase C 까지만 있다.
+LEGACY_SPOKEN_FIELDS = ("travel_mode", "minutes", "admin_level")
+
+SPOKEN_OPTIONS = semantic_catalog.NAMES + LEGACY_SPOKEN
 
 # 부르는 순간의 값을 가리키는 기호. 고정된 날짜를 박으면 그날이 지나는 순간
 # 거짓이 된다.
@@ -367,6 +378,8 @@ def _check_value(at: str, expression, needs: dict, outputs: dict, has_transform:
             raise fail(f"{at}: 발화 인자에 붙는 것은 조건 하나다")
         return
     if origin.startswith(SPOKEN_SOURCE):
+        if origin[len(SPOKEN_SOURCE):] not in SPOKEN_OPTIONS:
+            raise fail(f"{at}: 발화에서 뽑지 않는 이름이다: {origin}")
         if "default" not in expression or not extra <= {"default", "map"}:
             raise fail(f"{at}: {origin} 에는 default 가 있고 map 만 더 붙는다")
         mapping = expression.get("map")
@@ -440,8 +453,8 @@ def absent_context(execution: dict, context: dict | None) -> list[str]:
 def materialize(recipe_id: str, spoken: dict, context: dict | None = None, now: datetime.datetime | None = None) -> dict:
     """고른 recipe 하나를 이번 요청의 값으로 KRRI native workflow 로.
 
-    입력  recipe id · 발화 해석 결과(argument 와 SPOKEN_OPTIONS 만 읽음) · 화면 문맥 ·
-          부르는 순간(안 주면 지금)
+    입력  recipe id · 발화 해석 결과(argument · semantic_inputs · 옛 이름 칸만 읽음) ·
+          화면 문맥 · 부르는 순간(안 주면 지금)
     출력  {status, recipe_id, missing, workflow, nodes, commands, command_nodes, context}
           READY 가 아니면 workflow 가 None 이고 목록들이 빔
     규칙  판정 차례는 NOT_ACCEPTED · MISSING_ARGUMENT · UNWIRED · MISSING_CONTEXT ·
@@ -469,7 +482,7 @@ def materialize(recipe_id: str, spoken: dict, context: dict | None = None, now: 
     execution = document.get("execution")
     validate(execution, recipe_id)
 
-    said = {"argument": spoken.get("argument"), **{name: spoken.get(name) for name in SPOKEN_OPTIONS}}
+    said = _said(spoken)
     if not said["argument"] and execution["spoken_needed"]:
         start = [step.get("node") for step in document.get("steps") or []][:1]
         return _unready(recipe_id, MISSING_ARGUMENT, start)
@@ -491,6 +504,30 @@ def materialize(recipe_id: str, spoken: dict, context: dict | None = None, now: 
         **workflow_of(execution, said, now),
         "context": copy.deepcopy(context) if isinstance(context, dict) else {},
     }
+
+
+def _said(spoken: dict) -> dict:
+    """발화 해석 결과에서 실행이 받아 갈 값만. {이름: 값}.
+
+    입력  resolve 결과. semantic_inputs({이름: 값})와 옛 top-level 칸을 읽음
+    출력  {argument, semantic_catalog 의 이름들, LEGACY_SPOKEN_FIELDS}
+    규칙  semantic_inputs 가 이름 있는 값의 자리임
+          옛 top-level 칸(travel_mode · minutes · admin_level)이 차 있으면 그것이 이김.
+          게시된 39개 Recipe.execution 이 지금 그 칸으로 돌고 있어 뜻을 안 바꿈.
+          비어 있을 때만 같은 이름의 semantic 이 자리를 메움
+          argument 도 옛 칸 그대로임. 이름을 보고 argument 를 지어내지 않음
+    제약  이름마다 분기하지 않는다.
+          recipe_id 를 보지 않는다.
+          어느 recipe 냐로 값을 달리 만들면 배선표가 두 곳이 됨
+    """
+    semantics = spoken.get("semantic_inputs")
+    said = {name: (semantics or {}).get(name) for name in semantic_catalog.NAMES}
+    for name in LEGACY_SPOKEN_FIELDS:
+        value = spoken.get(name)
+        if value not in (None, "", [], {}) or name not in said:
+            said[name] = value
+    said["argument"] = spoken.get("argument")
+    return said
 
 
 def _unready(recipe_id: str, status: str, missing: list[str] | None = None) -> dict:
