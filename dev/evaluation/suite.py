@@ -33,9 +33,13 @@ def load(path: Path | None = None) -> dict:
           case id 가 정수이고 겹치지 않음. group 이 아는 묶음임
           묶음이 id 순으로 이어짐. BASELINE_LAST 같은 「묶음의 마지막 번호」가 뜻을 가지려면 필요함
           expected.recipe_ids 가 비지 않음. expected.spoken 칸이 spoken_value_names 안에 있음
+          enabled 인 case 는 expected.semantic_inputs 가 있음. 있으면 dict. 안 말한 발화는 {}
+          semantic_inputs 의 이름이 semantic_catalog 에 있는지는 안 봄
           marks 가 있는 case id 를 가리킴
     제약  기대값을 고치거나 채우지 않는다.
           틀린 파일을 부분만 읽지 않는다. 표가 조용히 줄어듦
+          정답 semantic 이름을 지금 구현이 내는 이름으로 거르지 않는다.
+          정답표를 구현에 맞춰 낮추면 구현이 못 내는 이름이 안 보임
     """
     path = path or SUITE_PATH
     document = yaml.safe_load(path.read_text(encoding="utf-8"))
@@ -70,6 +74,10 @@ def load(path: Path | None = None) -> dict:
         unknown = sorted(set(expected.get("spoken") or {}) - names)
         if unknown:
             raise fail(f"{number}: spoken_value_names 에 없는 칸 {unknown}")
+        if case["enabled"] and "semantic_inputs" not in expected:
+            raise fail(f"{number}: expected.semantic_inputs 가 없다. 안 말한 발화도 {{}} 로 적는다")
+        if "semantic_inputs" in expected and not isinstance(expected["semantic_inputs"], dict):
+            raise fail(f"{number}: expected.semantic_inputs 는 dict 다")
         order.append((number, GROUP_IDS.index(case["group"])))
 
     ranks = [rank for _number, rank in sorted(order)]
