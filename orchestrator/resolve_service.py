@@ -5,15 +5,14 @@
 다시 거르지도 않는다.
 
     menu 전문 + 발화  ->  LLM  ->  status · recipe_id · candidate_recipe_ids
-                                  + 발화가 말한 값(semantic_inputs)
+                                  + 발화가 말한 값(argument · travel_mode · minutes · admin_level)
 
-**한 번 부른다.** 고르기와 값 뽑기가 한 응답에서 온다. 뽑은 값은 LLM 을 다시
-부르지 않고 semantic_normalizer 로 표준 꼴을 만들고 semantic_validator 로
-계약을 확인한다. 둘 다 도구를 모른다 — 「도보」가 WALK 가 되는 것은 게시된
-Recipe.execution 의 map 이 안다.
+**한 번 부른다.** 고르기와 값 뽑기가 한 응답에서 온다. 그 값이 어느 도구 칸에 어떤
+말로 실릴지는 여기가 모른다 — 「도보」가 WALK 가 되는 것은 게시된 Recipe.execution
+의 map 이 안다.
 
-**뽑은 값이 고른 것을 되돌리지 않는다.** semantic 이 이상하다고 다른 recipe 로
-갈아타거나 후보를 거르지 않는다. 그러면 무엇이 선택을 정했는지 한 값에 섞인다.
+**뽑은 값이 고른 것을 되돌리지 않는다.** 값이 이상하다고 다른 recipe 로 갈아타거나
+후보를 거르지 않는다. 그러면 무엇이 선택을 정했는지 한 값에 섞인다.
 
 **고르는 것과 부를 수 있는 것을 가른다.** 실행에 화면 문맥이 실제로 필요한지는
 execution/workflow_materializer 가 실행 직전에 본다. 여기서 미리 빼면 「무엇을
@@ -28,12 +27,7 @@ import json
 
 from execution import workflow_materializer
 from ontology import ONTOLOGY
-from orchestrator import semantic_normalizer, semantic_validator
 from workflows.static.menu.load import load_menu
-
-# 표준 꼴로 정돈한 발화 semantic 이 결과에 실리는 이름. 응답 schema 의 같은 이름
-# 자리에 있던 raw 목록을 이것이 대신한다 — 밖으로는 한 모양만 나간다.
-SEMANTIC_INPUTS = "semantic_inputs"
 
 
 class RouteResolutionError(RuntimeError):
@@ -43,8 +37,8 @@ class RouteResolutionError(RuntimeError):
 def resolve(utterance: str, llm_client, role) -> dict:
     """발화를 recipe 로.
 
-    출력  LLM 응답(reason · argument 포함) +
-          status · recipe_id · candidate_recipe_ids · semantic_inputs · paths
+    출력  LLM 응답(reason · argument · travel_mode · minutes · admin_level 포함) +
+          status · recipe_id · candidate_recipe_ids · paths
     규칙  프롬프트에 실리는 menu 는 menu.yaml 원문 전부임. 요청마다 안 갈림
           status 와 recipe_id 는 LLM 이 고른 것임. 후처리 규칙으로 바꾸지 않음
           candidate_recipe_ids 응답은 그 선택을 부르는 쪽이 읽기 좋게 편 것임 —
@@ -55,14 +49,12 @@ def resolve(utterance: str, llm_client, role) -> dict:
           프롬프트와 응답 schema 는 부르는 쪽이 넘긴 resolve 역할 설정의 것임
           (role.prompt · role.response_schema)
           LLM 을 한 번만 부름. 고르기와 발화에서 값 뽑기가 한 응답에서 옴
-          semantic_inputs 는 그 한 응답의 성긴 목록을 표준 꼴로 정돈하고 계약을
-          확인한 {이름: 값} 임. raw 목록은 밖으로 안 나감 — 같은 뜻의 두 모양을
-          내보내면 읽는 쪽마다 다른 것을 믿음
-          계약을 어긴 semantic 은 SemanticError 로 올라감. 조용히 안 지움
+          발화가 말한 값은 응답 schema 의 칸 그대로 나감. 여기서 다시 손대지 않음 —
+          게시된 Recipe.execution 이 그 이름으로 읽음
     제약  역할 설정을 여기서 다시 읽지 않는다.
           한 요청 안에서 LLM 클라이언트를 만든 판과 prompt · schema 판이 갈림
           뽑은 값으로 고른 것을 고치지 않는다.
-          semantic 이 이상하다고 다른 recipe 를 고르거나 후보를 거르지 않음.
+          값이 이상하다고 다른 recipe 를 고르거나 후보를 거르지 않음.
           고르기와 값 뽑기의 책임을 한 값에 섞지 않는다
           고른 것을 여기서 다시 거르지 않는다.
           실행할 수 있는지는 실행 직전에 봄. 두 판단을 한 값에 섞으면 어느
@@ -92,9 +84,6 @@ def resolve(utterance: str, llm_client, role) -> dict:
     return {
         **result,
         "candidate_recipe_ids": spoken,
-        SEMANTIC_INPUTS: semantic_validator.validate(
-            semantic_normalizer.normalize(result.get(SEMANTIC_INPUTS))
-        ),
         "paths": ONTOLOGY.paths_for(spoken),
     }
 

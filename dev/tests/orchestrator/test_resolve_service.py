@@ -9,10 +9,6 @@ execution 이 실행 직전에 본다.
   CLARIFY  — 후보가 여럿이라 되물어야 한다
   NO_MATCH — 할 수 있는 것이 없다
 
-같은 한 응답이 발화가 말한 값(semantic_inputs)도 담는다. 그것을 표준 꼴로
-정돈하고 계약을 확인하는 것은 semantic_normalizer · semantic_validator 고,
-여기서 보는 것은 **그 둘을 지나 나온다는 것과 고른 것이 안 흔들린다는 것**이다.
-
 LLM 은 호출하지 않는다(Stub). 여기서 검증하는 것은 계약이지 LLM 의 판단력이
 아니다.
 """
@@ -34,7 +30,6 @@ from conftest import (
 from llm_engine.role_config import RESOLVE, get_role_config
 from orchestrator import resolve_service
 from orchestrator.resolve_service import RouteResolutionError
-from orchestrator.semantic_validator import SemanticError
 
 # 창구가 요청마다 읽어 넘기는 resolve 역할 한 벌. 실물 prompt · schema 판이다.
 #
@@ -78,7 +73,6 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
         "travel_mode": None,
         "minutes": None,
         "admin_level": None,
-        "semantic_inputs": {},
         "candidate_recipe_ids": ["recipe_004"],
         "status": SELECT,
         "recipe_id": "recipe_004",
@@ -99,7 +93,6 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
              "travel_mode": None,
              "minutes": None,
              "admin_level": None,
-             "semantic_inputs": {},
              "candidate_recipe_ids": ["recipe_004"],
              "status": SELECT, "recipe_id": "recipe_004"},
             SELECT, "recipe_004", ["recipe_004"],
@@ -110,7 +103,6 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
              "travel_mode": None,
              "minutes": None,
              "admin_level": None,
-             "semantic_inputs": {},
              "candidate_recipe_ids": ["recipe_012", "recipe_013"],
              "status": CLARIFY, "recipe_id": None},
             CLARIFY, None, ["recipe_012", "recipe_013"],
@@ -121,7 +113,6 @@ def test_the_menu_and_the_utterance_become_the_prompt(stub_llm_client, read_file
              "travel_mode": None,
              "minutes": None,
              "admin_level": None,
-             "semantic_inputs": {},
              "candidate_recipe_ids": [],
              "status": NO_MATCH, "recipe_id": None},
             NO_MATCH, None, [],
@@ -187,7 +178,6 @@ def answer(**overrides) -> str:
         "travel_mode": None,
         "minutes": None,
         "admin_level": None,
-        "semantic_inputs": {},
         "candidate_recipe_ids": [],
         "status": SELECT,
         "recipe_id": None,
@@ -333,95 +323,6 @@ def test_the_legacy_pre_filter_fields_are_gone(stub_llm_client):
 
     assert "llm_recipe_id" not in result
     assert "llm_candidate_recipe_ids" not in result
-
-
-# ── 발화가 말한 값 ──────────────────────────────────────────────────
-
-
-def test_the_spoken_semantics_come_back_normalized_and_validated(stub_llm_client):
-    """한 응답의 성긴 object 가 표준 꼴 {이름: 값} 으로 나옴. LLM 은 여전히 한 번만 부름.
-
-    다듬는 자리가 여기 하나여야 읽는 쪽마다 다른 모양을 믿지 않는다.
-    """
-    client = stub_llm_client(answer(
-        recipe_id="recipe_002",
-        candidate_recipe_ids=["recipe_002"],
-        semantic_inputs={
-            "place_name": " 의왕역 ",
-            "travel_mode": "도보",
-            "travel_time_cutoffs_min": [15, 30, 60],
-        },
-    ))
-
-    result = resolve_service.resolve(UTTERANCE, llm_client=client, role=ROLE)
-
-    assert len(client.prompts) == 1, f"LLM 을 {len(client.prompts)}번 불렀다"
-    assert result["semantic_inputs"] == {
-        "place_name": "의왕역",
-        "travel_mode": "도보",
-        "travel_time_cutoffs_min": [15, 30, 60],
-    }
-
-
-def test_the_raw_semantic_list_does_not_leave_the_resolver(stub_llm_client):
-    """밖으로는 한 모양만 나감. raw 와 표준 꼴을 함께 내보내지 않는다.
-
-    둘을 함께 내면 읽는 쪽마다 다른 것을 믿고, 어느 쪽이 실행에 갔는지 표에서
-    안 갈린다.
-    """
-    result = resolved(stub_llm_client, semantic_inputs={"place_name": "오송역"})
-
-    assert result["semantic_inputs"] == {"place_name": "오송역"}
-
-
-def test_the_selection_is_not_touched_by_the_spoken_semantics(stub_llm_client):
-    """**뽑은 값이 고른 것을 되돌리지 않는다.**
-
-    semantic 이 무엇이든 status · recipe_id · 후보는 LLM 이 고른 그대로다. 여기서
-    semantic 으로 후보를 거르면 「무엇을 골랐는가」와 「무엇을 말했는가」가 한 값에
-    섞여 어느 쪽이 결정했는지 못 읽는다.
-    """
-    result = resolved(
-        stub_llm_client,
-        status=CLARIFY,
-        recipe_id=None,
-        candidate_recipe_ids=["recipe_012", "recipe_013"],
-        semantic_inputs={"political_party": "국민의힘"},
-    )
-
-    assert result["status"] == CLARIFY
-    assert result["recipe_id"] is None
-    assert result["candidate_recipe_ids"] == ["recipe_012", "recipe_013"]
-    assert result["semantic_inputs"] == {"political_party": "국민의힘"}
-
-
-@pytest.mark.parametrize(
-    "semantic_inputs, fragment",
-    [
-        ({"document_names": ["a.pdf"]}, "document_names"),
-        ({"search_radius_m": "가까운 곳"}, "search_radius_m"),
-        ({"travel_mode": "걸어서"}, "travel_mode"),
-        ({"admin_level": ["시도", "시군구"]}, "admin_level"),
-    ],
-    ids=["내부값", "갈래", "선택지", "여럿"],
-)
-def test_a_semantic_that_breaks_the_contract_is_not_silently_dropped(
-    stub_llm_client, semantic_inputs, fragment
-):
-    """어긋난 값을 버리지 않고 무엇이 어긋났는지 말함.
-
-    버리면 그 recipe 가 말하지 않은 기본값으로 조용히 돌아가고, 표에는
-    「안 말했다」로 보인다. 어느 이름이 어떻게 어긋났는지가 문장에 남아야 한다.
-
-    응답 schema 가 이름마다 갈래 · 선택지를 문법으로 막으므로 vLLM 에서는 이런
-    값이 안 온다. 그래도 검사를 두는 까닭은 계약을 지키는 곳이 provider 하나뿐이면
-    시험 stub 이나 다른 provider 가 그 계약 밖에 서기 때문이다. 같은 이유로 여기
-    쓰는 것은 provider 를 안 지나는 stub 응답이다.
-    """
-    with pytest.raises(SemanticError) as error_info:
-        resolved(stub_llm_client, semantic_inputs=semantic_inputs)
-
-    assert fragment in str(error_info.value)
 
 
 def _recipe_ids():

@@ -12,10 +12,6 @@
 주소와 timeout · 역할 줄은 `dev/tools/check_resolve.py` 것을 그대로 부른다. 규칙을 베끼면 두
 자가 조용히 어긋난다.
 
-**주 지표는 Joint 다.** recipe 가 적중(HIT)이고 응답의 semantic_inputs 가 정답표의
-expected.semantic_inputs 와 똑같아야 합격이다(`semantic_correct`). 이 판정은 check_resolve 에
-없는 runner 것이다. Selection · Semantic exact · Errors 는 까닭을 보는 보조 진단이다.
-
 check_resolve 는 사람이 읽을 표를 찍고, 이것은 기계가 읽을 결과 한 벌을 낸다. 화면이 나중에
 같은 결과 모양을 읽을 자리다 — 화면은 아직 없다.
 
@@ -42,10 +38,8 @@ sys.path.insert(0, str(REPO_ROOT))
 from dev.evaluation import suite as suite_module  # noqa: E402
 from dev.tools import check_resolve  # noqa: E402
 
-# 결과 JSON 의 판. 칸의 뜻을 바꾸거나 칸이 늘면 올린다.
-# 2 — actual 에 표준 꼴 semantic_inputs 가 붙었다. 1 로 잰 결과에는 그 칸이 없다.
-# 3 — expected.semantic_inputs · semantic_correct · joint_correct 와 summary 의 joint · semantic 셈이 붙었다.
-RESULT_VERSION = 3
+# 결과 JSON 의 판. 칸의 뜻을 바꾸면 올린다.
+RESULT_VERSION = 1
 
 OUT_DIR = REPO_ROOT / "dev" / "tools" / "sweep_out"
 
@@ -102,32 +96,6 @@ def spoken_fields(expected: dict, response: dict) -> list[dict]:
     return rows
 
 
-def semantic_correct(expected: dict, actual) -> bool:
-    """응답의 semantic_inputs 가 정답표와 똑같나.
-
-    입력  정답표의 expected.semantic_inputs · 응답의 semantic_inputs(없으면 None)
-    출력  참이면 이름 · 값 · 값의 갈래 · 목록 차례가 다 같음
-    규칙  응답에 semantic_inputs 가 없으면 {} 로 봄
-          이름이 하나 더 있거나 빠지거나 값이 다르면 거짓
-          값의 갈래까지 맞댐. 30 과 30.0 · "30" · [30] 은 서로 다름. 참거짓은 수가 아님
-          dict 안 이름의 차례는 안 봄. 목록의 차례는 봄
-    제약  legacy 칸(argument · travel_mode · minutes · admin_level)을 semantic 으로 읽지 않는다.
-          평가기가 argument 를 railway_line 같은 이름으로 옮기면 LLM 이 안 한 해석에 점수를 줌
-          글자를 다듬지 않는다. 공백 · 유니코드 정규형도 그대로 맞댐
-    """
-    return _same(expected, {} if actual is None else actual)
-
-
-def _same(left, right) -> bool:
-    if type(left) is not type(right):
-        return False
-    if isinstance(left, dict):
-        return left.keys() == right.keys() and all(_same(left[name], right[name]) for name in left)
-    if isinstance(left, list):
-        return len(left) == len(right) and all(_same(a, b) for a, b in zip(left, right))
-    return left == right
-
-
 def materialized(response: dict, context: dict | None, now: datetime.datetime) -> dict:
     """고른 recipe 의 KRRI native workflow. MCP 는 안 부름.
 
@@ -158,23 +126,17 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
 
     규칙  후보 집합은 recipe_id 와 candidate_recipe_ids 를 합친 것. _call_resolve 와 같음
           판정은 check_resolve._grade. 오류는 「오류: 예외 이름」 으로 넘겨 못 붙음이 됨
-          표준 꼴 semantic_inputs 를 actual 에 응답 그대로 적음(없으면 None)
-          semantic_correct 는 semantic_correct() 의 판정. 오류면 거짓
-          joint_correct 는 recipe_correct 이면서 semantic_correct 일 때만 참. 오류면 거짓
-          정답표에 expected.semantic_inputs 가 없는 case 는 둘 다 None(안 잼)
           ServerDown 은 삼키지 않음. 부르는 쪽이 멈춤
     """
     expected = case["expected"]
     wanted_spoken = expected.get("spoken")
-    wanted_semantic = expected.get("semantic_inputs")
-    graded = wanted_semantic is not None
     row = {
         "case_id": case["id"],
         "group": case["group"],
         "group_label": label,
         "utterance": case["utterance"],
         "run": run,
-        "expected": {"recipe_ids": list(expected["recipe_ids"]), "spoken": wanted_spoken, "semantic_inputs": wanted_semantic},
+        "expected": {"recipe_ids": list(expected["recipe_ids"]), "spoken": wanted_spoken},
     }
 
     started = time.perf_counter()
@@ -191,8 +153,6 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
             "recipe_correct": False,
             "spoken_fields": [],
             "spoken_correct": False if wanted_spoken else None,
-            "semantic_correct": False if graded else None,
-            "joint_correct": False if graded else None,
             "materialize": None,
             "timing": {"resolve_s": round(time.perf_counter() - started, 3), "materialize_s": None},
             "error": f"{type(exc).__name__}: {exc}",
@@ -203,7 +163,6 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
     status = response.get("status") or "-"
     grade = check_resolve._grade(found, status, set(expected["recipe_ids"]))
     fields = spoken_fields(wanted_spoken or {}, response)
-    semantic_ok = semantic_correct(wanted_semantic, response.get("semantic_inputs")) if graded else None
 
     built, materialize_s = None, None
     if materialize:
@@ -219,15 +178,12 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
             "candidate_recipe_ids": list(response.get("candidate_recipe_ids") or []),
             "found_recipe_ids": sorted(found),
             "spoken": {name: response.get(name) for name in check_resolve.SPOKEN_VALUE_NAMES},
-            "semantic_inputs": response.get("semantic_inputs"),
             "reason": response.get("reason"),
         },
         "grade": GRADES[grade],
         "recipe_correct": grade == check_resolve.HIT,
         "spoken_fields": fields,
         "spoken_correct": all(field["correct"] for field in fields) if fields else None,
-        "semantic_correct": semantic_ok,
-        "joint_correct": (grade == check_resolve.HIT and semantic_ok) if graded else None,
         "materialize": built,
         "timing": {"resolve_s": resolve_s, "materialize_s": materialize_s},
         "error": None,
@@ -235,26 +191,18 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
 
 
 def summarize(rows: list[dict], labels: tuple) -> dict:
-    """묶음마다 Joint · 네 칸 · semantic · 이름 있는 값 · materialize 판정을 셈.
+    """묶음마다 네 칸 · 이름 있는 값 · materialize 판정을 셈.
 
-    규칙  Joint 가 주 지표라 맨 앞 칸임. 나머지는 보조 진단
-          joint_runs · semantic_runs 는 정답 semantic 이 적힌 시행만 셈
-          묶음을 한 백분율로 합치지 않음. 합계는 따로 한 칸
+    규칙  묶음을 한 백분율로 합치지 않음. 합계는 따로 한 칸
           넷을 더하면 시행 횟수여야 함
     """
     def tally(group_rows):
         grades = Counter(row["grade"] for row in group_rows)
         spoken = [row["spoken_correct"] for row in group_rows if row["spoken_correct"] is not None]
-        semantic = [row["semantic_correct"] for row in group_rows if row["semantic_correct"] is not None]
-        joint = [row["joint_correct"] for row in group_rows if row["joint_correct"] is not None]
         built = Counter((row["materialize"] or {}).get("status") for row in group_rows if row["materialize"])
         return {
-            "joint_hits": sum(joint),
-            "joint_runs": len(joint),
             "runs": len(group_rows),
             **{name: grades.get(name, 0) for name in GRADES.values()},
-            "semantic_hits": sum(semantic),
-            "semantic_runs": len(semantic),
             "spoken_hits": sum(spoken),
             "spoken_runs": len(spoken),
             "materialize": dict(sorted(built.items())),
@@ -366,10 +314,8 @@ def run(
 def _selfcheck() -> None:
     """서버 · LLM · Gateway · 온톨로지 없이 runner 가 정답표 전체를 끝까지 돌고 check_resolve 와 같이 판정하나. 틀리면 죽는다.
 
-    규칙  진짜 정답표를 씀. 가짜 resolve 넷으로 돌림 — 기대 recipe 와 기대 값을 그대로
-          돌려주는 것 · 틀린 recipe 와 틀린 값을 돌려주는 것 · 터지는 것 ·
-          기대 recipe 와 legacy 값만 돌려주고 semantic_inputs 가 없는 것
-          Joint 가 첫째만 전부 참 · 둘째 셋째는 전부 거짓 · 넷째는 정답 semantic 이 {} 인 발화만 참인지 봄
+    규칙  진짜 정답표를 씀. 가짜 resolve 셋으로 돌림 — 기대 recipe 와 기대 값을 그대로
+          돌려주는 것 · 틀린 recipe 와 틀린 값을 돌려주는 것 · 터지는 것
           이름 있는 값 판정이 check_resolve._spoken_value_verdict 와 발화마다 같은지 맞댐
           materialize 는 끔. 이 검사는 recipe 파일을 안 읽음
           결과가 json 한 벌로 써지는지 봄
@@ -381,22 +327,16 @@ def _selfcheck() -> None:
         case = next(case for case in suite["cases"] if case["utterance"] == utterance)
         rid = case["expected"]["recipe_ids"][0]
         return {"status": "SELECT", "recipe_id": rid, "candidate_recipe_ids": [rid], "argument": "오송역",
-                **{name: None for name in check_resolve.SPOKEN_VALUE_NAMES[1:]}, **(case["expected"].get("spoken") or {}),
-                "semantic_inputs": case["expected"]["semantic_inputs"]}
-
-    def legacy(utterance):
-        answer = echo(utterance)
-        del answer["semantic_inputs"]
-        return answer
+                **{name: None for name in check_resolve.SPOKEN_VALUE_NAMES[1:]}, **(case["expected"].get("spoken") or {})}
 
     def wrong(_utterance):
         return {"status": "SELECT", "recipe_id": "recipe_000", "candidate_recipe_ids": [], "argument": None,
-                "travel_mode": "틀림", "minutes": [999], "admin_level": "틀림", "semantic_inputs": {"place_name": "여기"}}
+                "travel_mode": "틀림", "minutes": [999], "admin_level": "틀림"}
 
     def boom(_utterance):
         raise RuntimeError("터짐")
 
-    for resolve, grade, spoken in ((echo, "HIT", True), (wrong, "MISS", False), (boom, "UNATTACHED", False), (legacy, "HIT", True)):
+    for resolve, grade, spoken in ((echo, "HIT", True), (wrong, "MISS", False), (boom, "UNATTACHED", False)):
         result = run(suite, resolve=resolve, resolver=resolve.__name__, materialize=False)
         json.dumps(result, ensure_ascii=False)
         rows = result["cases"]
@@ -405,9 +345,6 @@ def _selfcheck() -> None:
         total = result["summary"]["total"]
         assert sum(total[name] for name in GRADES.values()) == total["runs"] == len(rows)
         for row in rows:
-            quiet = by_id[row["case_id"]]["expected"]["semantic_inputs"] == {}
-            joint = {"echo": True, "legacy": quiet}.get(resolve.__name__, False)
-            assert row["joint_correct"] is joint, (resolve.__name__, row["case_id"])
             if by_id[row["case_id"]]["expected"].get("spoken"):
                 assert row["spoken_correct"] is spoken, (resolve.__name__, row["case_id"])
             if row["actual"] is None:
@@ -467,15 +404,9 @@ def main() -> int:
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, ensure_ascii=False, indent=1), encoding="utf-8")
 
-    total = result["summary"]["total"]
-    print(f"JOINT: {total['joint_hits']} / {total['joint_runs']}")
-    print(
-        f"  Selection: {total['HIT']} / {total['runs']} · Semantic exact: {total['semantic_hits']} / {total['semantic_runs']} · "
-        f"Errors: {total['errors']}"
-    )
     for label, value in {**result["summary"]["groups"], "합계": result["summary"]["total"]}.items():
         print(
-            f"  {label}  Joint {value['joint_hits']}/{value['joint_runs']} · 적중 {value['HIT']}/{value['runs']} · 근접 {value['NEAR']} · 빗나감 {value['MISS']} · "
+            f"  {label}  적중 {value['HIT']}/{value['runs']} · 근접 {value['NEAR']} · 빗나감 {value['MISS']} · "
             f"못 붙음 {value['UNATTACHED']} · 이름 있는 값 {value['spoken_hits']}/{value['spoken_runs']} · 오류 {value['errors']}"
         )
     if result["meta"]["stopped"]:

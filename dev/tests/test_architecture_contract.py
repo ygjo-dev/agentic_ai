@@ -31,6 +31,7 @@ LLM 도 Gateway 도 부르지 않는다. 소스와 데이터 파일만 읽는다
 """
 
 import ast
+import re
 
 import yaml
 
@@ -90,19 +91,25 @@ def test_the_llm_is_asked_to_choose_a_recipe_not_a_tool_sequence():
     )
 
 
-def test_the_spoken_options_handed_to_execution_are_fields_the_llm_fills():
-    """실행이 spoken.<이름> 으로 읽는 이름 있는 값은 resolve 응답 schema 에 실제로 있는 칸이다.
+def test_the_spoken_names_the_published_wiring_reads_are_fields_the_llm_fills():
+    """게시된 Recipe.execution 이 spoken.<이름> 으로 읽는 이름은 resolve 응답 schema 의 칸이다.
 
-    칸의 모양은 schema 가 갖고 실행은 이름만 적는다. 이름이 schema 와 갈리면 workflow
+    칸의 모양은 schema 가 갖고 배선은 이름만 적는다. 이름이 schema 와 갈리면 workflow
     에 늘 기본값이 가는데, 말하지 않은 값도 기본값이라 표에서 안 보인다.
+
+    이름 목록을 여기 적지 않는다. 게시된 recipe 를 읽어 세므로 배선이 새 이름을 읽기
+    시작하면 이 검사도 함께 그것을 본다.
     """
-    from execution.workflow_materializer import SPOKEN_OPTIONS
+    from execution.workflow_materializer import SPOKEN_SOURCE
 
     properties = get_role_config(RESOLVE).response_schema["properties"]
+    read = set()
+    for path in sorted(paths.RECIPES_DIR.glob("*.yaml")):
+        read |= set(re.findall(re.escape(SPOKEN_SOURCE) + r"(\w+)", path.read_text(encoding="utf-8")))
 
-    assert SPOKEN_OPTIONS, "이름 있는 값이 비면 이 검사가 무력하다"
-    assert [name for name in SPOKEN_OPTIONS if name not in properties] == [], (
-        "실행이 받아 가는 이름이 resolve 응답 schema 에 없다"
+    assert read, "게시된 배선이 발화 값을 하나도 안 읽으면 이 검사가 무력하다"
+    assert sorted(read - set(properties)) == [], (
+        f"배선이 읽는 이름이 resolve 응답 schema 에 없다: {sorted(read - set(properties))}"
     )
 
 
