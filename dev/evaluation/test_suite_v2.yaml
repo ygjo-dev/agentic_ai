@@ -1,0 +1,1784 @@
+# 테스트 세트 v2 (Test Suite v2) — 일반화를 재는 넓은 정답표.
+#
+# FULL48(resolve_regression.yaml)은 얼린 회귀 기준선이고 이 파일은 그것을 대신하지 않는다.
+#   FULL48         알려진 발화의 회귀를 잡는다. 발화 · 기대값을 바꾸지 않는다
+#   테스트 세트 v2  같은 기능을 다른 말로 불러도 닿는지, 범위 밖을 범위 밖으로 받는지 잰다
+# 두 자의 점수를 한 백분율로 합치지 않는다. 발화가 다르면 다른 자다.
+#
+# 읽는 곳은 dev/evaluation/suite.py 하나다. **데이터 파일이다. yaml.dump 로 다시 쓰지 않는다.**
+#
+# ── 짜임 ────────────────────────────────────────────────────────────
+#
+# 범위 안   받아들인 recipe 서른아홉 전부에 발화 다섯씩. 묶음은 FULL48 과 같은 뜻 —
+#           시작 데이터(말한 것 · 찍은 지점 · 보이는 범위)로 가른다. recipe 의 묶음은
+#           그 execution 이 화면 문맥 무엇을 읽는가로 정해지고 spoken_audit._selfcheck 가 본다
+# 범위 밖   기대 recipe 가 없다. expected.category 가 갈래, expected.outcomes 가 받아들이는 결과
+#             unsupported   menu 의 어느 기능도 하는 일이 아니다          -> NO_MATCH
+#             ambiguous     방식만 다른 기능이 여럿 맞는다                 -> CLARIFY
+#             insufficient  기능은 서는데 부를 값을 말하지 않았다          -> CLARIFY 또는
+#                           고른 기능의 workflow 가 MISSING_ARGUMENT
+#           결과 이름은 지어내지 않았다. resolve 응답 schema 의 status enum 과
+#           workflow_materializer 의 판정 이름이다
+#
+# ── 정답 규칙 (FULL48 과 같다) ─────────────────────────────────────
+#
+# 기대 recipe 의 Recipe.execution 이 `{from: spoken.<이름>}` 으로 읽는 칸만 적는다.
+# 읽는데 발화가 말하지 않은 칸은 null 이다. 안 읽는 칸은 적지 않는다.
+#   argument     검색 대상 · 장소 · 식별자. 발화에 있는 말 그대로, 조사와 요청하는 말은 뗀다
+#   admin_level  이름 있는 행정구역이면 그 실제 층위, 층위를 묻는 말이면 그 층위.
+#                역 · 시설 · 지시어(여기 · 화면)는 null. 기본값과 실행이 같아도 null 을 봐주지 않는다
+#   travel_mode  도보 · 자전거 · 승용차 · 대중교통. 말하지 않았으면 null
+#   minutes      정수 목록. 말하지 않았으면 null
+#
+# ── 발화를 지은 법 ──────────────────────────────────────────────────
+#
+# 한 기능의 다섯은 낱말 · 어순 · 말투(짧게 · 대화처럼)가 서로 다르다. 조사 · 어미만 바꾼
+# 다섯을 두지 않았다. FULL48 발화 · menu example · resolve prompt 의 예시 문장을 옮기지
+# 않았다(spoken_audit._selfcheck 가 본다). recipe id · 도구 이름을 발화에 넣지 않았다.
+# ★ **지명 · 선거구명 · 기관명은 Gateway 로 눌러 확인한 값이 아니다.** 이 자는 고르기와
+#   뽑기를 재고 MCP 도구를 부르지 않는다. 실행에서 0건이 나는지는 이 자가 안 본다.
+
+version: 2
+name: "test_suite_v2"
+
+groups:
+  - id: spoken
+    label: "말한 것"
+  - id: picked_point
+    label: "찍은 지점"
+  - id: view_extent
+    label: "보이는 범위"
+  - id: out_of_scope
+    label: "범위 밖"
+
+spoken_value_names: [argument, travel_mode, minutes, admin_level]
+
+cases:
+
+  # ── 말한 것 ──
+  # recipe_001
+  - id: 1
+    group: spoken
+    utterance: "부산역 좌표 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_001]
+      spoken:
+        argument: "부산역"
+  - id: 2
+    group: spoken
+    utterance: "서울시청이 지도에서 어디쯤인지 위경도로 찍어줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_001]
+      spoken:
+        argument: "서울시청"
+  - id: 3
+    group: spoken
+    utterance: "청주국제공항 위치만 짚어줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_001]
+      spoken:
+        argument: "청주국제공항"
+  - id: 4
+    group: spoken
+    utterance: "강릉역 위도랑 경도가 어떻게 돼?"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_001]
+      spoken:
+        argument: "강릉역"
+  - id: 5
+    group: spoken
+    utterance: "국립중앙박물관 좌표만 줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_001]
+      spoken:
+        argument: "국립중앙박물관"
+  # recipe_002
+  - id: 6
+    group: spoken
+    utterance: "호남선 선형 좌표 줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_002]
+      spoken:
+        argument: "호남선"
+  - id: 7
+    group: spoken
+    utterance: "중앙선 선로가 어떻게 깔렸는지 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_002]
+      spoken:
+        argument: "중앙선"
+  - id: 8
+    group: spoken
+    utterance: "경전선 위치 지도에 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_002]
+      spoken:
+        argument: "경전선"
+  - id: 9
+    group: spoken
+    utterance: "전라선 구간 모양만 따로 뽑아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_002]
+      spoken:
+        argument: "전라선"
+  - id: 10
+    group: spoken
+    utterance: "장항선 노선 선형만 보고 싶어, 역 목록은 필요 없어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_002]
+      spoken:
+        argument: "장항선"
+  # recipe_003
+  - id: 11
+    group: spoken
+    utterance: "오송역을 지나는 철도 노선 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_003]
+      spoken:
+        argument: "오송역"
+  - id: 12
+    group: spoken
+    utterance: "서대전역에 들어오는 노선이 뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_003]
+      spoken:
+        argument: "서대전역"
+  - id: 13
+    group: spoken
+    utterance: "영등포역은 무슨 선이 지나가?"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_003]
+      spoken:
+        argument: "영등포역"
+  - id: 14
+    group: spoken
+    utterance: "익산역 경유하는 기차 노선들 조회해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_003]
+      spoken:
+        argument: "익산역"
+  - id: 15
+    group: spoken
+    utterance: "충북선에 어떤 역들이 있는지 노선이랑 같이 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_003]
+      spoken:
+        argument: "충북선"
+  # recipe_004
+  - id: 16
+    group: spoken
+    utterance: "디지털 트윈에서 제2터널 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_004]
+      spoken:
+        argument: "제2터널"
+  - id: 17
+    group: spoken
+    utterance: "오송 테스트트랙 제1교량 화면에 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_004]
+      spoken:
+        argument: "오송 테스트트랙 제1교량"
+  - id: 18
+    group: spoken
+    utterance: "테스트트랙 3번 터널을 트윈 화면에 올려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_004]
+      spoken:
+        argument: "테스트트랙 3번 터널"
+  - id: 19
+    group: spoken
+    utterance: "오송 시험선 교량 화면에 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_004]
+      spoken:
+        argument: "오송 시험선 교량"
+  - id: 20
+    group: spoken
+    utterance: "디지털 트윈 화면에 테스트트랙 선로 전환기 표시해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_004]
+      spoken:
+        argument: "테스트트랙 선로 전환기"
+  # recipe_005
+  - id: 21
+    group: spoken
+    utterance: "대전광역시 경계 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_005]
+      spoken:
+        argument: "대전광역시"
+        admin_level: "시도"
+  - id: 22
+    group: spoken
+    utterance: "천안시 동남구 경계선 표시해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_005]
+      spoken:
+        argument: "천안시 동남구"
+        admin_level: "시군구"
+  - id: 23
+    group: spoken
+    utterance: "조치원읍 행정구역 경계 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_005]
+      spoken:
+        argument: "조치원읍"
+        admin_level: "읍면동"
+  - id: 24
+    group: spoken
+    utterance: "경기도 행정경계를 지도에 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_005]
+      spoken:
+        argument: "경기도"
+        admin_level: "시도"
+  - id: 25
+    group: spoken
+    utterance: "보은군 경계가 어디까지인지 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_005]
+      spoken:
+        argument: "보은군"
+        admin_level: "시군구"
+  # recipe_008
+  - id: 26
+    group: spoken
+    utterance: "광주 선거구 목록 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_008]
+      spoken:
+        argument: "광주"
+  - id: 27
+    group: spoken
+    utterance: "경남 지역구들 이름 전부 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_008]
+      spoken:
+        argument: "경남"
+  - id: 28
+    group: spoken
+    utterance: "서울에 있는 국회의원 선거구가 뭐뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_008]
+      spoken:
+        argument: "서울"
+  - id: 29
+    group: spoken
+    utterance: "강원 선거구 이름만 쭉 뽑아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_008]
+      spoken:
+        argument: "강원"
+  - id: 30
+    group: spoken
+    utterance: "제주 지역 선거구 어디어디 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_008]
+      spoken:
+        argument: "제주"
+  # recipe_010
+  - id: 31
+    group: spoken
+    utterance: "GTX 공약 내건 국회의원 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_010]
+      spoken:
+        argument: "GTX"
+  - id: 32
+    group: spoken
+    utterance: "국민의힘 의원들이 낸 공약 검색해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_010]
+      spoken:
+        argument: "국민의힘"
+  - id: 33
+    group: spoken
+    utterance: "이연희 의원 공약이 뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_010]
+      spoken:
+        argument: "이연희"
+  - id: 34
+    group: spoken
+    utterance: "지하철 연장 공약 있는 의원 누구야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_010]
+      spoken:
+        argument: "지하철 연장"
+  - id: 35
+    group: spoken
+    utterance: "청년 교통비 공약을 낸 사람들 모아서 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_010]
+      spoken:
+        argument: "청년 교통비"
+  # recipe_012
+  - id: 36
+    group: spoken
+    utterance: "강원특별자치도에 사는 사람이 몇 명이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_012]
+      spoken:
+        argument: "강원특별자치도"
+  - id: 37
+    group: spoken
+    utterance: "천안시 주민등록 인구 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_012]
+      spoken:
+        argument: "천안시"
+  - id: 38
+    group: spoken
+    utterance: "충청남도 안에서 인구 많은 순서로 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_012]
+      spoken:
+        argument: "충청남도"
+  - id: 39
+    group: spoken
+    utterance: "대전 유성구 인구수 얼마나 돼"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_012]
+      spoken:
+        argument: "대전 유성구"
+  - id: 40
+    group: spoken
+    utterance: "제주시 인구 규모 알려줄래"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_012]
+      spoken:
+        argument: "제주시"
+  # recipe_014
+  - id: 41
+    group: spoken
+    utterance: "문서에서 철도차량 안전기준 관련 내용 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_014]
+      spoken:
+        argument: "철도차량 안전기준"
+  - id: 42
+    group: spoken
+    utterance: "지식베이스 문서 중에 궤도 설계 기준 나오는 부분 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_014]
+      spoken:
+        argument: "궤도 설계 기준"
+  - id: 43
+    group: spoken
+    utterance: "건설기술 진흥법 내용을 문서에서 검색해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_014]
+      spoken:
+        argument: "건설기술 진흥법"
+  - id: 44
+    group: spoken
+    utterance: "승강장 안전관리 규정이 들어 있는 문서 찾아볼래"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_014]
+      spoken:
+        argument: "승강장 안전관리 규정"
+  - id: 45
+    group: spoken
+    utterance: "도시철도법 문서 본문 좀 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_014]
+      spoken:
+        argument: "도시철도법"
+  # recipe_015
+  - id: 46
+    group: spoken
+    utterance: "서울 종로 선거구 조회해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_015]
+      spoken:
+        argument: "서울 종로"
+  - id: 47
+    group: spoken
+    utterance: "경기 수원시갑 선거구 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_015]
+      spoken:
+        argument: "경기 수원시갑"
+  - id: 48
+    group: spoken
+    utterance: "부산 해운대구을 지역구 정보 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_015]
+      spoken:
+        argument: "부산 해운대구을"
+  - id: 49
+    group: spoken
+    utterance: "인천 연수구갑 선거구 하나만 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_015]
+      spoken:
+        argument: "인천 연수구갑"
+  - id: 50
+    group: spoken
+    utterance: "충남 천안시을 선거구가 어떤 곳인지 조회해줘, 당선인은 빼고"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_015]
+      spoken:
+        argument: "충남 천안시을"
+  # recipe_016
+  - id: 51
+    group: spoken
+    utterance: "수원시 영통구 국회의원 당선인과 정당, 공약까지 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_016]
+      spoken:
+        argument: "수원시 영통구"
+  - id: 52
+    group: spoken
+    utterance: "천안시 서북구 선거구 당선인이랑 공약 한꺼번에 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_016]
+      spoken:
+        argument: "천안시 서북구"
+  - id: 53
+    group: spoken
+    utterance: "대전 유성구 지역구 의원이랑 공약 다 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_016]
+      spoken:
+        argument: "대전 유성구"
+  - id: 54
+    group: spoken
+    utterance: "창원시 성산구 선거구를 당선인·정당·공약 포함해서 조회해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_016]
+      spoken:
+        argument: "창원시 성산구"
+  - id: 55
+    group: spoken
+    utterance: "청주시 상당구 국회의원 누가 됐고 공약은 뭔지까지"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_016]
+      spoken:
+        argument: "청주시 상당구"
+  # recipe_033
+  - id: 56
+    group: spoken
+    utterance: "대전역 둘레 행정경계 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_033]
+      spoken:
+        argument: "대전역"
+        admin_level: null
+  - id: 57
+    group: spoken
+    utterance: "김포공항 주변 시군구 경계 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_033]
+      spoken:
+        argument: "김포공항"
+        admin_level: "시군구"
+  - id: 58
+    group: spoken
+    utterance: "광명역 근처 행정구역 경계 표시해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_033]
+      spoken:
+        argument: "광명역"
+        admin_level: null
+  - id: 59
+    group: spoken
+    utterance: "경복궁 일대 동 경계 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_033]
+      spoken:
+        argument: "경복궁"
+        admin_level: "읍면동"
+  - id: 60
+    group: spoken
+    utterance: "울산역 주변 경계선을 지도에 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_033]
+      spoken:
+        argument: "울산역"
+        admin_level: null
+  # recipe_034
+  - id: 61
+    group: spoken
+    utterance: "천안아산역은 어느 시에 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_034]
+      spoken:
+        argument: "천안아산역"
+        admin_level: "시군구"
+  - id: 62
+    group: spoken
+    utterance: "청주공항이 무슨 동이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_034]
+      spoken:
+        argument: "청주공항"
+        admin_level: "읍면동"
+  - id: 63
+    group: spoken
+    utterance: "정부세종청사 행정구역 코드 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_034]
+      spoken:
+        argument: "정부세종청사"
+        admin_level: null
+  - id: 64
+    group: spoken
+    utterance: "용산역은 무슨 구 소속이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_034]
+      spoken:
+        argument: "용산역"
+        admin_level: "시군구"
+  - id: 65
+    group: spoken
+    utterance: "해운대해수욕장이 어느 시도에 속해"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_034]
+      spoken:
+        argument: "해운대해수욕장"
+        admin_level: "시도"
+  # recipe_036
+  - id: 66
+    group: spoken
+    utterance: "대전역 근처 CCTV 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_036]
+      spoken:
+        argument: "대전역"
+  - id: 67
+    group: spoken
+    utterance: "강남역 주변 감시카메라 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_036]
+      spoken:
+        argument: "강남역"
+  - id: 68
+    group: spoken
+    utterance: "인천공항 둘레에 CCTV 있어?"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_036]
+      spoken:
+        argument: "인천공항"
+  - id: 69
+    group: spoken
+    utterance: "천안터미널 근방 교통 CCTV 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_036]
+      spoken:
+        argument: "천안터미널"
+  - id: 70
+    group: spoken
+    utterance: "광화문 쪽 CCTV 화면 보여줄래"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_036]
+      spoken:
+        argument: "광화문"
+  # recipe_038
+  - id: 71
+    group: spoken
+    utterance: "청주역은 무슨 선거구야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_038]
+      spoken:
+        argument: "청주역"
+  - id: 72
+    group: spoken
+    utterance: "오송역이 속한 국회의원 선거구 이름만 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_038]
+      spoken:
+        argument: "오송역"
+  - id: 73
+    group: spoken
+    utterance: "세종터미널 있는 곳 선거구명 뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_038]
+      spoken:
+        argument: "세종터미널"
+  - id: 74
+    group: spoken
+    utterance: "수원역 지역구 이름이 뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_038]
+      spoken:
+        argument: "수원역"
+  - id: 75
+    group: spoken
+    utterance: "울산시청은 어느 선거구에 들어가 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_038]
+      spoken:
+        argument: "울산시청"
+  # recipe_040
+  - id: 76
+    group: spoken
+    utterance: "천안역 지역구 국회의원 누구야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_040]
+      spoken:
+        argument: "천안역"
+  - id: 77
+    group: spoken
+    utterance: "광주송정역 쪽 당선된 의원이랑 정당 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_040]
+      spoken:
+        argument: "광주송정역"
+  - id: 78
+    group: spoken
+    utterance: "부산시청 있는 지역 의원이 누구고 무슨 당이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_040]
+      spoken:
+        argument: "부산시청"
+  - id: 79
+    group: spoken
+    utterance: "청주공항 지역구 당선자 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_040]
+      spoken:
+        argument: "청주공항"
+  - id: 80
+    group: spoken
+    utterance: "전주역 쪽 국회의원 이름 뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_040]
+      spoken:
+        argument: "전주역"
+  # recipe_042
+  - id: 81
+    group: spoken
+    utterance: "천안아산역 쪽 국회의원 공약 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_042]
+      spoken:
+        argument: "천안아산역"
+  - id: 82
+    group: spoken
+    utterance: "청주역 지역구 공약 중에 교통 분야만 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_042]
+      spoken:
+        argument: "청주역"
+  - id: 83
+    group: spoken
+    utterance: "익산역 있는 선거구 공약 뭐 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_042]
+      spoken:
+        argument: "익산역"
+  - id: 84
+    group: spoken
+    utterance: "서울역 지역 당선자가 약속한 공약 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_042]
+      spoken:
+        argument: "서울역"
+  - id: 85
+    group: spoken
+    utterance: "강릉역 선거구 의원 공약 목록 줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_042]
+      spoken:
+        argument: "강릉역"
+  # recipe_045
+  - id: 86
+    group: spoken
+    utterance: "천안역 주변 인구 얼마나 돼"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_045]
+      spoken:
+        argument: "천안역"
+  - id: 87
+    group: spoken
+    utterance: "조치원역 근처에 사는 사람 몇 명이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_045]
+      spoken:
+        argument: "조치원역"
+  - id: 88
+    group: spoken
+    utterance: "세종시청 둘레 인구 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_045]
+      spoken:
+        argument: "세종시청"
+  - id: 89
+    group: spoken
+    utterance: "강남역 일대 거주 인구 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_045]
+      spoken:
+        argument: "강남역"
+  - id: 90
+    group: spoken
+    utterance: "청주공항 부근에 사람 많이 살아?"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_045]
+      spoken:
+        argument: "청주공항"
+  # recipe_049
+  - id: 91
+    group: spoken
+    utterance: "경부선 따라 설치된 CCTV 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_049]
+      spoken:
+        argument: "경부선"
+  - id: 92
+    group: spoken
+    utterance: "중앙선 선로 주변 CCTV 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_049]
+      spoken:
+        argument: "중앙선"
+  - id: 93
+    group: spoken
+    utterance: "장항선 구간 CCTV 다 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_049]
+      spoken:
+        argument: "장항선"
+  - id: 94
+    group: spoken
+    utterance: "경전선 라인 따라 감시카메라 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_049]
+      spoken:
+        argument: "경전선"
+  - id: 95
+    group: spoken
+    utterance: "태백선 선로변 CCTV 보여줄래"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_049]
+      spoken:
+        argument: "태백선"
+  # recipe_052
+  - id: 96
+    group: spoken
+    utterance: "환경부 충전소 충전기 몇 대 비었어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_052]
+      spoken:
+        argument: "환경부"
+  - id: 97
+    group: spoken
+    utterance: "이마트 충전소에 빈 충전기 있는지 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_052]
+      spoken:
+        argument: "이마트"
+  - id: 98
+    group: spoken
+    utterance: "오송읍 충전소 상태 자세히 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_052]
+      spoken:
+        argument: "오송읍"
+  - id: 99
+    group: spoken
+    utterance: "GS칼텍스 전기차 충전소 지금 쓸 수 있는지 봐줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_052]
+      spoken:
+        argument: "GS칼텍스"
+  - id: 100
+    group: spoken
+    utterance: "복대동 전기차 충전소 충전기 현황 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_052]
+      spoken:
+        argument: "복대동"
+  # recipe_058
+  - id: 101
+    group: spoken
+    utterance: "천안시 연령별 인구 구성 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_058]
+      spoken:
+        argument: "천안시"
+        admin_level: "시군구"
+  - id: 102
+    group: spoken
+    utterance: "대전역 있는 곳 연령대별 인구 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_058]
+      spoken:
+        argument: "대전역"
+        admin_level: null
+  - id: 103
+    group: spoken
+    utterance: "경상북도 나이대 인구 분포 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_058]
+      spoken:
+        argument: "경상북도"
+        admin_level: "시도"
+  - id: 104
+    group: spoken
+    utterance: "복대동 남녀 연령별 인구 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_058]
+      spoken:
+        argument: "복대동"
+        admin_level: "읍면동"
+  - id: 105
+    group: spoken
+    utterance: "원주시 연령대 인구 구성 궁금해"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_058]
+      spoken:
+        argument: "원주시"
+        admin_level: "시군구"
+  # recipe_059
+  - id: 106
+    group: spoken
+    utterance: "아산시 인구 추이 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_059]
+      spoken:
+        argument: "아산시"
+        admin_level: "시군구"
+  - id: 107
+    group: spoken
+    utterance: "충청남도 월별 인구 증감 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_059]
+      spoken:
+        argument: "충청남도"
+        admin_level: "시도"
+  - id: 108
+    group: spoken
+    utterance: "오송역 일대 인구가 늘었어 줄었어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_059]
+      spoken:
+        argument: "오송역"
+        admin_level: null
+  - id: 109
+    group: spoken
+    utterance: "가경동 인구 변화 추세 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_059]
+      spoken:
+        argument: "가경동"
+        admin_level: "읍면동"
+  - id: 110
+    group: spoken
+    utterance: "울산역 쪽 인구가 달마다 어떻게 바뀌었어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_059]
+      spoken:
+        argument: "울산역"
+        admin_level: null
+  # recipe_060
+  - id: 111
+    group: spoken
+    utterance: "천안역 근처 전기차 충전소 빈 충전기 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_060]
+      spoken:
+        argument: "천안역"
+  - id: 112
+    group: spoken
+    utterance: "청주공항 주변 충전기 사용 가능한 곳 있어?"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_060]
+      spoken:
+        argument: "청주공항"
+  - id: 113
+    group: spoken
+    utterance: "세종시청 옆 충전소 충전기 상태 자세히 봐줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_060]
+      spoken:
+        argument: "세종시청"
+  - id: 114
+    group: spoken
+    utterance: "강남역 부근 전기차 충전소 빈 충전기 몇 대야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_060]
+      spoken:
+        argument: "강남역"
+  - id: 115
+    group: spoken
+    utterance: "오송역 인근 충전소 충전기 비었는지 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_060]
+      spoken:
+        argument: "오송역"
+  # recipe_061
+  - id: 116
+    group: spoken
+    utterance: "천안역에서 자전거로 20분 거리면 어디까지 가"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_061]
+      spoken:
+        argument: "천안역"
+        travel_mode: "자전거"
+        minutes: [20]
+  - id: 117
+    group: spoken
+    utterance: "서울역에서 대중교통으로 45분 안에 닿는 범위 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_061]
+      spoken:
+        argument: "서울역"
+        travel_mode: "대중교통"
+        minutes: [45]
+  - id: 118
+    group: spoken
+    utterance: "오송역 출발 차로 10분, 20분 도달 범위 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_061]
+      spoken:
+        argument: "오송역"
+        travel_mode: "승용차"
+        minutes: [10, 20]
+  - id: 119
+    group: spoken
+    utterance: "대전역 도달권 지도에 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_061]
+      spoken:
+        argument: "대전역"
+        travel_mode: null
+        minutes: null
+  - id: 120
+    group: spoken
+    utterance: "청주시청에서 걸어서 15분 안에 갈 수 있는 곳"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_061]
+      spoken:
+        argument: "청주시청"
+        travel_mode: "도보"
+        minutes: [15]
+
+  # ── 찍은 지점 ──
+  # recipe_018
+  - id: 121
+    group: picked_point
+    utterance: "이 위치 어느 시군구에 속해"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_018]
+      spoken:
+        admin_level: "시군구"
+  - id: 122
+    group: picked_point
+    utterance: "선택한 위치 행정구역 코드 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_018]
+      spoken:
+        admin_level: null
+  - id: 123
+    group: picked_point
+    utterance: "여기 무슨 읍이나 면이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_018]
+      spoken:
+        admin_level: "읍면동"
+  - id: 124
+    group: picked_point
+    utterance: "여기가 어느 도에 들어가"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_018]
+      spoken:
+        admin_level: "시도"
+  - id: 125
+    group: picked_point
+    utterance: "찍은 곳이 무슨 동인지 코드까지 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_018]
+      spoken:
+        admin_level: "읍면동"
+  # recipe_019
+  - id: 126
+    group: picked_point
+    utterance: "선택한 위치 근처에 있는 CCTV 전부 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_019]
+  - id: 127
+    group: picked_point
+    utterance: "여기 주변에 감시카메라 있어?"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_019]
+  - id: 128
+    group: picked_point
+    utterance: "찍은 지점 둘레 CCTV 영상 볼 수 있게 해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_019]
+  - id: 129
+    group: picked_point
+    utterance: "이 위치 근방 교통 CCTV 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_019]
+  - id: 130
+    group: picked_point
+    utterance: "여기서 가까운 CCTV 보여줄래"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_019]
+  # recipe_020
+  - id: 131
+    group: picked_point
+    utterance: "이 위치는 무슨 선거구에 들어가"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_020]
+  - id: 132
+    group: picked_point
+    utterance: "선택한 위치 국회의원 선거구 이름만 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_020]
+  - id: 133
+    group: picked_point
+    utterance: "여기 선거구가 어디로 잡혀 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_020]
+  - id: 134
+    group: picked_point
+    utterance: "찍은 곳 지역구 이름이 뭐야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_020]
+  - id: 135
+    group: picked_point
+    utterance: "이 지점 선거구명 확인해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_020]
+  # recipe_021
+  - id: 136
+    group: picked_point
+    utterance: "이 위치 지역구 의원이 누구야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_021]
+  - id: 137
+    group: picked_point
+    utterance: "여기서 뽑힌 국회의원 어느 당이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_021]
+  - id: 138
+    group: picked_point
+    utterance: "찍은 곳 국회의원은 누구고 무슨 당 소속이야"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_021]
+  - id: 139
+    group: picked_point
+    utterance: "이 지점 지역구 당선자 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_021]
+  - id: 140
+    group: picked_point
+    utterance: "선택한 위치 국회의원 이름 좀 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_021]
+  # recipe_022
+  - id: 141
+    group: picked_point
+    utterance: "선택한 위치 국회의원이 내건 교통 공약 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_022]
+  - id: 142
+    group: picked_point
+    utterance: "여기 지역구 공약 뭐가 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_022]
+  - id: 143
+    group: picked_point
+    utterance: "찍은 곳 의원 공약 목록 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_022]
+  - id: 144
+    group: picked_point
+    utterance: "이 지점 선거구 공약 중에 철도 분야만 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_022]
+  - id: 145
+    group: picked_point
+    utterance: "여기 당선자가 약속한 공약들 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_022]
+  # recipe_054
+  - id: 146
+    group: picked_point
+    utterance: "이 위치 연령별 남녀 인구 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_054]
+      spoken:
+        admin_level: null
+  - id: 147
+    group: picked_point
+    utterance: "선택한 위치 연령대 인구 분포 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_054]
+      spoken:
+        admin_level: null
+  - id: 148
+    group: picked_point
+    utterance: "여기 읍면동 기준으로 연령대별 인구 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_054]
+      spoken:
+        admin_level: "읍면동"
+  - id: 149
+    group: picked_point
+    utterance: "찍은 곳 시군구 연령별 인구 구성 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_054]
+      spoken:
+        admin_level: "시군구"
+  - id: 150
+    group: picked_point
+    utterance: "여기 사는 사람들 나이대 분포 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_054]
+      spoken:
+        admin_level: null
+  # recipe_055
+  - id: 151
+    group: picked_point
+    utterance: "이 위치 인구가 달마다 어떻게 변했어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_055]
+      spoken:
+        admin_level: null
+  - id: 152
+    group: picked_point
+    utterance: "여기 인구 증감 추이 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_055]
+      spoken:
+        admin_level: null
+  - id: 153
+    group: picked_point
+    utterance: "선택한 위치 동 단위 인구 추세 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_055]
+      spoken:
+        admin_level: "읍면동"
+  - id: 154
+    group: picked_point
+    utterance: "찍은 곳 시군구 인구가 늘었는지 줄었는지 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_055]
+      spoken:
+        admin_level: "시군구"
+  - id: 155
+    group: picked_point
+    utterance: "여기 월별 인구 변화 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_055]
+      spoken:
+        admin_level: null
+  # recipe_062
+  - id: 156
+    group: picked_point
+    utterance: "여기서 청주공항까지 가는 방법 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_062]
+      spoken:
+        argument: "청주공항"
+  - id: 157
+    group: picked_point
+    utterance: "선택한 위치에서 세종터미널 가는 길 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_062]
+      spoken:
+        argument: "세종터미널"
+  - id: 158
+    group: picked_point
+    utterance: "이 위치에서 천안아산역까지 대중교통으로 얼마나 걸려"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_062]
+      spoken:
+        argument: "천안아산역"
+  - id: 159
+    group: picked_point
+    utterance: "여기부터 오송역까지 경로 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_062]
+      spoken:
+        argument: "오송역"
+  - id: 160
+    group: picked_point
+    utterance: "찍은 곳에서 충북대학교 가려면 어떻게 갈아타"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_062]
+      spoken:
+        argument: "충북대학교"
+  # recipe_063
+  - id: 161
+    group: picked_point
+    utterance: "여기서 자전거로 10분이면 어디까지 가"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_063]
+      spoken:
+        travel_mode: "자전거"
+        minutes: [10]
+  - id: 162
+    group: picked_point
+    utterance: "선택한 지점 기준으로 차로 30분 도달 범위 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_063]
+      spoken:
+        travel_mode: "승용차"
+        minutes: [30]
+  - id: 163
+    group: picked_point
+    utterance: "이 위치에서 대중교통 20분, 40분 도달권 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_063]
+      spoken:
+        travel_mode: "대중교통"
+        minutes: [20, 40]
+  - id: 164
+    group: picked_point
+    utterance: "여기서 걸어서 갈 수 있는 범위 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_063]
+      spoken:
+        travel_mode: "도보"
+        minutes: null
+  - id: 165
+    group: picked_point
+    utterance: "이 지점에서 15분 안에 닿는 곳 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_063]
+      spoken:
+        travel_mode: null
+        minutes: [15]
+
+  # ── 보이는 범위 ──
+  # recipe_024
+  - id: 166
+    group: view_extent
+    utterance: "현재 화면에 걸친 시도 경계 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_024]
+      spoken:
+        admin_level: "시도"
+  - id: 167
+    group: view_extent
+    utterance: "지금 보이는 곳 행정구역 경계 표시해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_024]
+      spoken:
+        admin_level: null
+  - id: 168
+    group: view_extent
+    utterance: "화면 안에 있는 동 경계 그려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_024]
+      spoken:
+        admin_level: "읍면동"
+  - id: 169
+    group: view_extent
+    utterance: "지금 지도에 보이는 구 경계만 띄워줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_024]
+      spoken:
+        admin_level: "시군구"
+  - id: 170
+    group: view_extent
+    utterance: "현재 화면 행정경계 이름이랑 코드 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_024]
+      spoken:
+        admin_level: null
+  # recipe_026
+  - id: 171
+    group: view_extent
+    utterance: "지금 지도 화면 안 CCTV 다 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_026]
+  - id: 172
+    group: view_extent
+    utterance: "지금 보이는 곳 감시카메라 위치 표시해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_026]
+  - id: 173
+    group: view_extent
+    utterance: "화면에 잡힌 CCTV 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_026]
+  - id: 174
+    group: view_extent
+    utterance: "현재 보이는 범위의 교통 CCTV 띄워"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_026]
+  - id: 175
+    group: view_extent
+    utterance: "지금 화면에 있는 CCTV 전부 켜줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_026]
+  # recipe_027
+  - id: 176
+    group: view_extent
+    utterance: "현재 화면에 지나가는 철도 노선 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_027]
+  - id: 177
+    group: view_extent
+    utterance: "지금 보이는 곳에 있는 기차역이랑 노선 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_027]
+  - id: 178
+    group: view_extent
+    utterance: "화면 안에 걸친 철도 선로 뭐 있어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_027]
+  - id: 179
+    group: view_extent
+    utterance: "지금 지도에 보이는 노선과 역 조회해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_027]
+  - id: 180
+    group: view_extent
+    utterance: "현재 화면 범위 철도 노선 목록 줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_027]
+  # recipe_029
+  - id: 181
+    group: view_extent
+    utterance: "현재 화면 안 의원들 공약 찾아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_029]
+  - id: 182
+    group: view_extent
+    utterance: "지금 보이는 지역 국회의원 공약 검색해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_029]
+  - id: 183
+    group: view_extent
+    utterance: "화면에 걸친 선거구 공약 중 교통 분야만 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_029]
+  - id: 184
+    group: view_extent
+    utterance: "지금 보이는 곳 더불어민주당 공약 검색해줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_029]
+  - id: 185
+    group: view_extent
+    utterance: "현재 화면 범위 당선인 공약 모아줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_029]
+  # recipe_031
+  - id: 186
+    group: view_extent
+    utterance: "지금 보이는 곳에 사람 몇 명 살아"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_031]
+  - id: 187
+    group: view_extent
+    utterance: "현재 화면 인구 순위 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_031]
+  - id: 188
+    group: view_extent
+    utterance: "화면 안 지역들 인구수 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_031]
+  - id: 189
+    group: view_extent
+    utterance: "지금 지도에 보이는 범위 주민 수 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_031]
+  - id: 190
+    group: view_extent
+    utterance: "현재 화면 인구 통계 줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_031]
+  # recipe_056
+  - id: 191
+    group: view_extent
+    utterance: "지금 보이는 곳 충전소 빈 충전기 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_056]
+  - id: 192
+    group: view_extent
+    utterance: "현재 화면 전기차 충전소 사용 가능 여부 보여줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_056]
+  - id: 193
+    group: view_extent
+    utterance: "화면 안 충전소들 충전기 몇 대 남았어"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_056]
+  - id: 194
+    group: view_extent
+    utterance: "지금 지도 범위 충전소 상태 자세히 알려줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_056]
+  - id: 195
+    group: view_extent
+    utterance: "현재 화면에 있는 전기차 충전기 비었는지 봐줘"
+    enabled: true
+    expected:
+      recipe_ids: [recipe_056]
+
+  # ── 범위 밖 ──
+  # unsupported
+  - id: 196
+    group: out_of_scope
+    utterance: "내일 청주 날씨 어때"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 197
+    group: out_of_scope
+    utterance: "KTX 서울 가는 표 예매해줘"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 198
+    group: out_of_scope
+    utterance: "천안역 근처 맛집 추천해줘"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 199
+    group: out_of_scope
+    utterance: "이번 달 철도 사고 보고서 써줘"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 200
+    group: out_of_scope
+    utterance: "달러 환율 얼마야"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 201
+    group: out_of_scope
+    utterance: "지도 배경을 위성사진으로 바꿔줘"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 202
+    group: out_of_scope
+    utterance: "회의록 요약해서 메일로 보내줘"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 203
+    group: out_of_scope
+    utterance: "부산역 주차장 요금 얼마야"
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  # ambiguous
+  - id: 204
+    group: out_of_scope
+    utterance: "CCTV 보여줘"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 205
+    group: out_of_scope
+    utterance: "도달권 보여줘"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 206
+    group: out_of_scope
+    utterance: "행정경계 보여줘"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 207
+    group: out_of_scope
+    utterance: "충전소 빈 충전기 알려줘"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 208
+    group: out_of_scope
+    utterance: "인구 얼마나 돼"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 209
+    group: out_of_scope
+    utterance: "의원 공약 보여줘"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 210
+    group: out_of_scope
+    utterance: "철도 노선 뭐 있어"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  - id: 211
+    group: out_of_scope
+    utterance: "여기 선거구 알려줘"
+    enabled: true
+    expected:
+      category: ambiguous
+      outcomes: [CLARIFY]
+  # insufficient
+  - id: 212
+    group: out_of_scope
+    utterance: "여기서 거기까지 어떻게 가"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 213
+    group: out_of_scope
+    utterance: "좌표 알려줘"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 214
+    group: out_of_scope
+    utterance: "그 선거구 정보 줘"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 215
+    group: out_of_scope
+    utterance: "문서에서 찾아줘"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 216
+    group: out_of_scope
+    utterance: "그 역에 무슨 노선 다녀"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 217
+    group: out_of_scope
+    utterance: "그 노선 선형 좌표만 줘"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 218
+    group: out_of_scope
+    utterance: "그 충전소 충전기 비었는지 봐줘"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]
+  - id: 219
+    group: out_of_scope
+    utterance: "그 시설물 디지털 트윈에 띄워줘"
+    enabled: true
+    expected:
+      category: insufficient
+      outcomes: [CLARIFY, MISSING_ARGUMENT]

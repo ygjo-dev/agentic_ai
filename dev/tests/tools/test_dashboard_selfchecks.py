@@ -274,7 +274,7 @@ def test_an_error_is_its_own_failure_stage_and_the_summary_adds_up():
     assert (rows[7]["passed"], rows[7]["failure_stage"]) == (False, "error")
     total = result["summary"]["total"]
     assert total["passed"] == 4
-    assert total["failure_stages"] == {"function": 1, "input": 1, "error": 1}
+    assert total["failure_stages"] == {"function": 1, "input": 1, "scope": 0, "error": 1}
 
 
 def test_the_utterance_verdict_does_not_read_the_materialize_result(monkeypatch):
@@ -296,9 +296,9 @@ def test_the_utterance_verdict_does_not_read_the_materialize_result(monkeypatch)
 # 화면은 progress 로 받은 줄을 그대로 쌓아 실행 중에 보인다. 줄이 판정 전이거나,
 # 두 번 오거나, 차례가 바뀌면 실행 중 화면과 끝난 화면이 갈린다.
 def _without_timing(result):
-    """시각 · 걸린 시간을 뺀 결과. 콜백 유무로 달라지면 안 되는 부분."""
+    """시각 · 걸린 시간을 뺀 결과. 콜백 유무로 달라지면 안 되는 부분. 걸린 시간 분포(latency)도 뺌."""
     return {
-        "summary": result["summary"],
+        "summary": {key: value for key, value in result["summary"].items() if key != "latency"},
         "cases": [{key: value for key, value in row.items() if key != "timing"} for row in result["cases"]],
     }
 
@@ -340,3 +340,240 @@ def test_an_exception_from_progress_stops_the_run_and_reaches_the_caller():
     with pytest.raises(RuntimeError, match="화면이 죽음"):
         runner.run(_verdict_suite(), resolve=resolve, materialize=False, progress=progress)
     assert len(asked) == 2
+
+
+# ── 테스트 세트 v2 · 범위 밖 · Test Run 저장 ─────────────────────────
+#
+# 개수를 박지 않는다. 받아들인 recipe 목록과 하한(MIN_UTTERANCES_PER_RECIPE)에서 센다.
+def test_test_suite_v2_gives_every_accepted_recipe_enough_distinct_utterances_and_every_out_of_scope_kind():
+    """v2 는 recipe 마다 다섯 이상 · 범위 밖 갈래 셋이 다 있어야 일반화를 잰다고 말할 수 있다."""
+    from collections import Counter
+
+    import paths
+    from dev.evaluation import spoken_audit
+    from dev.evaluation import suite as suite_module
+
+    v2 = suite_module.load(suite_module.SUITE_V2_PATH)
+    accepted = {path.stem for path in paths.RECIPES_DIR.glob("recipe_*.yaml")}
+    inside = [case for case in v2["cases"] if suite_module.in_scope(case)]
+    per_recipe = Counter(case["expected"]["recipe_ids"][0] for case in inside)
+
+    assert set(per_recipe) == accepted
+    assert min(per_recipe.values()) >= spoken_audit.MIN_UTTERANCES_PER_RECIPE
+    assert len(inside) >= len(accepted) * spoken_audit.MIN_UTTERANCES_PER_RECIPE
+    assert len({case["id"] for case in v2["cases"]}) == len(v2["cases"])
+    assert len({case["utterance"] for case in v2["cases"]}) == len(v2["cases"])
+    assert {case["expected"]["category"] for case in v2["cases"] if not suite_module.in_scope(case)} == set(
+        suite_module.OOS_CATEGORIES
+    )
+    assert spoken_audit.integrity(v2, anchor=suite_module.load()) == []
+
+
+def test_full48_stays_the_frozen_version_1_anchor_next_to_v2():
+    """v2 를 붙여도 FULL48 은 판 1 · 범위 안만 · 같은 묶음으로 읽혀야 한다. 옛 기록과 이어 읽는 자다."""
+    from dev.evaluation import spoken_audit
+    from dev.evaluation import suite as suite_module
+
+    full = suite_module.load()
+    assert full["version"] == 1
+    assert suite_module.datasets()[0]["path"] == suite_module.SUITE_PATH
+    assert all(suite_module.in_scope(case) for case in full["cases"])
+    assert tuple(group["id"] for group in full["groups"]) == suite_module.GROUP_IDS
+    assert len(suite_module.utterances(full)) == len(full["cases"])
+    assert spoken_audit.integrity(full) == []
+
+
+def test_the_loader_refuses_out_of_scope_cases_it_cannot_judge(tmp_path):
+    """모르는 갈래 · 지어낸 결과 이름 · 기대 recipe 가 붙은 범위 밖 · 판 1 의 범위 밖은 읽지 않는다."""
+    import pytest
+    import yaml
+
+    from dev.evaluation import suite as suite_module
+
+    groups = [{"id": name, "label": name} for name in (*suite_module.GROUP_IDS, suite_module.OUT_OF_SCOPE)]
+    good_inside = {"id": 1, "group": "spoken", "utterance": "부산역 좌표", "enabled": True,
+                   "expected": {"recipe_ids": ["recipe_001"]}}
+
+    def outside(expected):
+        return {"id": 2, "group": suite_module.OUT_OF_SCOPE, "utterance": "날씨", "enabled": True, "expected": expected}
+
+    def write(version, cases, group_list=groups):
+        path = tmp_path / f"suite_{len(list(tmp_path.iterdir()))}.yaml"
+        path.write_text(yaml.safe_dump({"version": version, "groups": group_list, "cases": cases}, allow_unicode=True),
+                        encoding="utf-8")
+        return path
+
+    ok = suite_module.load(write(2, [good_inside, outside({"category": "unsupported", "outcomes": ["NO_MATCH"]})]))
+    assert [suite_module.in_scope(case) for case in ok["cases"]] == [True, False]
+
+    for bad in (
+        {"category": "weather", "outcomes": ["NO_MATCH"]},
+        {"category": "unsupported", "outcomes": ["REFUSED"]},
+        {"category": "unsupported", "outcomes": []},
+        {"category": "unsupported", "outcomes": ["NO_MATCH"], "recipe_ids": ["recipe_001"]},
+    ):
+        with pytest.raises(suite_module.SuiteError):
+            suite_module.load(write(2, [good_inside, outside(bad)]))
+    with pytest.raises(suite_module.SuiteError):
+        suite_module.load(write(1, [good_inside, outside({"category": "unsupported", "outcomes": ["NO_MATCH"]})]))
+
+
+def _mixed_suite():
+    """범위 안 둘 · 범위 밖 셋. 범위 밖은 갈래마다 하나."""
+    from dev.evaluation import suite as suite_module
+
+    groups = [{"id": name, "label": f"묶음{name}"} for name in (*suite_module.GROUP_IDS, suite_module.OUT_OF_SCOPE)]
+
+    def outside(number, category, outcomes):
+        return {"id": number, "group": suite_module.OUT_OF_SCOPE, "utterance": f"발화 {number}", "enabled": True,
+                "expected": {"category": category, "outcomes": outcomes}}
+
+    return {
+        "version": 2,
+        "name": "mixed",
+        "groups": groups,
+        "cases": [
+            {"id": 1, "group": "spoken", "utterance": "발화 1", "enabled": True,
+             "expected": {"recipe_ids": ["recipe_001"], "spoken": {"argument": "부산역"}}},
+            {"id": 2, "group": "spoken", "utterance": "발화 2", "enabled": True,
+             "expected": {"recipe_ids": ["recipe_001"], "spoken": {"argument": "강릉역"}}},
+            outside(3, "unsupported", ["NO_MATCH"]),
+            outside(4, "ambiguous", ["CLARIFY"]),
+            outside(5, "insufficient", ["CLARIFY", "MISSING_ARGUMENT"]),
+        ],
+    }
+
+
+# 발화 번호 -> 가짜 /resolve 응답. 5 는 기능을 골랐는데 인자가 없다 (materialize 가 MISSING_ARGUMENT).
+_MIXED = {
+    1: {"status": "SELECT", "recipe_id": "recipe_001", "candidate_recipe_ids": ["recipe_001"], "argument": "부산역"},
+    2: {"status": "SELECT", "recipe_id": "recipe_001", "candidate_recipe_ids": ["recipe_001"], "argument": "강릉"},
+    3: {"status": "SELECT", "recipe_id": "recipe_001", "candidate_recipe_ids": ["recipe_001"], "argument": "청주"},
+    4: {"status": "CLARIFY", "recipe_id": None, "candidate_recipe_ids": ["recipe_019", "recipe_026"], "argument": None},
+    5: {"status": "SELECT", "recipe_id": "recipe_001", "candidate_recipe_ids": ["recipe_001"], "argument": None},
+}
+
+
+def _mixed_resolve(utterance):
+    return {"reason": "r", "travel_mode": None, "minutes": None, "admin_level": None, **_MIXED[int(utterance.split()[-1])]}
+
+
+def test_out_of_scope_cases_are_judged_by_their_outcome_and_counted_apart_from_in_scope_accuracy():
+    """범위 밖이 기능 선택 점수에 섞이면 「못 고른 것」과 「안 고르는 게 맞은 것」이 한 값이 된다."""
+    from dev.evaluation import runner
+
+    result = runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"))
+    rows = {row["case_id"]: row for row in result["cases"]}
+
+    assert [rows[n]["outcome"] for n in (3, 4, 5)] == ["READY", "CLARIFY", "MISSING_ARGUMENT"]
+    assert [(rows[n]["passed"], rows[n]["failure_stage"]) for n in (3, 4, 5)] == [(False, "scope"), (True, None), (True, None)]
+    assert all(rows[n]["grade"] is None and rows[n]["recipe_correct"] is None for n in (3, 4, 5))
+    assert (rows[2]["passed"], rows[2]["failure_stage"]) == (False, "input")
+
+    board = result["summary"]["metrics"]
+    assert board["selection"] == {"correct": 2, "total": 2}
+    assert board["semantic_fields"] == {"correct": 1, "total": 2}
+    assert board["joint"] == {"correct": 1, "total": 2}
+    assert board["oos"] == {"correct": 2, "total": 3}
+    assert board["ready"] == {"correct": 2, "total": 2}
+    assert result["summary"]["total"]["oos_categories"] == {
+        "ambiguous": {"runs": 1, "passed": 1}, "insufficient": {"runs": 1, "passed": 1}, "unsupported": {"runs": 1, "passed": 0},
+    }
+    assert result["summary"]["recipes"] == {"recipe_001": {"runs": 2, "passed": 1, "hit": 2}}
+
+
+def test_a_saved_test_run_loads_back_identically_and_its_metrics_recount_the_same(tmp_path):
+    """저장 -> 목록 -> 불러오기가 한 글자도 안 바뀌어야 불러온 기록을 방금 잰 것과 같은 화면으로 그린다."""
+    import json
+
+    from dev.evaluation import runner, test_runs
+
+    result = runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"),
+                        save_dir=tmp_path, dataset={"id": "mixed", "label": "섞인 세트"})
+    listed = test_runs.list_runs(tmp_path)
+
+    assert [entry["run_id"] for entry in listed] == [result["meta"]["run_id"]]
+    assert listed[0]["complete"] and listed[0]["runs"] == 5 and listed[0]["dataset_id"] == "mixed"
+    loaded = test_runs.load_run(listed[0]["run_id"], tmp_path)
+    saved = json.loads(json.dumps(result, ensure_ascii=False))
+    saved["meta"].pop("saved_to")
+    assert loaded == saved
+    assert runner.summarize(loaded["cases"], tuple(loaded["meta"]["suite"]["group_labels"])) == loaded["summary"]
+    assert (tmp_path / result["meta"]["run_id"] / test_runs.SUMMARY_FILE).read_text(encoding="utf-8").startswith("# Test Run")
+
+
+def test_an_interrupted_test_run_keeps_its_finished_cases_and_recounts_them(tmp_path):
+    """도중에 죽어도 끝난 발화 결과는 남아야 원인을 본다. 합계는 남은 줄로 다시 센다."""
+    import pytest
+
+    from dev.evaluation import runner, test_runs
+
+    def progress(done, total, row):
+        if done == 3:
+            raise RuntimeError("화면이 죽음")
+
+    with pytest.raises(RuntimeError):
+        runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"),
+                   save_dir=tmp_path, progress=progress)
+    [entry] = test_runs.list_runs(tmp_path)
+    assert not entry["complete"]
+
+    loaded = test_runs.load_run(entry["path"])
+    assert [row["case_id"] for row in loaded["cases"]] == [1, 2, 3]
+    assert loaded["meta"]["stopped"] == test_runs.INCOMPLETE
+    assert loaded["summary"]["total"]["runs"] == 3
+    assert loaded["summary"]["metrics"]["oos"] == {"correct": 0, "total": 1}
+
+
+def test_gpu_telemetry_is_optional_and_never_changes_the_verdicts():
+    """nvidia-smi 가 없는 기계에서도 같은 판정으로 끝나야 하고, 기록은 meta.gpu 에만 실린다."""
+    from dev.evaluation import gpu, runner
+
+    def strip(result):
+        return [{k: v for k, v in row.items() if k != "timing"} for row in result["cases"]]
+
+    plain = runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"))
+    blind = runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"),
+                       monitor=gpu.GpuMonitor(gate=True, sampler=lambda: None, sleep=lambda s: None))
+
+    assert strip(plain) == strip(blind)
+    assert plain["meta"]["gpu"] is None
+    assert blind["meta"]["gpu"]["available"] is False and blind["meta"]["gpu"]["max_temp"] is None
+
+
+def _gpu_samples(temps, throttle=None):
+    """온도를 차례로 내는 가짜 sampler. 다 쓰면 마지막 값을 되풀이."""
+    queue = list(temps)
+
+    def sampler():
+        temp = queue.pop(0) if len(queue) > 1 else queue[0]
+        return [{"index": 0, "name": "가짜", "util": 0, "temp": temp, "fan": 30, "throttle": throttle}]
+
+    return sampler
+
+
+def test_the_quiet_gate_pauses_when_hot_and_the_pause_is_recorded():
+    """3건마다 온도를 보고 66°C 이상이면 58°C 까지 식힌다. 쉰 횟수 · 최고 온도가 기록에 남는다."""
+    from dev.evaluation import gpu, runner
+
+    slept = []
+    monitor = gpu.GpuMonitor(gate=True, sampler=_gpu_samples([40, 67, 62, 57, 50]), sleep=slept.append)
+    result = runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"), monitor=monitor)
+    record = result["meta"]["gpu"]
+
+    assert result["meta"]["stopped"] is None and len(result["cases"]) == 5
+    assert record["pauses"] == 1 and record["max_temp"] == 67 and record["start_temp"] == 40
+    assert record["thermal_throttle"] is None
+    assert gpu.POLICY["sleep_s"] in slept
+
+
+def test_thermal_throttling_stops_the_run_but_keeps_what_was_measured():
+    """열 제한을 보면 식히고 멈춘다. 거기까지의 결과와 까닭은 남는다."""
+    from dev.evaluation import gpu, runner
+
+    monitor = gpu.GpuMonitor(gate=True, sampler=_gpu_samples([40, 50], throttle=True), sleep=lambda s: None)
+    result = runner.run(_mixed_suite(), resolve=_mixed_resolve, context=runner.context_payload("both"), monitor=monitor)
+
+    assert result["meta"]["stopped"].startswith("StopRun")
+    assert len(result["cases"]) == 3
+    assert result["meta"]["gpu"]["thermal_throttle"] is True

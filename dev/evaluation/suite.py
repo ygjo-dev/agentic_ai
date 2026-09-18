@@ -1,7 +1,11 @@
 """발화 해석 정답표(evaluation suite)를 읽는 유일한 곳.
 
-정답표는 같은 폴더의 `resolve_regression.yaml` 이다. 계기판 `dev/tools/check_resolve.py` 와
-공통 runner `dev/evaluation/runner.py` 가 같은 파일을 이 모듈로 읽는다.
+정답표(Test Suite)는 같은 폴더의 두 파일이다.
+
+    resolve_regression.yaml   FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
+    test_suite_v2.yaml        테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖 묶음
+
+공통 runner `dev/evaluation/runner.py` 와 화면 테스트 탭이 이 모듈로 읽는다.
 
 기대값을 여기서 고치거나 채우지 않는다. 무엇이 정답인지는 파일에 사람이 적는다.
 """
@@ -11,16 +15,37 @@ from pathlib import Path
 import yaml
 
 SUITE_PATH = Path(__file__).resolve().parent / "resolve_regression.yaml"
+SUITE_V2_PATH = Path(__file__).resolve().parent / "test_suite_v2.yaml"
 
-# 화면 · 계기판이 이름으로 고를 수 있는 정답표. (id, 사람이 읽는 이름, 경로)
-# 정답표 파일을 더하면 여기 한 줄을 더한다.
-DATASETS = (("resolve_regression", "발화 회귀 테스트", SUITE_PATH),)
+# 화면 · 계기판이 이름으로 고를 수 있는 정답표(Test Suite). (id, 사람이 읽는 이름, 경로)
+# 정답표 파일을 더하면 여기 한 줄을 더한다. 첫 줄이 화면의 기본값이다.
+#   resolve_regression   FULL48. 얼린 회귀 기준선. 발화 · 기대값을 바꾸지 않는다
+#   test_suite_v2        일반화를 재는 넓은 자. recipe 마다 발화 다섯 이상 + 범위 밖
+DATASETS = (
+    ("resolve_regression", "FULL48 회귀 테스트", SUITE_PATH),
+    ("test_suite_v2", "테스트 세트 v2", SUITE_V2_PATH),
+)
 
-# 이 모듈이 읽을 줄 아는 파일 판.
+# 이 모듈이 읽을 줄 아는 파일 판. 1 은 FULL48, 2 는 범위 밖 묶음을 더 가짐.
 SUITE_VERSION = 1
+SUITE_VERSIONS = (1, 2)
 
-# 묶음 id 와 그 차례. 표를 찍는 차례이기도 하다.
+# 묶음 id 와 그 차례. 표를 찍는 차례이기도 하다. 셋 다 범위 안(기대 recipe 가 있음)이다.
 GROUP_IDS = ("spoken", "picked_point", "view_extent")
+
+# 판 2 만 갖는 마지막 묶음. 기대 recipe 가 없고 기대 결과(outcomes)가 있다.
+OUT_OF_SCOPE = "out_of_scope"
+
+# 범위 밖 발화의 갈래. 결과를 갈래마다 따로 센다.
+#   unsupported   menu 의 어느 기능도 하는 일이 아니다
+#   ambiguous     방식만 다른 기능이 여럿 맞는다
+#   insufficient  기능은 하나로 서는데 부를 값을 말하지 않았다
+OOS_CATEGORIES = ("unsupported", "ambiguous", "insufficient")
+
+# 범위 밖 발화가 받아들이는 결과 이름. **지어낸 이름이 아니다** — 앞의 둘은 resolve 응답
+# schema 의 status enum, 뒤의 하나는 workflow_materializer 의 판정이다
+# (spoken_audit._selfcheck 가 두 원천에 실제로 있는지 본다).
+OOS_OUTCOMES = ("NO_MATCH", "CLARIFY", "MISSING_ARGUMENT")
 
 
 class SuiteError(ValueError):
@@ -32,11 +57,13 @@ def load(path: Path | None = None) -> dict:
 
     입력  YAML 경로. 없으면 SUITE_PATH
     출력  읽은 dict. 아래 검사를 통과한 것만
-    규칙  version 이 SUITE_VERSION
-          groups 가 GROUP_IDS 차례 그대로
+    규칙  version 이 SUITE_VERSIONS 중 하나
+          groups 가 판 1 이면 GROUP_IDS, 판 2 면 GROUP_IDS + OUT_OF_SCOPE 차례 그대로
           case id 가 정수이고 겹치지 않음. group 이 아는 묶음임
           묶음이 id 순으로 이어짐. BASELINE_LAST 같은 「묶음의 마지막 번호」가 뜻을 가지려면 필요함
-          expected.recipe_ids 가 비지 않음. expected.spoken 칸이 spoken_value_names 안에 있음
+          범위 안 case 는 expected.recipe_ids 가 비지 않음. expected.spoken 칸이 spoken_value_names 안에 있음
+          범위 밖 case 는 recipe_ids · spoken 이 없고 category 가 OOS_CATEGORIES,
+          outcomes 가 비지 않은 OOS_OUTCOMES 부분 목록임
           marks 가 있는 case id 를 가리킴
     제약  기대값을 고치거나 채우지 않는다.
           틀린 파일을 부분만 읽지 않는다. 표가 조용히 줄어듦
@@ -47,10 +74,11 @@ def load(path: Path | None = None) -> dict:
     def fail(message):
         return SuiteError(f"{path.name}: {message}")
 
-    if not isinstance(document, dict) or document.get("version") != SUITE_VERSION:
-        raise fail(f"version 이 {SUITE_VERSION} 이 아니다")
-    if tuple(group.get("id") for group in document.get("groups") or []) != GROUP_IDS:
-        raise fail(f"groups 는 {list(GROUP_IDS)} 차례다")
+    if not isinstance(document, dict) or document.get("version") not in SUITE_VERSIONS:
+        raise fail(f"version 이 {list(SUITE_VERSIONS)} 중 하나가 아니다")
+    group_ids = GROUP_IDS if document["version"] == 1 else (*GROUP_IDS, OUT_OF_SCOPE)
+    if tuple(group.get("id") for group in document.get("groups") or []) != group_ids:
+        raise fail(f"groups 는 {list(group_ids)} 차례다")
 
     names = set(document.get("spoken_value_names") or [])
     cases = document.get("cases") or []
@@ -64,17 +92,28 @@ def load(path: Path | None = None) -> dict:
         if not isinstance(number, int) or number in seen:
             raise fail(f"case id 가 정수가 아니거나 겹친다: {number!r}")
         seen.add(number)
-        if case.get("group") not in GROUP_IDS:
+        if case.get("group") not in group_ids:
             raise fail(f"{number}: 모르는 group {case.get('group')!r}")
         if not isinstance(case.get("utterance"), str) or not isinstance(case.get("enabled"), bool):
             raise fail(f"{number}: utterance 는 문자열 · enabled 는 참/거짓이다")
         expected = case.get("expected") or {}
-        if not expected.get("recipe_ids"):
-            raise fail(f"{number}: expected.recipe_ids 가 비었다")
-        unknown = sorted(set(expected.get("spoken") or {}) - names)
-        if unknown:
-            raise fail(f"{number}: spoken_value_names 에 없는 칸 {unknown}")
-        order.append((number, GROUP_IDS.index(case["group"])))
+        if case["group"] == OUT_OF_SCOPE:
+            if "recipe_ids" in expected or "spoken" in expected:
+                raise fail(f"{number}: 범위 밖 case 에는 recipe_ids · spoken 이 없다")
+            if expected.get("category") not in OOS_CATEGORIES:
+                raise fail(f"{number}: 모르는 범위 밖 갈래 {expected.get('category')!r}")
+            outcomes = expected.get("outcomes")
+            if not outcomes or not isinstance(outcomes, list) or set(outcomes) - set(OOS_OUTCOMES):
+                raise fail(f"{number}: outcomes 는 {list(OOS_OUTCOMES)} 중 하나 이상이다")
+        else:
+            if "category" in expected or "outcomes" in expected:
+                raise fail(f"{number}: 범위 안 case 에는 category · outcomes 가 없다")
+            if not expected.get("recipe_ids"):
+                raise fail(f"{number}: expected.recipe_ids 가 비었다")
+            unknown = sorted(set(expected.get("spoken") or {}) - names)
+            if unknown:
+                raise fail(f"{number}: spoken_value_names 에 없는 칸 {unknown}")
+        order.append((number, group_ids.index(case["group"])))
 
     ranks = [rank for _number, rank in sorted(order)]
     if ranks != sorted(ranks):
@@ -95,11 +134,17 @@ def datasets() -> list[dict]:
     return [{"id": dataset_id, "label": label, "path": path} for dataset_id, label, path in DATASETS]
 
 
+def in_scope(case: dict) -> bool:
+    """기대 recipe 가 있는 case 인가. 범위 밖 묶음이면 거짓."""
+    return case["group"] != OUT_OF_SCOPE
+
+
 def utterances(suite: dict) -> list[tuple]:
-    """(번호, 발화, 기대 recipe 집합, 기본 실행 여부) 목록. 파일 차례 그대로."""
+    """(번호, 발화, 기대 recipe 집합, 기본 실행 여부) 목록. 파일 차례 그대로. 범위 안만."""
     return [
         (case["id"], case["utterance"], set(case["expected"]["recipe_ids"]), case["enabled"])
         for case in suite["cases"]
+        if in_scope(case)
     ]
 
 
@@ -118,15 +163,35 @@ def marks(suite: dict) -> dict[int, str]:
 
 
 def group_labels(suite: dict) -> tuple[str, ...]:
-    """묶음 이름들. GROUP_IDS 차례."""
-    labels = {group["id"]: group["label"] for group in suite["groups"]}
-    return tuple(labels[group_id] for group_id in GROUP_IDS)
+    """묶음 이름들. 파일의 groups 차례 (GROUP_IDS, 판 2 면 그 뒤에 범위 밖)."""
+    return tuple(group["label"] for group in suite["groups"])
+
+
+def label_of(suite: dict) -> dict[str, str]:
+    """{묶음 id: 묶음 이름}."""
+    return {group["id"]: group["label"] for group in suite["groups"]}
 
 
 def group_of(suite: dict) -> dict[int, str]:
     """{번호: 묶음 이름}."""
-    labels = dict(zip(GROUP_IDS, group_labels(suite)))
+    labels = label_of(suite)
     return {case["id"]: labels[case["group"]] for case in suite["cases"]}
+
+
+def identity(suite: dict, path: Path | None = None) -> dict:
+    """정답표 한 벌의 신원. {name, version, sha256, case_count}.
+
+    규칙  name 은 파일의 name, 없으면 파일 이름. sha256 은 파일 바이트 그대로
+    """
+    import hashlib
+
+    path = Path(path or SUITE_PATH)
+    return {
+        "name": suite.get("name") or path.stem,
+        "version": suite.get("version"),
+        "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None,
+        "case_count": len(suite["cases"]),
+    }
 
 
 def last_id(suite: dict, group_id: str) -> int:

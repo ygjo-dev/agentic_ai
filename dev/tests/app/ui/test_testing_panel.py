@@ -336,3 +336,99 @@ def test_the_live_view_shows_exactly_the_finished_rows(count):
         assert len(at.dataframe[0].value) == count
     kpi = next(m.value for m in at.markdown if "tt-kpis" in m.value)
     assert f"완료 {count} / 48" in visible_text(kpi)
+
+
+# ── 테스트 세트 v2 · 범위 밖 · 실행 기록 ─────────────────────────────
+def _oos_suite():
+    groups = [{"id": name, "label": f"묶음{name}"} for name in (*suite_module.GROUP_IDS, suite_module.OUT_OF_SCOPE)]
+    return {
+        "version": 2,
+        "groups": groups,
+        "cases": [
+            _case(1, "철도 공약 모아줘", "recipe_010", {"argument": "철도"}),
+            {"id": 2, "group": suite_module.OUT_OF_SCOPE, "utterance": "내일 날씨 어때", "enabled": True,
+             "expected": {"category": "unsupported", "outcomes": ["NO_MATCH"]}},
+            {"id": 3, "group": suite_module.OUT_OF_SCOPE, "utterance": "그 역 좌표 줘", "enabled": True,
+             "expected": {"category": "insufficient", "outcomes": ["CLARIFY", "MISSING_ARGUMENT"]}},
+        ],
+    }
+
+
+def _oos_resolve(utterance):
+    if utterance == "내일 날씨 어때":
+        return {"reason": "없음", "status": "SELECT", "recipe_id": "recipe_001", "candidate_recipe_ids": ["recipe_001"],
+                "argument": "내일", "travel_mode": None, "minutes": None, "admin_level": None}
+    if utterance == "그 역 좌표 줘":
+        return {"reason": "없음", "status": "CLARIFY", "recipe_id": None, "candidate_recipe_ids": ["recipe_001", "recipe_034"],
+                "argument": None, "travel_mode": None, "minutes": None, "admin_level": None}
+    return _resolve(utterance)
+
+
+@pytest.fixture(scope="module")
+def oos_result():
+    measured = runner.run(_oos_suite(), resolve=_oos_resolve, context=runner.context_payload("both"))
+    measured["meta"]["functions"] = dict(FUNCTIONS)
+    return measured
+
+
+def test_an_out_of_scope_row_compares_the_accepted_outcome_without_developer_words(oos_result):
+    wrong = _row(oos_result, 2)
+    text = visible_text(panel.detail_markup(wrong, FUNCTIONS))
+    assert "실패 · 범위 밖 처리" in text
+    assert "범위 밖 · 지원 안 함" in text and "해당 없음" in text and "실행 준비됨" in text
+    assert text.count("차이") == 1
+
+    right = visible_text(panel.detail_markup(_row(oos_result, 3), FUNCTIONS))
+    assert "성공" in right and "되묻기 또는 인자 부족" in right and "차이" not in right
+
+    for row in oos_result["cases"]:
+        leaked = [w for w in BANNED if w in visible_text(panel.detail_markup(row, FUNCTIONS))]
+        assert not leaked, (row["case_id"], leaked)
+
+
+def test_the_overview_copies_the_run_metrics_and_shows_no_developer_words(oos_result):
+    info = panel.overview(oos_result)
+    board = oos_result["summary"]["metrics"]
+
+    assert info["기능 선택"].startswith(f"{board['selection']['correct']}/{board['selection']['total']}")
+    assert info["범위 밖 처리"].startswith(f"{board['oos']['correct']}/{board['oos']['total']}")
+    assert info["인자 추출"].startswith(f"{board['semantic_fields']['correct']}/{board['semantic_fields']['total']}")
+    assert info["GPU"] == "기록 없음"
+    text = visible_text(panel.overview_markup(info))
+    assert not [w for w in BANNED if w in text], text
+    assert panel.overview(None) is None
+
+
+def test_the_function_picker_groups_rows_by_expected_function_and_keeps_out_of_scope_apart(result, oos_result):
+    rows = result["cases"]
+    assert [r["case_id"] for r in panel.filter_results(rows, "전체", "", "recipe_045")] == [2, 5]
+    assert panel.group_options(rows)[0] == panel.ALL_GROUPS
+    assert panel.OUT_OF_SCOPE_GROUP not in panel.group_options(rows)
+
+    mixed = oos_result["cases"]
+    assert panel.group_options(mixed)[-1] == panel.OUT_OF_SCOPE_GROUP
+    assert [r["case_id"] for r in panel.filter_results(mixed, "전체", "", panel.OUT_OF_SCOPE_GROUP)] == [2, 3]
+    assert [r["case_id"] for r in panel.filter_results(mixed, "범위 밖 처리")] == [2]
+    assert panel.first_failure(mixed) == 1
+    assert [e["label"] for e in panel.recipe_rows(oos_result)] == ["범위 밖", "기능 010"]
+
+
+def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app, monkeypatch, tmp_path):
+    """불러온 기록은 방금 잰 결과와 같은 자리 · 같은 함수로 그려지고 LLM 을 안 부른다."""
+    from dev.evaluation import test_runs
+
+    monkeypatch.setattr(test_runs, "RUNS_DIR", tmp_path)
+    saved = runner.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
+                       dataset={"id": "resolve_regression", "label": "FULL48 회귀 테스트"})
+
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(saved["meta"]["run_id"]).run()
+
+    assert not app.exception
+    assert app.calls == [] and app.resolved == []
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == len(SUITE["cases"])
+    assert any(saved["meta"]["run_id"] in m.value for m in app.markdown)
+    assert any('class="tt-ovs"' in m.value for m in app.markdown)
+    assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == test_runs.load_run(
+        saved["meta"]["run_id"], tmp_path
+    )["summary"]
