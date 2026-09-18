@@ -1,8 +1,7 @@
-"""테스트 탭. 발화별 기능 선택 · 인자 추출 결과를 훑고 한 건씩 들여다본다.
+"""테스트 탭. 정답표로 발화 해석을 재고, 발화별 기능 선택 · 인자 추출 결과를 훑고 한 건씩 들여다본다.
 
-지금은 화면 시안이다. 결과는 app/ui/testing_mock.py 의 가짜 200건이고, 백엔드도
-LLM 도 부르지 않는다. 실제 평가가 붙으면 결과를 같은 모양으로 받아
-mock_test_results() 자리만 바꾼다.
+평가는 dev/evaluation 이 한다. 이 탭은 정답표를 고르고, 「테스트 실행」을 누르면
+dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
 
     제목 · 테스트 세트 · 테스트 실행
     실행 조건 (접힘)
@@ -10,9 +9,16 @@ mock_test_results() 자리만 바꾼다.
     보기 필터 · 발화 검색
     결과 목록 (한 발화 한 줄, 고정 높이) | 선택한 발화 상세 (고정 높이)
 
+**여기서 채점하지 않는다.** 성공 · 실패 · 실패 단계(passed · failure_stage) · 기능이 맞았나
+(recipe_correct) · 정답표에 적은 값마다 맞았나(spoken_fields) 는 runner 결과에 이미 있다.
+이 탭은 그 칸을 읽어 글자와 색으로 바꾼다. 값끼리 맞대지 않는다.
+
+**LLM 은 「테스트 실행」을 누를 때만 부른다.** 결과는 session_state 에 두고 필터 · 검색 ·
+행 선택 · 탭 전환은 그것만 다시 그린다.
+
 **상세는 성공과 실패가 같은 틀이다.** 정답표와 AI 모델 출력을 좌우로 맞대고,
-실패면 다른 칸만 강조한다. 틀을 둘로 나누면 성공 화면과 실패 화면이 조용히
-어긋난다.
+실패면 틀린 칸만 강조한다. 인자는 정답표에 적은 것과 모델이 낸 것을 빠짐없이 보인다.
+정답표에 안 적은 인자는 채점 제외로 흐리게 둔다.
 
 화면 낱말은 사람이 읽는 말로 쓴다. 기능 번호는 「기능 015」로 보이고, 인자는
 표시명이 있으면 표시명 아래에 변수명을 작게 단다. 표시명이 없는 인자도 변수명
@@ -21,14 +27,16 @@ mock_test_results() 자리만 바꾼다.
 CSS 는 .st-key-test_tab 안으로만 건다. 서비스 화면에 새지 않는다.
 """
 
+import datetime
 import html
-from datetime import datetime
+import re
 from functools import partial
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
-from app.ui.testing_mock import TEST_SET_LABEL, mock_run_conditions, mock_test_results
+from dev.evaluation import suite as evaluation_suite
 
 # 인자 표시명. 여기 없는 인자는 변수명 그대로 나온다.
 # argument 는 기능마다 뜻이 달라 표시명을 두지 않는다.
@@ -38,20 +46,33 @@ FIELD_LABELS = {
     "admin_level": "행정구역 단계",
 }
 
-# 인자 줄 순서. 여기 없는 인자는 뒤에 나온 순서대로 붙는다.
-FIELD_ORDER = ("argument", "travel_mode", "minutes", "admin_level")
-
 STATUS_LABELS = {"SELECT": "선택", "CLARIFY": "되묻기", "NO_MATCH": "해당 없음"}
-STAGE_LABELS = {"function": "기능 선택", "input": "인자 추출"}
+# runner 결과의 failure_stage 값 -> 화면 글자
+STAGE_LABELS = {"function": "기능 선택", "input": "인자 추출", "error": "실행 오류"}
 
 ALL, FAILED = "전체", "실패만"
 FILTERS = (ALL, FAILED, STAGE_LABELS["function"], STAGE_LABELS["input"])
 
 NONE_TEXT = "없음"
+EMPTY_NUMBER = "—"
+UNGRADED_TEXT = "채점 제외"
+
+# 테스트 실행이 runner 에 넘기는 값. 발화 판정만 재므로 materialize 를 끄고,
+# 3건마다 5초 쉬어 GPU 를 연달아 물리지 않는다. 화면에 안 보인다.
+RUN_OPTIONS = {"materialize": False, "cooldown_every": 3, "cooldown_seconds": 5.0}
+
+# 실행 조건 네 줄. 화면 글자 -> runner 결과 meta.conditions 의 칸
+CONDITION_ROWS = (
+    ("모델", "model"),
+    ("프롬프트 파일", "prompt"),
+    ("응답 형식 파일", "response_schema"),
+    ("기능 정의 파일", "menu"),
+)
 
 # session_state 자리
+RESULT_KEY = "test_result"           # {"dataset_id", "result"} 마지막으로 잰 결과
+RUN_ERROR_KEY = "test_run_error"     # 실행이 예외로 끝났을 때의 문장
 SELECTED_KEY = "test_selected_id"
-RUN_AT_KEY = "test_demo_run_at"
 LIST_VIEW_KEY = "test_list_view"     # 표를 마지막으로 그린 (보기, 검색어)
 LIST_ROUND_KEY = "test_list_round"   # (보기, 검색어)가 바뀐 횟수. 표 key 에 들어감
 
@@ -61,19 +82,24 @@ HEAD_HEIGHT = 520
 
 
 # ================================================================ 데이터
-def summarize(results: list[dict]) -> dict:
-    """요약 카드 다섯 개의 숫자.
+def summarize(result: dict | None) -> dict | None:
+    """요약 카드 다섯 개의 숫자. 결과가 없으면 None.
 
-    출력  {"total", "passed", "failed", "function", "input"}
-          function · input 은 그 단계 때문에 실패한 건수
+    출력  {"total", "passed", "failed", "function", "input", "error"}
+          function · input · error 는 그 단계 때문에 실패한 건수
+    규칙  runner 결과 summary.total 을 옮겨 적음. 여기서 세지 않음
     """
-    failed = [r for r in results if not r["passed"]]
+    if not result:
+        return None
+    total = result["summary"]["total"]
+    stages = total["failure_stages"]
     return {
-        "total": len(results),
-        "passed": len(results) - len(failed),
-        "failed": len(failed),
-        "function": sum(1 for r in failed if r.get("failure_stage") == "function"),
-        "input": sum(1 for r in failed if r.get("failure_stage") == "input"),
+        "total": total["runs"],
+        "passed": total["passed"],
+        "failed": total["runs"] - total["passed"],
+        "function": stages.get("function", 0),
+        "input": stages.get("input", 0),
+        "error": stages.get("error", 0),
     }
 
 
@@ -82,21 +108,21 @@ def _squash(text: str) -> str:
     return "".join(str(text).split()).lower()
 
 
-def filter_results(results: list[dict], view: str, query: str = "") -> list[dict]:
+def filter_results(rows: list[dict], view: str, query: str = "") -> list[dict]:
     """보기 필터와 발화 검색을 건 목록.
 
-    입력  view 는 FILTERS 중 하나. 모르는 값이면 전체
+    입력  runner 결과 cases. view 는 FILTERS 중 하나. 모르는 값이면 전체
     출력  원래 순서를 지킨 부분 목록
-    규칙  실패만은 성공이 아닌 것 전부. 기능 선택 · 인자 추출은 그 단계에서 실패한 것
+    규칙  실패만은 성공이 아닌 것 전부(실행 오류 포함). 기능 선택 · 인자 추출은 그 단계에서 실패한 것
           검색은 띄어쓰기를 무시한 부분 일치. 빈 검색어는 거르지 않음
     """
     if view == FAILED:
-        shown = [r for r in results if not r["passed"]]
+        shown = [r for r in rows if not r["passed"]]
     elif view in STAGE_LABELS.values():
         stage = next(k for k, v in STAGE_LABELS.items() if v == view)
-        shown = [r for r in results if not r["passed"] and r.get("failure_stage") == stage]
+        shown = [r for r in rows if not r["passed"] and r.get("failure_stage") == stage]
     else:
-        shown = list(results)
+        shown = list(rows)
 
     needle = _squash(query or "")
     if needle:
@@ -104,11 +130,11 @@ def filter_results(results: list[dict], view: str, query: str = "") -> list[dict
     return shown
 
 
-def verdict_label(result: dict) -> str:
+def verdict_label(row: dict) -> str:
     """최종 판정 한 마디. "성공" 또는 "실패 · 기능 선택" 꼴."""
-    if result["passed"]:
+    if row["passed"]:
         return "성공"
-    stage = STAGE_LABELS.get(result.get("failure_stage"))
+    stage = STAGE_LABELS.get(row.get("failure_stage"))
     return f"실패 · {stage}" if stage else "실패"
 
 
@@ -124,43 +150,57 @@ def display_value(value) -> str:
     return str(value)
 
 
-def field_rows(result: dict) -> list[dict]:
-    """인자 비교 줄. 정답표와 모델 출력에 나온 인자를 빠짐없이.
+def function_label(recipe_id: str | None) -> str | None:
+    """기능 번호 글자. "recipe_015" -> "기능 015". 없으면 None."""
+    if not recipe_id:
+        return None
+    return f"기능 {recipe_id.rsplit('_', 1)[-1]}"
 
-    출력  [{"name", "label", "answer", "model", "differs", "graded"}]
-    규칙  FIELD_ORDER 순서가 먼저, 그 밖의 인자는 정답표 · 모델 출력에 나온 순서
-          한쪽에만 있는 인자는 다른 쪽을 None 으로 봄
-          label 은 FIELD_LABELS 에 없으면 변수명 그대로
+
+def readable_reason(text: str) -> str:
+    """모델 판단 문장의 기능 번호를 화면 글자로. "recipe_061" -> "기능 061".
+
+    규칙  번호만 바꿈. 그 밖의 글자는 모델이 쓴 그대로
     """
-    answer = result["answer"].get("inputs") or {}
-    model = result["model_output"].get("inputs") or {}
-    names = [n for n in FIELD_ORDER if n in answer or n in model]
-    for name in [*answer, *model]:
-        if name not in names:
-            names.append(name)
+    return re.sub(r"\brecipe_(\d+)", r"기능 \1", text)
 
-    graded = set(result.get("graded_fields") or ())
+
+def field_rows(row: dict) -> list[dict]:
+    """인자 비교 줄. 정답표에 적은 인자와 모델이 낸 인자를 빠짐없이.
+
+    출력  [{"name", "label", "graded", "answer", "model", "in_model", "correct"}]
+    규칙  모델 출력 차례가 먼저, 정답표에만 있는 인자는 뒤에 정답표 차례로
+          graded 는 정답표에 그 이름이 적혔나. runner 의 spoken_fields 에 있는 이름임
+          correct 는 runner 가 맞댄 결과 그대로. 채점 제외면 None
+          answer 는 정답표에 적은 값. 채점 제외면 None
+          label 은 FIELD_LABELS 에 없으면 변수명 그대로
+    제약  값끼리 맞대지 않는다. 판정은 runner 결과에 있음
+    """
+    graded = {field["name"]: field for field in row.get("spoken_fields") or []}
+    model = ((row.get("actual") or {}).get("spoken")) or {}
+    names = [*model, *(name for name in graded if name not in model)]
     return [
         {
             "name": name,
             "label": FIELD_LABELS.get(name, name),
-            "answer": answer.get(name),
-            "model": model.get(name),
-            "differs": answer.get(name) != model.get(name),
             "graded": name in graded,
+            "answer": graded[name]["expected"] if name in graded else None,
+            "model": model.get(name),
+            "in_model": name in model,
+            "correct": graded[name]["correct"] if name in graded else None,
         }
         for name in names
     ]
 
 
-def list_frame(results: list[dict]) -> pd.DataFrame:
+def list_frame(rows: list[dict]) -> pd.DataFrame:
     """결과 목록 표. 한 발화 한 줄, 칸 넷."""
     return pd.DataFrame(
         {
-            "번호": [f"{r['id']:03d}" for r in results],
-            "발화": [r["utterance"] for r in results],
-            "결과": ["성공" if r["passed"] else "실패" for r in results],
-            "판정": ["" if r["passed"] else STAGE_LABELS.get(r.get("failure_stage"), "") for r in results],
+            "번호": [f"{r['case_id']:03d}" for r in rows],
+            "발화": [r["utterance"] for r in rows],
+            "결과": ["성공" if r["passed"] else "실패" for r in rows],
+            "판정": ["" if r["passed"] else STAGE_LABELS.get(r.get("failure_stage"), "") for r in rows],
         }
     )
 
@@ -171,28 +211,76 @@ def list_height(ratios: dict) -> int:
     return max(LIST_MIN_HEIGHT, min(LIST_MAX_HEIGHT, viewport - HEAD_HEIGHT))
 
 
+def run_conditions(result: dict | None) -> dict | None:
+    """실행 조건 네 줄. {화면 글자: 값}. 결과가 없으면 None.
+
+    규칙  runner 결과 meta.conditions 에서 옮김. 파일은 경로만 보임
+          조건을 못 읽은 결과면 그 까닭 한 줄
+    """
+    if not result:
+        return None
+    conditions = result["meta"].get("conditions") or {}
+    if "error" in conditions:
+        return {"실행 조건": conditions["error"]}
+    shown = {}
+    for label, key in CONDITION_ROWS:
+        value = conditions.get(key)
+        shown[label] = value.get("path") if isinstance(value, dict) else value
+    return {label: value if value is not None else NONE_TEXT for label, value in shown.items()}
+
+
+@st.cache_data(show_spinner=False)
+def _case_count(path: str, modified: int) -> int | None:
+    """정답표에서 기본으로 도는 발화 수. 파일이 바뀔 때만 다시 읽음. 못 읽으면 None."""
+    try:
+        suite = evaluation_suite.load(Path(path))
+    except (OSError, ValueError):
+        return None
+    return sum(1 for case in suite["cases"] if case["enabled"])
+
+
+def dataset_label(entry: dict) -> str:
+    """테스트 세트 고르기에 보일 이름. 발화 수를 셀 수 있으면 붙임."""
+    path = Path(entry["path"])
+    count = _case_count(str(path), path.stat().st_mtime_ns) if path.is_file() else None
+    return f"{entry['label']} · {count}개 발화" if count is not None else entry["label"]
+
+
 # ================================================================ 마크업
 def _esc(value) -> str:
     """HTML 에 넣을 글자."""
     return html.escape(str(value))
 
 
-def summary_markup(summary: dict) -> str:
-    """요약 카드 다섯."""
-    total = summary["total"] or 1
+def summary_markup(summary: dict | None) -> str:
+    """요약 카드 다섯. 결과가 없으면 숫자 자리에 줄표만."""
 
     def card(label, number, tone="", note=""):
         note_html = f'<div class="tt-kpi-note">{_esc(note)}</div>' if note else ""
         return (
             f'<div class="tt-kpi {tone}"><div class="tt-kpi-label">{_esc(label)}</div>'
-            f'<div class="tt-kpi-num">{number}</div>{note_html}</div>'
+            f'<div class="tt-kpi-num">{_esc(number)}</div>{note_html}</div>'
         )
 
+    if summary is None:
+        cards = [
+            card("전체", EMPTY_NUMBER),
+            card("성공", EMPTY_NUMBER, "ok"),
+            card("실패", EMPTY_NUMBER, "ng"),
+            card(STAGE_LABELS["function"], EMPTY_NUMBER, "cause"),
+            card(STAGE_LABELS["input"], EMPTY_NUMBER, "cause"),
+        ]
+        return '<div class="tt-kpis tt-kpis-empty">' + "".join(cards) + "</div>"
+
+    total = summary["total"] or 1
+    failed_note = f"{summary['failed'] / total:.1%}"
+    if summary["error"]:
+        failed_note += f" · {STAGE_LABELS['error']} {summary['error']}"
     return '<div class="tt-kpis">' + "".join(
         [
             card("전체", summary["total"], note="발화"),
             card("성공", summary["passed"], "ok", f"{summary['passed'] / total:.1%}"),
-            card("실패", summary["failed"], "ng", f"{summary['failed'] / total:.1%}"),
+            card("실패", summary["failed"], "ng", failed_note),
             card(STAGE_LABELS["function"], summary["function"], "cause", "실패 원인"),
             card(STAGE_LABELS["input"], summary["input"], "cause", "실패 원인"),
         ]
@@ -215,13 +303,24 @@ def _value_markup(value) -> str:
     return f'<span class="{css}">{_esc(text)}</span>'
 
 
-def _function_markup(side: dict) -> str:
-    """기능 번호와 설명. 고르지 않았으면 선택 없음."""
-    label = side.get("function_label")
-    if not label:
-        return '<div class="tt-fn tt-none">선택 없음</div>'
-    desc = side.get("function_description") or ""
-    return f'<div class="tt-fn">{_esc(label)}</div><div class="tt-desc">{_esc(desc)}</div>'
+def _muted_markup(text: str) -> str:
+    """값 자리에 넣는 흐린 글자."""
+    return f'<span class="tt-val tt-none">{_esc(text)}</span>'
+
+
+def _function_markup(recipe_ids: list, functions: dict, empty: str = "선택 없음") -> str:
+    """기능 번호와 설명. 고르지 않았으면 empty 글자.
+
+    규칙  기능이 여럿이면 차례대로 모두 보임. 설명은 runner 결과의 meta.functions
+    """
+    shown = [rid for rid in recipe_ids if rid]
+    if not shown:
+        return f'<div class="tt-fn tt-none">{_esc(empty)}</div>'
+    return "".join(
+        f'<div class="tt-fn">{_esc(function_label(rid))}</div>'
+        f'<div class="tt-desc">{_esc(functions.get(rid) or "")}</div>'
+        for rid in shown
+    )
 
 
 def _key_markup(label: str, name: str | None = None) -> str:
@@ -230,19 +329,18 @@ def _key_markup(label: str, name: str | None = None) -> str:
     return f'<div class="tt-c tt-key"><div class="tt-key-label">{_esc(label)}</div>{sub}</div>'
 
 
-def _pair_markup(key_html: str, answer_html: str, model_html: str, *, differs: bool, graded: bool = True) -> str:
+def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: bool, graded: bool = True) -> str:
     """비교 한 줄. 줄 머리 · 정답표 · AI 모델 출력.
 
-    규칙  채점에 쓰는 칸이 다르면 모델 출력 칸을 강조하고 「차이」를 닮
-          채점에 안 쓰는 칸은 흐리게 둠. 값이 다르면 강조 대신 「채점 제외」만 닮
+    입력  wrong 은 runner 가 틀렸다고 판정한 칸인가
+    규칙  채점하는 칸이 틀렸으면 모델 출력 칸을 강조하고 「차이」를 닮
+          채점 제외 칸은 줄 전체를 흐리게 둠. 강조하지 않음
     """
     tag, cell = "", "tt-c tt-model"
     row = "" if graded else " tt-ungraded"
-    if differs and graded:
+    if wrong and graded:
         cell += " tt-diff"
         tag = '<span class="tt-tag tt-tag-diff">차이</span>'
-    elif differs:
-        tag = '<span class="tt-tag tt-tag-muted">채점 제외</span>'
     return (
         f'<div class="tt-row{row}">{key_html}'
         f'<div class="tt-c tt-answer">{answer_html}</div>'
@@ -250,16 +348,21 @@ def _pair_markup(key_html: str, answer_html: str, model_html: str, *, differs: b
     )
 
 
-def _extra_markup(model: dict) -> str:
-    """AI 모델 출력의 부가 정보. 판정 상태 · 후보 기능 · 판단."""
-    status = model.get("status")
-    status_text = STATUS_LABELS.get(status, status or NONE_TEXT)
-    picked = model.get("function_id")
+def _extra_markup(row: dict) -> str:
+    """AI 모델 출력의 부가 정보. 판정 상태 · 후보 기능 · 판단. 실행 오류면 오류 문장."""
+    model = row.get("actual") or {}
+    if row.get("error"):
+        status_text = STAGE_LABELS["error"]
+        reason = row["error"]
+    else:
+        status = model.get("status")
+        status_text = STATUS_LABELS.get(status, status or NONE_TEXT)
+        reason = readable_reason(model.get("reason") or NONE_TEXT)
+    picked = model.get("recipe_id")
     chips = "".join(
-        f'<span class="tt-chip{" tt-chip-on" if cid == picked else ""}">기능 {_esc(cid.split("_")[-1])}</span>'
-        for cid in model.get("candidate_ids") or []
+        f'<span class="tt-chip{" tt-chip-on" if cid == picked else ""}">{_esc(function_label(cid))}</span>'
+        for cid in model.get("candidate_recipe_ids") or []
     ) or f'<span class="tt-val tt-none">{NONE_TEXT}</span>'
-    reason = model.get("reason") or NONE_TEXT
     return (
         '<div class="tt-extra">'
         '<div class="tt-extra-head">AI 모델 출력 · 판단 내용</div>'
@@ -272,20 +375,24 @@ def _extra_markup(model: dict) -> str:
     )
 
 
-def detail_markup(result: dict) -> str:
+def detail_markup(row: dict, functions: dict) -> str:
     """선택한 발화 상세. 성공 · 실패가 같은 틀.
 
+    입력  runner 결과 cases 한 줄 · meta.functions
     규칙  맨 위 한 줄에 번호 · 발화 · 판정
-          정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부
+          정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부(field_rows)
+          기능 칸 강조는 runner 의 recipe_correct, 인자 칸 강조는 spoken_fields 의 correct
+          정답표에 안 적은 인자는 정답표 칸에 「채점 제외」, 모델 칸은 값을 흐리게
           그 아래 AI 모델 출력의 판정 상태 · 후보 기능 · 판단
     """
-    answer, model = result["answer"], result["model_output"]
-    tone = "ok" if result["passed"] else "ng"
+    model = row.get("actual") or {}
+    errored = bool(row.get("error"))
+    tone = "ok" if row["passed"] else "ng"
     head = (
         '<div class="tt-head">'
-        f'<span class="tt-no">{result["id"]:03d}</span>'
-        f'<span class="tt-utt">{_esc(result["utterance"])}</span>'
-        f'<span class="tt-badge {tone}">● {_esc(verdict_label(result))}</span>'
+        f'<span class="tt-no">{row["case_id"]:03d}</span>'
+        f'<span class="tt-utt">{_esc(row["utterance"])}</span>'
+        f'<span class="tt-badge {tone}">● {_esc(verdict_label(row))}</span>'
         "</div>"
     )
 
@@ -298,64 +405,123 @@ def detail_markup(result: dict) -> str:
         '<div class="tt-sec">기능 선택</div>',
         _pair_markup(
             _key_markup("기능"),
-            _function_markup(answer),
-            _function_markup(model),
-            differs=answer.get("function_id") != model.get("function_id"),
+            _function_markup(row["expected"]["recipe_ids"], functions),
+            _function_markup([model.get("recipe_id")], functions, STAGE_LABELS["error"] if errored else "선택 없음"),
+            wrong=not row["recipe_correct"],
         ),
         '<div class="tt-sec">인자 추출</div>',
     ]
-    for f in field_rows(result):
+    for f in field_rows(row):
         rows.append(
             _pair_markup(
                 _key_markup(f["label"], f["name"]),
-                _value_markup(f["answer"]),
-                _value_markup(f["model"]),
-                differs=f["differs"],
+                _value_markup(f["answer"]) if f["graded"] else _muted_markup(UNGRADED_TEXT),
+                _value_markup(f["model"]) if f["in_model"] else _muted_markup(EMPTY_NUMBER),
+                wrong=f["correct"] is False,
                 graded=f["graded"],
             )
         )
 
-    return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(model)}'
+    return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(row)}'
+
+
+def _note_markup(text: str) -> str:
+    """결과 위에 띄우는 알림 한 줄. 멈춘 까닭 · 실행 오류 문장."""
+    return f'<div class="tt-note">{_esc(text)}</div>'
+
+
+# ================================================================ 실행
+def run_selected(dataset_id: str, on_progress=None) -> dict:
+    """고른 정답표를 dev/evaluation 공통 runner 로 잰 결과.
+
+    규칙  runner.run_dataset 에 RUN_OPTIONS 를 넘김. 판정은 전부 runner 가 함
+          runner 를 여기서 import 함. 탭을 열기만 해서는 계기판 모듈을 안 읽음
+    제약  판정 · 채점을 여기서 하지 않는다
+    """
+    from dev.evaluation import runner
+
+    return runner.run_dataset(dataset_id, progress=on_progress, **RUN_OPTIONS)
+
+
+def _execute(dataset_id: str, slot) -> None:
+    """테스트 실행 한 번. 진행 막대를 slot 에 그리고, 끝나면 결과를 session_state 에 두고 다시 그림.
+
+    규칙  진행은 잰 수 / 전체 수. 발화 하나를 잴 때마다 막대가 움직임
+          예외로 끝나면 문장을 RUN_ERROR_KEY 에 두고 지난 결과는 안 지움
+          새 결과가 들어오면 고른 발화 · 표 선택을 처음으로 돌림
+    """
+    with slot.container():
+        bar = st.progress(0.0, text="테스트 실행 중 · 준비")
+
+    def on_progress(done: int, total: int, row: dict) -> None:
+        bar.progress(done / total if total else 1.0, text=f"테스트 실행 중 · {done} / {total}")
+
+    st.session_state.pop(RUN_ERROR_KEY, None)
+    try:
+        result = run_selected(dataset_id, on_progress)
+    except Exception as exc:  # noqa: BLE001 — 화면이 통째로 죽지 않고 까닭을 보인다.
+        st.session_state[RUN_ERROR_KEY] = f"테스트를 실행하지 못했습니다 — {type(exc).__name__}: {exc}"
+    else:
+        st.session_state[RESULT_KEY] = {"dataset_id": dataset_id, "result": result}
+        for key in (SELECTED_KEY, LIST_VIEW_KEY):
+            st.session_state.pop(key, None)
+    st.rerun()
 
 
 # ================================================================ 그리기
-def _render_header() -> None:
-    """제목 · 테스트 세트 · 테스트 실행 · 실행 조건.
+def _render_header(stored: dict) -> tuple[str, bool, dict | None]:
+    """제목 · 테스트 세트 · 테스트 실행.
 
-    규칙  테스트 실행은 시안 결과를 다시 보이고 시각만 남김
-    제약  백엔드 · LLM 을 부르지 않는다
+    입력  session_state 의 마지막 실행 {"dataset_id", "result"}
+    출력  (고른 정답표 id, 테스트 실행을 눌렀나, 고른 정답표의 마지막 결과 또는 None)
+    제약  여기서 평가를 부르지 않는다. 누른 것만 알림
     """
+    entries = evaluation_suite.datasets()
+    labels = {entry["id"]: dataset_label(entry) for entry in entries}
     title, picker, run = st.columns([5, 3, 1.2], vertical_alignment="bottom")
     with picker:
-        st.selectbox("테스트 세트", [TEST_SET_LABEL], key="test_set", persist_state="page")
+        dataset_id = st.selectbox(
+            "테스트 세트", list(labels), format_func=labels.get, key="test_set", persist_state="page"
+        )
     with run:
-        if st.button("테스트 실행", type="primary", key="test_run", width="stretch"):
-            st.session_state[RUN_AT_KEY] = datetime.now().strftime("%H:%M:%S")
-            st.toast("화면 시안 결과를 다시 표시했습니다.")
+        clicked = st.button("테스트 실행", type="primary", key="test_run", width="stretch")
+    result = stored.get("result") if stored.get("dataset_id") == dataset_id else None
     with title:
-        run_at = st.session_state.get(RUN_AT_KEY)
-        sub = "발화별 기능 선택 및 인자 추출 결과" + (f" · {run_at} 실행" if run_at else "")
+        sub = "발화별 기능 선택 및 인자 추출 결과"
+        if result:
+            started = datetime.datetime.fromisoformat(result["meta"]["started_at"])
+            sub += f" · {started:%m-%d %H:%M} 실행"
         st.markdown(
             f'<div class="tt-title">AI 기능 테스트</div><div class="tt-sub">{_esc(sub)}</div>',
             unsafe_allow_html=True,
         )
+    return dataset_id, clicked, result
 
+
+def _render_conditions(result: dict | None) -> None:
+    """실행 조건 (접힘). 결과가 없으면 비어 있다고만."""
     with st.expander("실행 조건", expanded=False):
-        st.markdown(conditions_markup(mock_run_conditions()), unsafe_allow_html=True)
+        conditions = run_conditions(result)
+        if conditions is None:
+            st.markdown('<div class="tt-empty">테스트를 실행하면 표시됩니다.</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(conditions_markup(conditions), unsafe_allow_html=True)
 
 
-def _render_filters(summary: dict) -> tuple[str, str]:
+def _render_filters(summary: dict | None) -> tuple[str, str]:
     """보기 필터와 발화 검색.
 
     출력  (보기, 검색어)
-    규칙  필터 글자 옆에 그 보기의 건수를 붙임
+    규칙  결과가 있으면 필터 글자 옆에 그 보기의 건수를 붙임
     """
-    counts = {
-        ALL: summary["total"],
-        FAILED: summary["failed"],
-        STAGE_LABELS["function"]: summary["function"],
-        STAGE_LABELS["input"]: summary["input"],
-    }
+    counts = {}
+    if summary is not None:
+        counts = {
+            ALL: summary["total"],
+            FAILED: summary["failed"],
+            STAGE_LABELS["function"]: summary["function"],
+            STAGE_LABELS["input"]: summary["input"],
+        }
     left, right = st.columns([3, 2], vertical_alignment="center")
     with left:
         view = st.segmented_control(
@@ -363,7 +529,7 @@ def _render_filters(summary: dict) -> tuple[str, str]:
             FILTERS,
             default=ALL,
             required=True,
-            format_func=lambda v: f"{v}  {counts[v]}",
+            format_func=lambda v: f"{v}  {counts[v]}" if v in counts else v,
             key="test_filter",
             label_visibility="collapsed",
             persist_state="page",
@@ -412,6 +578,7 @@ def _list_key(view: str, query: str) -> str:
     규칙  같은 보기 안에서는 key 가 그대로라 표가 안 새로 붙고 스크롤 자리가 남음
           보기 · 검색어가 바뀌면 key 가 바뀌어 표가 새로 붙고 selection_default 가 다시 먹음.
           전에 봤던 보기로 돌아와도 그때의 선택이 아니라 지금 고른 발화를 따름
+          새 결과가 들어오면 _execute 가 LIST_VIEW_KEY 를 지워 표가 새로 붙음
     """
     round_ = st.session_state.get(LIST_ROUND_KEY, 0)
     if st.session_state.get(LIST_VIEW_KEY) != (view, query):
@@ -421,29 +588,35 @@ def _list_key(view: str, query: str) -> str:
     return f"test_list_{round_}"
 
 
-def _render_result_list(shown: list[dict], view: str, query: str, height: int) -> dict | None:
+def _render_result_list(shown: list[dict], view: str, query: str, height: int, *, ran: bool) -> dict | None:
     """결과 목록. 한 발화 한 줄, 고정 높이 안에서 스크롤.
 
-    출력  지금 고른 결과. 목록이 비었으면 None
+    출력  지금 고른 결과 줄. 목록이 비었으면 None
     규칙  행 고르기는 st.dataframe 의 행 선택. 발화 글자를 눌러도 골라지게 칸 선택을
           함께 켜고, 칸을 누르면 _keep_row_selected 가 그 줄 선택으로 바꿈
           표 key 는 _list_key 가 정함. 같은 보기 안에서 행을 눌러도 표가 새로 안 붙으므로
           스크롤 자리가 그대로임
           보기를 바꾸면 고른 발화가 새 목록에 있으면 그 줄, 없으면 첫 줄을 고름
+          아직 안 돌렸으면(ran 거짓) 빈 목록 안내
     제약  single-row-required 를 쓰지 않는다.
           칸을 누르면 행 선택이 비었다고 보고 첫 줄로 되돌림. 발화를 눌렀는데 001 이 뜸
     """
+    count = f"{len(shown)}건" if ran else ""
     st.markdown(
-        f'<div class="tt-pane-title">테스트 결과 <span>{len(shown)}건</span></div>',
+        f'<div class="tt-pane-title">테스트 결과 <span>{count}</span></div>',
         unsafe_allow_html=True,
     )
     if not shown:
+        message = (
+            "조건에 맞는 발화가 없습니다." if ran
+            else "테스트 세트를 선택하고 실행하면<br>발화별 기능 선택과 인자 추출 결과를 확인할 수 있습니다."
+        )
         with st.container(height=height, border=True):
-            st.markdown('<div class="tt-empty">조건에 맞는 발화가 없습니다.</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="tt-empty">{message}</div>', unsafe_allow_html=True)
         return None
 
     remembered = st.session_state.get(SELECTED_KEY)
-    default = next((i for i, r in enumerate(shown) if r["id"] == remembered), 0)
+    default = next((i for i, r in enumerate(shown) if r["case_id"] == remembered), 0)
 
     styled = list_frame(shown).style.map(_result_tone, subset=["결과"]).map(
         lambda v: "color: #E5534B;" if v else "", subset=["판정"]
@@ -452,7 +625,7 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int) -
     event = st.dataframe(
         styled,
         key=key,
-        on_select=partial(_keep_row_selected, key, [r["id"] for r in shown]),
+        on_select=partial(_keep_row_selected, key, [r["case_id"] for r in shown]),
         selection_mode=["single-row", "single-cell"],
         selection_default={"selection": {"rows": [default]}},
         hide_index=True,
@@ -469,42 +642,56 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int) -
 
     rows = event.selection.rows if event is not None else []
     picked = rows[0] if rows and 0 <= rows[0] < len(shown) else default
-    st.session_state[SELECTED_KEY] = shown[picked]["id"]
+    st.session_state[SELECTED_KEY] = shown[picked]["case_id"]
     return shown[picked]
 
 
-def _render_result_detail(result: dict | None, height: int) -> None:
+def _render_result_detail(row: dict | None, functions: dict, height: int) -> None:
     """선택한 발화 상세. 고정 높이 안에서 스크롤."""
     st.markdown('<div class="tt-pane-title">선택한 발화 상세</div>', unsafe_allow_html=True)
     with st.container(height=height, border=True, key="test_detail"):
-        if result is None:
-            st.markdown('<div class="tt-empty">목록에서 발화를 고르면 여기 나옵니다.</div>', unsafe_allow_html=True)
+        if row is None:
+            st.markdown('<div class="tt-empty">결과에서 발화를 선택하면 상세가 표시됩니다.</div>', unsafe_allow_html=True)
             return
-        st.markdown(detail_markup(result), unsafe_allow_html=True)
+        st.markdown(detail_markup(row, functions), unsafe_allow_html=True)
 
 
 def render_test_tab(ratios: dict) -> None:
     """테스트 탭 전체.
 
     입력  config.layout_ratios() 결과. 창 높이로 목록 높이를 정함
-    제약  백엔드 · LLM 을 부르지 않는다. 결과는 mock_test_results() 하나에서만 옴
+    규칙  결과는 session_state 의 마지막 실행 하나. 고른 정답표의 것일 때만 그림
+          테스트 실행을 누른 회차에만 _execute 가 runner 를 부름
+    제약  테스트 실행을 누르지 않은 회차에는 평가 · LLM 을 부르지 않는다.
+          필터 · 검색 · 행 선택 · 탭 전환이 다시 재게 하면 한 번에 수십 분이 듦
     """
-    results = mock_test_results()
-    summary = summarize(results)
-
     with st.container(key="test_tab"):
         st.markdown(panel_css(), unsafe_allow_html=True)
-        _render_header()
+        dataset_id, clicked, result = _render_header(st.session_state.get(RESULT_KEY) or {})
+
+        _render_conditions(result)
+        status_slot = st.empty()
+        if clicked:
+            _execute(dataset_id, status_slot)
+        if st.session_state.get(RUN_ERROR_KEY):
+            status_slot.markdown(_note_markup(st.session_state[RUN_ERROR_KEY]), unsafe_allow_html=True)
+        elif result and result["meta"].get("stopped"):
+            status_slot.markdown(
+                _note_markup(f"테스트가 중간에 멈췄습니다 — {result['meta']['stopped']}"), unsafe_allow_html=True
+            )
+
+        summary = summarize(result)
         st.markdown(summary_markup(summary), unsafe_allow_html=True)
         view, query = _render_filters(summary)
-        shown = filter_results(results, view, query)
+        rows = result["cases"] if result else []
+        shown = filter_results(rows, view, query)
 
         height = list_height(ratios)
         left, right = st.columns([63, 37], gap="medium")
         with left:
-            selected = _render_result_list(shown, view, query, height)
+            selected = _render_result_list(shown, view, query, height, ran=result is not None)
         with right:
-            _render_result_detail(selected, height)
+            _render_result_detail(selected, (result or {}).get("meta", {}).get("functions") or {}, height)
 
 
 # ================================================================ CSS
@@ -567,6 +754,11 @@ def panel_css() -> str:
 .st-key-test_tab .tt-pane-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin-top: 0.3rem; }
 .st-key-test_tab .tt-pane-title span { font-weight: 400; opacity: 0.65; margin-left: 0.3rem; }
 .st-key-test_tab .tt-empty { opacity: 0.6; font-size: 0.9rem; padding: 1.5rem 0.5rem; text-align: center; }
+.st-key-test_tab .tt-kpis-empty .tt-kpi-num { opacity: 0.35; color: inherit; }
+.st-key-test_tab .tt-note {
+  font-size: 0.84rem; padding: 0.45rem 0.75rem; border-radius: 8px;
+  color: var(--tt-ng); background: rgba(229, 83, 75, 0.10); overflow-wrap: anywhere;
+}
 
 /* ---------------------------------------------- 상세 머리 한 줄 */
 .st-key-test_tab .tt-head {
@@ -622,7 +814,6 @@ def panel_css() -> str:
   font-size: 0.66rem; font-weight: 600; padding: 0.05rem 0.4rem; border-radius: 999px;
 }
 .st-key-test_tab .tt-tag-diff { color: var(--tt-ng); border: 1px solid rgba(229, 83, 75, 0.5); }
-.st-key-test_tab .tt-tag-muted { border: 1px solid var(--tt-line); opacity: 0.85; }
 .st-key-test_tab .tt-model:has(.tt-tag) .tt-val,
 .st-key-test_tab .tt-model:has(.tt-tag) .tt-desc { padding-right: 3.8rem; display: inline-block; }
 

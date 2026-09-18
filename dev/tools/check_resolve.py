@@ -415,17 +415,19 @@ def _spoken_values_of(result: dict) -> tuple:
           이 계약에서는 안 말한 것이 정답인 자리가 있음
           목록은 대괄호 없이 이어 적음. Counter 의 key 라 해시가 돼야 함
     """
-    rows = []
-    for name in SPOKEN_VALUE_NAMES:
-        value = result.get(name)
-        if value is None:
-            said = NULL_MARK
-        elif isinstance(value, list):
-            said = ",".join(str(item) for item in value)
-        else:
-            said = str(value)
-        rows.append((name, said))
-    return tuple(rows)
+    return tuple((name, _value_mark(result.get(name))) for name in SPOKEN_VALUE_NAMES)
+
+
+def _value_mark(value) -> str:
+    """이름 있는 값 하나의 표 글자. 정답표 기대값과 응답 값을 같은 글자로 맞댈 때 씀.
+
+    규칙  None 은 NULL_MARK. 목록은 대괄호 없이 쉼표로 이음. 그 밖에는 str
+    """
+    if value is None:
+        return NULL_MARK
+    if isinstance(value, list):
+        return ",".join(str(item) for item in value)
+    return str(value)
 
 
 def _spoken_value_verdict(number: int, seen: Counter) -> tuple:
@@ -448,9 +450,7 @@ def _spoken_value_verdict(number: int, seen: Counter) -> tuple:
         bad = [
             f"{name}={said.get(name, '-')}"
             for name, value in wanted.items()
-            if said.get(name) != (NULL_MARK if value is None else
-                                  ",".join(str(item) for item in value)
-                                  if isinstance(value, list) else str(value))
+            if said.get(name) != _value_mark(value)
         ]
         if bad:
             wrong[" · ".join(bad)] += count

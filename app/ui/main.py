@@ -85,7 +85,7 @@ st.session_state.setdefault("utterance", "")
 st.session_state.setdefault("view", None)
 
 # ================================================================ 탭
-# 테스트 탭은 백엔드를 부르지 않는다. 열려 있을 때는 그것만 그리고 멈춘다.
+# 테스트 탭은 「테스트 실행」을 누를 때만 평가(/resolve)를 부른다. 열려 있을 때는 그것만 그리고 멈춘다.
 # 그래프 조회 · 따라 보기 주기 요청이 테스트 화면 뒤에서 돌지 않게 탭을 게으르게 연다.
 service_tab, test_tab = st.tabs(["서비스 화면", "테스트"], key="main_tabs", on_change="rerun")
 if test_tab.open:

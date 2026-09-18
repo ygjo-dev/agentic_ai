@@ -12,6 +12,10 @@ import yaml
 
 SUITE_PATH = Path(__file__).resolve().parent / "resolve_regression.yaml"
 
+# 화면 · 계기판이 이름으로 고를 수 있는 정답표. (id, 사람이 읽는 이름, 경로)
+# 정답표 파일을 더하면 여기 한 줄을 더한다.
+DATASETS = (("resolve_regression", "발화 회귀 테스트", SUITE_PATH),)
+
 # 이 모듈이 읽을 줄 아는 파일 판.
 SUITE_VERSION = 1
 
@@ -81,6 +85,14 @@ def load(path: Path | None = None) -> dict:
         raise fail(f"marks 가 없는 case 를 가리킨다: {stray}")
 
     return document
+
+
+def datasets() -> list[dict]:
+    """고를 수 있는 정답표 목록. [{id, label, path}] DATASETS 차례.
+
+    제약  파일을 여기서 읽지 않는다. 읽는 것은 load 임
+    """
+    return [{"id": dataset_id, "label": label, "path": path} for dataset_id, label, path in DATASETS]
 
 
 def utterances(suite: dict) -> list[tuple]:

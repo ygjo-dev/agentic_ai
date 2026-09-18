@@ -153,3 +153,126 @@ def test_a_negative_cooldown_is_refused_before_anything_is_measured(monkeypatch)
     for argv in (["runner", "--cooldown-every", "-1"], ["runner", "--cooldown-seconds", "-1"]):
         monkeypatch.setattr(runner.sys, "argv", argv)
         assert runner.main() == 2, argv
+
+
+# ── 발화 판정 ────────────────────────────────────────────────────────
+#
+# 화면 테스트 탭은 runner 결과의 passed · failure_stage · spoken_fields 를 읽기만 한다.
+# 판정 규칙이 여기 하나뿐이라 여기서 못 박는다. 진짜 정답표를 안 쓴다 — 규칙마다
+# 한 줄씩 지어낸 발화로 본다.
+def _verdict_suite():
+    """규칙 하나에 발화 하나. 묶음은 하나."""
+    from dev.evaluation import suite as suite_module
+
+    def case(number, recipe_id, spoken):
+        expected = {"recipe_ids": [recipe_id]}
+        if spoken is not None:
+            expected["spoken"] = spoken
+        return {"id": number, "group": suite_module.GROUP_IDS[0], "utterance": f"발화 {number}",
+                "enabled": True, "expected": expected}
+
+    return {
+        "version": 1,
+        "groups": [{"id": name, "label": f"묶음{name}"} for name in suite_module.GROUP_IDS],
+        "cases": [
+            case(1, "recipe_010", {"argument": "철도"}),
+            case(2, "recipe_012", {"admin_level": None}),
+            case(3, "recipe_012", {"admin_level": None}),
+            case(4, "recipe_010", {"argument": "철도"}),
+            case(5, "recipe_061", {"future_field": "값"}),
+            case(6, "recipe_001", None),
+            case(7, "recipe_001", None),
+        ],
+    }
+
+
+# 발화 번호 -> 가짜 /resolve 응답. 7 은 터진다.
+_VERDICT_RESPONSES = {
+    1: {"recipe_id": "recipe_010", "argument": "철도", "travel_mode": "대중교통", "minutes": None, "admin_level": "시군구"},
+    2: {"recipe_id": "recipe_012", "argument": "시군구", "admin_level": None},
+    3: {"recipe_id": "recipe_012", "argument": None, "admin_level": "시군구"},
+    4: {"recipe_id": "recipe_045", "argument": "틀림"},
+    5: {"recipe_id": "recipe_061", "argument": "오송역", "future_field": "값", "another_field": [10, 20]},
+    6: {"recipe_id": "recipe_001", "argument": "오송역"},
+}
+
+
+def _verdict_rows(materialize=False):
+    """_verdict_suite 를 가짜 resolve 로 돌린 결과 줄과 결과 한 벌. ({번호: 줄}, 결과)."""
+    from dev.evaluation import runner
+
+    def resolve(utterance):
+        number = int(utterance.split()[-1])
+        if number not in _VERDICT_RESPONSES:
+            raise RuntimeError("터짐")
+        response = _VERDICT_RESPONSES[number]
+        return {"reason": "까닭", "status": "SELECT", "candidate_recipe_ids": [response["recipe_id"]],
+                "paths": {}, **response}
+
+    result = runner.run(_verdict_suite(), resolve=resolve, materialize=materialize)
+    return {row["case_id"]: row for row in result["cases"]}, result
+
+
+def test_only_the_values_written_in_the_answer_sheet_are_graded():
+    """정답표에 argument 만 적었으면 travel_mode · admin_level 이 무엇이어도 안 본다."""
+    rows, _ = _verdict_rows()
+
+    assert [field["name"] for field in rows[1]["spoken_fields"]] == ["argument"]
+    assert (rows[1]["passed"], rows[1]["failure_stage"]) == (True, None)
+
+
+def test_a_null_written_in_the_answer_sheet_is_graded_as_null():
+    """key 가 있고 값이 null 이면 null 이 정답이다. 값을 지어내면 인자 추출 실패다."""
+    rows, _ = _verdict_rows()
+
+    assert rows[2]["spoken_fields"] == [{"name": "admin_level", "expected": None, "actual": None, "correct": True}]
+    assert rows[2]["passed"] is True
+    assert (rows[3]["passed"], rows[3]["failure_stage"]) == (False, "input")
+
+
+def test_a_wrong_function_is_a_function_failure_even_when_values_are_also_wrong():
+    """기능과 값이 함께 틀리면 기능 선택 실패로 센다. 고르기가 먼저다."""
+    rows, _ = _verdict_rows()
+
+    assert rows[4]["spoken_correct"] is False
+    assert (rows[4]["passed"], rows[4]["failure_stage"]) == (False, "function")
+
+
+def test_a_value_name_the_runner_does_not_know_is_graded_and_kept():
+    """새 인자가 생겨도 runner 를 안 고친다. 정답표에 적으면 채점하고, 모델이 내면 결과에 남는다."""
+    rows, _ = _verdict_rows()
+
+    assert rows[5]["spoken_fields"] == [{"name": "future_field", "expected": "값", "actual": "값", "correct": True}]
+    assert rows[5]["passed"] is True
+    assert rows[5]["actual"]["spoken"] == {"argument": "오송역", "future_field": "값", "another_field": [10, 20]}
+
+
+def test_the_selection_keys_are_not_reported_as_values():
+    """reason · status · recipe_id · 후보 · paths 는 고르기 칸이라 인자 목록에 안 든다."""
+    rows, _ = _verdict_rows()
+
+    assert set(rows[6]["actual"]["spoken"]) == {"argument"}
+
+
+def test_an_error_is_its_own_failure_stage_and_the_summary_adds_up():
+    """오류는 모델 출력이 없는 실패다. 성공과 실패 단계 셋을 더하면 시행 횟수다."""
+    rows, result = _verdict_rows()
+
+    assert (rows[7]["passed"], rows[7]["failure_stage"]) == (False, "error")
+    total = result["summary"]["total"]
+    assert total["passed"] == 4
+    assert total["failure_stages"] == {"function": 1, "input": 1, "error": 1}
+
+
+def test_the_utterance_verdict_does_not_read_the_materialize_result(monkeypatch):
+    """materialize 가 READY 가 아니어도 발화 판정은 그대로다. 배선은 실행 쪽 판정이다."""
+    from dev.evaluation import runner
+
+    plain, _ = _verdict_rows()
+    monkeypatch.setattr(runner, "materialized", lambda response, context, now: {"status": "UNWIRED", "workflow": None})
+    built, _ = _verdict_rows(materialize=True)
+
+    assert {row["materialize"]["status"] for number, row in built.items() if number != 7} == {"UNWIRED"}
+    assert {n: (r["passed"], r["failure_stage"]) for n, r in built.items()} == {
+        n: (r["passed"], r["failure_stage"]) for n, r in plain.items()
+    }
