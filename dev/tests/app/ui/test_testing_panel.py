@@ -19,11 +19,16 @@ from dev.evaluation import suite as suite_module
 BANNED = ("Recipe", "recipe", "Resolve", "resolve", "Semantic", "semantic", "Menu",
           "Workflow", "Materializ", "기대", "실제", "None", "null", "READY", "UNWIRED", "NOTHING_TO_CALL")
 
+# 이 화면이 재지 않는 것 · 옛 이름. 어디에도 보이면 안 됨
+RETIRED = ("실행 준비", "처리 결과", "채점 제외", "발화 성공", "걸린 시간", "실행 조건", "응답 시간",
+           "READY", "MISSING_ARGUMENT", "°C")
+
 FUNCTIONS = {
     "recipe_010": "지역·당선인·정당을 대면 공약을 검색해 보여준다.",
     "recipe_045": "장소 이름을 말하면 둘레 인구를 낸다.",
     "recipe_061": "출발할 장소에서 닿는 범위를 그린다.",
     "recipe_012": "지역별 인구 수와 순위를 낸다.",
+    "recipe_005": "행정구역 이름으로 경계를 조회한다.",
 }
 
 
@@ -41,7 +46,7 @@ SUITE = {
     "cases": [
         _case(1, "철도 공약 모아줘", "recipe_010", {"argument": "철도"}),
         _case(2, "오송역 둘레 인구", "recipe_045"),
-        _case(3, "청주 서원 시군구 인구", "recipe_012", {"admin_level": "시군구"}),
+        _case(3, "청주 서원 시군구 경계", "recipe_005", {"argument": "청주 서원", "admin_level": "시군구"}),
         _case(4, "오송역에서 걸어서 10분", "recipe_061", {"travel_mode": "도보", "minutes": [10]}),
         _case(5, "터지는 발화", "recipe_045"),
     ],
@@ -50,7 +55,7 @@ SUITE = {
 RESPONSES = {
     1: {"recipe_id": "recipe_010", "argument": "철도", "travel_mode": "대중교통", "minutes": None, "admin_level": "시군구"},
     2: {"recipe_id": "recipe_045", "argument": "오송역", "travel_mode": None, "minutes": None, "admin_level": None},
-    3: {"recipe_id": "recipe_012", "argument": "청주", "travel_mode": None, "minutes": None, "admin_level": "읍면동"},
+    3: {"recipe_id": "recipe_005", "argument": "청주 서원", "travel_mode": None, "minutes": None, "admin_level": "읍면동"},
     4: {"recipe_id": "recipe_045", "argument": "오송역", "travel_mode": "승용차", "minutes": [10], "admin_level": None,
         "new_field": "값"},
 }
@@ -88,7 +93,8 @@ def test_before_any_run_the_tab_shows_no_numbers():
     assert panel.run_conditions(None) is None
     text = visible_text(panel.summary_markup(None))
     assert not re.search(r"\d", text), text
-    assert text.count(panel.EMPTY_NUMBER) == 5
+    assert text.count(panel.EMPTY_NUMBER) == len(panel.RESULT_CARDS)
+    assert "전체 결과" in text
 
 
 def test_the_summary_is_copied_from_the_runner_not_counted_here(result):
@@ -96,10 +102,10 @@ def test_the_summary_is_copied_from_the_runner_not_counted_here(result):
     assert panel.summarize(result) == {
         "total": total["runs"], "done": total["runs"], "passed": total["passed"], "failed": total["runs"] - total["passed"],
         "function": total["failure_stages"]["function"], "input": total["failure_stages"]["input"],
-        "error": total["failure_stages"]["error"],
+        "scope": total["failure_stages"]["scope"], "error": total["failure_stages"]["error"], "oos_runs": total["oos_runs"],
     }
     assert panel.summarize(result) == {
-        "total": 5, "done": 5, "passed": 2, "failed": 3, "function": 1, "input": 1, "error": 1,
+        "total": 5, "done": 5, "passed": 2, "failed": 3, "function": 1, "input": 1, "scope": 0, "error": 1, "oos_runs": 0,
     }
 
 
@@ -108,10 +114,12 @@ def test_while_running_only_the_finished_rows_are_counted(result):
     rows = result["cases"]
 
     first = panel.summarize(panel.live_result(rows[:1], 48))
-    assert first == {"total": 48, "done": 1, "passed": 1, "failed": 0, "function": 0, "input": 0, "error": 0}
+    assert first == {"total": 48, "done": 1, "passed": 1, "failed": 0, "function": 0, "input": 0, "scope": 0, "error": 0,
+                     "oos_runs": 0}
 
     four = panel.summarize(panel.live_result(rows[:4], 48))
-    assert four == {"total": 48, "done": 4, "passed": 2, "failed": 2, "function": 1, "input": 1, "error": 0}
+    assert four == {"total": 48, "done": 4, "passed": 2, "failed": 2, "function": 1, "input": 1, "scope": 0, "error": 0,
+                    "oos_runs": 0}
     assert panel.filter_results(panel.live_result(rows[:4], 48)["cases"], "인자 추출") == [rows[2]]
 
     text = visible_text(panel.summary_markup(four))
@@ -141,29 +149,46 @@ def test_the_filters_pick_failures_by_stage_and_search_ignores_spaces(result):
     assert [r["case_id"] for r in panel.filter_results(rows, "기능 선택")] == [4]
     assert [r["case_id"] for r in panel.filter_results(rows, "인자 추출")] == [3]
     found = panel.filter_results(rows, "실패만", "청주서원")
-    assert [r["utterance"] for r in found] == ["청주 서원 시군구 인구"]
+    assert [r["utterance"] for r in found] == ["청주 서원 시군구 경계"]
 
 
-def test_only_the_values_written_in_the_answer_sheet_are_graded_and_the_rest_are_shown(result):
-    """정답표에 argument 만 적었어도 모델이 낸 넷을 다 보이고, 셋은 채점 제외다."""
+def test_inputs_the_expected_function_does_not_read_are_shown_as_사용_안_함_on_both_sides(result):
+    """recipe_010 은 argument 만 읽는다. 나머지 셋은 정답표 · 모델 출력 둘 다 「사용 안 함」이고 모델 값을 안 보인다."""
     rows = panel.field_rows(_row(result, 1))
 
     assert [r["name"] for r in rows] == ["argument", "travel_mode", "minutes", "admin_level"]
-    assert [r["name"] for r in rows if r["graded"]] == ["argument"]
-    assert all(r["correct"] is None for r in rows if not r["graded"])
+    assert [r["name"] for r in rows if r["used"]] == ["argument"]
+    assert all(r["correct"] is None for r in rows if not r["used"])
 
     text = visible_text(panel.detail_markup(_row(result, 1), FUNCTIONS))
-    assert text.count(panel.UNGRADED_TEXT) == 3
-    assert "대중교통" in text and "시군구" in text
+    assert text.count(panel.UNUSED_TEXT) == 6
+    assert "대중교통" not in text and "시군구" not in text
     assert "차이" not in text
 
 
+def test_사용_안_함_and_없음_are_different(result):
+    """읽는데 값이 null 이면 「없음」, 안 읽으면 「사용 안 함」. 같은 글자로 보이면 정답표를 오해한다."""
+    row = _row(result, 3)
+    rows = {r["name"]: r for r in panel.field_rows(row)}
+    assert rows["admin_level"]["used"] and rows["argument"]["used"]
+    assert not rows["travel_mode"]["used"] and not rows["minutes"]["used"]
+
+    reads_null = dict(row, expected={**row["expected"], "spoken": {"admin_level": None}},
+                      spoken_fields=[{"name": "admin_level", "expected": None, "actual": None, "correct": True}],
+                      actual={**row["actual"], "spoken": {**row["actual"]["spoken"], "admin_level": None}})
+    text = visible_text(panel.detail_markup(reads_null, FUNCTIONS))
+    parts = text.split("admin_level", 1)[1].split("travel_mode", 1)[0] if "travel_mode" in text.split("admin_level", 1)[1] else text.split("admin_level", 1)[1]
+    assert "없음" in parts and panel.UNUSED_TEXT not in parts
+    unused = text.split("travel_mode", 1)[1].split("minutes", 1)[0]
+    assert unused.count(panel.UNUSED_TEXT) == 2 and "없음" not in unused
+
+
 def test_an_input_the_panel_does_not_know_is_still_shown_under_its_own_name(result):
-    """새 인자가 들어와도 화면 코드를 안 고쳐야 함."""
+    """새 인자가 들어와도 화면 코드를 안 고쳐야 함. 기대 기능이 안 읽으면 「사용 안 함」."""
     rows = panel.field_rows(_row(result, 4))
 
     assert rows[-1] == {
-        "name": "new_field", "label": "new_field", "graded": False, "answer": None, "model": "값",
+        "name": "new_field", "label": "new_field", "used": False, "graded": False, "answer": None, "model": "값",
         "in_model": True, "correct": None,
     }
 
@@ -206,13 +231,20 @@ def test_an_error_row_shows_the_error_instead_of_a_model_output(result):
     assert "연결이 끊겼습니다" in text
 
 
-def test_the_run_conditions_come_from_the_result_metadata(result):
+def test_the_model_settings_come_from_the_result_metadata_with_the_llm_temperature(result):
     conditions = panel.run_conditions(result)
-    assert list(conditions) == ["모델", "프롬프트 파일", "응답 형식 파일", "기능 정의 파일"]
     measured = result["meta"]["conditions"]
+    assert list(conditions)[:2] == ["모델", "provider"]
+    assert list(conditions)[-3:] == ["프롬프트 파일", "응답 형식 파일", "기능 정의 파일"]
     assert conditions["모델"] == measured["model"]
     assert conditions["프롬프트 파일"] == measured["prompt"]["path"]
-    assert conditions["기능 정의 파일"] == measured["menu"]["path"]
+    if "temperature" in (measured.get("request") or {}):
+        assert conditions["Temperature"] == panel.display_value(measured["request"]["temperature"])
+        assert list(conditions)[2] == "Temperature"
+
+    staged = {**result, "meta": {**result["meta"], "conditions": {**measured, "request": {"seed": 3, "temperature": 0.7}}}}
+    shown = panel.run_conditions(staged)
+    assert shown["Temperature"] == "0.7" and shown["Seed"] == "3"
 
 
 # ── 무엇이 LLM 을 부르나 ─────────────────────────────────────────────
@@ -348,8 +380,8 @@ def _oos_suite():
             _case(1, "철도 공약 모아줘", "recipe_010", {"argument": "철도"}),
             {"id": 2, "group": suite_module.OUT_OF_SCOPE, "utterance": "내일 날씨 어때", "enabled": True,
              "expected": {"category": "unsupported", "outcomes": ["NO_MATCH"]}},
-            {"id": 3, "group": suite_module.OUT_OF_SCOPE, "utterance": "그 역 좌표 줘", "enabled": True,
-             "expected": {"category": "insufficient", "outcomes": ["CLARIFY", "MISSING_ARGUMENT"]}},
+            {"id": 3, "group": suite_module.OUT_OF_SCOPE, "utterance": "달러 환율 알려줘", "enabled": True,
+             "expected": {"category": "unsupported", "outcomes": ["NO_MATCH"]}},
         ],
     }
 
@@ -358,8 +390,8 @@ def _oos_resolve(utterance):
     if utterance == "내일 날씨 어때":
         return {"reason": "없음", "status": "SELECT", "recipe_id": "recipe_001", "candidate_recipe_ids": ["recipe_001"],
                 "argument": "내일", "travel_mode": None, "minutes": None, "admin_level": None}
-    if utterance == "그 역 좌표 줘":
-        return {"reason": "없음", "status": "CLARIFY", "recipe_id": None, "candidate_recipe_ids": ["recipe_001", "recipe_034"],
+    if utterance == "달러 환율 알려줘":
+        return {"reason": "없음", "status": "NO_MATCH", "recipe_id": None, "candidate_recipe_ids": [],
                 "argument": None, "travel_mode": None, "minutes": None, "admin_level": None}
     return _resolve(utterance)
 
@@ -371,46 +403,107 @@ def oos_result():
     return measured
 
 
-def test_an_out_of_scope_row_compares_the_accepted_outcome_without_developer_words(oos_result):
+def test_an_out_of_scope_row_compares_no_function_with_what_the_model_picked(oos_result):
     wrong = _row(oos_result, 2)
     text = visible_text(panel.detail_markup(wrong, FUNCTIONS))
     assert "실패 · 범위 밖 처리" in text
-    assert "범위 밖 · 지원 안 함" in text and "해당 없음" in text and "실행 준비됨" in text
+    assert "범위 밖 · 선택할 기능 없음" in text and "기능 001" in text
     assert text.count("차이") == 1
 
     right = visible_text(panel.detail_markup(_row(oos_result, 3), FUNCTIONS))
-    assert "성공" in right and "되묻기 또는 인자 부족" in right and "차이" not in right
+    assert "성공" in right and "해당 없음" in right and "차이" not in right
 
     for row in oos_result["cases"]:
-        leaked = [w for w in BANNED if w in visible_text(panel.detail_markup(row, FUNCTIONS))]
-        assert not leaked, (row["case_id"], leaked)
+        shown = visible_text(panel.detail_markup(row, FUNCTIONS))
+        assert not [w for w in BANNED if w in shown], row["case_id"]
+        assert not [w for w in RETIRED if w in shown], row["case_id"]
 
 
-def test_the_overview_copies_the_run_metrics_and_shows_no_developer_words(oos_result):
+def test_the_case_detail_keeps_only_status_candidates_reason_and_inference_latency(result):
+    for row in result["cases"]:
+        text = visible_text(panel.detail_markup(row, FUNCTIONS))
+        for label in ("모델 판정 상태", "후보 기능", "모델 판단", "추론 지연시간"):
+            assert label in text, (row["case_id"], label)
+        assert not [w for w in RETIRED if w in text], (row["case_id"], [w for w in RETIRED if w in text])
+
+
+def test_a_candidate_function_shows_its_menu_description_on_hover_only(result):
+    """칩에는 「기능 NNN」만 보이고, 설명은 title(마우스를 올리면)에 있다. 설명의 원천은 결과 meta.functions."""
+    markup = panel.detail_markup(_row(result, 4), FUNCTIONS)
+    chip = re.search(r'<span class="tt-chip[^"]*" title="([^"]*)">기능 045</span>', markup)
+    assert chip and chip.group(1) == FUNCTIONS["recipe_045"]
+    assert FUNCTIONS["recipe_045"] not in visible_text(markup.split("후보 기능", 1)[1].split("모델 판단", 1)[0])
+
+
+def test_the_function_descriptions_are_the_published_menu_sentences():
+    """화면이 따로 설명표를 두지 않는다. runner.functions 가 게시 menu 의 function 문장 그대로다."""
+    import yaml
+
+    import paths
+
+    menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))
+    assert runner.functions() == {rid: entry["function"] for rid, entry in menu["recipes"].items()}
+    assert not hasattr(panel, "FUNCTION_DESCRIPTIONS")
+
+
+def test_the_top_summary_shows_run_facts_but_no_evaluation_metrics(oos_result):
     info = panel.overview(oos_result)
-    board = oos_result["summary"]["metrics"]
+    titles = [title for title, _rows in info]
+    assert titles == ["테스트 세트", "시작 시간", "소요 시간", "추론 지연시간", "발화", "모델 설정", "실행 환경"]
+    rows = dict(info)
+    assert [label for label, _ in rows["추론 지연시간"]] == ["Median", "P95", "Max"]
+    total = oos_result["summary"]["total"]
+    assert dict(rows["발화"]) == {"전체": str(total["runs"]), "성공": str(total["passed"]),
+                                  "실패": str(total["runs"] - total["passed"]), "오류": str(total["errors"])}
+    assert [label for label, _ in rows["모델 설정"]][:2] == ["모델", "Temperature"]
+    assert dict(rows["실행 환경"]) == {"GPU": "기록 없음", "VRAM": "기록 없음"}
 
-    assert info["기능 선택"].startswith(f"{board['selection']['correct']}/{board['selection']['total']}")
-    assert info["범위 밖 처리"].startswith(f"{board['oos']['correct']}/{board['oos']['total']}")
-    assert info["인자 추출"].startswith(f"{board['semantic_fields']['correct']}/{board['semantic_fields']['total']}")
-    assert info["GPU"] == "기록 없음"
     text = visible_text(panel.overview_markup(info))
+    for gone in ("기능 선택", "인자 추출", "발화 성공", "범위 밖 처리", "실행 준비"):
+        assert gone not in text, gone
     assert not [w for w in BANNED if w in text], text
+    assert not [w for w in RETIRED if w in text], text
     assert panel.overview(None) is None
 
 
-def test_the_function_picker_groups_rows_by_expected_function_and_keeps_out_of_scope_apart(result, oos_result):
+def test_the_execution_environment_shows_gpu_model_and_vram_but_no_temperature(oos_result):
+    meta = {**oos_result["meta"], "environment": {"available": True, "gpus": [
+        {"index": i, "name": "RTX PRO 6000", "memory_total_mib": 97887} for i in range(4)]},
+        "gpu": {"available": True, "start_temp": 37, "max_temp": 70, "pauses": 14, "thermal_throttle": False}}
+    rows = dict(dict(panel.overview({**oos_result, "meta": meta}))["실행 환경"])
+    assert rows == {"GPU": "RTX PRO 6000 × 4", "VRAM": "장당 95.6 GiB"}
+    text = visible_text(panel.overview_markup(panel.overview({**oos_result, "meta": meta})))
+    assert "°C" not in text and "70" not in text and "쉼" not in text
+
+
+def test_the_lower_summary_names_each_failure_cause_without_claiming_they_add_up(oos_result):
+    summary = panel.summarize(oos_result)
+    text = visible_text(panel.summary_markup(summary))
+    for label, _key, _tone in panel.RESULT_CARDS:
+        assert label in text
+    assert [label for label, _key, _tone in panel.RESULT_CARDS] == [
+        "전체", "성공", "실패", "오류", "기능 선택 실패", "인자 추출 실패", "범위 밖 처리 실패"]
+    assert text.count("먼저 걸린 것") == 3
+    assert summary["scope"] == 1
+
+    no_oos = visible_text(panel.summary_markup({**summary, "oos_runs": 0, "scope": 0}))
+    assert "해당 발화 없음" in no_oos
+
+
+def test_the_function_results_list_only_supported_functions_in_numeric_order(result, oos_result):
     rows = result["cases"]
     assert [r["case_id"] for r in panel.filter_results(rows, "전체", "", "recipe_045")] == [2, 5]
-    assert panel.group_options(rows)[0] == panel.ALL_GROUPS
     assert panel.OUT_OF_SCOPE_GROUP not in panel.group_options(rows)
 
     mixed = oos_result["cases"]
     assert panel.group_options(mixed)[-1] == panel.OUT_OF_SCOPE_GROUP
     assert [r["case_id"] for r in panel.filter_results(mixed, "전체", "", panel.OUT_OF_SCOPE_GROUP)] == [2, 3]
     assert [r["case_id"] for r in panel.filter_results(mixed, "범위 밖 처리")] == [2]
-    assert panel.first_failure(mixed) == 1
-    assert [e["label"] for e in panel.recipe_rows(oos_result)] == ["범위 밖", "기능 010"]
+    assert [e["label"] for e in panel.recipe_rows(oos_result)] == ["기능 010"]
+
+    unordered = {"summary": {"recipes": {rid: {"runs": 1, "passed": 1, "hit": 1}
+                                          for rid in ("recipe_100", "recipe_020", "recipe_003", "recipe_061")}}}
+    assert [e["group"] for e in panel.recipe_rows(unordered)] == ["recipe_003", "recipe_020", "recipe_061", "recipe_100"]
 
 
 def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app, monkeypatch, tmp_path):
@@ -429,6 +522,9 @@ def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == len(SUITE["cases"])
     assert any(saved["meta"]["run_id"] in m.value for m in app.markdown)
     assert any('class="tt-ovs"' in m.value for m in app.markdown)
+    assert [e.label for e in app.expander] == ["모델 설정", "기능별 결과"]
+    shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
+    assert not [w for w in RETIRED if w in shown], [w for w in RETIRED if w in shown]
     assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == test_runs.load_run(
         saved["meta"]["run_id"], tmp_path
     )["summary"]

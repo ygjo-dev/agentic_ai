@@ -164,14 +164,17 @@ def summary_text(result: dict) -> str:
     meta, summary = result["meta"], result["summary"]
     metrics = summary.get("metrics") or {}
     latency = summary.get("latency") or {}
-    gpu = meta.get("gpu") or {}
     conditions = meta.get("conditions") or {}
+    request = conditions.get("request") or {}
+    gpus = (meta.get("environment") or {}).get("gpus") or []
     suite = meta.get("suite") or {}
     lines = [
         f"# Test Run {meta.get('run_id')}",
         "",
         f"- Test Suite: {suite.get('label') or suite.get('name')} (v{suite.get('version')}, sha256 {str(suite.get('sha256'))[:12]}, {suite.get('case_count')} cases)",
-        f"- model: {conditions.get('model')} · {conditions.get('provider')} · role v{conditions.get('role_version')}",
+        f"- model: {conditions.get('model')} · {conditions.get('provider')} · role v{conditions.get('role_version')} "
+        f"· request {json.dumps(request, ensure_ascii=False)}",
+        "- environment: " + (", ".join(f"GPU{g.get('index')} {g.get('name')} {g.get('memory_total_mib')} MiB" for g in gpus) or "not recorded"),
         f"- started {meta.get('started_at')} · finished {meta.get('finished_at')} · elapsed {meta.get('elapsed_s')} s",
         f"- stopped: {meta.get('stopped')}",
         "",
@@ -182,12 +185,9 @@ def summary_text(result: dict) -> str:
         f"| Semantic cases | {_ratio(metrics.get('semantic_cases'))} |",
         f"| Joint | {_ratio(metrics.get('joint'))} |",
         f"| OOS | {_ratio(metrics.get('oos'))} |",
-        f"| READY | {_ratio(metrics.get('ready'))} |",
         f"| Errors | {summary['total'].get('errors')} |",
         "",
         f"latency (s): min {latency.get('min')} · median {latency.get('median')} · p95 {latency.get('p95')} · max {latency.get('max')}",
-        f"GPU: available {gpu.get('available')} · start {gpu.get('start_temp')} · max {gpu.get('max_temp')} · end {gpu.get('end_temp')} "
-        f"· pauses {gpu.get('pauses')} · throttle {gpu.get('thermal_throttle')}",
         "",
         "## failed cases",
         "",

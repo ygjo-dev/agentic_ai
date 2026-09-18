@@ -1,14 +1,15 @@
-"""평가 한 번(Test Run) 동안의 GPU 기록과, 원하면 사무실 조용 정책의 쉼표.
+"""실행 하드웨어 기록과, 원하면 사무실 조용 정책의 쉼표.
 
-    monitor = GpuMonitor()            기록만 한다. 부르는 박자를 안 바꾼다
-    monitor = GpuMonitor(gate=True)   기록 + 조용 정책 (아래 POLICY)
+    environment()                     이 기계의 GPU 이름 · VRAM. Test Run 의 meta.environment 에 실림
+    monitor = GpuMonitor(gate=True)   조용 정책(아래 POLICY)으로 부르는 박자만 조절
 
-runner.run 에 monitor 로 넘기면 runner 가 시작 · 발화마다 · 끝에 부른다. 기록은 결과의
-meta.gpu 에 실린다. **판정에는 안 섞인다.** 쉬는 것은 발화와 발화 사이이고, 재는 시간
-(timing.resolve_s)은 resolve 호출 하나만 감싸므로 안 늘어난다.
+GPU 를 기록하는 까닭은 **실행 하드웨어의 재현성**이다 (어느 GPU · 몇 장 · VRAM). 온도는 결과에
+남기지 않는다. GpuMonitor 는 발화와 발화 사이에서 쉬거나 멈출 뿐이고 그 기록(summary)은 부르는
+쪽이 원할 때만 읽는다 — runner 는 결과에 싣지 않는다. **판정에는 안 섞인다.** 재는 시간
+(timing.resolve_s)은 resolve 호출 하나만 감싸므로 쉬어도 안 늘어난다.
 
-nvidia-smi 가 없거나 읽을 수 없는 기계에서는 available 이 거짓인 기록만 남고 평가는
-그대로 돈다. 팬 곡선 · 전력 한도 · 클럭을 바꾸지 않는다. 읽기만 한다.
+nvidia-smi 가 없거나 읽을 수 없는 기계에서는 available 이 거짓인 한 벌만 남고 평가는 그대로 돈다.
+팬 곡선 · 전력 한도 · 클럭을 바꾸지 않는다. 읽기만 한다.
 """
 
 import datetime
@@ -36,6 +37,34 @@ POLICY = {
     "poll_s": 15.0,             # 기다리는 동안 온도를 보는 간격
     "max_wait_s": 1800.0,       # 한 번 기다리는 상한. 넘으면 시작은 그냥 가고, 멈춤은 평가를 멈춤
 }
+
+
+# 실행 하드웨어로 묻는 칸. 차례가 environment 의 차례다.
+ENVIRONMENT_QUERY = "index,name,memory.total"
+
+
+def environment() -> dict:
+    """이 기계의 GPU. {available, gpus: [{index, name, memory_total_mib}]}.
+
+    규칙  nvidia-smi 가 없거나 실패하거나 모양이 다르면 {available: False, gpus: []}. 평가를 멈추지 않음
+          온도 · 사용률은 안 적음. 재현에 필요한 것은 무슨 GPU 가 몇 장 · VRAM 얼마인가임
+    """
+    try:
+        done = subprocess.run(
+            ["nvidia-smi", f"--query-gpu={ENVIRONMENT_QUERY}", "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return {"available": False, "gpus": []}
+    if done.returncode != 0:
+        return {"available": False, "gpus": []}
+    gpus = []
+    for line in done.stdout.strip().splitlines():
+        parts = [part.strip() for part in line.split(",")]
+        if len(parts) != 3:
+            return {"available": False, "gpus": []}
+        gpus.append({"index": _number(parts[0]), "name": parts[1], "memory_total_mib": _number(parts[2])})
+    return {"available": bool(gpus), "gpus": gpus}
 
 
 def _number(text: str) -> int | None:
@@ -90,7 +119,7 @@ def _peak(gpus: list[dict], key: str) -> int | None:
 
 
 class GpuMonitor:
-    """평가 한 번의 GPU 기록. gate 면 조용 정책대로 쉬고 멈춤.
+    """평가 한 번의 박자 조절. gate 면 조용 정책대로 쉬고 멈춤. 본 온도는 이 객체에만 남고 결과에는 안 실림.
 
     규칙  before_run · after_case · after_run 은 runner.run 이 부름
           기록은 샘플마다 {at, phase, done, temp, util, fan, throttle} 한 줄. 여럿이면 가장 높은 값
@@ -192,7 +221,7 @@ class GpuMonitor:
             self._wait("cooldown", done, lambda e: (e["temp"] or 0) <= self.policy["resume_at"])
 
     def summary(self) -> dict:
-        """결과 meta.gpu 에 실을 한 벌.
+        """이 monitor 가 본 것 한 벌. runner 는 결과에 싣지 않음 (부르는 쪽이 원할 때 읽음).
 
         출력  {available, gpus, start_temp, max_temp, end_temp, max_util, max_fan, pauses,
                pause_seconds, thermal_throttle, samples, gate, policy, notes, log}

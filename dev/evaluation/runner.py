@@ -7,7 +7,7 @@
     python dev/evaluation/runner.py --out 결과.json        결과 파일 자리
     python dev/evaluation/runner.py --cooldown-every 6     6번마다 5초 쉼 (발열 · 팬 소음)
     python dev/evaluation/runner.py --suite dev/evaluation/test_suite_v2.yaml --gpu gate
-                                                           테스트 세트 v2 · 사무실 조용 정책
+                                                           테스트 세트 v2 · 사무실 조용 정책(박자만, 기록 안 함)
     python dev/evaluation/runner.py --no-save              Test Run 을 test_runs 에 안 남김
 
 화면(app/ui 테스트 탭)은 run_dataset 으로 같은 run 을 부른다. 판정 · 결과 모양이 창구와 같다.
@@ -26,7 +26,8 @@ check_resolve 는 사람이 읽을 표를 찍고, 이것은 기계가 읽을 결
 — 「기능은 섰는데 값이 모자람(MISSING_ARGUMENT)」을 runtime 이 가르는 자리가 거기뿐이다.
 
 한 번 잰 결과 한 벌이 Test Run 이고 줄 하나가 Case Result 다 (낱말은 test_runs 머리 주석).
-save_dir 를 주면 test_runs.Recorder 가 폴더 하나에 남긴다. monitor 를 주면 GPU 기록이 meta.gpu 에 실린다.
+save_dir 를 주면 test_runs.Recorder 가 폴더 하나에 남긴다. environment 를 주면 실행 하드웨어(GPU 이름 ·
+VRAM)가 meta.environment 에 실린다. monitor 는 부르는 박자만 조절하고 결과에 아무것도 안 남긴다.
 
 **MCP 도구를 부르지 않는다.** `/resolve` 를 부르고, 고른 recipe 를 workflow_materializer 로 KRRI
 native workflow 까지만 만든다. Gateway 실행은 `check_resolve --execute` 의 일이다.
@@ -55,7 +56,9 @@ from dev.tools import check_resolve  # noqa: E402
 
 # 결과 JSON 의 판. 칸의 뜻을 바꾸면 올린다.
 # 3: 줄에 scope · recipe_group · outcome · oos_correct · timing.started_at, summary 에 metrics ·
-#    latency · recipes, meta 에 run_id · elapsed_s · gpu · suite.name · suite.group_labels
+#    latency · recipes, meta 에 run_id · elapsed_s · suite.name · suite.group_labels
+#    뒤에 판을 안 올리고 더한 선택 칸: expected.reads · conditions.request · meta.environment.
+#    이 칸이 없는 옛 결과도 그대로 읽힌다. 옛 결과의 meta.gpu(온도 기록)는 더 쓰지 않는다
 RESULT_VERSION = 3
 
 OUT_DIR = REPO_ROOT / "dev" / "tools" / "sweep_out"
@@ -154,6 +157,28 @@ def verdict(recipe_correct: bool, spoken_correct: bool | None, error: str | None
     return True, None
 
 
+_READS: dict[str, list[str]] = {}
+
+
+def recipe_reads(recipe_ids: list[str]) -> list[str]:
+    """기대 recipe 들이 모두 읽는 이름 있는 값 이름. 이름 차례.
+
+    규칙  spoken_audit.spoken_refs 로 게시된 execution 을 훑음. 여럿이면 교집합
+          recipe 파일이 없으면 빈 목록. recipe 마다 한 번만 읽음
+    """
+    from dev.evaluation import spoken_audit
+    from execution import workflow_materializer
+
+    common = None
+    for recipe_id in recipe_ids:
+        if recipe_id not in _READS:
+            execution = workflow_materializer.load(recipe_id)
+            _READS[recipe_id] = sorted({ref["name"] for ref in spoken_audit.spoken_refs(execution)} if execution else set())
+        names = set(_READS[recipe_id])
+        common = names if common is None else common & names
+    return sorted(common or ())
+
+
 def outcome_of(status: str, built: dict | None) -> str:
     """발화 하나가 어디서 끝났나. 범위 밖 판정이 읽는 값.
 
@@ -204,6 +229,8 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
           오류는 「오류: 예외 이름」 으로 넘겨 못 붙음이 됨 (범위 밖이면 grade None)
           actual.spoken 은 응답에서 SELECTION_KEYS 를 뺀 칸 전부. 이름을 고정 목록으로 거르지 않음
           timing.started_at 은 부르기 직전 시각. resolve_s 는 resolve 호출 하나만 감쌈
+          범위 안이면 expected.reads 에 기대 recipe 의 execution 이 읽는 이름 있는 값 이름을 적음.
+          화면이 「사용 안 함」(안 읽음)과 「없음」(읽는데 null)을 가르는 근거임
           ServerDown 은 삼키지 않음. 부르는 쪽이 멈춤
     """
     expected = case["expected"]
@@ -219,7 +246,9 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
         "run": run,
         "expected": {"recipe_ids": list(expected.get("recipe_ids") or []), "spoken": wanted_spoken},
     }
-    if not scoped:
+    if scoped:
+        row["expected"]["reads"] = recipe_reads(expected["recipe_ids"])
+    else:
         row["expected"].update({"category": expected["category"], "outcomes": list(expected["outcomes"])})
 
     started_at = datetime.datetime.now(KST).isoformat(timespec="milliseconds")
@@ -427,7 +456,8 @@ def _file_record(path: Path) -> dict:
 def conditions() -> dict:
     """이번 평가를 잰 조건. 모델 · prompt · 응답 schema · menu 파일과 그 sha256.
 
-    출력  {model, provider, role_version, inference, prompt, response_schema, menu}. 파일 셋은 _file_record 꼴
+    출력  {model, provider, role_version, inference, request, prompt, response_schema, menu}. 파일 셋은 _file_record 꼴
+          request 는 provider 가 요청마다 싣는 고정 설정(temperature · seed · …). request_settings 가 셈
           역할 설정을 못 읽으면 {error} 하나
     규칙  이 저장소의 역할 manifest 와 게시 menu 를 읽음. 창구가 같은 사본에서 떠 있을 때
           창구가 쓰는 판과 같음. /resolve 응답에는 판이 안 실림 (_role_label 과 같음)
@@ -447,10 +477,55 @@ def conditions() -> dict:
         "provider": role.provider,
         "role_version": role.version,
         "inference": dict(role.inference),
+        "request": request_settings(role),
         "prompt": _file_record(role_dir / "prompts" / f"v{role.prompt_version}.yaml"),
         "response_schema": _file_record(role_dir / "response_schemas" / f"v{role.response_schema_version}.yaml"),
         "menu": _file_record(paths.MENU_YAML_PATH),
     }
+
+
+# provider 요청 본문에서 설정이 아닌 칸. 모델 이름 · 발화 · 응답 형식이다.
+_REQUEST_PAYLOAD_KEYS = ("model", "messages", "prompt", "response_format", "format", "stream")
+
+
+class _Captured(Exception):
+    """request_settings 가 요청을 가로챘다. 밖으로 안 나감."""
+
+
+def request_settings(role) -> dict:
+    """provider 가 이 역할로 부를 때 실제로 싣는 고정 설정. {temperature, seed, …}.
+
+    규칙  get_llm_for(role) 로 진짜 provider 를 만들고 generate 를 한 번 부르되, 나가는 HTTP 요청
+          (urllib.request.urlopen)을 가로채 본문만 읽음. 아무 데도 안 보냄
+          본문에서 _REQUEST_PAYLOAD_KEYS 를 뺀 칸. 중첩 options(Ollama)는 펼쳐 붙임
+          provider 를 못 만들거나(주소 없음 등) 모양이 다르면 {error}
+    제약  값을 여기 적지 않는다. temperature 는 provider 코드가 정하고 그것을 읽을 뿐임.
+          llm_engine 을 고치지 않는다
+    """
+    from unittest import mock
+
+    from llm_engine.llm_selector import get_llm_for
+
+    seen = {}
+
+    def capture(request, *args, **kwargs):
+        seen["body"] = json.loads(request.data.decode("utf-8"))
+        raise _Captured
+
+    try:
+        llm = get_llm_for(role)
+        with mock.patch("urllib.request.urlopen", capture):
+            llm.generate("", {"type": "object"})
+    except _Captured:
+        pass
+    except Exception as error:  # noqa: BLE001 — 기록을 못 해도 평가는 돈다.
+        return {"error": f"{type(error).__name__}: {error}"}
+    body = seen.get("body")
+    if not isinstance(body, dict):
+        return {"error": "요청 본문을 못 읽음"}
+    settings = {key: value for key, value in body.items() if key not in _REQUEST_PAYLOAD_KEYS and key != "options"}
+    settings.update(body.get("options") or {})
+    return settings
 
 
 def functions() -> dict[str, str]:
@@ -513,12 +588,13 @@ def run(
     monitor=None,
     save_dir: Path | None = None,
     dataset: dict | None = None,
+    environment: dict | None = None,
 ) -> dict:
     """정답표를 재서 결과 한 벌 (Test Run).
 
     출력  {meta, summary, cases}. json 으로 바로 쓸 수 있는 값만
           meta 에 run_id · 정답표 신원 · 실행 조건(conditions) · 기능 설명(functions) ·
-          시작 · 끝 · elapsed_s · gpu 가 실림
+          시작 · 끝 · elapsed_s · environment 가 실림
     규칙  only 가 있으면 그 번호만, 없으면 enabled 인 발화만. 파일 차례 그대로
           발화마다 runs 회
           서버에 못 닿거나 끊기거나 StopRun 이면 거기서 멈추고 거기까지의 결과와 까닭(meta.stopped)을 냄
@@ -530,7 +606,8 @@ def run(
           결과 줄은 판정까지 끝난 cases 의 한 줄 그대로(오류 줄 포함). 줄마다 정확히 한 번, 정답표 차례로
           progress 가 던진 예외는 삼키지 않음. 평가가 거기서 멈추고 예외가 부르는 쪽으로 감
           (KeyboardInterrupt · StopRun 만 meta.stopped 로 남김). 그래도 끝난 줄은 cases.jsonl 에 남음
-          monitor 가 있으면 시작 전 before_run, 끝나고 after_run, 그 기록(summary)이 meta.gpu
+          monitor 가 있으면 시작 전 before_run, 끝나고 after_run. 결과에 아무것도 안 실음 (박자만)
+          environment 는 실행 하드웨어 한 벌(gpu.environment). 그대로 meta.environment 에 실림
           save_dir 이면 test_runs.Recorder 가 <save_dir>/<run_id>/ 에 남김. 끝나면 run.json
           dataset 은 {id, label}. 있으면 meta.suite 에 dataset_id · label 로 실림
     제약  MCP 도구를 부르지 않는다.
@@ -538,9 +615,8 @@ def run(
           다음 요청 **앞에서만** 쉬므로 마지막 요청 뒤에는 안 쉼. resolve_s 는
           resolve 호출 하나만 감싸 재므로 쉬어도 시간이 안 늘어나고 판정도 안 바뀜
           run 자체는 GPU 를 보지 않는다.
-          nvidia-smi · 온도 조회는 넘겨받은 monitor(dev/evaluation/gpu.py)의 일이고, 그 기록은
-          meta.gpu 에만 실림 — 재는 자(판정 · 결과 줄)에 기계 상태를 섞으면 같은 정답표가
-          기계마다 다른 것을 재게 됨
+          nvidia-smi 는 넘겨받은 monitor · environment(dev/evaluation/gpu.py)의 일임.
+          재는 자(판정 · 결과 줄)에 기계 상태를 섞으면 같은 정답표가 기계마다 다른 것을 재게 됨
     """
     import paths
 
@@ -626,7 +702,7 @@ def run(
             "finished_at": finished.isoformat(),
             "elapsed_s": round((finished - started).total_seconds(), 1),
             "stopped": stopped,
-            "gpu": monitor.summary() if monitor else None,
+            "environment": environment,
         },
         "summary": summarize(rows, labels),
         "cases": rows,
@@ -647,6 +723,7 @@ def run_dataset(dataset_id: str, *, save: bool = True, runs_dir: Path | None = N
 
     입력  dataset_id 는 datasets() 의 id. options 는 run 의 키워드 인자 그대로
           save 면 Test Run 을 runs_dir(없으면 test_runs.RUNS_DIR)에 남김
+          environment 를 안 주면 gpu.environment() 로 이 기계의 GPU 를 적음
     출력  run 의 결과. meta.suite 에 dataset id · 이름이 붙음
     규칙  정답표를 suite.load 로 읽고 run 을 부름. 창구(main)와 같은 판정 · 같은 결과 모양
           모르는 id 면 KeyError
@@ -658,7 +735,10 @@ def run_dataset(dataset_id: str, *, save: bool = True, runs_dir: Path | None = N
     if chosen is None:
         raise KeyError(f"모르는 정답표: {dataset_id!r}")
     path = Path(chosen["path"])
+    from dev.evaluation import gpu
+
     save_dir = (runs_dir or test_runs.RUNS_DIR) if save else None
+    options.setdefault("environment", gpu.environment())
     return run(
         suite_module.load(path), suite_path=path, save_dir=save_dir,
         dataset={"id": chosen["id"], "label": chosen["label"]}, **options,
@@ -755,7 +835,8 @@ def main() -> int:
     parser.add_argument("--cooldown-seconds", type=float, default=5.0, help="쉬는 시간 초 (기본 5)")
     parser.add_argument(
         "--gpu", choices=("off", "record", "gate"), default="record",
-        help="GPU 기록. record 는 기록만, gate 는 사무실 조용 정책(dev/evaluation/gpu.POLICY)으로 쉬고 멈춤 (기본 record)",
+        help="record 는 실행 하드웨어(GPU 이름 · VRAM)만 적음, gate 는 거기에 사무실 조용 정책"
+             "(dev/evaluation/gpu.POLICY)으로 쉬고 멈춤, off 는 둘 다 안 함 (기본 record)",
     )
     parser.add_argument("--no-save", action="store_true", help="Test Run 을 dev/tools/sweep_out/test_runs 에 안 남김")
     args = parser.parse_args()
@@ -791,9 +872,10 @@ def main() -> int:
         materialize=not args.no_materialize,
         cooldown_every=args.cooldown_every,
         cooldown_seconds=args.cooldown_seconds,
-        monitor=None if args.gpu == "off" else gpu.GpuMonitor(gate=args.gpu == "gate"),
+        monitor=gpu.GpuMonitor(gate=True) if args.gpu == "gate" else None,
         save_dir=None if args.no_save else test_runs.RUNS_DIR,
         dataset=dataset,
+        environment=None if args.gpu == "off" else gpu.environment(),
     )
 
     out = Path(args.out) if args.out else OUT_DIR / f"evaluation-{datetime.datetime.now(KST):%Y%m%d-%H%M%S}.json"

@@ -3,7 +3,7 @@
 정답표(Test Suite)는 같은 폴더의 두 파일이다.
 
     resolve_regression.yaml   FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
-    test_suite_v2.yaml        테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖 묶음
+    test_suite_v2.yaml        테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖(NO_MATCH) 묶음
 
 공통 runner `dev/evaluation/runner.py` 와 화면 테스트 탭이 이 모듈로 읽는다.
 
@@ -34,18 +34,18 @@ SUITE_VERSIONS = (1, 2)
 GROUP_IDS = ("spoken", "picked_point", "view_extent")
 
 # 판 2 만 갖는 마지막 묶음. 기대 recipe 가 없고 기대 결과(outcomes)가 있다.
+# **범위 밖 = 지원하는 기능 중 어느 것도 고르면 안 되는 발화**다. 되묻기(CLARIFY)가 정답인
+# 발화 · 값이 모자라 멈추는 것(MISSING_ARGUMENT)이 정답인 발화는 범위 밖이 아니다 — 그것은
+# 되묻기 동작을 재는 일이라 이 묶음에 섞으면 「기능이 없다」와 「더 물어야 한다」가 한 점수가 된다.
 OUT_OF_SCOPE = "out_of_scope"
 
-# 범위 밖 발화의 갈래. 결과를 갈래마다 따로 센다.
+# 범위 밖 발화의 갈래. 지금은 하나다.
 #   unsupported   menu 의 어느 기능도 하는 일이 아니다
-#   ambiguous     방식만 다른 기능이 여럿 맞는다
-#   insufficient  기능은 하나로 서는데 부를 값을 말하지 않았다
-OOS_CATEGORIES = ("unsupported", "ambiguous", "insufficient")
+OOS_CATEGORIES = ("unsupported",)
 
-# 범위 밖 발화가 받아들이는 결과 이름. **지어낸 이름이 아니다** — 앞의 둘은 resolve 응답
-# schema 의 status enum, 뒤의 하나는 workflow_materializer 의 판정이다
-# (spoken_audit._selfcheck 가 두 원천에 실제로 있는지 본다).
-OOS_OUTCOMES = ("NO_MATCH", "CLARIFY", "MISSING_ARGUMENT")
+# 범위 밖 발화가 받아들이는 결과. resolve 응답 schema 의 status 이름이다
+# (spoken_audit._selfcheck 가 schema 에 실제로 있는지 본다).
+OOS_OUTCOMES = ("NO_MATCH",)
 
 
 class SuiteError(ValueError):
@@ -63,7 +63,7 @@ def load(path: Path | None = None) -> dict:
           묶음이 id 순으로 이어짐. BASELINE_LAST 같은 「묶음의 마지막 번호」가 뜻을 가지려면 필요함
           범위 안 case 는 expected.recipe_ids 가 비지 않음. expected.spoken 칸이 spoken_value_names 안에 있음
           범위 밖 case 는 recipe_ids · spoken 이 없고 category 가 OOS_CATEGORIES,
-          outcomes 가 비지 않은 OOS_OUTCOMES 부분 목록임
+          outcomes 가 비지 않은 OOS_OUTCOMES 부분 목록임 (지금은 [NO_MATCH] 뿐)
           marks 가 있는 case id 를 가리킴
     제약  기대값을 고치거나 채우지 않는다.
           틀린 파일을 부분만 읽지 않는다. 표가 조용히 줄어듦

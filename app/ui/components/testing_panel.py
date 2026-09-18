@@ -4,15 +4,19 @@
 dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
 
     제목 · 테스트 세트 · 실행 기록 · 테스트 실행
-    실행 개요 (정답표 · 시각 · 걸린 시간 · 발화 수 · 지표 · GPU)
-    실행 조건 (접힘)
-    요약 카드 다섯
+    실행 개요 (테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
+    모델 설정 (접힘. 파일 · 실행 기록 id 까지)
+    전체 결과 (전체 · 성공 · 실패 · 오류 · 실패 원인 셋)
     기능별 결과 (접힘)
     보기 필터 · 기능 고르기 · 발화 검색
     결과 목록 (한 발화 한 줄, 고정 높이) | 선택한 발화 상세 (고정 높이)
 
 낱말은 dev/evaluation/test_runs 머리 주석과 같다 — 정답표 한 벌(Test Suite)은 「테스트 세트」,
 한 번 잰 것(Test Run)은 「실행 기록」, 발화 하나의 결과(Case Result)는 「발화 결과」다.
+
+**이 화면이 보는 것은 둘이다 — 기능을 옳게 골랐나, 그 기능이 읽는 인자를 옳게 뽑았나.**
+workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지만 여기서 보이지 않는다.
+실행 하드웨어는 재현을 위해 GPU 이름 · VRAM 만 보인다. 온도는 보이지 않는다.
 
 **새로 잰 결과와 불러온 실행 기록이 같은 길로 그려진다.** 실행 기록을 고르면 test_runs.load_run 이
 돌려준 결과 한 벌을 방금 잰 결과와 같은 자리(RESULT_KEY)에 둔다. 그리는 함수가 따로 없다.
@@ -26,7 +30,7 @@ dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
 
 **상세는 성공과 실패가 같은 틀이다.** 정답표와 AI 모델 출력을 좌우로 맞대고,
 실패면 틀린 칸만 강조한다. 인자는 정답표에 적은 것과 모델이 낸 것을 빠짐없이 보인다.
-정답표에 안 적은 인자는 채점 제외로 흐리게 둔다.
+기대 기능이 읽지 않는 인자는 두 칸 다 「사용 안 함」으로 흐리게 둔다 — 읽는데 값이 null 인 「없음」과 다르다.
 
 화면 낱말은 사람이 읽는 말로 쓴다. 기능 번호는 「기능 015」로 보이고, 인자는
 표시명이 있으면 표시명 아래에 변수명을 작게 단다. 표시명이 없는 인자도 변수명
@@ -58,21 +62,8 @@ STATUS_LABELS = {"SELECT": "선택", "CLARIFY": "되묻기", "NO_MATCH": "해당
 # runner 결과의 failure_stage 값 -> 화면 글자
 STAGE_LABELS = {"function": "기능 선택", "input": "인자 추출", "scope": "범위 밖 처리", "error": "실행 오류"}
 
-# runner 결과의 outcome · materialize 판정 -> 화면 글자. 여기 없는 값은 그대로 나온다.
-OUTCOME_LABELS = {
-    **STATUS_LABELS,
-    "READY": "실행 준비됨",
-    "MISSING_ARGUMENT": "인자 부족",
-    "MISSING_CONTEXT": "화면 문맥 없음",
-    "UNWIRED": "연결 안 된 단계",
-    "NOTHING_TO_CALL": "부를 것 없음",
-    "NOT_ACCEPTED": "등록 안 된 기능",
-    "NOT_SELECTED": "선택 없음",
-    "ERROR": "만들기 오류",
-}
-
-# 범위 밖 갈래 -> 화면 글자
-CATEGORY_LABELS = {"unsupported": "지원 안 함", "ambiguous": "기능 여럿", "insufficient": "정보 부족"}
+# 범위 밖 갈래 -> 화면 글자. ambiguous · insufficient 는 옛 실행 기록을 불러올 때만 나옴
+CATEGORY_LABELS = {"unsupported": "지원하지 않는 요청", "ambiguous": "기능 여럿", "insufficient": "정보 부족"}
 
 ALL, FAILED = "전체", "실패만"
 FILTERS = (ALL, FAILED, STAGE_LABELS["function"], STAGE_LABELS["input"], STAGE_LABELS["scope"])
@@ -82,21 +73,32 @@ ALL_GROUPS, OUT_OF_SCOPE_GROUP = "__all__", "__out_of_scope__"
 
 NONE_TEXT = "없음"
 EMPTY_NUMBER = "—"
-UNGRADED_TEXT = "채점 제외"
+# 기대 기능이 그 인자를 읽지 않음. 「없음」(읽는데 값이 null)과 다르다
+UNUSED_TEXT = "사용 안 함"
 
 # 테스트 실행이 runner 에 넘기는 값. 화면에 안 보인다.
-# materialize 를 켠다 — 범위 밖 「정보 부족」 판정과 상세의 실행 준비 칸이 그것을 읽는다.
+# materialize 는 켠다. 화면에는 안 보이지만 결과(실행 기록)에 남겨 뒤에 실행 화면이 쓴다.
 # MCP 는 안 부른다. 문맥은 계기판 기본값(both)과 같다. GPU 쉼표는 run_selected 가 넘기는
-# gpu.GpuMonitor(gate=True) 가 맡는다 (3건마다 5초 · 뜨거우면 멈춤).
+# gpu.GpuMonitor(gate=True) 가 맡는다 (3건마다 5초 · 뜨거우면 멈춤). 온도는 결과에 안 남는다.
 RUN_OPTIONS = {"materialize": True, "context_label": "both"}
 
-# 실행 조건 네 줄. 화면 글자 -> runner 결과 meta.conditions 의 칸
+# 모델 설정 칸. 화면 글자 -> runner 결과 meta.conditions 의 칸. 파일 셋은 경로만 보임
 CONDITION_ROWS = (
     ("모델", "model"),
+    ("provider", "provider"),
     ("프롬프트 파일", "prompt"),
     ("응답 형식 파일", "response_schema"),
     ("기능 정의 파일", "menu"),
 )
+
+# provider 요청 설정(meta.conditions.request)의 화면 이름. 여기 없는 칸은 그 이름 그대로 나온다.
+REQUEST_LABELS = {
+    "temperature": "Temperature",
+    "seed": "Seed",
+    "max_tokens": "Max tokens",
+    "reasoning_effort": "Reasoning effort",
+    "num_ctx": "Context",
+}
 
 # session_state 자리
 RESULT_KEY = "test_result"           # {"dataset_id", "result"} 마지막으로 잰 결과 또는 불러온 실행 기록
@@ -115,11 +117,13 @@ HEAD_HEIGHT = 520
 
 # ================================================================ 데이터
 def summarize(result: dict | None) -> dict | None:
-    """요약 카드 다섯 개의 숫자. 결과가 없으면 None.
+    """전체 결과 카드의 숫자. 결과가 없으면 None.
 
-    출력  {"total", "done", "passed", "failed", "function", "input", "error"}
+    출력  {"total", "done", "passed", "failed", "function", "input", "scope", "error", "oos_runs"}
           total 은 잴 발화 수, done 은 끝난 발화 수
-          function · input · error 는 그 단계 때문에 실패한 건수
+          function · input · scope · error 는 그 단계 때문에 실패한 건수. runner 가 발화마다 단계를
+          하나만 적음(오류 -> 기능 선택 -> 인자 추출 차례로 먼저 걸린 것). 범위 밖은 scope 뿐
+          oos_runs 는 범위 밖 발화 수. 옛 결과에 칸이 없으면 0
     규칙  runner 결과 summary.total 을 옮겨 적음. 여기서 세지 않음
           실행 중 결과(live_result)면 total 은 잴 수 전체, 성공 · 실패는 끝난 것만
     """
@@ -134,7 +138,9 @@ def summarize(result: dict | None) -> dict | None:
         "failed": total["runs"] - total["passed"],
         "function": stages.get("function", 0),
         "input": stages.get("input", 0),
+        "scope": stages.get("scope", 0),
         "error": stages.get("error", 0),
+        "oos_runs": total.get("oos_runs", 0),
     }
 
 
@@ -207,13 +213,6 @@ def group_label(group: str, rows: list[dict]) -> str:
     return f"{name} · {len(members)}건" + (f" · 실패 {failed}" if failed else "")
 
 
-def outcome_label(value: str | None) -> str:
-    """처리 결과 한 마디. 모르는 값은 그대로, 없으면 「없음」."""
-    if not value:
-        return NONE_TEXT
-    return OUTCOME_LABELS.get(value, value)
-
-
 def verdict_label(row: dict) -> str:
     """최종 판정 한 마디. "성공" 또는 "실패 · 기능 선택" 꼴."""
     if row["passed"]:
@@ -250,23 +249,29 @@ def readable_reason(text: str) -> str:
 
 
 def field_rows(row: dict) -> list[dict]:
-    """인자 비교 줄. 정답표에 적은 인자와 모델이 낸 인자를 빠짐없이.
+    """인자 비교 줄. 기대 기능이 읽는 인자와 모델이 낸 인자를 빠짐없이.
 
-    출력  [{"name", "label", "graded", "answer", "model", "in_model", "correct"}]
-    규칙  모델 출력 차례가 먼저, 정답표에만 있는 인자는 뒤에 정답표 차례로
+    출력  [{"name", "label", "used", "graded", "answer", "model", "in_model", "correct"}]
+    규칙  모델 출력 차례가 먼저, 모델이 안 낸 인자는 뒤에 정답표 · 읽는 칸 차례로
+          used 는 기대 기능(Recipe.execution)이 그 인자를 읽나. runner 가 적은 expected.reads.
+          그 칸이 없는 옛 결과면 정답표에 적은 이름(정답표는 읽는 칸만 적음)
           graded 는 정답표에 그 이름이 적혔나. runner 의 spoken_fields 에 있는 이름임
-          correct 는 runner 가 맞댄 결과 그대로. 채점 제외면 None
-          answer 는 정답표에 적은 값. 채점 제외면 None
+          correct 는 runner 가 맞댄 결과 그대로. 채점하지 않은 칸이면 None
+          answer 는 정답표에 적은 값. 안 적었으면 None
           label 은 FIELD_LABELS 에 없으면 변수명 그대로
     제약  값끼리 맞대지 않는다. 판정은 runner 결과에 있음
     """
     graded = {field["name"]: field for field in row.get("spoken_fields") or []}
+    reads = row["expected"].get("reads")
+    used = set(reads) if reads is not None else set(graded)
     model = ((row.get("actual") or {}).get("spoken")) or {}
-    names = [*model, *(name for name in graded if name not in model)]
+    names = [*model, *(name for name in [*graded, *sorted(used)] if name not in model)]
+    names = list(dict.fromkeys(names))
     return [
         {
             "name": name,
             "label": FIELD_LABELS.get(name, name),
+            "used": name in used,
             "graded": name in graded,
             "answer": graded[name]["expected"] if name in graded else None,
             "model": model.get(name),
@@ -282,7 +287,7 @@ def _seconds(value) -> str:
 
 
 def list_frame(rows: list[dict]) -> pd.DataFrame:
-    """결과 목록 표. 한 발화 한 줄, 칸 여섯."""
+    """결과 목록 표. 한 발화 한 줄, 칸 여섯. 추론 지연시간은 resolve 한 번에 걸린 시간."""
     return pd.DataFrame(
         {
             "번호": [f"{r['case_id']:03d}" for r in rows],
@@ -290,7 +295,7 @@ def list_frame(rows: list[dict]) -> pd.DataFrame:
             "발화": [r["utterance"] for r in rows],
             "결과": ["성공" if r["passed"] else "실패" for r in rows],
             "판정": ["" if r["passed"] else STAGE_LABELS.get(r.get("failure_stage"), "") for r in rows],
-            "시간": [_seconds((r.get("timing") or {}).get("resolve_s")) for r in rows],
+            "추론 지연시간": [_seconds((r.get("timing") or {}).get("resolve_s")) for r in rows],
         }
     )
 
@@ -301,29 +306,43 @@ def list_height(ratios: dict) -> int:
     return max(LIST_MIN_HEIGHT, min(LIST_MAX_HEIGHT, viewport - HEAD_HEIGHT))
 
 
-def run_conditions(result: dict | None) -> dict | None:
-    """실행 조건 네 줄. {화면 글자: 값}. 결과가 없으면 None.
+def request_rows(conditions: dict) -> dict:
+    """provider 요청 설정. {화면 글자: 값}. Temperature 가 맨 앞. 못 읽은 기록이면 빈 dict.
 
-    규칙  runner 결과 meta.conditions 에서 옮김. 파일은 경로만 보임
+    규칙  runner 결과 meta.conditions.request (provider 코드가 실제로 싣는 값을 runner 가 읽어 둔 것)
+          화면 글자는 REQUEST_LABELS, 없는 칸은 이름 그대로. 값은 그대로 글자로
+    제약  값을 여기 적지 않는다. 옛 결과에 칸이 없으면 안 보일 뿐임
+    """
+    request = conditions.get("request") or {}
+    if not isinstance(request, dict) or "error" in request:
+        return {}
+    ordered = sorted(request, key=lambda key: (key != "temperature", list(REQUEST_LABELS).index(key) if key in REQUEST_LABELS else 99))
+    return {REQUEST_LABELS.get(key, key): display_value(request[key]) for key in ordered}
+
+
+def run_conditions(result: dict | None) -> dict | None:
+    """모델 설정 전부. {화면 글자: 값}. 결과가 없으면 None.
+
+    규칙  runner 결과 meta.conditions 에서 옮김. 모델 · provider · 요청 설정(Temperature 등) ·
+          호출 상한 · 파일 셋(경로만)
           조건을 못 읽은 결과면 그 까닭 한 줄
     """
     if not result:
         return None
     conditions = result["meta"].get("conditions") or {}
     if "error" in conditions:
-        return {"실행 조건": conditions["error"]}
+        return {"모델 설정": conditions["error"]}
     shown = {}
-    for label, key in CONDITION_ROWS:
+    for label, key in CONDITION_ROWS[:2]:
+        shown[label] = conditions.get(key)
+    shown.update(request_rows(conditions))
+    timeout = (conditions.get("inference") or {}).get("timeout")
+    if timeout is not None:
+        shown["호출 상한"] = f"{timeout}초"
+    for label, key in CONDITION_ROWS[2:]:
         value = conditions.get(key)
         shown[label] = value.get("path") if isinstance(value, dict) else value
     return {label: value if value is not None else NONE_TEXT for label, value in shown.items()}
-
-
-def _fraction(pair: dict | None) -> str:
-    """지표 한 칸. 「48/48 · 100%」. 분모가 0 이면 줄표."""
-    if not pair or not pair.get("total"):
-        return EMPTY_NUMBER
-    return f"{pair['correct']}/{pair['total']} · {pair['correct'] / pair['total']:.0%}"
 
 
 def _elapsed(seconds) -> str:
@@ -333,22 +352,30 @@ def _elapsed(seconds) -> str:
     return f"{minutes}분 {rest}초" if minutes else f"{rest}초"
 
 
-def gpu_text(gpu: dict | None) -> str:
-    """GPU 한 줄. 기록이 없으면 「기록 없음」.
+def environment_rows(result: dict) -> dict:
+    """실행 환경. {"GPU": …, "VRAM": …}. 기록이 없으면 두 칸 다 「기록 없음」.
 
-    규칙  시작 · 최고 · 끝 온도, 쉰 횟수, 열 제한. 열 제한을 못 읽었으면 그 말을 뺌
+    규칙  runner 결과 meta.environment.gpus. 이름이 모두 같으면 「이름 × 장수」, 다르면 이름을 이음
+          VRAM 은 GPU 마다의 총량(GiB). 모두 같으면 「장당 N GiB」
+          온도 · 사용률은 안 보임 (옛 결과의 meta.gpu 도 안 읽음)
     """
-    if not gpu or not gpu.get("available"):
-        return "기록 없음"
-    parts = [f"시작 {gpu.get('start_temp')}°C · 최고 {gpu.get('max_temp')}°C · 끝 {gpu.get('end_temp')}°C"]
-    parts.append(f"쉼 {gpu.get('pauses') or 0}회")
-    if gpu.get("thermal_throttle") is not None:
-        parts.append("열 제한 있음" if gpu["thermal_throttle"] else "열 제한 없음")
-    return " · ".join(parts)
+    gpus = ((result["meta"].get("environment") or {}).get("gpus")) or []
+    if not gpus:
+        return {"GPU": "기록 없음", "VRAM": "기록 없음"}
+    names = [gpu.get("name") or "?" for gpu in gpus]
+    name = f"{names[0]} × {len(names)}" if len(set(names)) == 1 else " · ".join(names)
+    sizes = [gpu.get("memory_total_mib") for gpu in gpus]
+    if any(size is None for size in sizes):
+        vram = "기록 없음"
+    elif len(set(sizes)) == 1:
+        vram = f"장당 {sizes[0] / 1024:.1f} GiB"
+    else:
+        vram = " · ".join(f"{size / 1024:.1f} GiB" for size in sizes)
+    return {"GPU": name, "VRAM": vram}
 
 
 def run_identity(result: dict) -> dict:
-    """실행 기록 id 와 저장 자리. 실행 조건 아래 두 줄. 없으면 그 줄을 뺌."""
+    """실행 기록 id 와 저장 자리. 모델 설정 아래 두 줄. 없으면 그 줄을 뺌."""
     meta = result["meta"]
     shown = {}
     if meta.get("run_id"):
@@ -369,42 +396,59 @@ def suite_label(suite: dict) -> str:
     return "정답표"
 
 
-def overview(result: dict | None) -> dict | None:
-    """실행 개요. {화면 글자: 값}. 결과가 없으면 None.
+def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
+    """실행 개요. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
-    규칙  runner 결과 meta · summary.metrics · summary.latency 를 옮겨 적음. 여기서 세지 않음
-          지표는 「맞은 수/잰 수 · 백분율」. 잰 것이 없으면 줄표 (FULL48 의 범위 밖 등)
-          실행 기록 id 는 여기 안 보임 (정답표 이름이 들어 있어 개발 용어가 샘). 실행 조건에 있음
+    칸  테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간(Median · P95 · Max) ·
+        발화(전체 · 성공 · 실패 · 오류) · 모델 설정(모델 · Temperature …) · 실행 환경(GPU · VRAM)
+    규칙  runner 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
+          평가 지표(기능 선택 · 인자 추출 등)는 여기 안 둠. 아래 전체 결과가 보임
+          추론 지연시간은 resolve 한 번에 걸린 시간의 분포. 잰 것이 없으면 줄표
+          실행 기록 id 는 여기 안 보임 (정답표 이름이 들어 있어 개발 용어가 샘). 모델 설정 접힘 칸에 있음
     """
     if not result:
         return None
     meta, summary = result["meta"], result["summary"]
-    board = summary.get("metrics") or {}
     total = summary["total"]
-    suite = meta.get("suite") or {}
     started = meta.get("started_at")
     delay = summary.get("latency") or {}
-    return {
-        "테스트 세트": suite_label(suite),
-        "시작": f"{datetime.datetime.fromisoformat(started):%m-%d %H:%M:%S}" if started else EMPTY_NUMBER,
-        "걸린 시간": _elapsed(meta.get("elapsed_s")),
-        "발화": f"{total['runs']}건 · 성공 {total['passed']} · 실패 {total['runs'] - total['passed']} · 오류 {total['errors']}",
-        "기능 선택": _fraction(board.get("selection")),
-        "인자 추출": _fraction(board.get("semantic_fields")),
-        "발화 성공": _fraction(board.get("joint")),
-        "범위 밖 처리": _fraction(board.get("oos")),
-        "실행 준비": _fraction(board.get("ready")),
-        "응답 시간": (
-            f"중앙 {delay['median']:.1f}초 · 95% {delay['p95']:.1f}초 · 최대 {delay['max']:.1f}초" if delay else EMPTY_NUMBER
-        ),
-        "GPU": gpu_text(meta.get("gpu")),
-    }
+    conditions = meta.get("conditions") or {}
+
+    def seconds(key):
+        return f"{delay[key]:.2f}초" if isinstance(delay.get(key), (int, float)) else EMPTY_NUMBER
+
+    model = [("모델", str(conditions.get("model") or EMPTY_NUMBER))]
+    request = request_rows(conditions)
+    model += [(label, value) for label, value in request.items() if label == REQUEST_LABELS["temperature"]]
+    if REQUEST_LABELS["temperature"] not in request:
+        model.append((REQUEST_LABELS["temperature"], "기록 없음"))
+    return [
+        ("테스트 세트", [("", suite_label(meta.get("suite") or {}))]),
+        ("시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
+        ("소요 시간", [("", _elapsed(meta.get("elapsed_s")))]),
+        ("추론 지연시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
+        ("발화", [
+            ("전체", str(total["runs"])),
+            ("성공", str(total["passed"])),
+            ("실패", str(total["runs"] - total["passed"])),
+            ("오류", str(total["errors"])),
+        ]),
+        ("모델 설정", model),
+        ("실행 환경", list(environment_rows(result).items())),
+    ]
+
+
+def _recipe_number(recipe_id: str) -> int:
+    """기능 번호의 숫자. "recipe_061" -> 61. 숫자가 없으면 아주 큰 수(뒤로)."""
+    tail = str(recipe_id).rsplit("_", 1)[-1]
+    return int(tail) if tail.isdigit() else 10**9
 
 
 def recipe_rows(result: dict | None) -> list[dict]:
-    """기능별 결과. [{group, label, runs, passed, failed}] 실패가 많은 것부터, 같으면 번호 차례.
+    """기능별 결과. [{group, label, runs, passed, failed}] 기능 번호의 숫자 차례.
 
-    규칙  runner 결과 summary.recipes 를 옮김. 범위 밖은 summary.total 의 oos_* 로 한 줄 덧붙임
+    규칙  runner 결과 summary.recipes 를 옮김. 범위 안(지원하는 기능)만. 범위 밖은 기능이 아니라 안 넣음
+          차례는 번호를 숫자로 읽어 오름차순 (글자 차례가 아님)
     """
     if not result:
         return []
@@ -412,13 +456,7 @@ def recipe_rows(result: dict | None) -> list[dict]:
         {"group": rid, "label": function_label(rid), "runs": v["runs"], "passed": v["passed"], "failed": v["runs"] - v["passed"]}
         for rid, v in (result["summary"].get("recipes") or {}).items()
     ]
-    total = result["summary"]["total"]
-    if total.get("oos_runs"):
-        entries.append({
-            "group": OUT_OF_SCOPE_GROUP, "label": "범위 밖", "runs": total["oos_runs"],
-            "passed": total["oos_passed"], "failed": total["oos_runs"] - total["oos_passed"],
-        })
-    return sorted(entries, key=lambda e: (-e["failed"], e["group"]))
+    return sorted(entries, key=lambda e: _recipe_number(e["group"]))
 
 
 def first_failure(rows: list[dict]) -> int | None:
@@ -457,8 +495,27 @@ def _esc(value) -> str:
     return html.escape(str(value))
 
 
+# 전체 결과 카드. (글자, summarize 칸, 색)
+RESULT_CARDS = (
+    ("전체", "total", ""),
+    ("성공", "passed", "ok"),
+    ("실패", "failed", "ng"),
+    ("오류", "error", "ng"),
+    ("기능 선택 실패", "function", "cause"),
+    ("인자 추출 실패", "input", "cause"),
+    ("범위 밖 처리 실패", "scope", "cause"),
+)
+
+
 def summary_markup(summary: dict | None) -> str:
-    """요약 카드 다섯. 결과가 없으면 숫자 자리에 줄표만."""
+    """전체 결과. 머리 한 줄과 카드 일곱. 결과가 없으면 숫자 자리에 줄표만.
+
+    규칙  성공 · 실패는 전체에 대한 백분율을 닮. 오류는 실행 오류 건수
+          실패 원인 셋은 발화마다 먼저 걸린 원인 하나로 셈 — 그렇다고 카드에 적음. 셋(과 오류)을
+          더해 실패를 맞추라는 뜻으로 보이지 않게 합계를 따로 안 적음
+          범위 밖 발화가 없는 정답표(FULL48)면 범위 밖 처리 실패는 「해당 발화 없음」
+    """
+    head = '<div class="tt-sum-title">전체 결과</div>'
 
     def card(label, number, tone="", note=""):
         note_html = f'<div class="tt-kpi-note">{_esc(note)}</div>' if note else ""
@@ -468,14 +525,8 @@ def summary_markup(summary: dict | None) -> str:
         )
 
     if summary is None:
-        cards = [
-            card("전체", EMPTY_NUMBER),
-            card("성공", EMPTY_NUMBER, "ok"),
-            card("실패", EMPTY_NUMBER, "ng"),
-            card(STAGE_LABELS["function"], EMPTY_NUMBER, "cause"),
-            card(STAGE_LABELS["input"], EMPTY_NUMBER, "cause"),
-        ]
-        return '<div class="tt-kpis tt-kpis-empty">' + "".join(cards) + "</div>"
+        cards = [card(label, EMPTY_NUMBER, tone) for label, _key, tone in RESULT_CARDS]
+        return head + '<div class="tt-kpis tt-kpis-empty">' + "".join(cards) + "</div>"
 
     done = summary["done"]
     finished = done == summary["total"]
@@ -483,22 +534,22 @@ def summary_markup(summary: dict | None) -> str:
     def share(count):
         return f"{count / done:.1%}" if done else ""
 
-    failed_note = share(summary["failed"])
-    if summary["error"]:
-        failed_note += f" · {STAGE_LABELS['error']} {summary['error']}"
-    return '<div class="tt-kpis">' + "".join(
-        [
-            card("전체", summary["total"], note="발화" if finished else f"완료 {done} / {summary['total']}"),
-            card("성공", summary["passed"], "ok", share(summary["passed"])),
-            card("실패", summary["failed"], "ng", failed_note),
-            card(STAGE_LABELS["function"], summary["function"], "cause", "실패 원인"),
-            card(STAGE_LABELS["input"], summary["input"], "cause", "실패 원인"),
-        ]
+    notes = {
+        "total": "발화 수" if finished else f"완료 {done} / {summary['total']}",
+        "passed": share(summary["passed"]),
+        "failed": share(summary["failed"]),
+        "error": "실행 오류",
+        "function": "실패 원인 · 먼저 걸린 것",
+        "input": "실패 원인 · 먼저 걸린 것",
+        "scope": "실패 원인 · 먼저 걸린 것" if summary.get("oos_runs") else "해당 발화 없음",
+    }
+    return head + '<div class="tt-kpis">' + "".join(
+        card(label, summary[key], tone, notes[key]) for label, key, tone in RESULT_CARDS
     ) + "</div>"
 
 
 def conditions_markup(conditions: dict) -> str:
-    """실행 조건 네 줄."""
+    """모델 설정 줄들."""
     rows = "".join(
         f'<div class="tt-cond-k">{_esc(k)}</div><div class="tt-cond-v">{_esc(v)}</div>'
         for k, v in conditions.items()
@@ -506,15 +557,21 @@ def conditions_markup(conditions: dict) -> str:
     return f'<div class="tt-cond">{rows}</div>'
 
 
-def overview_markup(info: dict | None) -> str:
-    """실행 개요. 결과가 없으면 빈 글자."""
+def overview_markup(info: list | None) -> str:
+    """실행 개요. 칸마다 제목 아래 (글자 · 값) 줄을 세로로. 결과가 없으면 빈 글자."""
     if info is None:
         return ""
-    cells = "".join(
-        f'<div class="tt-ov"><div class="tt-ov-k">{_esc(k)}</div><div class="tt-ov-v">{_esc(v)}</div></div>'
-        for k, v in info.items()
-    )
-    return f'<div class="tt-ovs">{cells}</div>'
+
+    def cell(title, rows):
+        lines = "".join(
+            f'<div class="tt-ov-row"><span class="tt-ov-sub">{_esc(label)}</span>'
+            f'<span class="tt-ov-v">{_esc(value)}</span></div>'
+            if label else f'<div class="tt-ov-row"><span class="tt-ov-v">{_esc(value)}</span></div>'
+            for label, value in rows
+        )
+        return f'<div class="tt-ov"><div class="tt-ov-k">{_esc(title)}</div>{lines}</div>'
+
+    return '<div class="tt-ovs">' + "".join(cell(title, rows) for title, rows in info) + "</div>"
 
 
 def recipe_summary_markup(entries: list[dict]) -> str:
@@ -540,6 +597,12 @@ def _value_markup(value) -> str:
 def _muted_markup(text: str) -> str:
     """값 자리에 넣는 흐린 글자."""
     return f'<span class="tt-val tt-none">{_esc(text)}</span>'
+
+
+def _tip(recipe_id: str, functions: dict) -> str:
+    """기능 번호에 걸 title 속성. 설명은 runner 결과 meta.functions (게시 menu 의 function 문장)."""
+    text = functions.get(recipe_id)
+    return f' title="{_esc(text)}"' if text else ""
 
 
 def _function_markup(recipe_ids: list, functions: dict, empty: str = "선택 없음") -> str:
@@ -568,7 +631,7 @@ def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: boo
 
     입력  wrong 은 runner 가 틀렸다고 판정한 칸인가
     규칙  채점하는 칸이 틀렸으면 모델 출력 칸을 강조하고 「차이」를 닮
-          채점 제외 칸은 줄 전체를 흐리게 둠. 강조하지 않음
+          graded 가 거짓인 칸(기대 기능이 안 읽는 인자)은 줄 전체를 흐리게 둠. 강조하지 않음
     """
     tag, cell = "", "tt-c tt-model"
     row = "" if graded else " tt-ungraded"
@@ -582,8 +645,14 @@ def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: boo
     )
 
 
-def _extra_markup(row: dict) -> str:
-    """AI 모델 출력의 부가 정보. 판정 상태 · 후보 기능 · 판단. 실행 오류면 오류 문장."""
+def _extra_markup(row: dict, functions: dict | None = None) -> str:
+    """AI 모델 출력의 부가 정보. 판정 상태 · 후보 기능 · 판단 · 추론 지연시간. 실행 오류면 오류 문장.
+
+    규칙  후보 기능은 「기능 NNN」만 보이고, 마우스를 올리면 그 기능 설명(functions)이 뜸
+          추론 지연시간은 이 발화의 resolve 한 번에 걸린 시간
+    제약  workflow 를 부를 수 있었나(materialize 판정)는 보이지 않는다. 이 화면이 재는 것이 아님
+    """
+    functions = functions or {}
     model = row.get("actual") or {}
     if row.get("error"):
         status_text = STAGE_LABELS["error"]
@@ -593,13 +662,9 @@ def _extra_markup(row: dict) -> str:
         status_text = STATUS_LABELS.get(status, status or NONE_TEXT)
         reason = readable_reason(model.get("reason") or NONE_TEXT)
     picked = model.get("recipe_id")
-    built = row.get("materialize") or {}
-    readiness = outcome_label(built.get("status")) if built else NONE_TEXT
-    if built.get("missing"):
-        readiness += f" ({', '.join(str(m) for m in built['missing'])})"
     timing = row.get("timing") or {}
     chips = "".join(
-        f'<span class="tt-chip{" tt-chip-on" if cid == picked else ""}">{_esc(function_label(cid))}</span>'
+        f'<span class="tt-chip{" tt-chip-on" if cid == picked else ""}"{_tip(cid, functions)}>{_esc(function_label(cid))}</span>'
         for cid in model.get("candidate_recipe_ids") or []
     ) or f'<span class="tt-val tt-none">{NONE_TEXT}</span>'
     return (
@@ -610,9 +675,7 @@ def _extra_markup(row: dict) -> str:
         f'<div class="tt-kv"><div class="tt-kv-k">후보 기능</div><div class="tt-kv-v">{chips}</div></div>'
         f'<div class="tt-kv"><div class="tt-kv-k">모델 판단</div>'
         f'<div class="tt-kv-v tt-reason">{_esc(reason)}</div></div>'
-        f'<div class="tt-kv"><div class="tt-kv-k">처리 결과</div><div class="tt-kv-v">{_esc(outcome_label(row.get("outcome")))}</div></div>'
-        f'<div class="tt-kv"><div class="tt-kv-k">실행 준비</div><div class="tt-kv-v">{_esc(readiness)}</div></div>'
-        f'<div class="tt-kv"><div class="tt-kv-k">응답 시간</div>'
+        f'<div class="tt-kv"><div class="tt-kv-k">추론 지연시간</div>'
         f'<div class="tt-kv-v">{_esc(_seconds(timing.get("resolve_s")) or NONE_TEXT)}</div></div>'
         "</div>"
     )
@@ -625,9 +688,11 @@ def detail_markup(row: dict, functions: dict) -> str:
     규칙  맨 위 한 줄에 번호 · 발화 · 판정
           정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부(field_rows)
           기능 칸 강조는 runner 의 recipe_correct, 인자 칸 강조는 spoken_fields 의 correct
-          정답표에 안 적은 인자는 정답표 칸에 「채점 제외」, 모델 칸은 값을 흐리게
-          범위 밖 발화는 기능 · 인자 대신 갈래와 받아들이는 처리 결과를 맞댐. 강조는 runner 의 passed
-          그 아래 AI 모델 출력의 판정 상태 · 후보 기능 · 판단 · 처리 결과 · 실행 준비 · 응답 시간
+          인자 값 칸은 셋으로 가름 — 기대 기능이 안 읽는 인자는 두 칸 다 「사용 안 함」,
+          읽는데 값이 null 이면 「없음」, 값이 있으면 그 값
+          범위 밖 발화는 기능 칸에 「범위 밖 · 선택할 기능 없음」과 모델이 고른 것을 맞댐. 인자 줄 없음.
+          강조는 runner 의 passed
+          그 아래 AI 모델 출력의 판정 상태 · 후보 기능(설명은 마우스를 올리면) · 판단 · 추론 지연시간
     """
     model = row.get("actual") or {}
     errored = bool(row.get("error"))
@@ -639,7 +704,6 @@ def detail_markup(row: dict, functions: dict) -> str:
         f'<span class="tt-badge {tone}">● {_esc(verdict_label(row))}</span>'
         "</div>"
     )
-
     rows = [
         '<div class="tt-row tt-cols">'
         '<div class="tt-c"></div>'
@@ -647,32 +711,29 @@ def detail_markup(row: dict, functions: dict) -> str:
         '<div class="tt-c tt-col-model">AI 모델 출력</div>'
         "</div>",
     ]
+    picked = _function_markup([model.get("recipe_id")], functions, STAGE_LABELS["error"] if errored else
+                              STATUS_LABELS.get(model.get("status"), "선택 없음") if model.get("status") != "SELECT" else "선택 없음")
+
     if row.get("scope") == "out_of_scope":
         category = row["expected"].get("category")
-        accepted = " 또는 ".join(outcome_label(o) for o in row["expected"].get("outcomes") or [])
         rows += [
-            '<div class="tt-sec">범위 밖 처리</div>',
+            '<div class="tt-sec">기능 선택</div>',
             _pair_markup(
-                _key_markup("갈래"),
-                f'<div class="tt-fn">범위 밖 · {_esc(CATEGORY_LABELS.get(category, category))}</div>',
-                _function_markup([model.get("recipe_id")], functions, STAGE_LABELS["error"] if errored else "선택 없음"),
-                wrong=False,
-            ),
-            _pair_markup(
-                _key_markup("처리 결과"),
-                _value_markup(accepted),
-                _value_markup(STAGE_LABELS["error"] if errored else outcome_label(row.get("outcome"))),
+                _key_markup("기능"),
+                f'<div class="tt-fn">범위 밖 · 선택할 기능 없음</div>'
+                f'<div class="tt-desc">{_esc(CATEGORY_LABELS.get(category, category))}</div>',
+                picked,
                 wrong=not row["passed"],
             ),
         ]
-        return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(row)}'
+        return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(row, functions)}'
 
     rows += [
         '<div class="tt-sec">기능 선택</div>',
         _pair_markup(
             _key_markup("기능"),
             _function_markup(row["expected"]["recipe_ids"], functions),
-            _function_markup([model.get("recipe_id")], functions, STAGE_LABELS["error"] if errored else "선택 없음"),
+            picked,
             wrong=not row["recipe_correct"],
         ),
         '<div class="tt-sec">인자 추출</div>',
@@ -681,14 +742,15 @@ def detail_markup(row: dict, functions: dict) -> str:
         rows.append(
             _pair_markup(
                 _key_markup(f["label"], f["name"]),
-                _value_markup(f["answer"]) if f["graded"] else _muted_markup(UNGRADED_TEXT),
-                _value_markup(f["model"]) if f["in_model"] else _muted_markup(EMPTY_NUMBER),
+                _value_markup(f["answer"]) if f["used"] else _muted_markup(UNUSED_TEXT),
+                (_value_markup(f["model"]) if f["in_model"] else _muted_markup(EMPTY_NUMBER))
+                if f["used"] else _muted_markup(UNUSED_TEXT),
                 wrong=f["correct"] is False,
-                graded=f["graded"],
+                graded=f["used"],
             )
         )
 
-    return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(row)}'
+    return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(row, functions)}'
 
 
 def _note_markup(text: str) -> str:
@@ -869,19 +931,18 @@ def _render_overview(result: dict | None) -> None:
 
 
 def _render_recipe_summary(result: dict | None) -> None:
-    """기능별 결과 (접힘). 실패가 있으면 펼침."""
+    """기능별 결과 (접힘). 지원하는 기능만, 번호 차례. 실패가 있으면 펼침."""
     entries = recipe_rows(result)
     if not entries:
         return
     failed = sum(1 for e in entries if e["failed"])
-    title = f"기능별 결과 · {len(entries)}개" + (f" · 실패 있는 기능 {failed}" if failed else "")
-    with st.expander(title, expanded=bool(failed)):
+    with st.expander("기능별 결과", expanded=bool(failed)):
         st.markdown(recipe_summary_markup(entries), unsafe_allow_html=True)
 
 
 def _render_conditions(result: dict | None) -> None:
-    """실행 조건 (접힘). 결과가 없으면 비어 있다고만."""
-    with st.expander("실행 조건", expanded=False):
+    """모델 설정 (접힘). 모델 · 요청 설정 · 파일 · 실행 기록 id. 결과가 없으면 비어 있다고만."""
+    with st.expander("모델 설정", expanded=False):
         conditions = run_conditions(result)
         if conditions is None:
             st.markdown('<div class="tt-empty">테스트를 실행하면 표시됩니다.</div>', unsafe_allow_html=True)
@@ -993,7 +1054,7 @@ def _list_columns() -> dict:
         "발화": st.column_config.TextColumn("발화", width="large"),
         "결과": st.column_config.TextColumn("결과", width=60),
         "판정": st.column_config.TextColumn("판정", width=96),
-        "시간": st.column_config.TextColumn("시간", width=60),
+        "추론 지연시간": st.column_config.TextColumn("추론 지연시간", width=96),
     }
 
 
@@ -1132,12 +1193,17 @@ def panel_css() -> str:
 
 /* ---------------------------------------------- 실행 개요 */
 .st-key-test_tab .tt-ovs {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr));
-  gap: 0.35rem 0.9rem; font-size: 0.8rem; padding: 0.5rem 0.75rem;
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.6rem 1.2rem; font-size: 0.82rem; padding: 0.65rem 0.85rem;
   border: 1px solid var(--tt-line); border-radius: 10px; background: var(--tt-softer);
 }
-.st-key-test_tab .tt-ov-k { opacity: 0.6; font-size: 0.72rem; }
-.st-key-test_tab .tt-ov-v { font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.st-key-test_tab .tt-ov-k { opacity: 0.6; font-size: 0.74rem; margin-bottom: 0.2rem; }
+.st-key-test_tab .tt-ov-row { display: flex; justify-content: space-between; gap: 0.8rem; line-height: 1.55; }
+.st-key-test_tab .tt-ov-sub { opacity: 0.65; }
+.st-key-test_tab .tt-ov-v { font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; text-align: right; }
+.st-key-test_tab .tt-ov-row:only-child .tt-ov-v { text-align: left; }
+.st-key-test_tab .tt-sum-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin: 0.2rem 0 0.45rem; }
+.st-key-test_tab .tt-chip[title] { cursor: help; }
 
 /* ---------------------------------------------- 기능별 결과 */
 .st-key-test_tab .tt-rss { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.3rem 0.8rem; }
@@ -1147,7 +1213,7 @@ def panel_css() -> str:
 }
 .st-key-test_tab .tt-rs-ng { color: var(--tt-ng); background: rgba(229, 83, 75, 0.08); font-weight: 600; }
 
-/* ---------------------------------------------- 실행 조건 */
+/* ---------------------------------------------- 모델 설정 */
 .st-key-test_tab .tt-cond {
   display: grid; grid-template-columns: 7.5rem minmax(0, 1fr);
   row-gap: 0.35rem; column-gap: 0.8rem; font-size: 0.82rem;

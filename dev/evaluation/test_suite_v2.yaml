@@ -2,7 +2,7 @@
 #
 # FULL48(resolve_regression.yaml)은 얼린 회귀 기준선이고 이 파일은 그것을 대신하지 않는다.
 #   FULL48         알려진 발화의 회귀를 잡는다. 발화 · 기대값을 바꾸지 않는다
-#   테스트 세트 v2  같은 기능을 다른 말로 불러도 닿는지, 범위 밖을 범위 밖으로 받는지 잰다
+#   테스트 세트 v2  같은 기능을 다른 말로 불러도 닿는지, 지원하지 않는 요청에 기능을 안 고르는지 잰다
 # 두 자의 점수를 한 백분율로 합치지 않는다. 발화가 다르면 다른 자다.
 #
 # 읽는 곳은 dev/evaluation/suite.py 하나다. **데이터 파일이다. yaml.dump 로 다시 쓰지 않는다.**
@@ -12,13 +12,12 @@
 # 범위 안   받아들인 recipe 서른아홉 전부에 발화 다섯씩. 묶음은 FULL48 과 같은 뜻 —
 #           시작 데이터(말한 것 · 찍은 지점 · 보이는 범위)로 가른다. recipe 의 묶음은
 #           그 execution 이 화면 문맥 무엇을 읽는가로 정해지고 spoken_audit._selfcheck 가 본다
-# 범위 밖   기대 recipe 가 없다. expected.category 가 갈래, expected.outcomes 가 받아들이는 결과
+# 범위 밖   **지원하는 기능 서른아홉 중 어느 것도 고르면 안 되는 발화**다. 기대 recipe 가 없고
+#           expected.outcomes 는 [NO_MATCH] 하나다 (resolve 응답 schema 의 status 이름).
 #             unsupported   menu 의 어느 기능도 하는 일이 아니다          -> NO_MATCH
-#             ambiguous     방식만 다른 기능이 여럿 맞는다                 -> CLARIFY
-#             insufficient  기능은 서는데 부를 값을 말하지 않았다          -> CLARIFY 또는
-#                           고른 기능의 workflow 가 MISSING_ARGUMENT
-#           결과 이름은 지어내지 않았다. resolve 응답 schema 의 status enum 과
-#           workflow_materializer 의 판정 이름이다
+#           ★ 되묻기(CLARIFY)가 정답인 발화 · 값이 모자라 멈추는 것(MISSING_ARGUMENT)이
+#             정답인 발화는 넣지 않는다. 그것은 「범위 밖」이 아니라 되묻기 동작을 재는 자다.
+#             2026-09-18 에 그런 열여섯(ambiguous 8 · insufficient 8)을 뺐다
 #
 # ── 정답 규칙 (FULL48 과 같다) ─────────────────────────────────────
 #
@@ -1668,117 +1667,3 @@ cases:
     expected:
       category: unsupported
       outcomes: [NO_MATCH]
-  # ambiguous
-  - id: 204
-    group: out_of_scope
-    utterance: "CCTV 보여줘"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 205
-    group: out_of_scope
-    utterance: "도달권 보여줘"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 206
-    group: out_of_scope
-    utterance: "행정경계 보여줘"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 207
-    group: out_of_scope
-    utterance: "충전소 빈 충전기 알려줘"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 208
-    group: out_of_scope
-    utterance: "인구 얼마나 돼"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 209
-    group: out_of_scope
-    utterance: "의원 공약 보여줘"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 210
-    group: out_of_scope
-    utterance: "철도 노선 뭐 있어"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  - id: 211
-    group: out_of_scope
-    utterance: "여기 선거구 알려줘"
-    enabled: true
-    expected:
-      category: ambiguous
-      outcomes: [CLARIFY]
-  # insufficient
-  - id: 212
-    group: out_of_scope
-    utterance: "여기서 거기까지 어떻게 가"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 213
-    group: out_of_scope
-    utterance: "좌표 알려줘"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 214
-    group: out_of_scope
-    utterance: "그 선거구 정보 줘"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 215
-    group: out_of_scope
-    utterance: "문서에서 찾아줘"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 216
-    group: out_of_scope
-    utterance: "그 역에 무슨 노선 다녀"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 217
-    group: out_of_scope
-    utterance: "그 노선 선형 좌표만 줘"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 218
-    group: out_of_scope
-    utterance: "그 충전소 충전기 비었는지 봐줘"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]
-  - id: 219
-    group: out_of_scope
-    utterance: "그 시설물 디지털 트윈에 띄워줘"
-    enabled: true
-    expected:
-      category: insufficient
-      outcomes: [CLARIFY, MISSING_ARGUMENT]

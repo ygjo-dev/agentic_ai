@@ -14,7 +14,7 @@
 정답표도 recipe 도 고치지 않는다. 읽기만 한다.
 
 integrity 는 정답표 한 벌이 서 있을 조건을 본다 (묶음 · 기대 recipe · 채점 칸 · 발화가 prompt 로
-새지 않았나 · 범위 밖 결과 이름). 판 2 정답표에는 recipe 마다 발화 수 하한이 더 걸린다.
+새지 않았나 · 범위 밖은 NO_MATCH 뿐인가). 판 2 정답표에는 recipe 마다 발화 수 하한이 더 걸린다.
 """
 
 import argparse
@@ -169,7 +169,8 @@ def integrity(suite: dict, *, anchor: dict | None = None) -> list[str]:
           채점 칸이 기대 recipe 가 읽는 칸과 같음 (extra · missing 둘 다 없음)
           발화에 recipe id · 도구 이름이 없음. 판 2 면 menu example · prompt 예시 문장도 없음
           (판 1 인 FULL48 은 얼린 자라 이 검사보다 먼저 지은 발화가 그대로 있음)
-          범위 밖 결과 이름이 resolve 응답 schema 의 status enum 또는 materializer 판정에 있음
+          범위 밖 결과 이름이 resolve 응답 schema 의 status enum 에 있음. 범위 밖은 전부 [NO_MATCH]
+          (되묻기 · 값 부족이 정답인 발화는 범위 밖이 아님)
           판 2 면 받아들인 recipe 전부가 MIN_UTTERANCES_PER_RECIPE 이상. 범위 밖 갈래마다 하나 이상
           anchor 가 있으면 그 발화와 글자까지 같은 발화가 없음
     제약  정답표 · recipe 를 고치지 않는다
@@ -209,10 +210,12 @@ def integrity(suite: dict, *, anchor: dict | None = None) -> list[str]:
             problems.append(f"{row['id']}: 기대 recipe 가 읽는 칸을 안 채점함 {row['missing']}")
 
     known = set(get_role_config(RESOLVE).response_schema["properties"]["status"]["enum"])
-    known.add(workflow_materializer.MISSING_ARGUMENT)
     unknown = set(suite_module.OOS_OUTCOMES) - known
     if unknown:
-        problems.append(f"범위 밖 결과 이름이 runtime 에 없음 {sorted(unknown)}")
+        problems.append(f"범위 밖 결과 이름이 resolve status 에 없음 {sorted(unknown)}")
+    for case in suite["cases"]:
+        if not suite_module.in_scope(case) and case["expected"]["outcomes"] != ["NO_MATCH"]:
+            problems.append(f"{case['id']}: 범위 밖인데 NO_MATCH 말고 {case['expected']['outcomes']} 를 받아들임")
 
     if suite.get("version", 1) >= 2:
         per_recipe = Counter(
