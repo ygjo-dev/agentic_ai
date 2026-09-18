@@ -59,6 +59,17 @@ def test_the_evaluation_runner_runs_the_whole_suite_to_the_end_and_grades_like_c
     runner._selfcheck()
 
 
+def test_the_answer_table_grades_only_spoken_fields_the_expected_recipe_actually_reads():
+    """정답표가 채점하는 이름 있는 값은 기대 recipe 의 Recipe.execution 이 읽는 칸이어야 한다.
+
+    안 읽는 칸은 맞혀도 틀려도 실행이 안 바뀌어 점수가 실행의 뜻과 어긋난다.
+    recipe 의 배선이 바뀌어 칸이 빠지면 정답표도 함께 고쳐야 하므로 커밋마다 본다.
+    """
+    from dev.evaluation import spoken_audit
+
+    spoken_audit._selfcheck()
+
+
 # ── 오래 도는 회귀평가의 쉼표 ────────────────────────────────────────
 #
 # 48 × 3 을 쉬지 않고 돌리면 GPU 넷이 계속 물려 있어 팬이 시끄럽다. 쉬는 것은
