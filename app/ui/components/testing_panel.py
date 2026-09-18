@@ -85,22 +85,38 @@ HEAD_HEIGHT = 520
 def summarize(result: dict | None) -> dict | None:
     """요약 카드 다섯 개의 숫자. 결과가 없으면 None.
 
-    출력  {"total", "passed", "failed", "function", "input", "error"}
+    출력  {"total", "done", "passed", "failed", "function", "input", "error"}
+          total 은 잴 발화 수, done 은 끝난 발화 수
           function · input · error 는 그 단계 때문에 실패한 건수
     규칙  runner 결과 summary.total 을 옮겨 적음. 여기서 세지 않음
+          실행 중 결과(live_result)면 total 은 잴 수 전체, 성공 · 실패는 끝난 것만
     """
     if not result:
         return None
     total = result["summary"]["total"]
     stages = total["failure_stages"]
     return {
-        "total": total["runs"],
+        "total": result.get("planned") or total["runs"],
+        "done": total["runs"],
         "passed": total["passed"],
         "failed": total["runs"] - total["passed"],
         "function": stages.get("function", 0),
         "input": stages.get("input", 0),
         "error": stages.get("error", 0),
     }
+
+
+def live_result(rows: list[dict], planned: int) -> dict:
+    """실행 중 화면에 그릴 결과. 끝난 결과 줄만 담음.
+
+    입력  runner 가 progress 로 넘긴 결과 줄들 · 잴 발화 수
+    출력  {"summary", "cases", "planned"}. summarize · filter_results 가 끝난 결과처럼 읽음
+    규칙  합계는 runner.summarize 로 셈. 판정은 줄에 이미 있음
+    제약  줄을 다시 채점하지 않는다
+    """
+    from dev.evaluation import runner
+
+    return {"summary": runner.summarize(rows, ()), "cases": list(rows), "planned": planned}
 
 
 def _squash(text: str) -> str:
@@ -272,14 +288,19 @@ def summary_markup(summary: dict | None) -> str:
         ]
         return '<div class="tt-kpis tt-kpis-empty">' + "".join(cards) + "</div>"
 
-    total = summary["total"] or 1
-    failed_note = f"{summary['failed'] / total:.1%}"
+    done = summary["done"]
+    finished = done == summary["total"]
+
+    def share(count):
+        return f"{count / done:.1%}" if done else ""
+
+    failed_note = share(summary["failed"])
     if summary["error"]:
         failed_note += f" · {STAGE_LABELS['error']} {summary['error']}"
     return '<div class="tt-kpis">' + "".join(
         [
-            card("전체", summary["total"], note="발화"),
-            card("성공", summary["passed"], "ok", f"{summary['passed'] / total:.1%}"),
+            card("전체", summary["total"], note="발화" if finished else f"완료 {done} / {summary['total']}"),
+            card("성공", summary["passed"], "ok", share(summary["passed"])),
             card("실패", summary["failed"], "ng", failed_note),
             card(STAGE_LABELS["function"], summary["function"], "cause", "실패 원인"),
             card(STAGE_LABELS["input"], summary["input"], "cause", "실패 원인"),
@@ -443,18 +464,36 @@ def run_selected(dataset_id: str, on_progress=None) -> dict:
     return runner.run_dataset(dataset_id, progress=on_progress, **RUN_OPTIONS)
 
 
-def _execute(dataset_id: str, slot) -> None:
-    """테스트 실행 한 번. 진행 막대를 slot 에 그리고, 끝나면 결과를 session_state 에 두고 다시 그림.
+def _execute(dataset_id: str, slots: dict, height: int) -> None:
+    """테스트 실행 한 번. 발화 하나가 끝날 때마다 그 줄을 화면에 쌓고, 다 끝나면 결과를 두고 다시 그림.
 
-    규칙  진행은 잰 수 / 전체 수. 발화 하나를 잴 때마다 막대가 움직임
+    입력  slots 는 진행 · 요약 · 목록 · 상세 자리({"status", "kpi", "list", "detail"}의 st.empty)
+    규칙  시작하자마자 0건 화면을 그림. 잴 수는 정답표에서 센 발화 수
+          runner 가 progress 로 넘긴 결과 줄(판정까지 끝난 것)을 모아 네 자리를 갈아 그림.
+          같은 script 실행 안에서 자리만 바꾸므로 발화마다 rerun 하지 않음
+          다 끝나면 결과를 RESULT_KEY 에 두고 한 번 rerun 함. 그때 같은 자리에 보통 화면이 그려져
+          실행 중 표와 끝난 표가 겹치지 않음
           예외로 끝나면 문장을 RUN_ERROR_KEY 에 두고 지난 결과는 안 지움
           새 결과가 들어오면 고른 발화 · 표 선택을 처음으로 돌림
+    제약  결과 줄을 여기서 채점하지 않는다. 합계는 live_result 가 runner.summarize 로 셈
+          실행 중에 session_state 를 바꾸지 않는다. 발화마다 rerun 하지 않는다
     """
-    with slot.container():
-        bar = st.progress(0.0, text="테스트 실행 중 · 준비")
+    from dev.evaluation import runner
+
+    entry = next(entry for entry in evaluation_suite.datasets() if entry["id"] == dataset_id)
+    path = Path(entry["path"])
+    planned = _case_count(str(path), path.stat().st_mtime_ns) or 0
+    functions = runner.functions()
+    done_rows: list[dict] = []
+
+    with slots["status"].container():
+        bar = st.progress(0.0, text=f"테스트 실행 중 · 0 / {planned}")
+    _render_live(slots, done_rows, planned, functions, height)
 
     def on_progress(done: int, total: int, row: dict) -> None:
+        done_rows.append(row)
         bar.progress(done / total if total else 1.0, text=f"테스트 실행 중 · {done} / {total}")
+        _render_live(slots, done_rows, total, functions, height)
 
     st.session_state.pop(RUN_ERROR_KEY, None)
     try:
@@ -466,6 +505,35 @@ def _execute(dataset_id: str, slot) -> None:
         for key in (SELECTED_KEY, LIST_VIEW_KEY):
             st.session_state.pop(key, None)
     st.rerun()
+
+
+def _render_live(slots: dict, rows: list[dict], planned: int, functions: dict, height: int) -> None:
+    """실행 중 화면. 끝난 줄만 요약 · 목록에 쌓고, 상세에는 방금 끝난 발화를 보임.
+
+    규칙  요약 카드는 전체에 잴 수, 성공 · 실패에 끝난 것만
+          목록은 끝난 줄만 정답표 차례로. 행 고르기는 끔(실행 중 누르면 rerun 으로 멈춤)
+          같은 자리를 갈아 그리므로 표가 둘이 되지 않음
+    """
+    slots["kpi"].markdown(summary_markup(summarize(live_result(rows, planned))), unsafe_allow_html=True)
+    with slots["list"].container():
+        st.markdown(
+            f'<div class="tt-pane-title">테스트 결과 <span>{len(rows)}건</span></div>', unsafe_allow_html=True
+        )
+        if rows:
+            st.dataframe(
+                _styled_frame(rows), hide_index=True, height=height, row_height=32, width="stretch",
+                column_config=_list_columns(),
+            )
+        else:
+            with st.container(height=height, border=True):
+                st.markdown('<div class="tt-empty">첫 발화 결과를 기다리는 중입니다.</div>', unsafe_allow_html=True)
+    with slots["detail"].container():
+        st.markdown('<div class="tt-pane-title">방금 끝난 발화 상세</div>', unsafe_allow_html=True)
+        with st.container(height=height, border=True):
+            if rows:
+                st.markdown(detail_markup(rows[-1], functions), unsafe_allow_html=True)
+            else:
+                st.markdown('<div class="tt-empty">결과가 나오면 여기 표시됩니다.</div>', unsafe_allow_html=True)
 
 
 # ================================================================ 그리기
@@ -588,6 +656,23 @@ def _list_key(view: str, query: str) -> str:
     return f"test_list_{round_}"
 
 
+def _styled_frame(rows: list[dict]):
+    """결과 목록 표에 결과 · 판정 글자색을 입힌 것."""
+    return list_frame(rows).style.map(_result_tone, subset=["결과"]).map(
+        lambda v: "color: #E5534B;" if v else "", subset=["판정"]
+    )
+
+
+def _list_columns() -> dict:
+    """결과 목록 표의 칸 폭."""
+    return {
+        "번호": st.column_config.TextColumn("번호", width=56),
+        "발화": st.column_config.TextColumn("발화", width="large"),
+        "결과": st.column_config.TextColumn("결과", width=72),
+        "판정": st.column_config.TextColumn("판정", width=96),
+    }
+
+
 def _render_result_list(shown: list[dict], view: str, query: str, height: int, *, ran: bool) -> dict | None:
     """결과 목록. 한 발화 한 줄, 고정 높이 안에서 스크롤.
 
@@ -618,12 +703,9 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
     remembered = st.session_state.get(SELECTED_KEY)
     default = next((i for i, r in enumerate(shown) if r["case_id"] == remembered), 0)
 
-    styled = list_frame(shown).style.map(_result_tone, subset=["결과"]).map(
-        lambda v: "color: #E5534B;" if v else "", subset=["판정"]
-    )
     key = _list_key(view, query)
     event = st.dataframe(
-        styled,
+        _styled_frame(shown),
         key=key,
         on_select=partial(_keep_row_selected, key, [r["case_id"] for r in shown]),
         selection_mode=["single-row", "single-cell"],
@@ -632,12 +714,7 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
         height=height,
         row_height=32,
         width="stretch",
-        column_config={
-            "번호": st.column_config.TextColumn("번호", width=56),
-            "발화": st.column_config.TextColumn("발화", width="large"),
-            "결과": st.column_config.TextColumn("결과", width=72),
-            "판정": st.column_config.TextColumn("판정", width=96),
-        },
+        column_config=_list_columns(),
     )
 
     rows = event.selection.rows if event is not None else []
@@ -661,6 +738,8 @@ def render_test_tab(ratios: dict) -> None:
 
     입력  config.layout_ratios() 결과. 창 높이로 목록 높이를 정함
     규칙  결과는 session_state 의 마지막 실행 하나. 고른 정답표의 것일 때만 그림
+          진행 · 요약 · 목록 · 상세를 st.empty 자리로 잡아 둠. 실행 중에는 _execute 가 그 자리를
+          갈아 그리고, 보통 때는 같은 자리에 결과를 그림
           테스트 실행을 누른 회차에만 _execute 가 runner 를 부름
     제약  테스트 실행을 누르지 않은 회차에는 평가 · LLM 을 부르지 않는다.
           필터 · 검색 · 행 선택 · 탭 전환이 다시 재게 하면 한 번에 수십 분이 듦
@@ -671,8 +750,17 @@ def render_test_tab(ratios: dict) -> None:
 
         _render_conditions(result)
         status_slot = st.empty()
+        kpi_slot = st.empty()
+        summary = None if clicked else summarize(result)
+        view, query = _render_filters(summary)
+
+        height = list_height(ratios)
+        left, right = st.columns([63, 37], gap="medium")
+        list_slot, detail_slot = left.empty(), right.empty()
         if clicked:
-            _execute(dataset_id, status_slot)
+            slots = {"status": status_slot, "kpi": kpi_slot, "list": list_slot, "detail": detail_slot}
+            _execute(dataset_id, slots, height)
+
         if st.session_state.get(RUN_ERROR_KEY):
             status_slot.markdown(_note_markup(st.session_state[RUN_ERROR_KEY]), unsafe_allow_html=True)
         elif result and result["meta"].get("stopped"):
@@ -680,17 +768,12 @@ def render_test_tab(ratios: dict) -> None:
                 _note_markup(f"테스트가 중간에 멈췄습니다 — {result['meta']['stopped']}"), unsafe_allow_html=True
             )
 
-        summary = summarize(result)
-        st.markdown(summary_markup(summary), unsafe_allow_html=True)
-        view, query = _render_filters(summary)
+        kpi_slot.markdown(summary_markup(summary), unsafe_allow_html=True)
         rows = result["cases"] if result else []
         shown = filter_results(rows, view, query)
-
-        height = list_height(ratios)
-        left, right = st.columns([63, 37], gap="medium")
-        with left:
+        with list_slot.container():
             selected = _render_result_list(shown, view, query, height, ran=result is not None)
-        with right:
+        with detail_slot.container():
             _render_result_detail(selected, (result or {}).get("meta", {}).get("functions") or {}, height)
 
 

@@ -94,11 +94,38 @@ def test_before_any_run_the_tab_shows_no_numbers():
 def test_the_summary_is_copied_from_the_runner_not_counted_here(result):
     total = result["summary"]["total"]
     assert panel.summarize(result) == {
-        "total": total["runs"], "passed": total["passed"], "failed": total["runs"] - total["passed"],
+        "total": total["runs"], "done": total["runs"], "passed": total["passed"], "failed": total["runs"] - total["passed"],
         "function": total["failure_stages"]["function"], "input": total["failure_stages"]["input"],
         "error": total["failure_stages"]["error"],
     }
-    assert panel.summarize(result) == {"total": 5, "passed": 2, "failed": 3, "function": 1, "input": 1, "error": 1}
+    assert panel.summarize(result) == {
+        "total": 5, "done": 5, "passed": 2, "failed": 3, "function": 1, "input": 1, "error": 1,
+    }
+
+
+def test_while_running_only_the_finished_rows_are_counted(result):
+    """아직 안 끝난 발화를 성공으로도 실패로도 세지 않는다. 전체만 잴 수 전체다."""
+    rows = result["cases"]
+
+    first = panel.summarize(panel.live_result(rows[:1], 48))
+    assert first == {"total": 48, "done": 1, "passed": 1, "failed": 0, "function": 0, "input": 0, "error": 0}
+
+    four = panel.summarize(panel.live_result(rows[:4], 48))
+    assert four == {"total": 48, "done": 4, "passed": 2, "failed": 2, "function": 1, "input": 1, "error": 0}
+    assert panel.filter_results(panel.live_result(rows[:4], 48)["cases"], "인자 추출") == [rows[2]]
+
+    text = visible_text(panel.summary_markup(four))
+    assert "완료 4 / 48" in text
+    assert "완료" not in visible_text(panel.summary_markup(panel.summarize(result)))
+
+
+def test_the_live_result_carries_the_runner_rows_unchanged(result):
+    """실행 중 화면이 줄을 다시 채점하면 끝난 화면과 갈린다."""
+    rows = result["cases"][:3]
+    live = panel.live_result(rows, 5)
+
+    assert live["cases"] == rows
+    assert all(a is b for a, b in zip(live["cases"], rows))
 
 
 def test_the_stage_names_are_the_runner_stages():
@@ -199,20 +226,37 @@ def _tab_script():
 
 
 @pytest.fixture
-def app(monkeypatch, result):
+def app(monkeypatch):
+    """테스트 탭 AppTest. 평가는 진짜 runner.run 을 SUITE 와 가짜 resolve 로 돌림.
+
+    at.calls        run_selected 가 불린 정답표 id
+    at.resolved     가짜 resolve 가 받은 발화 (LLM 호출 수 자리)
+    at.live         실행 중 화면을 그릴 때마다 (그린 줄 수, 요약 숫자)
+    """
     from streamlit.testing.v1 import AppTest
 
-    calls = []
+    calls, resolved, live = [], [], []
+
+    def resolve(utterance):
+        resolved.append(utterance)
+        return _resolve(utterance)
 
     def run_selected(dataset_id, on_progress=None):
         calls.append(dataset_id)
-        if on_progress:
-            on_progress(1, 1, result["cases"][0])
-        return result
+        measured = runner.run(SUITE, resolve=resolve, progress=on_progress, materialize=False)
+        measured["meta"]["functions"] = dict(FUNCTIONS)
+        return measured
+
+    render_live = panel._render_live
+
+    def spy(slots, rows, planned, functions, height):
+        live.append((len(rows), panel.summarize(panel.live_result(rows, planned))))
+        render_live(slots, rows, planned, functions, height)
 
     monkeypatch.setattr(panel, "run_selected", run_selected)
+    monkeypatch.setattr(panel, "_render_live", spy)
     at = AppTest.from_function(_tab_script, default_timeout=30)
-    at.calls = calls
+    at.calls, at.resolved, at.live = calls, resolved, live
     return at
 
 
@@ -220,20 +264,75 @@ def test_opening_the_tab_does_not_run_the_evaluation(app):
     app.run()
 
     assert not app.exception
-    assert app.calls == []
+    assert app.calls == [] and app.resolved == [] and app.live == []
     assert any("테스트 세트를 선택하고 실행하면" in m.value for m in app.markdown)
 
 
-def test_only_the_run_button_runs_the_evaluation_and_filters_do_not_rerun_it(app):
+def test_each_finished_utterance_is_drawn_at_once_while_the_run_goes_on(app):
+    """0건 화면부터 시작해 발화 하나가 끝날 때마다 한 줄씩 쌓이고 요약이 따라감."""
+    app.run()
+    app.button(key="test_run").click().run()
+
+    assert not app.exception
+    assert [count for count, _ in app.live] == [0, 1, 2, 3, 4, 5]
+    assert app.live[0][1]["passed"] == 0 and app.live[0][1]["failed"] == 0
+    assert [(s["passed"], s["function"], s["input"], s["error"]) for _, s in app.live[1:]] == [
+        (1, 0, 0, 0), (2, 0, 0, 0), (2, 0, 1, 0), (2, 1, 1, 0), (2, 1, 1, 1),
+    ]
+    assert {s["total"] for _, s in app.live[1:]} == {5}
+
+
+def test_the_run_calls_resolve_once_per_utterance_and_ends_on_one_table(app):
+    """실행 중 다시 그리기가 LLM 을 더 부르면 안 되고, 끝난 뒤 표가 둘로 남으면 안 됨."""
     app.run()
     app.button(key="test_run").click().run()
 
     assert not app.exception
     assert app.calls == ["resolve_regression"]
+    assert sorted(app.resolved) == sorted(case["utterance"] for case in SUITE["cases"])
+    assert len(app.dataframe) == 1
+    assert len(app.dataframe[0].value) == 5
     assert any("tt-kpi-num\">5<" in m.value for m in app.markdown)
+    assert not any("방금 끝난 발화" in m.value for m in app.markdown)
+
+
+def test_filters_search_and_redraws_after_the_run_do_not_rerun_it(app):
+    app.run()
+    app.button(key="test_run").click().run()
+    drawn = len(app.live)
 
     app.text_input(key="test_query").input("청주").run()
     app.run()
 
     assert not app.exception
     assert app.calls == ["resolve_regression"], "필터 · 다시 그리기가 평가를 다시 불렀다"
+    assert len(app.resolved) == len(SUITE["cases"])
+    assert len(app.live) == drawn
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 1
+
+
+def _live_script(count):
+    import streamlit as st
+
+    from app.ui.components import testing_panel
+    from dev.tests.app.ui.test_testing_panel import FUNCTIONS, SUITE, _resolve
+    from dev.evaluation import runner as evaluation_runner
+
+    rows = evaluation_runner.run(SUITE, resolve=_resolve, materialize=False)["cases"][:count]
+    slots = {name: st.empty() for name in ("status", "kpi", "list", "detail")}
+    testing_panel._render_live(slots, rows, 48, FUNCTIONS, 420)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2, 3])
+def test_the_live_view_shows_exactly_the_finished_rows(count):
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_function(_live_script, args=(count,), default_timeout=30)
+    at.run()
+
+    assert not at.exception
+    assert len(at.dataframe) == (1 if count else 0)
+    if count:
+        assert len(at.dataframe[0].value) == count
+    kpi = next(m.value for m in at.markdown if "tt-kpis" in m.value)
+    assert f"완료 {count} / 48" in visible_text(kpi)

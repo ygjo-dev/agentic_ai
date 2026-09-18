@@ -356,7 +356,11 @@ def run(
           materialize 의 부르는 순간은 now 하나로 고정함. 안 주면 시작 시각
           cooldown_every 가 0 보다 크면 그만큼 부른 뒤 cooldown_seconds 초 쉼.
           센 수는 발화 × runs 전체를 통틀어서임. 0 이면 안 쉼(기본)
-          progress 가 있으면 한 번 잴 때마다 progress(잰 수, 전체 수, 그 결과 줄) 를 부름
+          progress 가 있으면 한 번 잴 때마다 progress(잰 수, 전체 수, 그 결과 줄) 를 부름.
+          결과 줄은 판정까지 끝난 cases 의 한 줄 그대로(오류 줄 포함). 줄마다 정확히 한 번,
+          정답표 차례로. 없으면 안 부름
+          progress 가 던진 예외는 삼키지 않음. 평가가 거기서 멈추고 예외가 부르는 쪽으로 감
+          (KeyboardInterrupt 만 지금처럼 meta.stopped 로 남김)
     제약  MCP 도구를 부르지 않는다.
           쉬는 것을 재는 값에 섞지 않는다.
           다음 요청 **앞에서만** 쉬므로 마지막 요청 뒤에는 안 쉼. resolve_s 는

@@ -197,19 +197,21 @@ _VERDICT_RESPONSES = {
 }
 
 
+def _verdict_resolve(utterance):
+    """_VERDICT_RESPONSES 를 /resolve 응답 모양으로. 없는 번호는 터짐."""
+    number = int(utterance.split()[-1])
+    if number not in _VERDICT_RESPONSES:
+        raise RuntimeError("터짐")
+    response = _VERDICT_RESPONSES[number]
+    return {"reason": "까닭", "status": "SELECT", "candidate_recipe_ids": [response["recipe_id"]],
+            "paths": {}, **response}
+
+
 def _verdict_rows(materialize=False):
     """_verdict_suite 를 가짜 resolve 로 돌린 결과 줄과 결과 한 벌. ({번호: 줄}, 결과)."""
     from dev.evaluation import runner
 
-    def resolve(utterance):
-        number = int(utterance.split()[-1])
-        if number not in _VERDICT_RESPONSES:
-            raise RuntimeError("터짐")
-        response = _VERDICT_RESPONSES[number]
-        return {"reason": "까닭", "status": "SELECT", "candidate_recipe_ids": [response["recipe_id"]],
-                "paths": {}, **response}
-
-    result = runner.run(_verdict_suite(), resolve=resolve, materialize=materialize)
+    result = runner.run(_verdict_suite(), resolve=_verdict_resolve, materialize=materialize)
     return {row["case_id"]: row for row in result["cases"]}, result
 
 
@@ -276,3 +278,54 @@ def test_the_utterance_verdict_does_not_read_the_materialize_result(monkeypatch)
     assert {n: (r["passed"], r["failure_stage"]) for n, r in built.items()} == {
         n: (r["passed"], r["failure_stage"]) for n, r in plain.items()
     }
+
+
+# ── 한 줄이 끝날 때마다 ──────────────────────────────────────────────
+#
+# 화면은 progress 로 받은 줄을 그대로 쌓아 실행 중에 보인다. 줄이 판정 전이거나,
+# 두 번 오거나, 차례가 바뀌면 실행 중 화면과 끝난 화면이 갈린다.
+def _without_timing(result):
+    """시각 · 걸린 시간을 뺀 결과. 콜백 유무로 달라지면 안 되는 부분."""
+    return {
+        "summary": result["summary"],
+        "cases": [{key: value for key, value in row.items() if key != "timing"} for row in result["cases"]],
+    }
+
+
+def test_progress_gets_each_graded_row_once_in_suite_order_including_errors():
+    from dev.evaluation import runner
+
+    seen = []
+    plain = runner.run(_verdict_suite(), resolve=_verdict_resolve, materialize=False)
+    watched = runner.run(
+        _verdict_suite(), resolve=_verdict_resolve, materialize=False,
+        progress=lambda done, total, row: seen.append((done, total, row)),
+    )
+
+    assert [(done, total) for done, total, _ in seen] == [(n, 7) for n in range(1, 8)]
+    assert [row["case_id"] for _, _, row in seen] == [case["id"] for case in _verdict_suite()["cases"]]
+    assert all(row is final for (_, _, row), final in zip(seen, watched["cases"])), "콜백 줄이 결과 줄과 다르다"
+    assert all("passed" in row and "failure_stage" in row for _, _, row in seen), "판정 전 줄이 갔다"
+    assert seen[-1][2]["failure_stage"] == "error"
+    assert _without_timing(watched) == _without_timing(plain)
+
+
+def test_an_exception_from_progress_stops_the_run_and_reaches_the_caller():
+    """삼키면 화면이 죽었는데 평가만 계속 돈다."""
+    import pytest
+
+    from dev.evaluation import runner
+
+    asked = []
+
+    def resolve(utterance):
+        asked.append(utterance)
+        return _verdict_resolve(utterance)
+
+    def progress(done, total, row):
+        if done == 2:
+            raise RuntimeError("화면이 죽음")
+
+    with pytest.raises(RuntimeError, match="화면이 죽음"):
+        runner.run(_verdict_suite(), resolve=resolve, materialize=False, progress=progress)
+    assert len(asked) == 2
