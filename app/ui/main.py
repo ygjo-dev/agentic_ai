@@ -34,6 +34,7 @@ from app.ui.components.follow_panel import render_follow_panel, render_follow_sw
 from app.ui.components.graph_section import render_graph_section
 from app.ui.components.input_section import render_input_section
 from app.ui.components.path_panel import render_band, skeleton_markup
+from app.ui.components.testing_panel import render_test_tab
 
 
 # ================================================================ Helper
@@ -83,6 +84,16 @@ st.session_state.setdefault("utterance", "")
 #   kind="resolve"  -> 상단 기본 그래프 + 하단 경로 사슬
 st.session_state.setdefault("view", None)
 
+# ================================================================ 탭
+# 테스트 탭은 백엔드를 부르지 않는다. 열려 있을 때는 그것만 그리고 멈춘다.
+# 그래프 조회 · 따라 보기 주기 요청이 테스트 화면 뒤에서 돌지 않게 탭을 게으르게 연다.
+service_tab, test_tab = st.tabs(["서비스 화면", "테스트"], key="main_tabs", on_change="rerun")
+if test_tab.open:
+    with test_tab:
+        st.markdown(styles.page_css(ratios), unsafe_allow_html=True)
+        render_test_tab(ratios)
+    st.stop()
+
 # ================================================================ 그래프 조회
 # 색을 쓰므로 화면을 그리기 전에 한 번 받아둔다.
 try:
@@ -92,7 +103,7 @@ except ApiError:
 
 # 색은 백엔드가 정한다. CSS 를 짜기 전에 받아둬야 칩·배지가 제 색으로 나온다.
 theme.set_colors((graph or {}).get("colors"))
-st.markdown(styles.page_css(ratios), unsafe_allow_html=True)
+service_tab.markdown(styles.page_css(ratios), unsafe_allow_html=True)
 
 view = st.session_state.get("view")
 
@@ -104,7 +115,7 @@ except ApiError as exc:
     rendered, render_error = None, str(exc)
 
 # ================================================================ 상단
-top = st.container(key="top_panel")
+top = service_tab.container(key="top_panel")
 with top:
     left, right = st.columns([ratios["left_ratio"], 1 - ratios["left_ratio"]], gap="medium")
 
@@ -133,7 +144,7 @@ with top:
 
 # ================================================================ 하단
 # 위쪽 얇은 띠(발화·범례·오류·스켈레톤)는 Streamlit, 아래 본문은 iframe 하나다.
-bottom = st.container(key="bottom_panel")
+bottom = service_tab.container(key="bottom_panel")
 with bottom:
     band = st.container(key="bottom_band")
     with band:

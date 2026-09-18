@@ -79,10 +79,17 @@ def page_css(ratios: dict) -> str:
 [data-testid="stStatusWidget"] {{ display: none !important; }}
 
 .block-container {{
-  padding: 1.2rem 1.6rem 0.5rem 1.6rem;
+  padding: 0.5rem 1.6rem 0.5rem 1.6rem;
   max-width: 100%;
 }}
 html, body, [class*="css"] {{ font-family: {FONT_STACK}; }}
+
+/* ---------------------------------------------- 탭 */
+/* 서비스 화면 · 테스트 탭 줄. 패널 높이는 vh 로 박혀 있어 탭 줄이 먹는 만큼
+   위 여백(block-container 위 0.5rem · 탭 높이 · 탭 패널 위)을 줄여 돌려준다.
+   안 줄이면 서비스 화면에 페이지 스크롤이 생긴다. */
+.st-key-main_tabs [role="tab"] {{ height: 2rem; }}
+.st-key-main_tabs [data-testid="stTabPanel"] {{ padding-top: 0.25rem; }}
 
 /* ---------------------------------------------- 패널 */
 .st-key-top_panel {{ height: {top_vh}vh; min-height: 300px; }}
