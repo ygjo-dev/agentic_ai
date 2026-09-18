@@ -1,7 +1,7 @@
 """recipe 선택 LLM 에 실을 menu context.
 
-**menu.yaml 원문 전부를 프롬프트에 넣는다.** menu.md 는 같은 내용을 사람이
-읽으라고 둔 문서이고 코드가 읽지 않는다.
+**menu.yaml 원문 전부를 프롬프트에 넣는다.** 파일은 게시 자산 뿌리의
+menu/menu.yaml 이다(paths.MENU_YAML_PATH).
 """
 
 from paths import MENU_YAML_PATH

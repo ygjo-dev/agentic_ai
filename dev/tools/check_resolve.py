@@ -163,6 +163,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
+import paths  # noqa: E402
 from dev.evaluation import suite  # noqa: E402
 
 # ── 정답표 ──────────────────────────────────────────────────────────
@@ -311,9 +312,6 @@ def _base_url() -> str:
 # 끊겨 표가 오류로만 찬다. 화면(app/ui/api_client.RESOLVE_TIMEOUT 180)과 달리 이
 # 도구는 느린 판도 재므로 값을 넉넉히 따로 둔다.
 TIMEOUT = 900
-
-RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "recipes"
-INIT_RECIPES_DIR = REPO_ROOT / "workflows" / "static" / "_init" / "recipes"
 
 UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번호로 알아본다.
 
@@ -1307,11 +1305,9 @@ def _print_execution(entries, executions: dict, measured_on: str) -> None:
 
 
 def _recipe_state() -> str:
-    """표 머리에 적을 지금 recipe 상태. _init 그대로인지, 노드가 등록됐는지."""
-    current = sorted(p.stem for p in RECIPES_DIR.glob("recipe_*.yaml"))
-    initial = sorted(p.stem for p in INIT_RECIPES_DIR.glob("recipe_*.yaml"))
-    label = "_init" if current == initial else "등록됨"
-    return f"{label} (recipe {len(current)})"
+    """표 머리에 적을 지금 recipe 상태. 게시 자산 뿌리에 있는 recipe 수."""
+    current = sorted(p.stem for p in paths.RECIPES_DIR.glob("recipe_*.yaml"))
+    return f"게시본 (recipe {len(current)})"
 
 
 def _selfcheck() -> None:

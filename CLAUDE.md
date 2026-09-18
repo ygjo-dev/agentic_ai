@@ -84,11 +84,21 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
 ```
 
 - 등록 capability 는 agentic_ai 밖의 별도 저장소가 갖는다. **두 저장소 사이의 계약은
-  게시된 파일이다** — `ontology/ontology.yaml` · `workflows/static/menu/` ·
-  `workflows/static/recipes/`(각 recipe 의 `execution` 칸)
+  게시된 파일이다.** 게시 자산은 `KRRI_Ontology_Registry/` 짜임새 하나다
+
+  ```
+  KRRI_Ontology_Registry/
+    ontology/ontology.yaml
+    menu/menu.yaml
+    recipes/recipe_NNN.yaml      (각 recipe 의 execution 칸 포함)
+  ```
+
+  이 폴더에는 게시 자산만 둔다. loader · prompt · schema · 시험 · 도구는 넣지 않는다.
+  agentic_ai 코드는 이것을 읽기만 한다
 - 그 저장소의 Python 모듈을 import 하지 않는다. 호환 wrapper 도 두지 않는다
-- 게시 파일을 어디서 읽을지는 `AGENTIC_ARTIFACT_ROOT` 하나가 정한다(`paths.py`). 비우면 이 저장소
-  안의 작업본을 읽는다 — 옮기는 동안의 호환이다. 적은 폴더가 없으면 멈춘다
+- 게시 파일을 어디서 읽을지는 `AGENTIC_ARTIFACT_ROOT` 하나가 정한다(`paths.py`). 비우면 이 저장소의
+  `KRRI_Ontology_Registry/` 를 읽고, 적으면 같은 짜임새의 바깥 폴더를 읽는다. 적은 폴더가 없으면
+  저장소 안으로 돌아가지 않고 멈춘다. 폴더를 저장소 밖으로 옮겨도 코드는 안 바뀐다
 - 게시된 자산을 요청 중에 다시 계획하지 않는다. 블록이 없거나 틀리면 오류다
 
 ---
@@ -104,7 +114,10 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
                      workflow 로 만들고, legacy_vendor 는 그것을 vendoring 한 실행기로 부르는
                      임시 다리다
   llm_engine/        LLM 역할(logical model 판 · prompt · response schema) · provider
-  workflows/static/  recipe · menu
+  workflows/static/  menu 를 프롬프트로 읽는 자리(menu/load.py). 자산은 없다
+
+게시 자산    agentic_ai 는 읽기만 한다
+  KRRI_Ontology_Registry/  ontology · menu · recipes. 게시 자산만 있다
 
 서비스      안 사라진다
   app/api/           창구 — 라우팅 + services
@@ -219,7 +232,7 @@ about   대상 판정. 경로가 대상을 넘나드는지 본다
 
 ## recipe 번호
 
-`workflows/static/recipes/` 의 번호는 **다시 안 매긴다.** 밀리면 정답표
+`KRRI_Ontology_Registry/recipes/` 의 번호는 **다시 안 매긴다.** 밀리면 정답표
 기대값과 시험이 함께 움직이고, 다른 가지에서 recipe 를 다시 붙일 때 어긋난다.
 
 **recipe 파일이 사람의 판정 결과다.** 온톨로지는 후보를 만들 뿐이고(후보 생성은
@@ -235,8 +248,8 @@ example 은 온톨로지가 아니라 recipe 파일에 사람이 적는다.
 
 무엇을 언제 왜 지웠는지와 되살리는 법은 `NOTES.md` 에 있다.
 
-★ **recipe 하나를 되살리면 넷이 함께 움직인다** — `recipes/` 와
-`_init/recipes/` 의 파일(example 까지), 그리고 두 `menu.yaml` · 두 `menu.md` 의 해당 줄.
+★ **recipe 하나를 되살리면 둘이 함께 움직인다** — `KRRI_Ontology_Registry/recipes/` 의
+파일(example 까지)과 `KRRI_Ontology_Registry/menu/menu.yaml` 의 해당 줄.
 execution 칸은 등록 저장소가 게시한 것을 그대로 받는다. 온톨로지의 tool · source 를
 고쳤을 때도 거기서 다시 게시한다. 후보를 받아들이는 것도 거기 일이다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
@@ -246,24 +259,18 @@ menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
 
 ---
 
-## active 와 `_init`
+## 게시 자산은 한 벌이다
 
-작업본과 `_init` 사본이 짝으로 있다. **뜻이 다르다.**
+온톨로지 · recipe · menu 는 `KRRI_Ontology_Registry/` 에 한 벌만 있다. **되돌릴 원본(`_init`)
+사본을 두지 않는다.** 되돌리기는 git 이 한다. menu 는 `menu.yaml` 하나고 사람이 읽을
+사본(`menu.md`)도 두지 않는다 — 두 벌은 어긋난다.
+
+화면 좌표는 게시 자산과 다른 책임이라 짝을 그대로 둔다.
 
 ```
-작업본(게시된 runtime 자산)     _init 사본
-ontology/ontology.yaml          ontology/_init/ontology.yaml
-workflows/static/recipes/       workflows/static/_init/recipes/
-workflows/static/menu/          workflows/static/_init/menu/
 app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .gitignore)
 ```
 
-- runtime 이 읽는 것은 **작업본뿐이다.** 온톨로지 · recipe · menu 의 `_init` 은 옛 등록 ·
-  초기화 기능의 되돌릴 원본이었고, 그 기능은 agentic_ai 밖으로 나갔다
-- 지금 그 `_init` 을 읽는 곳은 `dev/tools/check_resolve.py`(표 머리의 recipe 상태)뿐이다.
-  정답표는 evaluation suite(`dev/evaluation/`)로 옮겼지만 이 표 머리는 아직 남아 있다.
-  지울지는 사람이 정한다. 그 전에 지우지 않는다
-- `_init` 을 코드가 자동으로 다시 만들지 않는다
 - `app/ui/graph/_init/layout.json` 은 좌표 작업본이 없는 기계의 첫 배치다
   (`layout_store.ensure_positions` 가 복사한다). 추적한다. 사람이 눈으로 골라 확정한 배치라 지우면 그
   선택이 사라진다. `.gitignore` 패턴에서 앞의 `/app/ui/graph/` 를 빼면 `_init`

@@ -104,7 +104,7 @@ def test_an_unexpected_error_never_carries_its_own_text_to_the_client(monkeypatc
     새면_안_되는_것 = (
         "Server error '500 Internal Server Error' for url "
         "'http://localhost:3000/api/tools/execute' Response body: {\"detail\": ...} "
-        "/home/ubuntu/source/agentic_ai/ontology/ontology.yaml"
+        "/home/ubuntu/source/agentic_ai/KRRI_Ontology_Registry/ontology/ontology.yaml"
     )
 
     def boom(utterance, llm_client, role):

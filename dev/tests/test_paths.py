@@ -1,7 +1,8 @@
 """대상 : paths.py — 게시 자산을 어디서 읽나
 
-게시 자산(온톨로지 · menu · recipe)은 등록 저장소가 게시하는 파일이다. 옮기는 동안
-agentic_ai 는 이 저장소 안의 작업본이나 바깥 뿌리(AGENTIC_ARTIFACT_ROOT) 중 하나를 읽는다.
+게시 자산(온톨로지 · menu · recipe)은 KRRI_Ontology_Registry 짜임새의 한 뿌리에서 온다.
+기본 뿌리는 이 저장소 안의 KRRI_Ontology_Registry 이고, AGENTIC_ARTIFACT_ROOT 에 적으면
+같은 짜임새의 바깥 폴더다.
 
 paths 는 import 할 때 한 번 정하므로 따로 띄운 python 으로 본다. 이 프로세스의 paths 를
 다시 읽으면 뒤의 시험이 다른 자산을 읽게 된다.
@@ -14,7 +15,7 @@ import sys
 
 import paths
 
-NAMES = ("ONTOLOGY_PATH", "MENU_YAML_PATH", "MENU_MD_PATH", "RECIPES_DIR")
+NAMES = ("ARTIFACT_ROOT", "ONTOLOGY_PATH", "MENU_YAML_PATH", "RECIPES_DIR")
 
 
 def paths_in_child(root):
@@ -29,16 +30,17 @@ def paths_in_child(root):
     )
 
 
-def test_without_an_artifact_root_the_working_copy_in_this_repository_is_read():
-    """옮기는 동안의 호환. 값을 안 적은 배포는 지금까지와 같은 파일을 읽어야 함."""
+def test_without_an_artifact_root_the_registry_in_this_repository_is_read():
+    """값을 안 적은 배포는 저장소 안의 KRRI_Ontology_Registry 를 읽는다."""
     done = paths_in_child(None)
+    registry = paths.REPO_ROOT / "KRRI_Ontology_Registry"
 
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout) == {
-        "ONTOLOGY_PATH": str(paths.REPO_ROOT / "ontology" / "ontology.yaml"),
-        "MENU_YAML_PATH": str(paths.STATIC_DIR / "menu" / "menu.yaml"),
-        "MENU_MD_PATH": str(paths.STATIC_DIR / "menu" / "menu.md"),
-        "RECIPES_DIR": str(paths.STATIC_DIR / "recipes"),
+        "ARTIFACT_ROOT": str(registry),
+        "ONTOLOGY_PATH": str(registry / "ontology" / "ontology.yaml"),
+        "MENU_YAML_PATH": str(registry / "menu" / "menu.yaml"),
+        "RECIPES_DIR": str(registry / "recipes"),
     }
 
 
@@ -50,16 +52,22 @@ def test_an_artifact_root_moves_the_ontology_the_menu_and_the_recipes_together(t
 
     assert done.returncode == 0, done.stderr
     assert json.loads(done.stdout) == {
+        "ARTIFACT_ROOT": str(root),
         "ONTOLOGY_PATH": str(root / "ontology" / "ontology.yaml"),
         "MENU_YAML_PATH": str(root / "menu" / "menu.yaml"),
-        "MENU_MD_PATH": str(root / "menu" / "menu.md"),
         "RECIPES_DIR": str(root / "recipes"),
     }
 
 
 def test_an_artifact_root_that_is_not_a_folder_stops_instead_of_falling_back(tmp_path):
-    """틀린 값에 작업본으로 돌아가면 어느 자산으로 해석했는지 아무도 모름."""
+    """틀린 값에 저장소 안 Registry 로 돌아가면 어느 자산으로 해석했는지 아무도 모름."""
     done = paths_in_child(str(tmp_path / "없는_폴더"))
 
     assert done.returncode != 0
     assert "ArtifactRootError" in done.stderr
+
+
+def test_there_is_no_second_menu_document():
+    """menu 는 menu.yaml 하나다. 사람이 읽을 사본을 따로 두면 둘이 어긋난다."""
+    assert not hasattr(paths, "MENU_MD_PATH")
+    assert not (paths.MENU_DIR / "menu.md").exists()
