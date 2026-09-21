@@ -27,21 +27,22 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 EVALUATION = REPO_ROOT / "dev" / "evaluation"
 sys.path.insert(0, str(REPO_ROOT / "dev" / "tools"))
 
-# 203 발화 정답표의 기준 벤치마크. 폴더 이름이 run_id 다.
-CANONICAL = "20260921-090538-test_suite_v2"
-# 이 기계에서 돌린 FULL48 보통 실행. .gitignore 라 clone 에는 없다
-LOCAL_FULL48 = "20260921-102636-test_suite_v1"
-# 이름을 정하기 전 무작위 6자가 붙어 있던 두 이름. 다시 생기면 안 된다
-RETIRED_RUN_IDS = ("20260921-090538-test_suite_v2-87532e", "20260921-102636-test_suite_v1-3a5465")
+# 기준 벤치마크 둘. 폴더 이름이 run_id 다. official_benchmark 에는 이 둘만 있다
+CANONICAL = "20260921-161258-test_suite_v2"      # 203 발화 정답표
+CANONICAL_V1 = "20260921-160634-test_suite_v1"   # FULL48 회귀 기준선
+# 지금 기준으로 바뀌기 전의 이름들. 무작위 6자가 붙어 있던 둘과 그 뒤의 옛 기준 v2 · 옛 로컬 FULL48. 다시 생기면 안 된다
+RETIRED_RUN_IDS = ("20260921-090538-test_suite_v2-87532e", "20260921-102636-test_suite_v1-3a5465",
+                   "20260921-090538-test_suite_v2", "20260921-102636-test_suite_v1")
 
 # 옮기기 전 바이트의 sha256. 자리만 옮겼고 내용은 한 글자도 안 바뀌어야 옛 측정과 이어 읽는다.
 SUITE_SHA256 = {
     "test_suite_v1.yaml": "1bd40444b9f0daf28a977e4337938bb5af07dab7a7fac9b14787ab27a442670a",
     "test_suite_v2.yaml": "e032664fd667c15873ba58705e0c66d75518588601f2e340effa410aca5e2db7",
 }
-# 끝난 기준 벤치마크는 run.json 하나다. meta.run_id 한 줄만 폴더 이름에 맞췄고 나머지 바이트는 그대로다
+# 끝난 기준 벤치마크는 run.json 하나다. 화면 「새로 실행」이 local 에 남긴 바이트를 그대로 옮겼다
 CANONICAL_SHA256 = {
-    "run.json": "66ec7aba228dbdd0aa785fdbd2f4318bff8f10e3815e17b604a10cc8e400e3bb",
+    CANONICAL: {"run.json": "37e33faa9aed5238ee493fa75cb8da6f35f8d6bc18e7835a7ef15ed0202ee156"},
+    CANONICAL_V1: {"run.json": "22467f41b45d520e21d4e977d141a952ed9b3d559468a4db534c497d994757a5"},
 }
 
 
@@ -115,7 +116,8 @@ def test_official_benchmarks_and_test_suites_are_tracked_and_local_benchmarks_ar
     assert not _ignored(manage_benchmark.OFFICIAL_DIR / "어떤-기록" / manage_benchmark.RUN_FILE)
     assert not _ignored(load_test_suite.SUITE_V2_PATH)
     assert _ignored(manage_benchmark.LOCAL_DIR / "어떤-기록" / manage_benchmark.RUN_FILE)
-    assert _ignored(manage_benchmark.LOCAL_DIR / LOCAL_FULL48 / manage_benchmark.RUN_FILE)
+    assert _ignored(manage_benchmark.LOCAL_DIR / CANONICAL_V1 / manage_benchmark.RUN_FILE)
+    assert not _ignored(manage_benchmark.OFFICIAL_DIR / CANONICAL_V1 / manage_benchmark.RUN_FILE)
     assert not _ignored(manage_benchmark.LOCAL_DIR / ".gitkeep")
     assert _ignored(REPO_ROOT / "dev" / "tools" / "sweep_out" / "무엇이든")
 
@@ -139,11 +141,17 @@ def test_the_runner_only_writes_files_and_never_commits_them():
 
 
 # ── 기준 벤치마크 ────────────────────────────────────────────────────
-def test_the_canonical_203_benchmark_is_one_run_json_and_still_reads_188_of_203():
-    folder = manage_benchmark.OFFICIAL_DIR / CANONICAL
-    assert sorted(p.name for p in folder.iterdir()) == sorted(CANONICAL_SHA256)
-    for name, digest in CANONICAL_SHA256.items():
-        assert _sha256(folder / name) == digest, name
+def test_official_benchmark_holds_exactly_the_two_canonical_runs_as_one_run_json_each():
+    """기준이 바뀌면 옛 기준은 지운다. 둘이 남으면 화면 목록에서 어느 것이 기준인지 모른다."""
+    assert sorted(p.name for p in manage_benchmark.OFFICIAL_DIR.iterdir()) == sorted(CANONICAL_SHA256)
+    for run_id, files in CANONICAL_SHA256.items():
+        folder = manage_benchmark.OFFICIAL_DIR / run_id
+        assert sorted(p.name for p in folder.iterdir()) == sorted(files), run_id
+        for name, digest in files.items():
+            assert _sha256(folder / name) == digest, (run_id, name)
+
+
+def test_the_canonical_203_benchmark_reads_188_of_203():
 
     loaded = manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, CANONICAL)
     assert loaded["meta"]["run_id"] == CANONICAL
@@ -161,6 +169,27 @@ def test_the_canonical_203_benchmark_is_one_run_json_and_still_reads_188_of_203(
     assert {k: v for k, v in recount.items()} == loaded["summary"]
 
 
+def test_the_canonical_full48_benchmark_reads_48_of_48():
+    loaded = manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, CANONICAL_V1)
+    assert loaded["meta"]["run_id"] == CANONICAL_V1
+    assert loaded["meta"]["suite"]["dataset_id"] == "test_suite_v1"
+    total, board = loaded["summary"]["total"], loaded["summary"]["metrics"]
+    assert (total["passed"], total["runs"]) == (48, 48)
+    assert board["selection"] == {"correct": 48, "total": 48}
+    assert board["joint"] == {"correct": 48, "total": 48}
+    assert total["errors"] == 0
+    recount = score.summarize(loaded["cases"], tuple(loaded["meta"]["suite"]["group_labels"]))
+    assert recount == loaded["summary"]
+
+
+def test_the_canonical_runs_load_without_the_fan_fields_added_after_them():
+    """두 기준은 fan_quiet_mode · fan_wait_s 가 생기기 전에 쟀다. 칸이 없다고 못 읽으면 안 된다."""
+    for run_id in CANONICAL_SHA256:
+        meta = manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, run_id)["meta"]
+        assert "fan_quiet_mode" not in meta and "fan_wait_s" not in meta
+        assert meta["stopped"] is None and meta["finished_at"]
+
+
 def test_the_old_219_case_raw_run_is_no_longer_kept_anywhere():
     """219 발화 · 옛 범위 밖 정의로 잰 기록은 지웠다. 그 숫자는 NOTES.md 에만 남는다."""
     old = "20260918-161110-test_suite_v2-e2cf28"
@@ -170,19 +199,16 @@ def test_the_old_219_case_raw_run_is_no_longer_kept_anywhere():
     assert leftovers == []
 
 
-def test_the_two_kept_runs_are_named_by_time_and_suite_only():
-    """무작위 6자가 붙은 옛 이름은 없어지고, 폴더 이름과 run.json 안의 run_id 가 같다."""
-    assert (manage_benchmark.OFFICIAL_DIR / CANONICAL).is_dir()
+def test_the_kept_runs_are_named_by_time_and_suite_only():
+    """옛 이름은 official 에서 없어지고, 폴더 이름과 run.json 안의 run_id 가 같다."""
     for folder in manage_benchmark.roots().values():
         for old in RETIRED_RUN_IDS:
+            if folder == manage_benchmark.LOCAL_DIR and not old.endswith(("87532e", "3a5465")):
+                continue  # local 은 사람의 보통 실행 자리라 이 기계에 무엇이 있든 이 시험이 정하지 않는다
             assert not (folder / old).exists(), old
-    local = manage_benchmark.LOCAL_DIR / LOCAL_FULL48
-    if not local.exists():
-        pytest.skip("이 기계에서 돌린 FULL48 보통 실행이 없다 (.gitignore 라 clone 에는 없음)")
-    assert sorted(p.name for p in local.iterdir()) == [manage_benchmark.RUN_FILE]
-    loaded = manage_benchmark.load_benchmark(manage_benchmark.LOCAL, LOCAL_FULL48)
-    assert loaded["meta"]["run_id"] == LOCAL_FULL48
-    assert (loaded["summary"]["total"]["passed"], loaded["summary"]["total"]["runs"]) == (48, 48)
+    for run_id in CANONICAL_SHA256:
+        assert re.fullmatch(r"\d{8}-\d{6}-test_suite_v\d", run_id), run_id
+        assert manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, run_id)["meta"]["run_id"] == run_id
 
 
 def test_no_human_report_files_are_kept_or_written():
@@ -399,6 +425,9 @@ def test_the_repository_storage_is_valid_and_lists_the_canonical_run():
     canonical = entries[(manage_benchmark.OFFICIAL, CANONICAL)]
     assert canonical["complete"] and (canonical["passed"], canonical["runs"]) == (188, 203)
     assert canonical["dataset_id"] == "test_suite_v2"
+    anchor = entries[(manage_benchmark.OFFICIAL, CANONICAL_V1)]
+    assert anchor["complete"] and (anchor["passed"], anchor["runs"]) == (48, 48)
+    assert anchor["dataset_id"] == "test_suite_v1"
 
 
 # ── 평가가 계기판을 부르지 않는다 ────────────────────────────────────

@@ -1,49 +1,41 @@
-"""평가용 GPU 지원. 실행 하드웨어 기록과, 원하면 사무실 조용 정책의 쉼표.
+"""평가용 GPU 지원. 실행 하드웨어 기록과, 원하면 GPU 팬 소음 억제.
 
     environment()                     이 기계의 GPU 이름 · VRAM. Test Run 의 meta.environment 에 실림
-    monitor = GpuMonitor(gate=True)   조용 정책(아래 POLICY)으로 부르는 박자만 조절
+    monitor = GpuMonitor()            발화와 발화 사이에서 팬을 보고 기다림 (before_case)
 
-GPU 를 기록하는 까닭은 **실행 하드웨어의 재현성**이다 (어느 GPU · 몇 장 · VRAM). 온도는 결과에
-남기지 않는다. GpuMonitor 는 발화와 발화 사이에서 쉬거나 멈출 뿐이고 그 기록(summary)은 부르는
-쪽이 원할 때만 읽는다 — run_evaluation 은 결과에 싣지 않는다. **판정에는 안 섞인다.** 재는 시간
-(timing.resolve_s)은 resolve 호출 하나만 감싸므로 쉬어도 안 늘어난다.
+GPU 를 기록하는 까닭은 **실행 하드웨어의 재현성**이다 (어느 GPU · 몇 장 · VRAM). 온도 · 팬은 결과에
+남기지 않는다. GpuMonitor 는 다음 발화를 부르기 전에 기다리거나 멈출 뿐이다. **판정에는 안 섞인다.**
+재는 시간(timing.resolve_s)은 resolve 호출 하나만 감싸므로 기다려도 안 늘어난다. 기다린 시간의
+합은 run_evaluation 이 meta.fan_wait_s 에 적는다.
 
-nvidia-smi 가 없거나 읽을 수 없는 기계에서는 available 이 거짓인 한 벌만 남고 평가는 그대로 돈다.
+팬 소음 억제(fan_quiet)가 켜져 있으면 다음 발화 앞에서 GPU 전부의 fan.speed 를 본다.
+하나라도 FAN_PAUSE_AT 이상이면 모두 FAN_RESUME_AT 이하가 될 때까지 FAN_POLL_S 마다 다시 보고,
+되면 바로 부른다. 부르는 중인 Resolve 는 팬 때문에 끊지 않는다. 꺼져 있으면 nvidia-smi 를 안 부른다.
+
+장비 보호는 드라이버가 알리는 열 제한(clocks_event_reasons 의 hw · sw thermal slowdown)만 본다.
+켜져 있을 때 그것을 보면 StopRun 으로 평가를 멈춘다. 온도 문턱을 따로 두지 않는다.
+
+nvidia-smi 가 없거나 fan.speed 를 읽을 수 없는 기계에서는 기다리지 않고 평가는 그대로 돈다.
 팬 곡선 · 전력 한도 · 클럭을 바꾸지 않는다. 읽기만 한다.
 """
 
-import datetime
 import subprocess
 import time
-import zoneinfo
-
-KST = zoneinfo.ZoneInfo("Asia/Seoul")
 
 
 class StopRun(Exception):
     """평가를 여기서 멈춘다. 까닭이 meta.stopped 에 남고 거기까지의 결과는 그대로 나감.
 
-    monitor(GPU 열 제한 등)나 progress 가 던짐. 다른 예외는 삼키지 않음
+    monitor(GPU 열 제한)나 progress 가 던짐. 다른 예외는 삼키지 않음
     """
 
-# nvidia-smi 에 묻는 칸. 차례가 _parse 의 차례다.
-QUERY = (
-    "index,name,utilization.gpu,temperature.gpu,fan.speed,"
-    "clocks_event_reasons.hw_thermal_slowdown,clocks_event_reasons.sw_thermal_slowdown"
-)
+# nvidia-smi 에 묻는 칸. 차례가 sample 의 차례다.
+QUERY = "index,name,fan.speed,clocks_event_reasons.hw_thermal_slowdown,clocks_event_reasons.sw_thermal_slowdown"
 
-# 사무실 조용 정책. 온도는 GPU 넷 중 가장 뜨거운 것, 사용률도 가장 높은 것.
-POLICY = {
-    "start_max_util": 5,        # 이 이하로 한가해야 시작
-    "start_max_temp": 58,       # 이 이하로 식어야 시작
-    "every": 3,                 # 이만큼 부르고
-    "sleep_s": 5.0,             # 이만큼 쉬고 온도를 봄
-    "pause_at": 66,             # 이 이상이면 멈춤
-    "resume_at": 58,            # 이 이하로 식으면 다시
-    "end_cooldown_above": 62,   # 끝났을 때 이보다 뜨거우면 resume_at 까지 식힘
-    "poll_s": 15.0,             # 기다리는 동안 온도를 보는 간격
-    "max_wait_s": 1800.0,       # 한 번 기다리는 상한. 넘으면 시작은 그냥 가고, 멈춤은 평가를 멈춤
-}
+# 팬 소음 억제. fan.speed(%)는 GPU 전부 중 가장 높은 것.
+FAN_PAUSE_AT = 55     # 다음 발화 앞에서 이 이상이면 기다림
+FAN_RESUME_AT = 50    # 기다리다 모두 이 이하가 되면 바로 다음 발화
+FAN_POLL_S = 1.0      # 기다리는 동안 팬을 다시 보는 간격(초)
 
 
 # 실행 하드웨어로 묻는 칸. 차례가 environment 의 차례다.
@@ -90,10 +82,10 @@ def _flag(*texts: str) -> bool | None:
 
 
 def sample() -> list[dict] | None:
-    """GPU 마다 한 줄. [{index, name, util, temp, fan, throttle}]. 못 읽으면 None.
+    """GPU 마다 한 줄. [{index, name, fan, throttle}]. 못 읽으면 None.
 
     규칙  nvidia-smi 가 없거나 실패하거나 모양이 다르면 None. 평가를 멈추지 않음
-          [N/A] 인 칸은 None. throttle 은 열 때문에 클럭을 내렸나(hw · sw)
+          [N/A] 인 칸은 None. throttle 은 드라이버가 열 때문에 클럭을 내렸나(hw · sw)
     """
     try:
         done = subprocess.run(
@@ -107,146 +99,74 @@ def sample() -> list[dict] | None:
     gpus = []
     for line in done.stdout.strip().splitlines():
         parts = [part.strip() for part in line.split(",")]
-        if len(parts) != 7:
+        if len(parts) != 5:
             return None
         gpus.append({
             "index": _number(parts[0]),
             "name": parts[1],
-            "util": _number(parts[2]),
-            "temp": _number(parts[3]),
-            "fan": _number(parts[4]),
-            "throttle": _flag(parts[5], parts[6]),
+            "fan": _number(parts[2]),
+            "throttle": _flag(parts[3], parts[4]),
         })
     return gpus or None
 
 
-def _peak(gpus: list[dict], key: str) -> int | None:
-    values = [gpu[key] for gpu in gpus if gpu.get(key) is not None]
+def _peak_fan(gpus: list[dict] | None) -> int | None:
+    """GPU 전부 중 가장 높은 fan.speed. 읽을 수 있는 GPU 가 없으면 None."""
+    values = [gpu["fan"] for gpu in gpus or [] if gpu.get("fan") is not None]
     return max(values) if values else None
 
 
 class GpuMonitor:
-    """평가 한 번의 박자 조절. gate 면 조용 정책대로 쉬고 멈춤. 본 온도는 이 객체에만 남고 결과에는 안 실림.
+    """평가 한 번의 GPU 팬 소음 억제. 다음 발화 앞에서 팬을 보고 기다림.
 
-    규칙  before_run · after_case · after_run 은 run_evaluation.run 이 부름
-          기록은 샘플마다 {at, phase, done, temp, util, fan, throttle} 한 줄. 여럿이면 가장 높은 값
-          gate 가 아니면 쉬지 않음. 샘플도 시작 · 끝 · every 마다만 떠서 박자가 안 바뀜
-          gate 면 열 제한을 보는 순간 식히고 StopRun 으로 평가를 멈춤
-    제약  GPU 설정을 바꾸지 않는다. 판정 · 결과 줄에 손대지 않는다
+    규칙  run_evaluation 이 발화마다 Resolve 를 부르기 바로 앞에서 before_case 를 부름.
+          부르는 중에는 안 불림. 그래서 부르는 중인 Resolve 를 팬 때문에 끊는 일이 없음
+          waiting 은 지금 팬 때문에 기다리는 중인가. 화면이 실행 상태 글자에 씀
+          waited_s 는 이 monitor 가 팬 때문에 기다린 초의 합. 기다리다 StopRun 으로 멈춰도 거기까지 셈
+    제약  GPU 설정을 바꾸지 않는다. 판정 · 결과 줄에 손대지 않는다. 온도 문턱을 두지 않는다
     """
 
-    def __init__(self, *, gate: bool = False, policy: dict | None = None, sampler=sample, sleep=time.sleep, clock=time.monotonic):
-        self.gate = gate
-        self.policy = {**POLICY, **(policy or {})}
+    def __init__(self, *, sampler=sample, sleep=time.sleep, clock=time.monotonic):
         self._sampler, self._sleep, self._clock = sampler, sleep, clock
-        self.log: list[dict] = []
-        self.gpus: list[dict] = []
-        self.available = False
-        self.pauses = 0
-        self.pause_seconds = 0.0
-        self.throttled: bool | None = None
-        self.notes: list[str] = []
+        self.waiting = False
+        self.waited_s = 0.0
 
-    def _take(self, phase: str, done: int) -> dict | None:
-        gpus = self._sampler()
-        if not gpus:
-            return None
-        self.available = True
-        if not self.gpus:
-            self.gpus = [{"index": gpu["index"], "name": gpu["name"]} for gpu in gpus]
-        flags = [gpu["throttle"] for gpu in gpus if gpu["throttle"] is not None]
-        throttle = any(flags) if flags else None
-        if throttle is not None:
-            self.throttled = bool(self.throttled) or throttle
-        entry = {
-            "at": datetime.datetime.now(KST).isoformat(timespec="seconds"),
-            "phase": phase,
-            "done": done,
-            "temp": _peak(gpus, "temp"),
-            "util": _peak(gpus, "util"),
-            "fan": _peak(gpus, "fan"),
-            "throttle": throttle,
-        }
-        self.log.append(entry)
-        return entry
+    def before_case(self, done: int, *, fan_quiet: bool, should_stop=None) -> float:
+        """다음 발화를 불러도 되나 보고 필요하면 기다림. 기다린 초.
 
-    def _wait(self, phase: str, done: int, ready) -> bool:
-        """ready(샘플)이 참이 될 때까지 poll_s 마다 봄. max_wait_s 를 넘으면 거짓."""
-        started = self._clock()
-        while True:
-            entry = self._take(phase, done)
-            if entry is None or ready(entry):
-                return True
-            if self._clock() - started >= self.policy["max_wait_s"]:
-                return False
-            self._sleep(self.policy["poll_s"])
-
-    def before_run(self) -> None:
-        entry = self._take("start", 0)
-        if not self.gate or entry is None:
-            return
-        policy = self.policy
-        if entry["util"] is not None and entry["util"] <= policy["start_max_util"] and entry["temp"] is not None \
-                and entry["temp"] <= policy["start_max_temp"]:
-            return
-        self._sleep(policy["poll_s"])
-        if not self._wait("start_wait", 0, lambda e: (e["util"] or 0) <= policy["start_max_util"]
-                          and (e["temp"] or 0) <= policy["start_max_temp"]):
-            self.notes.append("시작 조건을 기다리다 상한을 넘겨 그대로 시작함")
-
-    def after_case(self, done: int, planned: int) -> None:
-        policy = self.policy
-        if done >= planned or done % policy["every"]:
-            return
-        if self.gate:
-            self._sleep(policy["sleep_s"])
-        entry = self._take("during", done)
-        if not self.gate or entry is None:
-            return
-        if entry["throttle"]:
-            self._wait("throttle_cooldown", done, lambda e: (e["temp"] or 0) <= policy["resume_at"])
-            raise StopRun(f"GPU 열 제한 감지 ({done}/{planned} 뒤)")
-        if entry["temp"] is not None and entry["temp"] >= policy["pause_at"]:
-            self.pauses += 1
-            started = self._clock()
-            self._sleep(policy["poll_s"])
-            cooled = self._wait("pause", done, lambda e: (e["temp"] or 0) <= policy["resume_at"])
-            self.pause_seconds += self._clock() - started
-            if not cooled:
-                raise StopRun(f"GPU 가 {policy['max_wait_s']:.0f}초 안에 식지 않음 ({done}/{planned} 뒤)")
-
-    def after_run(self, done: int) -> None:
-        entry = self._take("end", done)
-        if not self.gate or entry is None or entry["temp"] is None:
-            return
-        if entry["temp"] > self.policy["end_cooldown_above"]:
-            self._sleep(self.policy["poll_s"])
-            self._wait("cooldown", done, lambda e: (e["temp"] or 0) <= self.policy["resume_at"])
-
-    def summary(self) -> dict:
-        """이 monitor 가 본 것 한 벌. run_evaluation 은 결과에 싣지 않음 (부르는 쪽이 원할 때 읽음).
-
-        출력  {available, gpus, start_temp, max_temp, end_temp, max_util, max_fan, pauses,
-               pause_seconds, thermal_throttle, samples, gate, policy, notes, log}
-               end_temp 는 평가가 끝난 순간(식히기 전)의 온도. thermal_throttle 은 못 읽으면 None
+        입력  done 은 이 평가에서 끝난 발화 수(StopRun 문장에 씀). fan_quiet 는 이 실행 기록의 팬 소음 억제
+        규칙  fan_quiet 가 거짓이면 nvidia-smi 를 안 부르고 0
+              GPU 전부의 fan.speed 중 가장 높은 것이 FAN_PAUSE_AT 이상이면 FAN_POLL_S 마다 다시 보고,
+              모두 FAN_RESUME_AT 이하가 되면 바로 돌아감 (55 · 50 hysteresis)
+              FAN_RESUME_AT 초과 · FAN_PAUSE_AT 미만이면 안 기다림
+              못 읽거나(nvidia-smi 없음 · 실패) fan.speed 가 전부 [N/A] 면 안 기다림. 기다리다 못 읽게 돼도 그만 기다림
+              기다리는 동안 should_stop() 이 참이면 그만 기다림. 멈추는 것은 부르는 쪽이 함
+              본 샘플에 드라이버 열 제한이 있으면 StopRun
+        제약  기다리는 상한을 두지 않는다. 사람은 「중지」로 멈춘다
         """
-        temps = [entry["temp"] for entry in self.log if entry["temp"] is not None]
-        ends = [entry for entry in self.log if entry["phase"] == "end"]
-        starts = [entry for entry in self.log if entry["phase"] == "start"]
-        return {
-            "available": self.available,
-            "gpus": self.gpus,
-            "start_temp": starts[0]["temp"] if starts else None,
-            "max_temp": max(temps) if temps else None,
-            "end_temp": ends[-1]["temp"] if ends else None,
-            "max_util": _peak(self.log, "util"),
-            "max_fan": _peak(self.log, "fan"),
-            "pauses": self.pauses,
-            "pause_seconds": round(self.pause_seconds, 1),
-            "thermal_throttle": self.throttled,
-            "samples": len(self.log),
-            "gate": self.gate,
-            "policy": dict(self.policy) if self.gate else None,
-            "notes": list(self.notes),
-            "log": list(self.log),
-        }
+        if not fan_quiet:
+            return 0.0
+        gpus = self._check(done)
+        peak = _peak_fan(gpus)
+        if peak is None or peak < FAN_PAUSE_AT:
+            return 0.0
+        started = self._clock()
+        self.waiting = True
+        try:
+            while peak is not None and peak > FAN_RESUME_AT:
+                if should_stop and should_stop():
+                    break
+                self._sleep(FAN_POLL_S)
+                peak = _peak_fan(self._check(done))
+        finally:
+            self.waiting = False
+            waited = self._clock() - started
+            self.waited_s += waited
+        return waited
+
+    def _check(self, done: int) -> list[dict] | None:
+        """샘플 한 번. 드라이버 열 제한이 보이면 StopRun."""
+        gpus = self._sampler()
+        if gpus and any(gpu.get("throttle") for gpu in gpus):
+            raise StopRun(f"GPU 열 제한 감지 ({done}건 뒤)")
+        return gpus

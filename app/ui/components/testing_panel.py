@@ -6,7 +6,7 @@ dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝�
     제목 · 테스트 세트 · 실행 기록
     실행 개요 (테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
     모델 설정 (접힘. 파일 · 실행 기록 id 까지)
-    실행 상태 · 새로 실행 · 이어 실행 · 중지
+    실행 상태 · GPU 팬 소음 억제 · 새로 실행 · 이어 실행 · 중지
     전체 결과 (전체 · 성공 · 실패, 오류가 있을 때만 오류. 실패 원인 셋은 실패 카드 안에)
     기능별 결과 (접힘. 기능마다 카드 하나 — 번호와 x/y 둘만)
     보기 필터 · 기능 고르기 · 발화 검색 · 정렬
@@ -23,6 +23,9 @@ dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝�
     중지        지금 부르고 있는 발화 하나는 끝까지 기다려 남기고, 다음 발화는 안 부른다.
                 기록은 run.json 없이 meta.json + cases.jsonl 로 남아 「중단됨」이 된다
     그 밖의 조작(테스트 세트 · 기록 고르기 · 필터 · 정렬 · 행 고르기)은 폴더를 만들지 않는다
+
+「GPU 팬 소음 억제」는 새로 실행을 누르는 순간의 값이 그 실행 기록의 meta.fan_quiet_mode 로 굳는다.
+도는 동안에는 눌리지 않고 그 실행의 값을 보인다. 이어 실행은 화면 값이 아니라 저장된 값을 쓴다.
 
 **테스트 세트는 고르는 것이다.** 고른 정답표가 발화 목록 · 발화 수 · 실행 · 저장한 실행 기록의
 신원을 함께 정한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다.
@@ -68,9 +71,10 @@ st.dataframe 의 머리글 정렬은 브라우저에만 있어 행을 누르는 
 그대로 나온다 — 새 인자가 들어와도 여기를 안 고친다.
 
 **기능 번호가 보이는 자리에는 그 기능이 무엇을 하는지가 마우스에 붙는다.** 번호를 그리는
-자리는 전부 `number_markup` 하나를 지난다 (기대 기능 · AI 가 고른 기능 · 후보 기능 ·
+자리는 전부 `number_markup` 하나를 지난다 (기대 기능 · AI 가 고른 기능 · 되묻기 후보 기능 · 후보 기능 ·
 기능별 결과 · 모델 판단 문장 안의 번호). 설명의 원천은 run_evaluation 결과 meta.functions 하나고,
-화면에 {번호: 설명} 표를 따로 두지 않는다.
+화면에 {번호: 설명} 표를 따로 두지 않는다. 설명은 브라우저 title 이 아니라 data-tip 을 CSS 가
+그리는 tooltip 이다 (panel_css 의 TIP_DELAY_MS) — title 은 뜨기까지의 지연을 바꿀 수 없다.
 
     ★ 두 자리는 못 붙인다. 결과 목록 표의 「기능」 칸과 기능 고르기 목록이다.
       st.dataframe 은 칸 값마다의 tooltip 을 받는 파이썬 API 가 없고(Streamlit 1.62 의
@@ -120,8 +124,10 @@ ERROR_TEXT = STAGE_LABELS["error"]
 CATEGORY_LABELS = {"unsupported": "지원하지 않는 요청", "ambiguous": "기능 여럿", "insufficient": "정보 부족"}
 
 ALL, FAILED = "전체", "실패"
-# 실패를 가른 것들. 보기 필터에서 실패에 딸린 자리로 보인다 (panel_css 가 앞에 선을 긋고 눌러 둠).
-FAILURE_FILTERS = tuple(STAGE_LABELS[stage] for stage in QUALITY_STAGES)
+# 실패 단계 -> 결과 칸 글자이자 보기 필터 글자. 「실패 · 기능 선택」 꼴
+FAILURE_TEXT = {stage: f"{FAILED} · {STAGE_LABELS[stage]}" for stage in QUALITY_STAGES}
+# 실패를 가른 것들. 보기 필터에서 실패에 딸린 자리로 보인다 (panel_css 가 앞에 선을 긋고 옅게 칠함).
+FAILURE_FILTERS = tuple(FAILURE_TEXT[stage] for stage in QUALITY_STAGES)
 FILTERS = (ALL, FAILED, *FAILURE_FILTERS)
 # 딸린 자리가 시작하는 칸 번호(1부터). CSS 에 숫자를 박지 않으려고 여기서 센다.
 FIRST_FAILURE_FILTER = len(FILTERS) - len(FAILURE_FILTERS) + 1
@@ -129,7 +135,7 @@ FIRST_FAILURE_FILTER = len(FILTERS) - len(FAILURE_FILTERS) + 1
 ERROR_FILTER = ERROR_TEXT
 
 # 결과 칸 글자의 차례. 결과로 정렬할 때 이 차례다. 대기는 값이 없는 줄이라 늘 뒤에 간다
-RESULT_ORDER = (SUCCESS_TEXT, *(f"실패 · {label}" for label in FAILURE_FILTERS), ERROR_TEXT)
+RESULT_ORDER = (SUCCESS_TEXT, *FAILURE_FILTERS, ERROR_TEXT)
 
 # 결과 표를 세울 수 있는 칸. 값이 없는 줄(대기 · 지연시간 없음)은 방향과 상관없이 뒤에 간다
 SORT_COLUMNS = ("번호", "기능", "발화", "결과", "추론 지연시간")
@@ -151,9 +157,14 @@ UNUSED_TEXT = "사용 안 함"
 
 # 새로 실행이 run_evaluation 에 넘기는 값. 화면에 안 보인다.
 # materialize 는 켠다. 화면에는 안 보이지만 결과(실행 기록)에 남겨 뒤에 실행 화면이 쓴다.
-# MCP 는 안 부른다. 문맥은 계기판 기본값(both)과 같다. GPU 쉼표는 run_selected 가 넘기는
-# monitor_gpu.GpuMonitor(gate=True) 가 맡는다 (3건마다 5초 · 뜨거우면 멈춤). 온도는 결과에 안 남는다.
+# MCP 는 안 부른다. 문맥은 계기판 기본값(both)과 같다. 팬 소음 억제는 화면의 체크박스(FAN_QUIET_KEY)가 정하고
+# 팬을 보는 것은 _Job 이 만드는 monitor_gpu.GpuMonitor 다. 팬 · 온도는 결과에 안 남는다.
 RUN_OPTIONS = {"materialize": True, "context_label": "both"}
+
+FAN_QUIET_LABEL = "GPU 팬 소음 억제"
+FAN_QUIET_HELP = "GPU 팬 속도가 높아지면 다음 발화를 잠시 기다렸다가 팬이 안정되면 자동으로 계속합니다."
+# 도는 동안 팬 때문에 다음 발화를 기다릴 때 실행 상태 글자 끝에 붙는 말
+FAN_WAIT_TEXT = "GPU 팬 안정 대기 중"
 
 # 모델 설정 칸. 화면 글자 -> run_evaluation 결과 meta.conditions 의 칸. 파일 셋은 경로만 보임
 CONDITION_ROWS = (
@@ -190,6 +201,10 @@ SORT_ORDER_KEY = "test_sort_order"   # 정렬 방향 widget. 값은 SORT_ORDERS 
 JOB_KEY = "test_job"                 # 이 창이 지켜보는 _Job 의 token. 끝나면 결과를 받아 옴
 RESUME_KEY = "test_resume_check"     # {"key", "check"} 불러온 기록의 이어 실행 판정 (run_evaluation.resume_check)
 STARTED_KEY = "test_started"         # 몸통 fragment 안에서 실행을 시작했다. 화면 전체를 한 번 다시 그림
+FAN_QUIET_KEY = "test_fan_quiet"     # GPU 팬 소음 억제 체크박스. 기본 켜짐. 새로 실행을 누를 때 읽음
+
+# 기능 번호에 마우스를 올린 뒤 설명이 뜨기까지(ms). 스쳐 지나갈 때 깜빡이지 않을 만큼만 둔다.
+TIP_DELAY_MS = 120
 
 # 도는 동안 몸통을 다시 그리는 간격(초).
 POLL_SECONDS = 1.0
@@ -339,7 +354,8 @@ def filter_results(rows: list[dict], view: str, query: str = "", group: str = AL
           group 은 ALL_GROUPS · OUT_OF_SCOPE_GROUP · 기대 recipe id
     출력  원래 순서를 지킨 부분 목록
     규칙  실패는 기능 선택 · 인자 추출 · 범위 밖 처리 셋 중 하나에서 멈춘 것. 대기 · 오류 줄은 실패가 아님
-          기능 선택 · 인자 추출 · 범위 밖 처리는 그 단계에서 실패한 것. 오류(ERROR_FILTER)는 오류 줄만
+          실패 · 기능 선택 · 실패 · 인자 추출 · 실패 · 범위 밖 처리(FAILURE_TEXT)는 그 단계에서 실패한 것.
+          오류(ERROR_FILTER)는 오류 줄만
           group 이 ALL_GROUPS 가 아니면 row_group 이 같은 줄만
           검색은 띄어쓰기를 무시한 부분 일치. 빈 검색어는 거르지 않음
     """
@@ -348,7 +364,7 @@ def filter_results(rows: list[dict], view: str, query: str = "", group: str = AL
     elif view == ERROR_FILTER:
         shown = [r for r in rows if errored(r)]
     elif view in FAILURE_FILTERS:
-        stage = next(k for k, v in STAGE_LABELS.items() if v == view)
+        stage = next(k for k, v in FAILURE_TEXT.items() if v == view)
         shown = [r for r in rows if failed(r) and r.get("failure_stage") == stage]
     else:
         shown = list(rows)
@@ -391,8 +407,7 @@ def verdict_label(row: dict) -> str:
         return SUCCESS_TEXT
     if errored(row):
         return ERROR_TEXT
-    stage = STAGE_LABELS.get(row.get("failure_stage"))
-    return f"실패 · {stage}" if stage else "실패"
+    return FAILURE_TEXT.get(row.get("failure_stage"), FAILED)
 
 
 def _sort_key(row: dict, column: str):
@@ -612,10 +627,12 @@ def suite_filename(suite: dict) -> str:
 def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
     """실행 개요. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
-    칸  테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간(Median · P95 · Max) ·
+    칸  테스트 세트 · 시작 시간 · 전체 소요 시간 · 추론 지연시간(Median · P95 · Max) ·
         발화(전체 · 성공 · 실패 · 오류) · 모델 설정(모델 · Temperature …) · 실행 환경(GPU · VRAM)
     규칙  run_evaluation 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
           평가 지표(기능 선택 · 인자 추출 등)는 여기 안 둠. 아래 전체 결과가 보임
+          전체 소요 시간은 meta.elapsed_s (새로 실행을 누른 뒤 끝날 때까지의 벽시계. 팬 대기 포함).
+          팬 대기 합(meta.fan_wait_s) · 추론 합(summary.latency.total)은 기록에만 있고 여기 따로 안 보임
           추론 지연시간은 resolve 한 번에 걸린 시간의 분포. 잰 것이 없으면 줄표
           실행 기록 id 는 여기 안 보임 (정답표 이름이 들어 있어 개발 용어가 샘). 모델 설정 접힘 칸에 있음
     """
@@ -638,7 +655,7 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     return [
         ("테스트 세트", [("", suite_filename(meta.get("suite") or {}))]),
         ("시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
-        ("소요 시간", [("", _elapsed(meta.get("elapsed_s")))]),
+        ("전체 소요 시간", [("", _elapsed(meta.get("elapsed_s")))]),
         ("추론 지연시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
         ("발화", [
             ("전체", str(total["runs"])),
@@ -841,7 +858,8 @@ def recipe_summary_markup(entries: list[dict], functions: dict | None = None) ->
     """기능별 결과 카드. 카드 하나에 기능 번호와 성공 수(x/y) 둘만. 기능 번호 차례.
 
     규칙  실패가 하나라도 있으면 붉은 카드, 다 맞았으면 차분한 카드(옆줄만 초록)
-          설명은 카드 전체와 기능 번호 둘 다에 마우스로 붙음. 원천은 결과 meta.functions 하나
+          설명은 기능 번호의 tooltip 하나. 카드 어디에 마우스를 올려도 그것이 뜸 (panel_css 의 .tt-rs:hover).
+          원천은 결과 meta.functions 하나
     제약  「모두 성공」 · 「실패 N」 같은 글자를 두지 않는다 — x/y 가 이미 같은 것을 말한다.
           기능이 마흔 가까이 되므로 성공을 강한 초록으로 칠하지 않는다. 눈에 띄는 쪽은 실패다
     """
@@ -849,7 +867,7 @@ def recipe_summary_markup(entries: list[dict], functions: dict | None = None) ->
         return '<div class="tt-empty">결과가 없습니다.</div>'
     functions = functions or {}
     cards = "".join(
-        f'<div class="tt-rs {"tt-rs-ng" if e["failed"] else "tt-rs-ok"}"{_tip(e["group"], functions)}>'
+        f'<div class="tt-rs {"tt-rs-ng" if e["failed"] else "tt-rs-ok"}">'
         f'<div class="tt-rs-fn">{number_markup(e["group"], functions)}</div>'
         f'<div class="tt-rs-n">{e["passed"]}/{e["runs"]}</div></div>'
         for e in entries
@@ -870,18 +888,22 @@ def _muted_markup(text: str) -> str:
 
 
 def _tip(recipe_id: str | None, functions: dict) -> str:
-    """기능 번호에 걸 title 속성. 설명은 run_evaluation 결과 meta.functions (게시 menu 의 function 문장)."""
+    """기능 번호에 걸 tooltip 속성. 설명은 run_evaluation 결과 meta.functions (게시 menu 의 function 문장).
+
+    규칙  data-tip 은 panel_css 가 마우스를 올리고 TIP_DELAY_MS 뒤에 그림. aria-description 은 화면 낭독기용
+    제약  title 을 쓰지 않는다. 브라우저 기본 tooltip 은 뜨기까지 지연을 못 바꾸고, 같이 두면 두 개가 뜬다
+    """
     text = (functions or {}).get(recipe_id)
-    return f' title="{_esc(text)}"' if text else ""
+    return f' data-tip="{_esc(text)}" aria-description="{_esc(text)}"' if text else ""
 
 
 def number_markup(recipe_id: str | None, functions: dict, css: str = "") -> str:
     """화면에 보이는 기능 번호 하나. 「기능 004」만 보이고 설명은 마우스를 올리면 뜸.
 
     입력  css 는 이 자리에서 더 붙일 class. 없으면 안 붙음
-    출력  <span class="tt-fnum …" title="설명">기능 004</span>. 번호가 없으면 빈 글자
+    출력  <span class="tt-fnum …" data-tip="설명" aria-description="설명">기능 004</span>. 번호가 없으면 빈 글자
     규칙  설명의 원천은 run_evaluation 결과 meta.functions 하나 (게시 menu 의 function 문장)
-          설명이 없는 번호면 title 없이 번호만 보임
+          설명이 없는 번호면 tooltip 없이 번호만 보임
     제약  기능 번호를 보이는 자리는 전부 이것을 쓴다.
           마크업에 function_label 을 직접 넣으면 그 자리만 설명이 안 뜬다.
           {번호: 설명} 표를 화면에 따로 두지 않는다
@@ -901,8 +923,12 @@ def reason_markup(text: str, functions: dict) -> str:
     return re.sub(r"\brecipe_\d+", lambda hit: number_markup(hit.group(0), functions), _esc(text))
 
 
+# 기능 번호 pill. 비교 칸 · 후보 기능이 같은 모양이다
+CHIP_CSS = "tt-chip"
+
+
 def _function_markup(recipe_ids: list, functions: dict, empty: str = "선택 없음") -> str:
-    """기능 번호와 설명. 고르지 않았으면 empty 글자.
+    """기능 번호 pill 과 설명. 고르지 않았으면 empty 글자.
 
     규칙  기능이 여럿이면 차례대로 모두 보임. 설명은 줄로도 보이고 번호의 마우스에도 붙음
     """
@@ -910,10 +936,32 @@ def _function_markup(recipe_ids: list, functions: dict, empty: str = "선택 없
     if not shown:
         return f'<div class="tt-fn tt-none">{_esc(empty)}</div>'
     return "".join(
-        f'<div class="tt-fn">{number_markup(rid, functions)}</div>'
+        f'<div class="tt-fn">{number_markup(rid, functions, CHIP_CSS)}</div>'
         f'<div class="tt-desc">{_esc(functions.get(rid) or "")}</div>'
         for rid in shown
     )
+
+
+def _picked_markup(row: dict, functions: dict) -> str:
+    """비교 칸 AI 모델 출력의 기능. 모델 판정마다 다름.
+
+    규칙  오류면 「오류」. SELECT 면 고른 기능 pill 하나와 설명
+          CLARIFY 면 모델이 되물은 후보 기능(candidate_recipe_ids)을 모델이 낸 차례대로 pill 하나씩. 설명은 마우스에만.
+          후보가 없으면 「되묻기」
+          NO_MATCH 면 「해당 없음」. 그 밖의 판정은 판정 글자
+    제약  후보 번호를 글자로 이어 붙이지 않는다. 「되묻기」라는 판정은 모델 판정 상태 칸에 그대로 남는다
+    """
+    model = row.get("actual") or {}
+    status = model.get("status")
+    if row.get("error"):
+        return _function_markup([], functions, STAGE_LABELS["error"])
+    if status == "SELECT":
+        return _function_markup([model.get("recipe_id")], functions)
+    candidates = [rid for rid in model.get("candidate_recipe_ids") or [] if rid]
+    if status == "CLARIFY" and candidates:
+        chips = "".join(number_markup(rid, functions, CHIP_CSS) for rid in candidates)
+        return f'<div class="tt-fn tt-fns">{chips}</div>'
+    return _function_markup([], functions, STATUS_LABELS.get(status, "선택 없음"))
 
 
 def _key_markup(label: str, name: str | None = None) -> str:
@@ -982,7 +1030,8 @@ def detail_markup(row: dict, functions: dict) -> str:
 
     입력  run_evaluation 결과 cases 한 줄 · meta.functions
     규칙  맨 위 한 줄에 번호 · 발화 · 결과(verdict_label). 오류는 실패와 다른 색
-          정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부(field_rows)
+          정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부(field_rows).
+          AI 모델 출력의 기능은 _picked_markup (되묻기면 후보 기능 pill 여럿)
           기능 칸 강조는 run_evaluation 의 recipe_correct, 인자 칸 강조는 spoken_fields 의 correct
           인자 값 칸은 셋으로 가름 — 기대 기능이 안 읽는 인자는 두 칸 다 「사용 안 함」,
           읽는데 값이 null 이면 「없음」, 값이 있으면 그 값
@@ -992,8 +1041,6 @@ def detail_markup(row: dict, functions: dict) -> str:
     """
     if pending(row):
         return pending_markup(row)
-    model = row.get("actual") or {}
-    has_error = bool(row.get("error"))
     tone = "ok" if row["passed"] else "err" if errored(row) else "ng"
     head = (
         '<div class="tt-head">'
@@ -1009,8 +1056,7 @@ def detail_markup(row: dict, functions: dict) -> str:
         '<div class="tt-c tt-col-model">AI 모델 출력</div>'
         "</div>",
     ]
-    picked = _function_markup([model.get("recipe_id")], functions, STAGE_LABELS["error"] if has_error else
-                              STATUS_LABELS.get(model.get("status"), "선택 없음") if model.get("status") != "SELECT" else "선택 없음")
+    picked = _picked_markup(row, functions)
 
     if row.get("scope") == "out_of_scope":
         category = row["expected"].get("category")
@@ -1069,10 +1115,11 @@ def _note_markup(text: str) -> str:
 
 
 # ================================================================ 실행
-def run_selected(dataset_id: str, on_progress=None, should_stop=None) -> dict:
+def run_selected(dataset_id: str, on_progress=None, should_stop=None, *, fan_quiet: bool = True, monitor=None) -> dict:
     """고른 정답표를 dev/evaluation/run_evaluation 으로 새로 잰 결과. 새 run_id · 새 폴더.
 
-    규칙  run_evaluation.run_dataset 에 RUN_OPTIONS 와 그 문맥 · GPU 조용 정책 · should_stop 을 넘김. 판정은 전부 평가 쪽이 함
+    규칙  run_evaluation.run_dataset 에 RUN_OPTIONS 와 그 문맥 · 팬 소음 억제(fan_quiet_mode) · monitor · should_stop 을
+          넘김. 판정은 전부 평가 쪽이 함. monitor 가 없으면 여기서 monitor_gpu.GpuMonitor 를 만듦
           run_dataset 이 Test Run 을 outputs/local_benchmark 에 저절로 남김. 폴더는 시작하자마자 생김
           run_evaluation 을 여기서 import 함. 탭을 열기만 해서는 계기판 모듈을 안 읽음
     제약  판정 · 채점을 여기서 하지 않는다. st.* 를 부르지 않는다 (백그라운드 thread 에서 불림)
@@ -1083,22 +1130,23 @@ def run_selected(dataset_id: str, on_progress=None, should_stop=None) -> dict:
     options = dict(RUN_OPTIONS)
     options["context"] = run_evaluation.context_payload(options["context_label"])
     return run_evaluation.run_dataset(
-        dataset_id, progress=on_progress, monitor=monitor_gpu.GpuMonitor(gate=True), should_stop=should_stop, **options
+        dataset_id, progress=on_progress, fan_quiet_mode=fan_quiet, monitor=monitor or monitor_gpu.GpuMonitor(),
+        should_stop=should_stop, **options
     )
 
 
-def resume_selected(kind: str, run_id: str, on_progress=None, should_stop=None) -> dict:
+def resume_selected(kind: str, run_id: str, on_progress=None, should_stop=None, *, monitor=None) -> dict:
     """끝나지 않은 local 기록을 같은 run_id 로 이어 잰 결과. run_evaluation.resume 그대로.
 
-    규칙  조건 · 문맥 · 부르는 순간은 기록에 저장된 것을 평가 쪽이 씀. 여기서 넘기지 않음
-          GPU 조용 정책은 새로 실행과 같음. 실행 하드웨어는 저장된 것이 없을 때만 이 기계
-    제약  st.* 를 부르지 않는다 (백그라운드 thread 에서 불림)
+    규칙  조건 · 문맥 · 부르는 순간 · 팬 소음 억제는 기록에 저장된 것을 평가 쪽이 씀. 여기서 넘기지 않음
+          monitor 는 팬을 보는 자일 뿐임. 없으면 여기서 만듦. 실행 하드웨어는 저장된 것이 없을 때만 이 기계
+    제약  st.* 를 부르지 않는다 (백그라운드 thread 에서 불림). 화면의 체크박스 값을 넘기지 않는다
     """
     from dev.evaluation import run_evaluation
     from dev.evaluation.engine import monitor_gpu
 
     return run_evaluation.resume(
-        kind, run_id, progress=on_progress, monitor=monitor_gpu.GpuMonitor(gate=True),
+        kind, run_id, progress=on_progress, monitor=monitor or monitor_gpu.GpuMonitor(),
         environment=monitor_gpu.environment(), should_stop=should_stop,
     )
 
@@ -1118,16 +1166,19 @@ class _Job:
     """백그라운드에서 도는 평가 한 번. 화면 script 와 평가 thread 가 나눠 보는 것은 이것뿐.
 
     규칙  평가 thread 는 add 로 끝난 줄을 넣고, 끝나면 result 또는 error 를 적고 finished 를 켬
-          화면은 rows() · stop_requested() · finished 만 읽고, 「중지」는 request_stop 으로 알림
+          화면은 rows() · stop_requested() · finished · fan_waiting() 만 읽고, 「중지」는 request_stop 으로 알림
           rows 는 이어 실행이면 전에 잰 줄부터 시작함
+          fan_quiet 는 이 실행의 팬 소음 억제. 새로 실행은 누른 순간의 체크박스, 이어 실행은 저장된 값.
+          도는 동안 체크박스가 이 값을 보임. monitor 는 평가 thread 에 넘기는 팬 보는 자 (없으면 None)
     제약  st.* · session_state 를 만지지 않는다. 줄을 채점하지 않는다
     """
 
     def __init__(self, mode: str, dataset_id: str, planned: int, rows: list[dict] | None = None,
-                 kind: str | None = None, run_id: str | None = None):
+                 kind: str | None = None, run_id: str | None = None, fan_quiet: bool = True, monitor=None):
         self.token = next(_TOKENS)
         self.mode, self.dataset_id, self.planned = mode, dataset_id, planned
         self.kind, self.run_id = kind, run_id
+        self.fan_quiet, self.monitor = bool(fan_quiet), monitor
         self._rows = list(rows or [])
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -1152,6 +1203,10 @@ class _Job:
 
     def active(self) -> bool:
         return not self.finished.is_set()
+
+    def fan_waiting(self) -> bool:
+        """지금 팬 때문에 다음 발화를 기다리는 중인가."""
+        return bool(getattr(self.monitor, "waiting", False))
 
 
 # 이 process 에서 지금(또는 마지막으로) 도는 평가. 창이 여럿이어도 하나다.
@@ -1190,15 +1245,25 @@ def start_job(job: _Job, target) -> bool:
     return True
 
 
+def _new_monitor():
+    """팬을 보는 자 하나. 실행 하나에 하나."""
+    from dev.evaluation.engine import monitor_gpu
+
+    return monitor_gpu.GpuMonitor()
+
+
 def _start_new(dataset_id: str) -> None:
     """「새로 실행」의 콜백. 새 Test Run 을 백그라운드로 시작하고 이 창이 지켜봄.
 
     규칙  잴 수는 고른 정답표의 대기 줄 수. 폴더는 run_evaluation 이 시작하자마자 만듦
+          팬 소음 억제는 누른 순간의 체크박스(FAN_QUIET_KEY, 기본 켜짐). 그 값이 이 실행 기록에 굳음
           이미 도는 평가가 있으면 아무것도 안 함
     """
     planned = len(suite_rows(dataset_id))
-    job = _Job(NEW, dataset_id, planned)
-    if start_job(job, lambda: run_selected(dataset_id, job.add, job.stop_requested)):
+    fan_quiet = bool(st.session_state.get(FAN_QUIET_KEY, True))
+    job = _Job(NEW, dataset_id, planned, fan_quiet=fan_quiet, monitor=_new_monitor())
+    if start_job(job, lambda: run_selected(dataset_id, job.add, job.stop_requested, fan_quiet=job.fan_quiet,
+                                           monitor=job.monitor)):
         _watch(job)
 
 
@@ -1207,6 +1272,7 @@ def _start_resume(stored: dict) -> None:
 
     규칙  누른 순간 resume_check 를 다시 봄. 막히면 까닭을 RUN_ERROR_KEY 에 두고 파일을 안 건드림
           잴 수 · 전에 잰 줄은 불러온 결과 그대로
+          팬 소음 억제는 저장된 meta.fan_quiet_mode. 화면 체크박스 값을 안 씀 (평가 쪽도 저장된 값을 씀)
     """
     from dev.evaluation.engine import manage_benchmark
 
@@ -1218,8 +1284,9 @@ def _start_resume(stored: dict) -> None:
         st.session_state[RUN_ERROR_KEY] = check["reason"]
         return
     planned = manage_benchmark.planned_runs(result["meta"]) or len(result["cases"])
-    job = _Job(RESUME, stored["dataset_id"], planned, result["cases"], kind=stored["kind"], run_id=run_id)
-    if start_job(job, lambda: resume_selected(job.kind, job.run_id, job.add, job.stop_requested)):
+    job = _Job(RESUME, stored["dataset_id"], planned, result["cases"], kind=stored["kind"], run_id=run_id,
+               fan_quiet=bool(result["meta"].get("fan_quiet_mode")), monitor=_new_monitor())
+    if start_job(job, lambda: resume_selected(job.kind, job.run_id, job.add, job.stop_requested, monitor=job.monitor)):
         _watch(job)
 
 
@@ -1329,7 +1396,8 @@ def control_state(job: _Job | None, stored: dict | None) -> dict:
 
     출력  {"phase", "text", "resume": 판정 또는 None}
           phase 는 idle · complete · running · stopping · stopped
-    규칙  도는 job 이 있으면 running(중지 전) · stopping(중지 요청됨). 글자에 끝난 수 / 잴 수
+    규칙  도는 job 이 있으면 running(중지 전) · stopping(중지 요청됨). 글자에 끝난 수 / 잴 수.
+          팬 때문에 다음 발화를 기다리는 중이면 끝에 FAN_WAIT_TEXT
           없으면 불러온 기록으로: 다 쟀으면 complete, 못 다 쟀으면 stopped 와 이어 실행 판정
           불러온 기록이 없으면 idle
     """
@@ -1338,7 +1406,8 @@ def control_state(job: _Job | None, stored: dict | None) -> dict:
         if job.stop_requested():
             return {"phase": "stopping", "text": "중지 요청됨 · 현재 발화를 마친 뒤 중지합니다.", "resume": None}
         verb = "이어 실행 중" if job.mode == RESUME else "새로 실행 중"
-        return {"phase": "running", "text": f"{verb} · {done} / {job.planned}", "resume": None}
+        waiting = f" · {FAN_WAIT_TEXT}" if job.fan_waiting() else ""
+        return {"phase": "running", "text": f"{verb} · {done} / {job.planned}{waiting}", "resume": None}
     state = record_state(stored)
     if state is None:
         return {"phase": "idle", "text": "", "resume": None}
@@ -1354,11 +1423,18 @@ def _render_controls(job: _Job | None, stored: dict | None, dataset_id: str) -> 
           running          「중지」 하나. stopping 이면 「중지 요청됨」 (눌리지 않음)
           stopped          「이어 실행」 · 「새로 실행」. 이어 잴 수 있으면 이어 실행이 앞 단추.
                            못 하면 이어 실행을 숨기지 않고 눌리지 않게 두고, 까닭과 「변경된 조건 보기」를 보임
+          단추 바로 앞에 「GPU 팬 소음 억제」 체크박스. 기본 켜짐. 도는 동안(running · stopping)은
+          눌리지 않고 그 실행의 값(job.fan_quiet)을 보임. 끝난 뒤에도 그 값이 남음
     제약  단추 콜백 말고는 평가를 시작하지 않는다
     """
     state = control_state(job, stored)
     phase, check = state["phase"], state["resume"]
-    text, buttons = st.columns([6.2, 1.9], vertical_alignment="center")
+    running = phase in ("running", "stopping") and job is not None
+    if running:
+        st.session_state[FAN_QUIET_KEY] = job.fan_quiet
+    else:
+        st.session_state.setdefault(FAN_QUIET_KEY, True)
+    text, quiet, buttons = st.columns([5.0, 1.6, 1.9], vertical_alignment="center")
     with text:
         badge = ""
         if check is not None:
@@ -1368,8 +1444,10 @@ def _render_controls(job: _Job | None, stored: dict | None, dataset_id: str) -> 
             f'<div class="tt-run tt-run-{phase}"><span class="tt-run-text">{_esc(state["text"])}</span>{badge}</div>',
             unsafe_allow_html=True,
         )
-        if phase in ("running", "stopping") and job is not None and job.planned:
+        if running and job.planned:
             st.progress(min(1.0, len(job.rows()) / job.planned))
+    with quiet:
+        st.checkbox(FAN_QUIET_LABEL, key=FAN_QUIET_KEY, help=FAN_QUIET_HELP, disabled=running)
     with buttons:
         if phase == "running":
             st.button("중지", key="test_stop", width="stretch", on_click=_request_stop)
@@ -1567,8 +1645,9 @@ def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tup
 
     출력  (보기, 검색어, 기능 자리, (정렬 칸, 정렬 방향))
     규칙  결과가 있으면 필터 글자 옆에 그 보기의 건수를 붙임. 전체는 표의 줄 수
-          보기는 칸 하나다 — 전체 · 실패 다음에 실패를 가른 셋이 딸려 붙음.
-          딸린 것으로 보이게 하는 일은 CSS 가 하고(FIRST_FAILURE_FILTER), 고르는 뜻은 안 바뀜
+          보기는 칸 하나다 — 전체 · 실패 다음에 실패를 가른 셋(실패 · 기능 선택 …)이 딸려 붙음.
+          글자는 결과 칸 글자(verdict_label)와 같음. 딸린 것으로 보이게 하는 일은 CSS 가 하고
+          (FIRST_FAILURE_FILTER), 고르는 뜻 · 건수는 안 바뀜
           오류 줄이 있을 때만 맨 뒤에 오류 보기가 붙음. 실패에 딸리지 않음. 오류가 없어지면 전체로 돌림
           기능 고르기는 표에 있는 기대 기능과 범위 밖. 대기 줄도 제 기능 자리에 들어감
           결과가 없으면(대기 줄뿐) 건수를 안 붙임. 대기 줄을 성공 · 실패로 세지 않음
@@ -1582,15 +1661,15 @@ def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tup
         counts = {
             ALL: len(rows),
             FAILED: summary["failed"],
-            STAGE_LABELS["function"]: summary["function"],
-            STAGE_LABELS["input"]: summary["input"],
-            STAGE_LABELS["scope"]: sum(1 for r in rows if failed(r) and r.get("failure_stage") == "scope"),
+            FAILURE_TEXT["function"]: summary["function"],
+            FAILURE_TEXT["input"]: summary["input"],
+            FAILURE_TEXT["scope"]: sum(1 for r in rows if failed(r) and r.get("failure_stage") == "scope"),
             ERROR_FILTER: errors,
         }
     options = FILTERS + ((ERROR_FILTER,) if errors else ())
     if st.session_state.get(FILTER_KEY) not in (None, *options):
         st.session_state[FILTER_KEY] = ALL
-    left, middle, right, order_by, order = st.columns([3.6, 1.5, 1.5, 1.25, 1.2], vertical_alignment="center")
+    left, middle, right, order_by, order = st.columns([5.1, 1.3, 1.3, 1.1, 1.8], vertical_alignment="center")
     with left:
         view = st.segmented_control(
             "보기",
@@ -1971,18 +2050,42 @@ def panel_css() -> str:
 .st-key-test_tab .tt-cause-note { font-size: 0.72rem; opacity: 0.5; }
 .st-key-test_tab .tt-kpis-empty .tt-cause-v { opacity: 0.35; }
 
-/* 보기 필터. 실패를 가른 셋(FIRST_FAILURE_FILTER 번째부터)은 실패에 딸린 것으로 보이게
-   앞에 선을 긋고 글자를 눌러 둔다. 고르는 뜻은 그대로다. */
-.st-key-test_tab .st-key-test_filter [data-testid="stButtonGroup"] button:nth-of-type({first_failure_filter}) {
-  margin-left: 0.7rem; border-left: 1px solid var(--tt-line); padding-left: 0.85rem; border-radius: 0;
+/* 보기 필터. 붙은 막대(segmented)가 아니라 떨어진 pill 로 둔다.
+   전체는 기본 모양, 실패는 붉은 테두리 · 글자로 조금 강하게, 실패를 가른 셋({first_failure_filter} 번째부터)은
+   같은 붉은 계열로 옅게 둔다. 실패와 셋 사이는 조금 넓게 떼고 가는 세로선을 긋는다. 글자로 묶음 이름을
+   달지 않는다. 오류 보기(있을 때만 맨 뒤)는 실패에 딸리지 않으므로 선으로 떼고 황색으로 둔다.
+   고르는 뜻은 그대로다. 골라진 pill 은 같은 계열의 진한 바탕이다. */
+.st-key-test_tab .st-key-test_filter [role="radiogroup"] { gap: 0.4rem; flex-wrap: wrap; row-gap: 0.35rem; }
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"] {
+  border-radius: 999px; margin: 0; position: relative; padding-left: 0.8rem; padding-right: 0.8rem;
 }
-.st-key-test_tab .st-key-test_filter [data-testid="stButtonGroup"] button:nth-of-type(n+{first_failure_filter}) {
-  font-size: 0.82rem;
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(2) {
+  color: var(--tt-ng); border-color: rgba(229, 83, 75, 0.6); background: rgba(229, 83, 75, 0.07); font-weight: 600;
 }
-/* 오류 보기(있을 때만 맨 뒤)는 실패에 딸리지 않는다. 선으로 떼어 둔다. */
-.st-key-test_tab .st-key-test_filter [data-testid="stButtonGroup"] button:nth-of-type({error_filter}) {
-  margin-left: 0.7rem; border-left: 1px solid var(--tt-line); padding-left: 0.85rem; border-radius: 0; font-size: 0.82rem;
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{first_failure_filter}):nth-of-type(-n+{last_failure_filter}) {
+  color: rgba(229, 83, 75, 0.82); border-color: rgba(229, 83, 75, 0.26); background: rgba(229, 83, 75, 0.03);
+  font-size: 0.84rem;
 }
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+2):nth-of-type(-n+{last_failure_filter})[aria-checked="true"] {
+  color: var(--tt-ng); border-color: var(--tt-ng); background: rgba(229, 83, 75, 0.18);
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({first_failure_filter}),
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter}) {
+  margin-left: 0.85rem;
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({first_failure_filter})::before,
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter})::before {
+  content: ""; position: absolute; left: -0.68rem; top: 22%; bottom: 22%; width: 1px; background: rgba(140, 150, 165, 0.45);
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter}) {
+  color: var(--tt-err); border-color: rgba(210, 153, 34, 0.45); font-size: 0.84rem;
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter})[aria-checked="true"] {
+  border-color: var(--tt-err); background: rgba(210, 153, 34, 0.16);
+}
+
+/* 팬 소음 억제 체크박스는 단추 바로 옆에 붙인다. */
+.st-key-test_tab .st-key-test_fan_quiet { align-self: flex-end; }
 
 /* 결과 표 칸 머리의 「설정」 메뉴. 정렬 · 통계 · 자동 너비 · 칸 고정 명령을 감춘다.
    머리글을 눌러 정렬하는 것은 칸 고르기(single-column)를 켜서 꺼 두었다 — 정렬은 파이썬(sort_rows)만 한다.
@@ -2047,9 +2150,14 @@ def panel_css() -> str:
 .st-key-test_tab .tt-badge.wait { opacity: 0.7; background: rgba(128, 128, 128, 0.12); }
 
 /* ---------------------------------------------- 정답표 | AI 모델 출력 */
+/* overflow 를 가리지 않는다. 기능 번호 tooltip 이 표 아래로 넘쳐도 잘리지 않게 하려는 것이라
+   둥근 모서리는 모서리 칸에 따로 준다. */
 .st-key-test_tab .tt-cmp {
-  border: 1px solid var(--tt-line); border-radius: 10px; overflow: hidden; font-size: 0.88rem;
+  border: 1px solid var(--tt-line); border-radius: 10px; font-size: 0.88rem;
 }
+.st-key-test_tab .tt-cmp > .tt-row:first-child > :last-child { border-top-right-radius: 9px; }
+.st-key-test_tab .tt-cmp > .tt-row:last-child > :first-child { border-bottom-left-radius: 9px; }
+.st-key-test_tab .tt-cmp > .tt-row:last-child > :last-child { border-bottom-right-radius: 9px; }
 .st-key-test_tab .tt-row {
   display: grid; grid-template-columns: 6.6rem minmax(0, 1fr) minmax(0, 1.08fr);
   border-top: 1px solid var(--tt-line);
@@ -2073,6 +2181,8 @@ def panel_css() -> str:
   font-size: 0.7rem; opacity: 0.55; margin-top: 0.1rem;
 }
 .st-key-test_tab .tt-fn { font-weight: 700; }
+.st-key-test_tab .tt-fn .tt-chip { font-weight: 600; }
+.st-key-test_tab .tt-fns { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .st-key-test_tab .tt-desc { font-size: 0.8rem; opacity: 0.72; line-height: 1.45; margin-top: 0.2rem; }
 .st-key-test_tab .tt-none { opacity: 0.45; }
 .st-key-test_tab .tt-diff { background: rgba(229, 83, 75, 0.13); box-shadow: inset 3px 0 0 var(--tt-ng); }
@@ -2094,7 +2204,7 @@ def panel_css() -> str:
 .st-key-test_tab .tt-extra-head { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.04em; color: var(--tt-ai); margin-bottom: 0.4rem; }
 .st-key-test_tab .tt-kv { display: grid; grid-template-columns: 6.2rem minmax(0, 1fr); column-gap: 0.6rem; padding: 0.28rem 0; }
 .st-key-test_tab .tt-kv-k { opacity: 0.6; font-size: 0.8rem; padding-top: 0.08rem; }
-.st-key-test_tab .tt-kv-v { min-width: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.st-key-test_tab .tt-kv-v { min-width: 0; display: flex; flex-wrap: wrap; gap: 0.3rem; position: relative; }
 .st-key-test_tab .tt-status { font-weight: 600; }
 .st-key-test_tab .tt-chip {
   font-size: 0.75rem; padding: 0.08rem 0.5rem; border-radius: 999px;
@@ -2105,5 +2215,29 @@ def panel_css() -> str:
   display: block; line-height: 1.55; font-size: 0.83rem;
   background: var(--tt-softer); border-radius: 6px; padding: 0.4rem 0.55rem; overflow-wrap: anywhere;
 }
-.st-key-test_tab .tt-fnum[title] { cursor: help; }
-</style>""".replace("{first_failure_filter}", str(FIRST_FAILURE_FILTER)).replace("{error_filter}", str(len(FILTERS) + 1))
+
+/* ---------------------------------------------- 기능 번호 tooltip
+   브라우저 title 은 뜨기까지 지연을 못 바꿔서 data-tip 을 여기서 그린다. 올리면 {tip_delay}ms 뒤에
+   뜨고, 내리면 바로 사라진다. tooltip 은 마우스를 안 받으므로 그 위로 지나가도 깜빡이지 않는다.
+   가로는 번호가 든 칸(.tt-c · .tt-kv-v · .tt-rs)의 폭에 맞추고, 세로는 번호가 놓인 줄 바로 아래다
+   (top 을 비워 두면 제자리 다음 줄). 칸 밖으로 넘치면 상세의 스크롤 칸이 가로로 밀린다.
+   기능별 결과 카드는 카드 어디에 올려도 그 번호의 tooltip 이 뜬다. */
+.st-key-test_tab .tt-rs { position: relative; }
+.st-key-test_tab [data-tip] { cursor: help; }
+.st-key-test_tab [data-tip]::after {
+  content: attr(data-tip);
+  position: absolute; display: block; left: 0.4rem; right: 0.4rem; margin-top: 0.3rem; z-index: 30;
+  padding: 0.4rem 0.6rem; border-radius: 6px;
+  font-size: 0.78rem; font-weight: 400; line-height: 1.45; letter-spacing: normal;
+  white-space: normal; text-align: left; overflow-wrap: anywhere;
+  color: #F3F5F8; background: rgba(30, 34, 42, 0.96); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.22);
+  opacity: 0; visibility: hidden; pointer-events: none; transition: none;
+}
+.st-key-test_tab [data-tip]:hover::after,
+.st-key-test_tab .tt-rs:hover [data-tip]::after {
+  opacity: 1; visibility: visible;
+  transition: opacity 80ms ease {tip_delay}ms, visibility 0s linear {tip_delay}ms;
+}
+</style>""".replace("{first_failure_filter}", str(FIRST_FAILURE_FILTER)).replace("{error_filter}", str(len(FILTERS) + 1)) \
+        .replace("{last_failure_filter}", str(len(FILTERS))) \
+        .replace("{tip_delay}", str(TIP_DELAY_MS))

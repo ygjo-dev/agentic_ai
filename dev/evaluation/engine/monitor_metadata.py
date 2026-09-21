@@ -3,7 +3,7 @@
     conditions()    모델 · provider · 역할 판 · 요청 설정 · prompt · 응답 schema · menu 파일과 sha256 · 게시 자산 sha256
     functions()     기능 설명 {recipe id: menu 의 function 문장}. 화면이 기능 번호 옆에 보임
     role_label()    resolve 역할 한 줄 (계기판 check_resolve 도 이것을 씀)
-    benchmark_meta  위 셋과 정답표 신원 · 문맥 · 쉼 설정을 모은 결과 meta 머리
+    benchmark_meta  위 셋과 정답표 신원 · 문맥 · 팬 소음 억제를 모은 결과 meta 머리
     resume_identity 이어 실행할 때 같아야 하는 조건 (저장된 머리 · 지금 이 저장소)
 
 실행 하드웨어(GPU 이름 · VRAM)는 monitor_gpu.environment 가 적는다.
@@ -30,8 +30,9 @@ KST = zoneinfo.ZoneInfo("Asia/Seoul")
 # 3: 줄에 scope · recipe_group · outcome · oos_correct · timing.started_at, summary 에 metrics ·
 #    latency · recipes, meta 에 run_id · elapsed_s · suite.name · suite.group_labels
 #    뒤에 판을 안 올리고 더한 선택 칸: expected.reads · conditions.request · meta.environment ·
-#    conditions.registry · meta.stopped_at · meta.resumed_at.
-#    이 칸이 없는 옛 결과도 그대로 읽힌다(이어 실행만 막힘). 옛 결과의 meta.gpu(온도 기록)는 더 쓰지 않는다
+#    conditions.registry · meta.stopped_at · meta.resumed_at · meta.fan_quiet_mode · meta.fan_wait_s.
+#    이 칸이 없는 옛 결과도 그대로 읽힌다(이어 실행만 막힘). 옛 결과의 meta.gpu(온도 기록) · meta.cooldown(고정 쉼)은
+#    더 쓰지 않는다
 RESULT_VERSION = 3
 
 
@@ -205,8 +206,7 @@ def benchmark_meta(
     dataset: dict | None,
     runs: int,
     resolver: str,
-    cooldown_every: int,
-    cooldown_seconds: float,
+    fan_quiet_mode: bool,
     context: dict | None,
     context_label: str | None,
     materialize: bool,
@@ -217,6 +217,7 @@ def benchmark_meta(
 
     규칙  정답표 신원은 load_test_suite.identity. dataset 이 있으면 dataset_id · label 을 붙임
           conditions · functions · git HEAD 를 여기서 읽음
+          fan_quiet_mode 는 GPU 팬 소음 억제를 켰나(참 · 거짓). 이어 실행이 그대로 다시 씀
     """
     import paths
 
@@ -235,7 +236,7 @@ def benchmark_meta(
         "role": role_label(),
         "conditions": conditions(),
         "functions": functions(),
-        "cooldown": {"every": cooldown_every, "seconds": cooldown_seconds},
+        "fan_quiet_mode": bool(fan_quiet_mode),
         "context": {"label": context_label, "payload": context},
         "materialize": materialize,
         "materialize_now": now.isoformat() if materialize else None,
@@ -247,7 +248,7 @@ def benchmark_meta(
 
 # ================================================================ 이어 실행
 # 이어 실행할 때 같아야 하는 조건. (화면 글자, 저장된 meta 에서 값을 꺼내는 경로).
-# 「남은 발화를 같은 평가 계약으로 재나」만 본다. run_id · 시각 · git HEAD · 저장 자리 · GPU · 쉼 설정 ·
+# 「남은 발화를 같은 평가 계약으로 재나」만 본다. run_id · 시각 · git HEAD · 저장 자리 · GPU · 팬 소음 억제 ·
 # 화면 정렬 · 필터는 안 본다 — 재는 값을 안 바꾸거나 저장된 값을 그대로 다시 쓴다.
 RESUME_FIELDS = (
     ("Test Suite", (("suite", "dataset_id"), ("suite", "sha256"))),
@@ -269,7 +270,7 @@ RESUME_REPLAYED = (
     ("materialize",),
     ("context", "label"),
     ("context", "payload"),
-    ("cooldown",),
+    ("fan_quiet_mode",),
 )
 
 _MISSING = object()

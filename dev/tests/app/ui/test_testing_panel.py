@@ -127,7 +127,7 @@ def test_while_running_only_the_finished_rows_are_counted(result):
     four = panel.summarize(panel.live_result(rows[:4], 48))
     assert four == {"total": 48, "done": 4, "passed": 2, "failed": 2, "function": 1, "input": 1, "scope": 0, "error": 0,
                     "oos_runs": 0}
-    assert panel.filter_results(panel.live_result(rows[:4], 48)["cases"], "인자 추출") == [rows[2]]
+    assert panel.filter_results(panel.live_result(rows[:4], 48)["cases"], "실패 · 인자 추출") == [rows[2]]
 
     text = visible_text(panel.summary_markup(four))
     assert "완료 4 / 48" in text
@@ -154,8 +154,8 @@ def test_the_filters_pick_failures_by_stage_and_search_ignores_spaces(result):
     assert len(panel.filter_results(rows, "전체")) == 5
     assert [r["case_id"] for r in panel.filter_results(rows, "실패")] == [3, 4], "오류가 실패에 들어갔다"
     assert [r["case_id"] for r in panel.filter_results(rows, panel.ERROR_FILTER)] == [5]
-    assert [r["case_id"] for r in panel.filter_results(rows, "기능 선택")] == [4]
-    assert [r["case_id"] for r in panel.filter_results(rows, "인자 추출")] == [3]
+    assert [r["case_id"] for r in panel.filter_results(rows, "실패 · 기능 선택")] == [4]
+    assert [r["case_id"] for r in panel.filter_results(rows, "실패 · 인자 추출")] == [3]
     found = panel.filter_results(rows, "실패", "청주서원")
     assert [r["utterance"] for r in found] == ["청주 서원 시군구 경계"]
 
@@ -310,13 +310,15 @@ def _suite_resolve(dataset_id, seen=None, hold=None):
     return resolve
 
 
-def _measure(dataset_id, *, seen=None, progress=None, save_dir=None, should_stop=None, hold=None, only=None):
+def _measure(dataset_id, *, seen=None, progress=None, save_dir=None, should_stop=None, hold=None, only=None,
+             fan_quiet_mode=False):
     """진짜 정답표 한 벌을 가짜 resolve 로 잰 결과 (run_evaluation.run_dataset 과 같은 모양)."""
     entry = load_test_suite.dataset(dataset_id)
     measured = run_evaluation.run(
         load_test_suite.load(entry["path"]), suite_path=Path(entry["path"]),
         resolve=_suite_resolve(dataset_id, seen, hold), progress=progress, materialize=False, save_dir=save_dir,
         dataset={"id": entry["id"], "label": entry["label"]}, should_stop=should_stop, only=only,
+        fan_quiet_mode=fan_quiet_mode,
     )
     measured["meta"]["functions"] = dict(FUNCTIONS)
     return measured
@@ -331,21 +333,23 @@ def app(monkeypatch, tmp_path):
     at.resolved     가짜 resolve 가 받은 발화 (LLM 호출 수 자리)
     at.local        이 시험의 local 기록 자리 (tmp)
     at.hold         None 이 아니면 가짜 resolve 가 그 부름에서 멈춤 (Hold)
+    at.fans         run_selected 가 받은 팬 소음 억제 값 (새로 실행마다)
     """
     from streamlit.testing.v1 import AppTest
 
     local = tmp_path / "local"
     monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", local)
     monkeypatch.setattr(panel, "_job", None)
-    calls, resumed, resolved = [], [], []
+    calls, resumed, resolved, fans = [], [], [], []
     at = AppTest.from_function(_tab_script, default_timeout=60)
 
-    def run_selected(dataset_id, on_progress=None, should_stop=None):
+    def run_selected(dataset_id, on_progress=None, should_stop=None, *, fan_quiet=True, monitor=None):
         calls.append(dataset_id)
+        fans.append(fan_quiet)
         return _measure(dataset_id, seen=resolved, progress=on_progress, save_dir=manage_benchmark.LOCAL_DIR,
-                        should_stop=should_stop, hold=at.hold)
+                        should_stop=should_stop, hold=at.hold, fan_quiet_mode=fan_quiet)
 
-    def resume_selected(kind, run_id, on_progress=None, should_stop=None):
+    def resume_selected(kind, run_id, on_progress=None, should_stop=None, *, monitor=None):
         resumed.append((kind, run_id))
         dataset_id = manage_benchmark.read_incomplete(manage_benchmark.run_dir(kind, run_id))["meta"]["suite"]["dataset_id"]
         return run_evaluation.resume(kind, run_id, resolve=_suite_resolve(dataset_id, resolved, at.hold),
@@ -353,7 +357,7 @@ def app(monkeypatch, tmp_path):
 
     monkeypatch.setattr(panel, "run_selected", run_selected)
     monkeypatch.setattr(panel, "resume_selected", resume_selected)
-    at.calls, at.resumed, at.resolved, at.local, at.hold = calls, resumed, resolved, local, None
+    at.calls, at.resumed, at.resolved, at.local, at.hold, at.fans = calls, resumed, resolved, local, None, fans
     yield at
     job = panel.current_job()
     if job is not None and job.active():
@@ -402,6 +406,9 @@ def test_opening_the_tab_shows_every_v1_case_as_pending_without_running(app):
     assert list(app.dataframe[0].value["발화"]) == [case["utterance"] for case in _enabled("test_suite_v1")]
     assert [b.label for b in app.button] == ["새로 실행"]
     assert _local_dirs(app) == []
+    [quiet] = app.checkbox
+    assert (quiet.label, quiet.value, quiet.disabled) == ("GPU 팬 소음 억제", True, False)
+    assert quiet.help == panel.FAN_QUIET_HELP
 
 
 def test_choosing_v2_shows_all_203_cases_as_pending_without_running(app):
@@ -582,12 +589,12 @@ def test_the_case_detail_keeps_only_status_candidates_reason_and_inference_laten
 
 
 def _numbers(markup: str) -> list[tuple[str, str]]:
-    """마크업에 보이는 「기능 NNN」 전부. [(설명 title, 번호 글자)]. title 이 없으면 빈 글자."""
+    """마크업에 보이는 「기능 NNN」 전부. [(설명 data-tip, 번호 글자)]. tooltip 이 없으면 빈 글자."""
     found = []
     for hit in re.finditer(r"기능 \d+", markup):
         span = markup.rfind("<span", 0, hit.start())
         head = markup[span:hit.start()]
-        title = re.search(r'title="([^"]*)"', head)
+        title = re.search(r'data-tip="([^"]*)"', head)
         found.append((title.group(1) if title else "", hit.group(0)))
     return found
 
@@ -608,17 +615,18 @@ def test_every_visible_function_number_carries_its_description_on_hover(result, 
     check(panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS), "기능별 결과")
     check(panel.reason_markup("recipe_045 가 맞고 recipe_061 은 아니다", FUNCTIONS), "모델 판단", at_least=2)
 
+    tip = FUNCTIONS["recipe_045"]
     assert panel.number_markup("recipe_045", FUNCTIONS) == (
-        f'<span class="tt-fnum" title="{FUNCTIONS["recipe_045"]}">기능 045</span>'
+        f'<span class="tt-fnum" data-tip="{tip}" aria-description="{tip}">기능 045</span>'
     )
     assert panel.number_markup(None, FUNCTIONS) == ""
     assert panel.number_markup("recipe_999", FUNCTIONS) == '<span class="tt-fnum">기능 999</span>'
 
 
 def test_a_candidate_function_shows_its_menu_description_on_hover_only(result):
-    """칩에는 「기능 NNN」만 보이고, 설명은 title(마우스를 올리면)에 있다. 설명의 원천은 결과 meta.functions."""
+    """칩에는 「기능 NNN」만 보이고, 설명은 data-tip(마우스를 올리면)에 있다. 설명의 원천은 결과 meta.functions."""
     markup = panel.detail_markup(_row(result, 4), FUNCTIONS)
-    chip = re.search(r'<span class="tt-fnum tt-chip[^"]*" title="([^"]*)">기능 045</span>', markup)
+    chip = re.search(r'<span class="tt-fnum tt-chip[^"]*" data-tip="([^"]*)"[^>]*>기능 045</span>', markup)
     assert chip and chip.group(1) == FUNCTIONS["recipe_045"]
     assert FUNCTIONS["recipe_045"] not in visible_text(markup.split("후보 기능", 1)[1].split("모델 판단", 1)[0])
 
@@ -646,7 +654,7 @@ def test_the_function_descriptions_are_the_published_menu_sentences():
 def test_the_top_summary_shows_run_facts_but_no_evaluation_metrics(oos_result):
     info = panel.overview(oos_result)
     titles = [title for title, _rows in info]
-    assert titles == ["테스트 세트", "시작 시간", "소요 시간", "추론 지연시간", "발화", "모델 설정", "실행 환경"]
+    assert titles == ["테스트 세트", "시작 시간", "전체 소요 시간", "추론 지연시간", "발화", "모델 설정", "실행 환경"]
     rows = dict(info)
     assert [label for label, _ in rows["추론 지연시간"]] == ["Median", "P95", "Max"]
     total = oos_result["summary"]["total"]
@@ -720,7 +728,7 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
     mixed = oos_result["cases"]
     assert panel.group_options(mixed)[-1] == panel.OUT_OF_SCOPE_GROUP
     assert [r["case_id"] for r in panel.filter_results(mixed, "전체", "", panel.OUT_OF_SCOPE_GROUP)] == [2, 3]
-    assert [r["case_id"] for r in panel.filter_results(mixed, "범위 밖 처리")] == [2]
+    assert [r["case_id"] for r in panel.filter_results(mixed, "실패 · 범위 밖 처리")] == [2]
     assert [e["label"] for e in panel.recipe_rows(oos_result)] == ["기능 010"]
 
     unordered = {"summary": {"recipes": {rid: {"runs": 1, "passed": 1, "hit": 1}
@@ -728,9 +736,8 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
     assert [e["group"] for e in panel.recipe_rows(unordered)] == ["recipe_003", "recipe_020", "recipe_061", "recipe_100"]
 
 
-CANONICAL = "20260921-090538-test_suite_v2"
-LOCAL_FULL48 = "20260921-102636-test_suite_v1"
-REAL_LOCAL_DIR = manage_benchmark.LOCAL_DIR
+CANONICAL = "20260921-161258-test_suite_v2"
+CANONICAL_V1 = "20260921-160634-test_suite_v1"
 
 
 def _isolated_local(monkeypatch, tmp_path):
@@ -794,17 +801,14 @@ def test_loading_the_official_canonical_run_switches_to_v2_and_fills_its_203_row
     assert board["oos"] == {"correct": 7, "total": 8}
 
 
-def test_loading_the_local_full48_run_switches_to_v1_and_fills_its_48_rows(app, monkeypatch):
-    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", REAL_LOCAL_DIR)
-    if not (manage_benchmark.LOCAL_DIR / LOCAL_FULL48).is_dir():
-        pytest.skip("이 기계에서 돌린 FULL48 보통 실행이 없다 (.gitignore 라 clone 에는 없음)")
+def test_loading_the_official_full48_run_switches_to_v1_and_fills_its_48_rows(app):
     app.run()
     app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
-    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{LOCAL_FULL48}").run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL_V1}").run()
 
     assert not app.exception and app.calls == []
     stored = app.session_state[panel.RESULT_KEY]
-    assert stored["kind"] == "local" and stored["result"]["meta"]["run_id"] == LOCAL_FULL48
+    assert stored["kind"] == "official" and stored["result"]["meta"]["run_id"] == CANONICAL_V1
     assert app.session_state[panel.DATASET_KEY] == "test_suite_v1"
     assert len(app.dataframe[0].value) == 48 and _results(app).count("성공") == 48
 
@@ -930,8 +934,8 @@ def test_the_names_on_screen_are_the_files_and_folders_in_the_repo():
     assert panel.suite_filename({"dataset_id": "test_suite_v1"}) == "test_suite_v1.yaml"
     assert panel.suite_filename({}) == "정답표"
 
-    run_id = "20260921-090538-test_suite_v2"
-    entry = {"run_id": run_id, "kind": "official", "complete": True, "started_at": "2026-09-21T09:05:38",
+    run_id = CANONICAL
+    entry = {"run_id": run_id, "kind": "official", "complete": True, "started_at": "2026-09-21T16:12:58",
              "runs": 203, "passed": 188, "suite_label": "테스트 세트 v2", "suite_name": "test_suite_v2"}
     assert panel.saved_label(entry) == f"{run_id} · 188/203 · 공식"
     assert panel.saved_key(entry) == f"official:{run_id}"
@@ -969,12 +973,14 @@ def test_a_function_card_shows_only_its_number_and_score(result):
 
 
 def test_a_function_card_carries_its_menu_description_without_a_second_table(result):
-    """카드 전체에도 설명이 붙는다. 원천은 결과 meta.functions 하나다."""
+    """카드 어디에 올려도 설명이 뜬다(.tt-rs:hover). tooltip 은 번호 하나에만 있어 두 개가 겹쳐 뜨지 않는다."""
     markup = panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS)
     for recipe_id, text in FUNCTIONS.items():
         if recipe_id in {e["group"] for e in panel.recipe_rows(result)}:
             assert f'class="tt-rs tt-rs' in markup
-            assert markup.count(f'title="{text}"') >= 2, recipe_id
+            assert markup.count(f'data-tip="{text}"') == 1, recipe_id
+    assert "title=" not in markup
+    assert ".tt-rs:hover [data-tip]::after" in panel.panel_css()
 
 
 def test_the_two_suites_stay_separate_datasets():
@@ -997,14 +1003,20 @@ def test_the_function_results_section_is_titled_기능별_결과_and_nothing_els
 
 
 def test_the_failure_filter_is_called_실패_and_its_causes_hang_off_it():
-    """「실패만」은 다른 필터와 나란한 이름이었다. 원인 셋이 실패에 딸린 것으로 보여야 한다."""
+    """처음 보는 사람이 세부 셋이 실패의 까닭인 줄 알게 결과 칸 글자와 같은 「실패 · …」로 쓰고 실패 뒤에 매단다."""
     assert panel.FAILED == "실패"
-    assert panel.FILTERS == ("전체", "실패", "기능 선택", "인자 추출", "범위 밖 처리")
+    assert panel.FILTERS == ("전체", "실패", "실패 · 기능 선택", "실패 · 인자 추출", "실패 · 범위 밖 처리")
     assert panel.FAILURE_FILTERS == panel.FILTERS[panel.FIRST_FAILURE_FILTER - 1:]
+    assert set(panel.FAILURE_FILTERS) == set(panel.RESULT_ORDER) - {panel.SUCCESS_TEXT, panel.ERROR_TEXT}
 
     css = panel.panel_css()
-    assert f"button:nth-of-type({panel.FIRST_FAILURE_FILTER})" in css
-    assert f"button:nth-of-type(n+{panel.FIRST_FAILURE_FILTER})" in css
+    first, last = panel.FIRST_FAILURE_FILTER, len(panel.FILTERS)
+    # 실패는 진하게, 세부 셋은 같은 붉은 계열로 옅게, 실패와 셋 사이에는 세로선
+    assert 'button[data-variant="segmented_control"]:nth-of-type(2) {' in css
+    assert f":nth-of-type(n+{first}):nth-of-type(-n+{last})" in css
+    assert f'button[data-variant="segmented_control"]:nth-of-type({first})::before' in css
+    for word in ("사유", "실패 사유"):
+        assert word not in "".join(panel.FILTERS)
 
 
 def test_the_column_settings_menu_hides_the_commands_the_grid_does_not_need():
@@ -1359,3 +1371,186 @@ def test_the_condition_table_shows_short_hashes_but_compares_full_values():
     assert [(r["실행 조건"], r["상태"]) for r in rows] == [("Prompt", "변경됨"), ("Request settings", "동일"), ("Registry", "기록 없음")]
     assert rows[0]["저장된 값"] == rows[0]["지금 값"] == "a" * 12, "짧게 보여도 맞대기는 전체 값이다"
     assert rows[1]["저장된 값"] == '{"seed": 0, "temperature": 0}'
+
+
+# ── 비교 칸의 기능 · 기능 tooltip ─────────────────────────────────────
+def _model_function_cell(markup: str) -> str:
+    """비교 표의 기능 줄에서 AI 모델 출력 칸 마크업."""
+    row = markup.split('<div class="tt-sec">기능 선택</div>', 1)[1].split('<div class="tt-sec">', 1)[0]
+    return row.split('<div class="tt-c tt-model', 1)[1]
+
+
+def _chips(cell: str) -> list[tuple[str, str]]:
+    """칸 안의 기능 pill 들. [(data-tip, 번호 글자)] 나온 차례."""
+    return re.findall(r'<span class="tt-fnum tt-chip" data-tip="([^"]*)"[^>]*>(기능 \d+)</span>', cell)
+
+
+def _clarify(row, candidates):
+    return {**row, "passed": False, "failure_stage": "function", "recipe_correct": False,
+            "actual": {**row["actual"], "status": "CLARIFY", "recipe_id": None, "candidate_recipe_ids": candidates}}
+
+
+def test_a_selected_function_is_one_pill_with_its_description(result):
+    cell = _model_function_cell(panel.detail_markup(_row(result, 2), FUNCTIONS))
+    assert _chips(cell) == [(FUNCTIONS["recipe_045"], "기능 045")]
+    assert FUNCTIONS["recipe_045"] in visible_text(cell)
+
+
+def test_a_clarify_shows_every_candidate_as_its_own_pill_in_model_order(result):
+    """되묻기만 보이면 어느 기능 사이에서 되물었는지 모른다. 후보마다 pill 하나, 모델이 낸 차례 그대로."""
+    for candidates in (["recipe_045", "recipe_061"], ["recipe_061", "recipe_010", "recipe_045"]):
+        markup = panel.detail_markup(_clarify(_row(result, 2), candidates), FUNCTIONS)
+        cell = _model_function_cell(markup)
+        assert _chips(cell) == [(FUNCTIONS[rid], panel.function_label(rid)) for rid in candidates]
+        assert "되묻기" not in visible_text(cell)
+        assert not re.search(r"기능 \d+\s*[,·]\s*기능 \d+", visible_text(cell)), "번호를 글자로 이어 붙였다"
+        status = visible_text(markup).split("모델 판정 상태", 1)[1].split("후보 기능", 1)[0]
+        assert "되묻기" in status, "되묻기 판정이 사라졌다"
+        assert 'class="tt-fn tt-fns"' in cell and "차이" in visible_text(cell)
+
+
+def test_a_clarify_without_candidates_and_a_no_match_keep_their_words(result, oos_result):
+    empty = _model_function_cell(panel.detail_markup(_clarify(_row(result, 2), []), FUNCTIONS))
+    assert _chips(empty) == [] and "되묻기" in visible_text(empty)
+    no_match = _model_function_cell(panel.detail_markup(_row(oos_result, 3), FUNCTIONS))
+    assert _chips(no_match) == [] and "해당 없음" in visible_text(no_match)
+    broken = _model_function_cell(panel.detail_markup(_row(result, 5), FUNCTIONS))
+    assert _chips(broken) == [] and "오류" in visible_text(broken)
+
+
+def test_the_comparison_pill_and_the_candidate_pill_are_the_same_markup(result):
+    """비교 칸 pill 과 아래 후보 기능 pill 이 같은 renderer · 같은 class 를 지난다."""
+    markup = panel.detail_markup(_clarify(_row(result, 2), ["recipe_045", "recipe_061"]), FUNCTIONS)
+    below = markup.split("후보 기능", 1)[1].split("모델 판단", 1)[0]
+    for rid in ("recipe_045", "recipe_061"):
+        pill = panel.number_markup(rid, FUNCTIONS, panel.CHIP_CSS)
+        assert pill in _model_function_cell(markup)
+        assert re.sub(r'class="[^"]*"', "", pill) in re.sub(r'class="[^"]*"', "", below)
+
+
+def test_function_tooltips_are_drawn_by_css_after_a_short_delay_not_by_the_browser_title(result, oos_result):
+    """title 은 뜨기까지 1초 가까이 걸리고 그 지연을 못 바꾼다. data-tip 을 CSS 가 TIP_DELAY_MS 뒤에 그린다."""
+    assert 100 <= panel.TIP_DELAY_MS <= 150
+    markups = [panel.detail_markup(row, FUNCTIONS) for row in [*result["cases"], *oos_result["cases"]]]
+    markups.append(panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS))
+    assert not [m for m in markups if "title=" in m], "브라우저 title tooltip 이 남았다"
+    assert all(tip for m in markups for tip, _n in _numbers(m))
+
+    css = panel.panel_css()
+    hidden = css.split("[data-tip]::after {", 1)[1].split("}", 1)[0]
+    shown = css.split("[data-tip]:hover::after,", 1)[1].split("}", 1)[0]
+    assert "content: attr(data-tip)" in hidden and "visibility: hidden" in hidden
+    assert "pointer-events: none" in hidden, "tooltip 이 마우스를 받으면 그 위에서 깜빡인다"
+    assert "transition: none" in hidden, "내릴 때 바로 사라지지 않는다"
+    assert f"{panel.TIP_DELAY_MS}ms" in shown and "visibility: visible" in shown
+    assert "{tip_delay}" not in css
+    # 표가 overflow 로 tooltip 을 자르지 않는다
+    assert "overflow: hidden" not in css.split(".st-key-test_tab .tt-cmp {", 1)[1].split("}", 1)[0]
+
+
+# ── 보기 필터 글자 · 건수 ─────────────────────────────────────────────
+def _filter_labels(at):
+    control = at.segmented_control(key=panel.FILTER_KEY)
+    return [control.format_func(option) for option in control.options] if hasattr(control, "format_func") else control.options
+
+
+def test_the_filter_labels_match_the_result_column_and_keep_their_counts(app):
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    labels = [" ".join(str(o).split()) for o in _filter_labels(app)]
+    assert labels == ["전체 203", "실패 15", "실패 · 기능 선택 11", "실패 · 인자 추출 3", "실패 · 범위 밖 처리 1"]
+
+    for view, count in (("실패 · 기능 선택", 11), ("실패 · 인자 추출", 3), ("실패 · 범위 밖 처리", 1), ("실패", 15)):
+        app.segmented_control(key=panel.FILTER_KEY).set_value(view).run()
+        assert len(app.dataframe[0].value) == count, view
+        if view != "실패":
+            assert set(_results(app)) == {view}, "필터 글자와 결과 칸 글자가 다르다"
+    assert app.calls == []
+
+
+def test_errors_get_their_own_filter_and_never_join_the_failure_count(app):
+    boom_on = {3}
+    entry = load_test_suite.dataset("test_suite_v1")
+    fake = _suite_resolve("test_suite_v1")
+    by_utterance = {case["utterance"]: case["id"] for case in _enabled("test_suite_v1")}
+
+    def resolve(utterance):
+        if by_utterance[utterance] in boom_on:
+            raise RuntimeError("연결이 끊겼습니다")
+        return fake(utterance)
+
+    saved = run_evaluation.run(load_test_suite.load(entry["path"]), suite_path=Path(entry["path"]), resolve=resolve,
+                               only=[1, 2, 3, 10], materialize=False, save_dir=app.local,
+                               dataset={"id": entry["id"], "label": entry["label"]})
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{saved['meta']['run_id']}").run()
+
+    labels = [" ".join(str(o).split()) for o in _filter_labels(app)]
+    assert labels[-1] == "오류 1" and "실패 1" in labels, labels
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
+    assert _results(app) == ["실패 · 기능 선택"], "오류가 실패에 섞였다"
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.ERROR_FILTER).run()
+    assert _results(app) == ["오류"]
+
+
+# ── GPU 팬 소음 억제 체크박스 ─────────────────────────────────────────
+def _quiet(at):
+    [box] = at.checkbox
+    return box.value, box.disabled
+
+
+def test_a_new_run_records_the_checkbox_value_and_locks_it_while_running(app):
+    app.run()
+    app.checkbox(key=panel.FAN_QUIET_KEY).uncheck().run()
+    app.hold = Hold(2)
+    job = _start(app)
+    assert app.hold.entered.wait(20)
+    app.run()
+    assert _quiet(app) == (False, True), "도는 동안 체크박스가 눌린다"
+    assert job.fan_quiet is False
+
+    app.hold.release.set()
+    _wait(app)
+    assert app.fans == [False]
+    [folder] = _local_dirs(app)
+    assert manage_benchmark.load_benchmark("local", folder)["meta"]["fan_quiet_mode"] is False
+    assert _quiet(app) == (False, False)
+
+    app.checkbox(key=panel.FAN_QUIET_KEY).check().run()
+    _start(app)
+    _wait(app)
+    assert app.fans == [False, True]
+
+
+def test_resume_reuses_the_stored_fan_quiet_mode_even_after_the_checkbox_changed(app):
+    app.run()
+    _stop_at(app, 2)
+    [folder] = _local_dirs(app)
+    stored = json.loads((app.local / folder / manage_benchmark.META_FILE).read_text(encoding="utf-8"))["meta"]
+    assert stored["fan_quiet_mode"] is True
+
+    app.checkbox(key=panel.FAN_QUIET_KEY).uncheck().run()
+    assert _quiet(app) == (False, False)
+    app.hold = Hold(3)
+    job = _start(app, "test_resume")
+    assert app.hold.entered.wait(20)
+    app.run()
+    assert job.fan_quiet is True
+    assert _quiet(app) == (True, True), "이어 실행 중 체크박스가 저장된 값을 안 보인다"
+
+    app.hold.release.set()
+    _wait(app)
+    assert app.fans == [True], "이어 실행이 run_selected 를 불렀다"
+    assert manage_benchmark.load_benchmark("local", folder)["meta"]["fan_quiet_mode"] is True
+
+
+def test_the_run_status_says_when_it_is_waiting_for_the_fans():
+    class Waiting:
+        waiting = True
+
+    job = panel._Job(panel.NEW, "test_suite_v1", 48, fan_quiet=True, monitor=Waiting())
+    job.finished.clear()
+    assert panel.control_state(job, None)["text"] == f"새로 실행 중 · 0 / 48 · {panel.FAN_WAIT_TEXT}"
+    Waiting.waiting = False
+    assert panel.FAN_WAIT_TEXT not in panel.control_state(job, None)["text"]
+    assert panel.FAN_WAIT_TEXT not in panel.control_state(panel._Job(panel.NEW, "test_suite_v1", 48), None)["text"]

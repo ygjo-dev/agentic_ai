@@ -3229,6 +3229,30 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-21 (저녁) · 기준 벤치마크를 새 v1 · v2 한 벌로 바꿈 · GPU 박자를 팬 기반으로
+
+이번 작업에서 재지 않았다 (LLM 호출 0). 아래 두 기록은 e7be3fd 에서 먼저 잰 것을 사람이 official 로
+옮긴 것이다. 벽시계와 추론 합의 차이는 그때의 옛 박자(아래) · materialize · 호출 사이 시간이다.
+
+```
+official  20260921-160634-test_suite_v1   16:06:34 -> 16:10:55 (261.5 s, 추론 합 79.5 s)
+          48/48 · Selection 48/48 · Semantic fields 56/56 · cases 39/39 · Joint 48/48 · 오류 0
+          latency median 1.634 · p95 1.918 · max 1.949 s
+official  20260921-161258-test_suite_v2   16:12:58 -> 16:39:41 (1602.6 s, 추론 합 325.4 s)
+          188/203 · Selection 184/195 · Semantic fields 187/190 · cases 147/150 · Joint 181/195 · OOS 7/8 · 오류 0
+          latency median 1.623 · p95 1.865 · max 2.064 s
+지운 것    official 20260921-090538-test_suite_v2 (git 이력에 있다) · local 20260921-102636-test_suite_v1
+```
+
+새 v2 는 옛 기준(090538)과 발화마다 passed · failure_stage · grade 가 전부 같다 (차이 0 건). 조건은
+conditions.registry 칸이 새로 적힌 것만 다르다 (e7be3fd 에서 더한 칸). 실패 15 건도 같은 15 건이다.
+
+**GPU 박자.** 「N 건마다 쉬기」(POLICY every 3 · sleep 5 s, `--cooldown-every`) · 온도 문턱(시작 58 ·
+멈춤 66 · 재개 58 · 끝난 뒤 62 초과면 식히기)을 지웠다. 대신 「GPU 팬 소음 억제」(기본 켜짐): 다음 발화 앞에서
+GPU 넷의 fan.speed 중 최댓값이 55% 이상이면 모두 50% 이하가 될 때까지 1 초마다 다시 본다. 부르는 중인
+Resolve 는 안 끊는다. 드라이버 열 제한을 보면 멈추는 것은 남겼다 (온도 문턱 없이 바로 StopRun).
+이 장비 nvidia-smi 한 번은 0.14 s 라 끄면 실행 중에 부르지 않는다. 쉬는 중 팬은 30%.
+
 ### 2026-09-21 (이어서) · 평가 기록 이름 · run.json 하나 · 불러올 기록이 빈 까닭 · 결과 표 뼈대
 
 재지 않았다 (LLM 호출 0).

@@ -104,11 +104,11 @@ def test_the_evaluation_runner_runs_the_whole_suite_to_the_end_and_grades_like_c
     _selfcheck_all_suites()
 
 
-# ── 오래 도는 회귀평가의 쉼표 ────────────────────────────────────────
+# ── GPU 팬 소음 억제 ────────────────────────────────────────────────
 #
-# 48 × 3 을 쉬지 않고 돌리면 GPU 넷이 계속 물려 있어 팬이 시끄럽다. 쉬는 것은
-# **부르는 사이의 간격일 뿐**이라 재는 값에 섞이면 안 된다 — 아래 셋이 그것을
-# 못 박는다. 진짜로 기다리지 않는다. time.sleep 을 바꿔 끼워 호출만 센다.
+# 팬이 오르면 다음 발화 앞에서 기다리고, 조용하면 쉬지 않는다. 기다리는 것은 **부르는 사이의
+# 간격일 뿐**이라 재는 값에 섞이면 안 된다. 진짜로 기다리지 않는다 — sampler · sleep · clock 을
+# 바꿔 끼워 무엇을 언제 불렀는지만 적는다. nvidia-smi 를 안 부른다.
 def _fake_suite():
     """발화 다섯 · 묶음 하나짜리 정답표. 진짜 정답표를 안 쓴다 — 여기서 재는 것은
     판정이 아니라 부르는 사이의 간격이고, 발화가 늘면 기대 횟수가 흔들린다."""
@@ -128,76 +128,184 @@ def _fake_suite():
     }
 
 
-def _counted(monkeypatch, **kwargs):
-    """가짜 정답표를 가짜 resolve 로 돌리고 (resolve 횟수, 잔 시간들) 을 돌려줌."""
-    import time
-    from types import SimpleNamespace
+class _Fans:
+    """팬 값을 차례로 내는 가짜 sampler 와 가짜 시계. 부른 차례를 events 에 적음.
 
-    # run_evaluation 의 time 만 바꿔 끼운다. time 모듈 자체를 바꾸면 subprocess(git rev-parse)가 기다리며
-    # 부르는 sleep 까지 여기 적혀 쉰 횟수가 흔들린다.
-    slept = []
-    monkeypatch.setattr(run_evaluation, "time", SimpleNamespace(sleep=slept.append, perf_counter=time.perf_counter))
+    fans 는 샘플마다의 [GPU 마다 fan] 목록. 다 쓰면 마지막 것을 되풀이. None 이면 nvidia-smi 를 못 읽은 것
+    sleep 은 가짜 시계를 그만큼 밀고 events 에 적음
+    """
 
-    asked = []
+    def __init__(self, fans, throttle=False):
+        self.queue, self.throttle = list(fans), throttle
+        self.events, self.now, self.samples = [], 0.0, 0
+
+    def sampler(self):
+        self.samples += 1
+        fans = self.queue.pop(0) if len(self.queue) > 1 else self.queue[0]
+        self.events.append(("sample", fans))
+        if fans is None:
+            return None
+        return [{"index": i, "name": "가짜", "fan": fan, "throttle": self.throttle} for i, fan in enumerate(fans)]
+
+    def sleep(self, seconds):
+        self.events.append(("sleep", seconds))
+        self.now += seconds
+
+    def clock(self):
+        return self.now
+
+    def monitor(self):
+        return monitor_gpu.GpuMonitor(sampler=self.sampler, sleep=self.sleep, clock=self.clock)
+
+
+def _fan_run(fans, *, quiet=True, should_stop=None, throttle=False):
+    """가짜 정답표 다섯 발화를 가짜 팬으로 돌림. (결과, _Fans). resolve 는 부른 차례를 events 에 적음."""
+    fake = _Fans(fans, throttle)
 
     def resolve(utterance):
-        asked.append(utterance)
+        fake.events.append(("resolve", utterance))
         return {"status": "SELECT", "recipe_id": "recipe_002", "candidate_recipe_ids": ["recipe_002"],
                 **{name: None for name in check_resolve.SPOKEN_VALUE_NAMES}}
 
-    result = run_evaluation.run(_fake_suite(), resolve=resolve, materialize=False, **kwargs)
-    return asked, slept, result
+    result = run_evaluation.run(_fake_suite(), resolve=resolve, materialize=False, fan_quiet_mode=quiet,
+                                monitor=fake.monitor(), should_stop=should_stop)
+    return result, fake
 
 
-def test_without_a_cooldown_the_runner_never_sleeps(monkeypatch):
-    """기본값은 꺼짐. 옵션을 안 적은 평가는 지금까지와 같은 것을 같은 방식으로 재야 한다."""
-    asked, slept, result = _counted(monkeypatch)
-
-    assert len(asked) == 5
-    assert slept == [], "안 켰는데 쉬었다"
-    assert result["summary"]["total"]["HIT"] == 5
+def _kinds(events):
+    return [kind for kind, _value in events]
 
 
-def test_a_cooldown_rests_between_bursts_and_not_after_the_last_call(monkeypatch):
-    """다섯 번을 두 번마다 쉬면 쉬는 것은 정확히 두 번이다.
+def test_quiet_fans_never_make_the_run_wait():
+    """팬 소음 억제가 켜져 있어도 55% 아래면 발화마다 한 번 보고 바로 부른다."""
+    result, fake = _fan_run([[30, 54, 40, 30]])
 
-    마지막 요청 뒤에는 안 쉰다. 뒤에서 쉬면 아무도 기다릴 이유가 없는 시간이
-    회차마다 붙는다 — 144회짜리 평가에서 그것만 2분이다.
-    """
-    asked, slept, _ = _counted(monkeypatch, cooldown_every=2, cooldown_seconds=5.0)
-
-    assert len(asked) == 5, "쉬는 것이 부르는 횟수를 바꿨다"
-    assert slept == [5.0, 5.0], slept
-
-    # 딱 떨어질 때도 뒤에 안 붙는다. 다섯 번을 다섯마다 쉬면 쉴 자리가 없다.
-    _, 딱맞음, _ = _counted(monkeypatch, cooldown_every=5, cooldown_seconds=5.0)
-    assert 딱맞음 == []
+    assert _kinds(fake.events) == ["sample", "resolve"] * 5
+    assert result["meta"]["fan_quiet_mode"] is True and result["meta"]["fan_wait_s"] == 0.0
+    assert len(result["cases"]) == 5 and result["meta"]["stopped"] is None
 
 
-def test_the_cooldown_seconds_reach_sleep_unchanged(monkeypatch):
-    """적은 값이 그대로 간다. 여기서 값을 만지면 사람이 적은 것과 실제가 갈린다."""
-    _, slept, _ = _counted(monkeypatch, cooldown_every=1, cooldown_seconds=0.25)
+def test_a_loud_fan_waits_before_the_next_case_until_every_fan_is_at_most_50():
+    """55% 이상이면 기다리고, 52% 로 내려와도 계속 기다리며, 모두 50% 이하가 되는 샘플 바로 뒤에 부른다."""
+    result, fake = _fan_run([[30], [57], [56], [52], [50], [30]])
 
-    assert slept == [0.25, 0.25, 0.25, 0.25], slept
+    kinds = _kinds(fake.events)
+    assert kinds[:9] == ["sample", "resolve", "sample", "sleep", "sample", "sleep", "sample", "sleep", "sample"]
+    assert kinds[9] == "resolve", "모두 50% 이하가 됐는데 바로 안 불렀다"
+    assert {value for kind, value in fake.events if kind == "sleep"} == {monitor_gpu.FAN_POLL_S}
+    assert monitor_gpu.FAN_POLL_S <= 1.0, "기다리는 동안 너무 드물게 본다"
+    assert result["meta"]["fan_wait_s"] == 3 * monitor_gpu.FAN_POLL_S
+    assert len(result["cases"]) == 5
 
-    # 0 초도 받는다. 「켜 두되 지금은 안 기다린다」를 적을 자리다.
-    _, 영초, _ = _counted(monkeypatch, cooldown_every=2, cooldown_seconds=0)
-    assert 영초 == [0, 0]
+
+def test_one_loud_gpu_out_of_four_is_enough_to_wait():
+    _result, fake = _fan_run([[30, 30, 30, 30], [30, 30, 61, 30], [30, 30, 50, 30]])
+
+    assert _kinds(fake.events)[:5] == ["sample", "resolve", "sample", "sleep", "sample"]
 
 
-def test_a_negative_cooldown_is_refused_before_anything_is_measured(monkeypatch):
-    """음수는 거부한다. 조용히 0 으로 읽으면 켠 줄 알고 시끄러운 채로 두 시간을 돌린다."""
+def test_between_50_and_55_the_next_case_starts_without_waiting():
+    """hysteresis. 기다리기 시작하는 문턱은 55 이고, 50 초과 55 미만에서 새로 기다리지 않는다."""
+    _result, fake = _fan_run([[53, 51]])
+
+    assert "sleep" not in _kinds(fake.events)
+    assert (monitor_gpu.FAN_PAUSE_AT, monitor_gpu.FAN_RESUME_AT) == (55, 50)
+
+
+def test_with_fan_quiet_off_the_fans_are_never_read_and_the_run_never_waits():
+    result, fake = _fan_run([[99, 99, 99, 99]], quiet=False)
+
+    assert fake.samples == 0, "꺼져 있는데 nvidia-smi 를 불렀다"
+    assert _kinds(fake.events) == ["resolve"] * 5
+    assert result["meta"]["fan_quiet_mode"] is False and result["meta"]["fan_wait_s"] == 0.0
+
+
+def test_an_unreadable_fan_falls_back_to_running_without_waiting():
+    """nvidia-smi 가 없거나 fan.speed 가 [N/A] 면 기다리지 않는다. 기다리다 못 읽게 돼도 멈추지 않고 그만 기다린다."""
+    for fans in ([None], [[None, None]], [[70], None]):
+        result, fake = _fan_run(fans)
+        assert len(result["cases"]) == 5 and result["meta"]["stopped"] is None, fans
+        assert _kinds(fake.events).count("sleep") <= 1, fans
+
+
+def test_the_parser_reads_na_fan_as_none(monkeypatch):
+    from types import SimpleNamespace
+
+    out = "0, 가짜, [N/A], Not Active, Not Active\n1, 가짜, 62, Not Active, Active\n"
+    monkeypatch.setattr(monitor_gpu.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=0, stdout=out))
+    assert monitor_gpu.sample() == [
+        {"index": 0, "name": "가짜", "fan": None, "throttle": False},
+        {"index": 1, "name": "가짜", "fan": 62, "throttle": True},
+    ]
+    monkeypatch.setattr(monitor_gpu.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(FileNotFoundError()))
+    assert monitor_gpu.sample() is None
+
+
+def test_a_resolve_in_flight_is_never_interrupted_by_the_fan():
+    """팬은 부르는 사이에서만 본다. 부르는 중에 팬이 올라도 그 발화는 끝까지 가고 다음 발화 앞에서 기다린다."""
+    _result, fake = _fan_run([[30], [80], [40]])
+
+    kinds = _kinds(fake.events)
+    for index, kind in enumerate(kinds):
+        if kind == "resolve" and index + 1 < len(kinds):
+            assert kinds[index + 1] in ("sample", "resolve"), kinds
+    assert kinds[:5] == ["sample", "resolve", "sample", "sleep", "sample"]
+    assert kinds.count("resolve") == 5
+
+
+def test_waiting_for_the_fan_never_changes_what_is_measured():
+    def strip(result):
+        return [{k: v for k, v in row.items() if k != "timing"} for row in result["cases"]]
+
+    loud, _ = _fan_run([[90], [40]])
+    calm, _ = _fan_run([[30]], quiet=False)
+    assert strip(loud) == strip(calm) and loud["summary"] == calm["summary"]
+    assert all(row["timing"]["resolve_s"] < 1.0 for row in loud["cases"]), "기다린 시간이 추론 시간에 섞였다"
+
+
+def test_a_stop_pressed_while_waiting_for_the_fan_ends_the_wait_and_calls_nothing_more():
+    fake = _Fans([[30], [90]])
+
+    def should_stop():
+        return fake.events.count(("sleep", monitor_gpu.FAN_POLL_S)) >= 2
+
+    def resolve(utterance):
+        fake.events.append(("resolve", utterance))
+        return {"status": "SELECT", "recipe_id": "recipe_002", "candidate_recipe_ids": ["recipe_002"],
+                **{name: None for name in check_resolve.SPOKEN_VALUE_NAMES}}
+
+    result = run_evaluation.run(_fake_suite(), resolve=resolve, materialize=False, fan_quiet_mode=True,
+                                monitor=fake.monitor(), should_stop=should_stop)
+    assert _kinds(fake.events).count("resolve") == 1
+    assert result["meta"]["stopped"] == run_evaluation.USER_STOP
+    assert result["meta"]["fan_wait_s"] == 2 * monitor_gpu.FAN_POLL_S
+
+
+def test_the_fixed_cooldown_and_the_temperature_policy_are_gone():
+    """N 건마다 쉬기 · 낮은 온도 문턱으로 멈추고 다시 가기 · 끝난 뒤 식히기는 팬 소음 억제로 바뀌었다."""
+    import inspect
+
+    assert not hasattr(monitor_gpu, "POLICY")
+    for name in ("cooldown_every", "cooldown_seconds"):
+        assert name not in inspect.signature(run_evaluation.run).parameters, name
+    for gone in ("before_run", "after_case", "after_run"):
+        assert not hasattr(monitor_gpu.GpuMonitor, gone), gone
+    assert "cooldown" not in json.dumps(_fan_run([[30]])[0]["meta"], ensure_ascii=False)
+    source = Path(monitor_gpu.__file__).read_text(encoding="utf-8")
+    assert "temperature.gpu" not in source
+
+
+def test_the_command_line_has_a_fan_quiet_switch_and_no_cooldown(monkeypatch):
     import pytest
 
-
-    for kwargs in ({"cooldown_every": -1}, {"cooldown_seconds": -0.5, "cooldown_every": 2}):
-        with pytest.raises(ValueError):
-            _counted(monkeypatch, **kwargs)
-
-    # 창구도 같이 막는다. 정답표를 읽기 전에 2 로 끝나야 한다.
-    for argv in (["run_evaluation", "--cooldown-every", "-1"], ["run_evaluation", "--cooldown-seconds", "-1"]):
+    for argv in (["run_evaluation", "--cooldown-every", "3"], ["run_evaluation", "--gpu", "gate"]):
         monkeypatch.setattr(run_evaluation.sys, "argv", argv)
-        assert run_evaluation.main() == 2, argv
+        with pytest.raises(SystemExit):
+            run_evaluation.main()
+    monkeypatch.setattr(run_evaluation.sys, "argv", ["run_evaluation", "--help"])
+    with pytest.raises(SystemExit) as done:
+        run_evaluation.main()
+    assert done.value.code == 0
 
 
 # ── 발화 판정 ────────────────────────────────────────────────────────
@@ -525,7 +633,7 @@ def test_gpu_information_is_optional_and_never_changes_the_verdicts():
 
     plain = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"))
     blind = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"),
-                       monitor=monitor_gpu.GpuMonitor(gate=True, sampler=lambda: None, sleep=lambda s: None),
+                       fan_quiet_mode=True, monitor=monitor_gpu.GpuMonitor(sampler=lambda: None, sleep=lambda s: None),
                        environment={"available": False, "gpus": []})
 
     assert strip(plain) == strip(blind)
@@ -534,40 +642,23 @@ def test_gpu_information_is_optional_and_never_changes_the_verdicts():
     assert "gpu" not in plain["meta"] and "gpu" not in blind["meta"]
 
 
-def _gpu_samples(temps, throttle=None):
-    """온도를 차례로 내는 가짜 sampler. 다 쓰면 마지막 값을 되풀이."""
-    queue = list(temps)
+def test_driver_thermal_throttling_stops_the_run_but_keeps_what_was_measured():
+    """장비 보호는 드라이버가 알리는 열 제한 하나다. 보면 기다리지 않고 멈추고, 거기까지의 결과와 까닭은 남는다."""
+    fake = _Fans([[30], [30], [30]])
+    flags = iter([False, False, True])
 
     def sampler():
-        temp = queue.pop(0) if len(queue) > 1 else queue[0]
-        return [{"index": 0, "name": "가짜", "util": 0, "temp": temp, "fan": 30, "throttle": throttle}]
+        gpus = fake.sampler()
+        return [{**gpu, "throttle": next(flags, True)} for gpu in gpus]
 
-    return sampler
+    monitor = monitor_gpu.GpuMonitor(sampler=sampler, sleep=fake.sleep, clock=fake.clock)
+    result = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"),
+                                fan_quiet_mode=True, monitor=monitor)
 
-
-def test_the_quiet_gate_pauses_when_hot_but_leaves_no_temperature_in_the_test_run():
-    """3건마다 온도를 보고 66°C 이상이면 58°C 까지 식힌다. 그것은 박자일 뿐이라 결과에 온도가 없다."""
-    slept = []
-    monitor = monitor_gpu.GpuMonitor(gate=True, sampler=_gpu_samples([40, 67, 62, 57, 50]), sleep=slept.append)
-    result = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"), monitor=monitor)
-    seen = monitor.summary()
-
-    assert result["meta"]["stopped"] is None and len(result["cases"]) == 5
-    assert seen["pauses"] == 1 and seen["max_temp"] == 67 and seen["start_temp"] == 40
-    assert monitor_gpu.POLICY["sleep_s"] in slept
+    assert result["meta"]["stopped"].startswith("StopRun") and "열 제한" in result["meta"]["stopped"]
+    assert len(result["cases"]) == 2
+    assert "sleep" not in _kinds(fake.events), "열 제한을 보고 온도를 기다렸다"
     assert "gpu" not in result["meta"]
-    dumped = json.dumps(result["meta"], ensure_ascii=False)
-    assert not [key for key in ("start_temp", "max_temp", "end_temp", "pauses", "thermal_throttle") if key in dumped]
-
-
-def test_thermal_throttling_stops_the_run_but_keeps_what_was_measured():
-    """열 제한을 보면 식히고 멈춘다. 거기까지의 결과와 까닭은 남는다."""
-    monitor = monitor_gpu.GpuMonitor(gate=True, sampler=_gpu_samples([40, 50], throttle=True), sleep=lambda s: None)
-    result = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"), monitor=monitor)
-
-    assert result["meta"]["stopped"].startswith("StopRun")
-    assert len(result["cases"]) == 3
-    assert monitor.summary()["thermal_throttle"] is True
 
 
 # ── 모델 설정 · 실행 환경 · 옛 실행 기록 ─────────────────────────────
@@ -689,12 +780,13 @@ def _utterances(ids):
     return [by_id[number] for number in ids]
 
 
-def _run_v1(local, asked, *, only=FIVE, runs=1, should_stop=None, hold=None, materialize=False, context=None):
+def _run_v1(local, asked, *, only=FIVE, runs=1, should_stop=None, hold=None, materialize=False, context=None,
+            fan_quiet_mode=False, monitor=None):
     return run_evaluation.run(
         load_test_suite.load(load_test_suite.SUITE_PATH), suite_path=load_test_suite.SUITE_PATH,
         resolve=_v1_resolve(asked, hold), only=only, runs=runs, materialize=materialize, context=context,
         context_label="both" if context else None, save_dir=local, should_stop=should_stop,
-        dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"},
+        dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"}, fan_quiet_mode=fan_quiet_mode, monitor=monitor,
     )
 
 
@@ -766,17 +858,14 @@ def test_server_down_gpu_stop_and_interrupt_keep_an_incomplete_record_without_ru
         return echo(utterance)
 
     class Hot:
-        """두 번째 발화 뒤에 열 제한을 본 GPU 조용 정책."""
+        """두 번째 발화 뒤 세 번째 발화 앞에서 열 제한을 본 GPU monitor."""
 
-        def before_run(self):
-            pass
+        waited_s = 0.0
 
-        def after_case(self, done, total):
+        def before_case(self, done, *, fan_quiet, should_stop=None):
             if done == 2:
                 raise monitor_gpu.StopRun("열 제한")
-
-        def after_run(self, called):
-            pass
+            return 0.0
 
     result = run_evaluation.run(load_test_suite.load(load_test_suite.SUITE_PATH), suite_path=load_test_suite.SUITE_PATH,
                                 resolve=resolve, only=FIVE, materialize=False, save_dir=local,
@@ -922,7 +1011,7 @@ def test_a_changed_execution_condition_blocks_resume_and_names_the_changed_field
     assert asked == [] and _snapshot(folder) == before, "막힌 이어 실행이 파일을 건드렸다"
 
 
-@pytest.mark.parametrize("drop", ["registry", "request", "materialize_now", "selected_case_ids"])
+@pytest.mark.parametrize("drop", ["registry", "request", "materialize_now", "selected_case_ids", "fan_quiet_mode"])
 def test_an_old_record_without_the_resume_conditions_loads_but_cannot_be_resumed(tmp_path, monkeypatch, drop):
     local = _isolate(monkeypatch, tmp_path)
     _first, folder = _stopped_after(local, 2, materialize=True, context=run_evaluation.context_payload("both"))
@@ -931,6 +1020,7 @@ def test_an_old_record_without_the_resume_conditions_loads_but_cannot_be_resumed
         "request": lambda meta: meta["conditions"].pop("request"),
         "materialize_now": lambda meta: meta.pop("materialize_now"),
         "selected_case_ids": lambda meta: meta["suite"].pop("selected_case_ids"),
+        "fan_quiet_mode": lambda meta: meta.pop("fan_quiet_mode"),
     }[drop])
 
     check = run_evaluation.resume_check("local", folder.name)
@@ -946,7 +1036,8 @@ NOT_CONDITIONS = {
     "environment": lambda meta: meta.update(environment={"available": True, "gpus": [{"name": "다른 GPU"}]}),
     "artifact_root": lambda meta: meta.update(artifact_root="/다른/경로/KRRI_Ontology_Registry"),
     "suite_path": lambda meta: meta["suite"].update(path="/옮긴/자리/test_suite_v1.yaml"),
-    "cooldown": lambda meta: meta.update(cooldown={"every": 3, "seconds": 5.0}),
+    "old_cooldown": lambda meta: meta.update(cooldown={"every": 3, "seconds": 5.0}),
+    "fan_quiet_mode": lambda meta: meta.update(fan_quiet_mode=not meta["fan_quiet_mode"]),
     "role_label": lambda meta: meta.update(role="다른 글자"),
 }
 
@@ -983,3 +1074,39 @@ def test_resume_refuses_stored_rows_that_are_not_in_the_plan(tmp_path, monkeypat
     rows = _lines(folder)
     manage_benchmark.repair_rows(folder, rows + [rows[0]])
     assert run_evaluation.resume_check("local", folder.name)["reason"] == run_evaluation.RESUME_ROWS
+
+
+# ── 이어 실행과 팬 소음 억제 ──────────────────────────────────────────
+@pytest.mark.parametrize("stored", [True, False])
+def test_resume_replays_the_stored_fan_quiet_mode_whatever_the_caller_wants(tmp_path, monkeypatch, stored):
+    """이어 실행은 처음 실행의 팬 소음 억제를 그대로 쓴다. 부르는 쪽(화면 체크박스)은 켤지 말지를 넘길 자리가 없다."""
+    import inspect
+
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2, fan_quiet_mode=stored)
+    assert json.loads((folder / manage_benchmark.META_FILE).read_text(encoding="utf-8"))["meta"]["fan_quiet_mode"] is stored
+    assert "fan_quiet_mode" not in inspect.signature(run_evaluation.resume).parameters
+
+    fake = _Fans([[90], [40]])
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=fake.monitor())
+
+    assert result["meta"]["fan_quiet_mode"] is stored
+    if stored:
+        assert fake.samples == 3 + 1 and result["meta"]["fan_wait_s"] == monitor_gpu.FAN_POLL_S  # 남은 셋 + 기다리며 한 번 더
+    else:
+        assert fake.samples == 0 and result["meta"]["fan_wait_s"] == 0.0
+    saved = json.loads((folder / manage_benchmark.RUN_FILE).read_text(encoding="utf-8"))
+    assert saved["meta"]["fan_quiet_mode"] is stored
+
+
+def test_fan_wait_adds_up_across_a_stop_and_a_resume(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    first_fans = _Fans([[90], [40]])
+    asked = []
+    first = _run_v1(local, asked, should_stop=lambda: len(asked) >= 2, fan_quiet_mode=True, monitor=first_fans.monitor())
+    folder = Path(first["meta"]["saved_to"])
+    assert first["meta"]["fan_wait_s"] == monitor_gpu.FAN_POLL_S
+
+    second = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=_Fans([[70], [45]]).monitor())
+    assert second["meta"]["fan_wait_s"] == 2 * monitor_gpu.FAN_POLL_S
+    assert second["meta"]["elapsed_s"] >= first["meta"]["elapsed_s"]
