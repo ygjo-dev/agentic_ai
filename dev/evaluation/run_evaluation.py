@@ -410,14 +410,16 @@ def resume(
     monitor=None,
     environment: dict | None = None,
     should_stop=None,
+    fan_quiet_mode: bool = False,
 ) -> dict:
     """끝나지 않은 local 기록을 같은 run_id · 같은 폴더에서 이어 잰 결과 한 벌 (Test Run).
 
     출력  run 과 같은 모양. cases 는 전에 잰 줄과 새로 잰 줄을 계획 차례로 한 번씩
     규칙  resume_check 가 막으면 ResumeRefused. 그때 파일을 안 건드림
           잴 것은 계획(selected_case_ids × runs) 중 끝난 줄에 없는 (case_id, run) 뿐. 끝난 발화를 다시 안 부름
-          정답표 · 문맥 · materialize · 부르는 순간(materialize_now) · 팬 소음 억제(fan_quiet_mode)는 저장된 머리 그대로 씀.
-          monitor 는 팬을 보는 자일 뿐이고 켤지 말지는 저장된 fan_quiet_mode 가 정함
+          정답표 · 문맥 · materialize · 부르는 순간(materialize_now)은 저장된 머리 그대로 씀
+          팬 소음 억제는 실행 박자라 저장된 값이 아니라 이번에 넘겨받은 fan_quiet_mode 를 씀.
+          meta.fan_quiet_mode(첫 구간 값)는 안 고치고, 이번 값을 resumed_at 과 같은 차례로 resumed_fan_quiet_mode 에 더함
           끝이 잘린 cases.jsonl 은 끝난 줄만 남기고 이어 씀
           시작할 때 meta.json 에서 지난번 멈춘 까닭을 떼고 resumed_at 에 이번 시각을 더함.
           다시 멈추면 run 과 같이 meta.json 에 까닭을 적고, 다 재면 같은 폴더에 run.json 을 쓰고 meta.json · cases.jsonl 을 지움
@@ -448,6 +450,11 @@ def resume(
     started = datetime.datetime.now(KST)
     head = {key: value for key, value in meta.items() if key not in _SEGMENT_KEYS}
     head["resumed_at"] = [*(meta.get("resumed_at") or []), started.isoformat()]
+    # 이 칸이 생기기 전의 이어 실행 구간은 저장된 fan_quiet_mode 를 다시 썼다. 그 값으로 채워 resumed_at 과 차례를 맞춘다.
+    earlier = meta.get("resumed_fan_quiet_mode")
+    if earlier is None:
+        earlier = [meta.get("fan_quiet_mode")] * len(meta.get("resumed_at") or [])
+    head["resumed_fan_quiet_mode"] = [*earlier, bool(fan_quiet_mode)]
     before = meta.get("elapsed_s") or 0.0
     waited = meta.get("fan_wait_s") or 0.0
     environment = meta.get("environment") or environment
@@ -458,7 +465,7 @@ def resume(
     stopped, _called, fan_wait_s = _measure(
         plan, rows, planned=len(order), label_of=load_test_suite.label_of(suite), resolve=resolve,
         context=meta["context"]["payload"], materialize=materialize, now=now,
-        fan_quiet=bool(meta["fan_quiet_mode"]), recorder=recorder, progress=progress, monitor=monitor,
+        fan_quiet=bool(fan_quiet_mode), recorder=recorder, progress=progress, monitor=monitor,
         should_stop=should_stop,
     )
 

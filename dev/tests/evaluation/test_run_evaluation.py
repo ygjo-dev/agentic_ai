@@ -177,21 +177,21 @@ def _kinds(events):
 
 
 def test_quiet_fans_never_make_the_run_wait():
-    """팬 소음 억제가 켜져 있어도 55% 아래면 발화마다 한 번 보고 바로 부른다."""
-    result, fake = _fan_run([[30, 54, 40, 30]])
+    """팬 소음 억제가 켜져 있어도 46% 아래면 발화마다 한 번 보고 바로 부른다."""
+    result, fake = _fan_run([[30, 45, 40, 30]])
 
     assert _kinds(fake.events) == ["sample", "resolve"] * 5
     assert result["meta"]["fan_quiet_mode"] is True and result["meta"]["fan_wait_s"] == 0.0
     assert len(result["cases"]) == 5 and result["meta"]["stopped"] is None
 
 
-def test_a_loud_fan_waits_before_the_next_case_until_every_fan_is_at_most_50():
-    """55% 이상이면 기다리고, 52% 로 내려와도 계속 기다리며, 모두 50% 이하가 되는 샘플 바로 뒤에 부른다."""
-    result, fake = _fan_run([[30], [57], [56], [52], [50], [30]])
+def test_a_loud_fan_waits_before_the_next_case_until_every_fan_is_at_most_42():
+    """46% 부터 기다리고, 43% 로 내려와도 계속 기다리며, 모두 42% 이하가 되는 샘플 바로 뒤에 부른다."""
+    result, fake = _fan_run([[30], [46], [44], [43], [42], [30]])
 
     kinds = _kinds(fake.events)
     assert kinds[:9] == ["sample", "resolve", "sample", "sleep", "sample", "sleep", "sample", "sleep", "sample"]
-    assert kinds[9] == "resolve", "모두 50% 이하가 됐는데 바로 안 불렀다"
+    assert kinds[9] == "resolve", "모두 42% 이하가 됐는데 바로 안 불렀다"
     assert {value for kind, value in fake.events if kind == "sleep"} == {monitor_gpu.FAN_POLL_S}
     assert monitor_gpu.FAN_POLL_S <= 1.0, "기다리는 동안 너무 드물게 본다"
     assert result["meta"]["fan_wait_s"] == 3 * monitor_gpu.FAN_POLL_S
@@ -199,17 +199,20 @@ def test_a_loud_fan_waits_before_the_next_case_until_every_fan_is_at_most_50():
 
 
 def test_one_loud_gpu_out_of_four_is_enough_to_wait():
-    _result, fake = _fan_run([[30, 30, 30, 30], [30, 30, 61, 30], [30, 30, 50, 30]])
+    _result, fake = _fan_run([[30, 30, 30, 30], [30, 30, 46, 30], [42, 30, 43, 30], [30, 30, 42, 30]])
 
-    assert _kinds(fake.events)[:5] == ["sample", "resolve", "sample", "sleep", "sample"]
+    kinds = _kinds(fake.events)
+    assert kinds[:7] == ["sample", "resolve", "sample", "sleep", "sample", "sleep", "sample"]
+    assert kinds[7] == "resolve", "모든 GPU 가 42% 이하가 됐는데 바로 안 불렀다"
 
 
-def test_between_50_and_55_the_next_case_starts_without_waiting():
-    """hysteresis. 기다리기 시작하는 문턱은 55 이고, 50 초과 55 미만에서 새로 기다리지 않는다."""
-    _result, fake = _fan_run([[53, 51]])
+def test_between_42_and_46_the_next_case_starts_without_waiting():
+    """hysteresis. 기다리기 시작하는 문턱은 46 이고, 42 초과 46 미만에서 새로 기다리지 않는다.
+    사람이 잰 값이다. 42~44% 는 작은 소음이라 괜찮고 46% 부터 팬 소리가 신경 쓰인다."""
+    _result, fake = _fan_run([[45, 43]])
 
     assert "sleep" not in _kinds(fake.events)
-    assert (monitor_gpu.FAN_PAUSE_AT, monitor_gpu.FAN_RESUME_AT) == (55, 50)
+    assert (monitor_gpu.FAN_PAUSE_AT, monitor_gpu.FAN_RESUME_AT) == (46, 42)
 
 
 def test_with_fan_quiet_off_the_fans_are_never_read_and_the_run_never_waits():
@@ -1011,7 +1014,7 @@ def test_a_changed_execution_condition_blocks_resume_and_names_the_changed_field
     assert asked == [] and _snapshot(folder) == before, "막힌 이어 실행이 파일을 건드렸다"
 
 
-@pytest.mark.parametrize("drop", ["registry", "request", "materialize_now", "selected_case_ids", "fan_quiet_mode"])
+@pytest.mark.parametrize("drop", ["registry", "request", "materialize_now", "selected_case_ids"])
 def test_an_old_record_without_the_resume_conditions_loads_but_cannot_be_resumed(tmp_path, monkeypatch, drop):
     local = _isolate(monkeypatch, tmp_path)
     _first, folder = _stopped_after(local, 2, materialize=True, context=run_evaluation.context_payload("both"))
@@ -1020,7 +1023,6 @@ def test_an_old_record_without_the_resume_conditions_loads_but_cannot_be_resumed
         "request": lambda meta: meta["conditions"].pop("request"),
         "materialize_now": lambda meta: meta.pop("materialize_now"),
         "selected_case_ids": lambda meta: meta["suite"].pop("selected_case_ids"),
-        "fan_quiet_mode": lambda meta: meta.pop("fan_quiet_mode"),
     }[drop])
 
     check = run_evaluation.resume_check("local", folder.name)
@@ -1038,6 +1040,7 @@ NOT_CONDITIONS = {
     "suite_path": lambda meta: meta["suite"].update(path="/옮긴/자리/test_suite_v1.yaml"),
     "old_cooldown": lambda meta: meta.update(cooldown={"every": 3, "seconds": 5.0}),
     "fan_quiet_mode": lambda meta: meta.update(fan_quiet_mode=not meta["fan_quiet_mode"]),
+    "no_fan_quiet_mode": lambda meta: meta.pop("fan_quiet_mode"),
     "role_label": lambda meta: meta.update(role="다른 글자"),
 }
 
@@ -1077,26 +1080,53 @@ def test_resume_refuses_stored_rows_that_are_not_in_the_plan(tmp_path, monkeypat
 
 
 # ── 이어 실행과 팬 소음 억제 ──────────────────────────────────────────
-@pytest.mark.parametrize("stored", [True, False])
-def test_resume_replays_the_stored_fan_quiet_mode_whatever_the_caller_wants(tmp_path, monkeypatch, stored):
-    """이어 실행은 처음 실행의 팬 소음 억제를 그대로 쓴다. 부르는 쪽(화면 체크박스)은 켤지 말지를 넘길 자리가 없다."""
-    import inspect
-
+@pytest.mark.parametrize("stored, now", [(True, False), (False, True), (True, True), (False, False)])
+def test_resume_paces_with_the_fan_quiet_mode_it_is_given_not_the_stored_one(tmp_path, monkeypatch, stored, now):
+    """팬 소음 억제는 실행 박자라 이어 실행 구간은 넘겨받은 값으로 돈다. 저장된 첫 구간 값이 덮지 않는다.
+    첫 구간 값은 meta.fan_quiet_mode 에 그대로 남고, 구간마다의 값은 resumed_at 과 같은 차례로 resumed_fan_quiet_mode 에 남는다."""
     local = _isolate(monkeypatch, tmp_path)
     _first, folder = _stopped_after(local, 2, fan_quiet_mode=stored)
     assert json.loads((folder / manage_benchmark.META_FILE).read_text(encoding="utf-8"))["meta"]["fan_quiet_mode"] is stored
-    assert "fan_quiet_mode" not in inspect.signature(run_evaluation.resume).parameters
+    assert run_evaluation.resume_check("local", folder.name)["resumable"]
 
     fake = _Fans([[90], [40]])
-    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=fake.monitor())
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=fake.monitor(),
+                                   fan_quiet_mode=now)
 
-    assert result["meta"]["fan_quiet_mode"] is stored
-    if stored:
+    if now:
         assert fake.samples == 3 + 1 and result["meta"]["fan_wait_s"] == monitor_gpu.FAN_POLL_S  # 남은 셋 + 기다리며 한 번 더
     else:
         assert fake.samples == 0 and result["meta"]["fan_wait_s"] == 0.0
     saved = json.loads((folder / manage_benchmark.RUN_FILE).read_text(encoding="utf-8"))
-    assert saved["meta"]["fan_quiet_mode"] is stored
+    for meta in (result["meta"], saved["meta"]):
+        assert meta["fan_quiet_mode"] is stored
+        assert meta["resumed_fan_quiet_mode"] == [now] and len(meta["resumed_at"]) == 1
+
+
+def test_each_resume_segment_keeps_its_own_fan_quiet_mode(tmp_path, monkeypatch):
+    """ON 으로 시작 · OFF 로 이어 재다 다시 멈춤 · ON 으로 이어 잼. 구간마다 값이 차례대로 남는다."""
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2, fan_quiet_mode=True)
+    asked = []
+    run_evaluation.resume("local", folder.name, resolve=_v1_resolve(asked), should_stop=lambda: len(asked) >= 1,
+                          fan_quiet_mode=False)
+    middle = json.loads((folder / manage_benchmark.META_FILE).read_text(encoding="utf-8"))["meta"]
+    assert middle["fan_quiet_mode"] is True and middle["resumed_fan_quiet_mode"] == [False]
+
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), fan_quiet_mode=True)
+    assert result["meta"]["stopped"] is None
+    assert result["meta"]["fan_quiet_mode"] is True and result["meta"]["resumed_fan_quiet_mode"] == [False, True]
+    assert len(result["meta"]["resumed_at"]) == 2
+
+
+def test_a_record_resumed_before_segments_were_kept_fills_them_with_the_replayed_value(tmp_path, monkeypatch):
+    """resumed_fan_quiet_mode 가 생기기 전의 이어 실행 구간은 저장된 fan_quiet_mode 를 다시 썼다. 그 값으로 차례를 맞춘다."""
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2, fan_quiet_mode=True)
+    _edit_meta(folder, lambda meta: meta.update(resumed_at=["2026-09-21T17:00:00+09:00"]))
+
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), fan_quiet_mode=False)
+    assert result["meta"]["resumed_fan_quiet_mode"] == [True, False]
 
 
 def test_fan_wait_adds_up_across_a_stop_and_a_resume(tmp_path, monkeypatch):
@@ -1107,6 +1137,7 @@ def test_fan_wait_adds_up_across_a_stop_and_a_resume(tmp_path, monkeypatch):
     folder = Path(first["meta"]["saved_to"])
     assert first["meta"]["fan_wait_s"] == monitor_gpu.FAN_POLL_S
 
-    second = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=_Fans([[70], [45]]).monitor())
+    second = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=_Fans([[70], [41]]).monitor(),
+                                   fan_quiet_mode=True)
     assert second["meta"]["fan_wait_s"] == 2 * monitor_gpu.FAN_POLL_S
     assert second["meta"]["elapsed_s"] >= first["meta"]["elapsed_s"]

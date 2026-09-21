@@ -4,7 +4,7 @@
 dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝난 줄을 받아 그린다.
 
     제목 · 테스트 세트 · 실행 기록
-    실행 개요 (테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
+    실행 개요 (테스트 세트 · 시작 시간 · 전체 추론시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
     모델 설정 (접힘. 파일 · 실행 기록 id 까지)
     실행 상태 · GPU 팬 소음 억제 · 새로 실행 · 이어 실행 · 중지
     전체 결과 (전체 · 성공 · 실패, 오류가 있을 때만 오류. 실패 원인 셋은 실패 카드 안에)
@@ -24,8 +24,9 @@ dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝�
                 기록은 run.json 없이 meta.json + cases.jsonl 로 남아 「중단됨」이 된다
     그 밖의 조작(테스트 세트 · 기록 고르기 · 필터 · 정렬 · 행 고르기)은 폴더를 만들지 않는다
 
-「GPU 팬 소음 억제」는 새로 실행을 누르는 순간의 값이 그 실행 기록의 meta.fan_quiet_mode 로 굳는다.
-도는 동안에는 눌리지 않고 그 실행의 값을 보인다. 이어 실행은 화면 값이 아니라 저장된 값을 쓴다.
+「GPU 팬 소음 억제」는 실행 박자일 뿐이라 누르는 순간의 화면 값을 쓴다. 새로 실행이면 meta.fan_quiet_mode,
+이어 실행이면 그 구간의 값이 meta.resumed_fan_quiet_mode 에 남는다. 이어 실행 조건이 아니다.
+도는 동안에는 눌리지 않고 그 실행의 값을 보인다.
 
 **테스트 세트는 고르는 것이다.** 고른 정답표가 발화 목록 · 발화 수 · 실행 · 저장한 실행 기록의
 신원을 함께 정한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다.
@@ -63,7 +64,7 @@ st.dataframe 의 머리글 정렬은 브라우저에만 있어 행을 누르는 
 정렬 · 행 선택 · 탭 전환은 그것만 다시 그린다.
 
 **상세는 성공과 실패가 같은 틀이다.** 정답표와 AI 모델 출력을 좌우로 맞대고,
-실패면 틀린 칸만 강조한다. 인자는 정답표에 적은 것과 모델이 낸 것을 빠짐없이 보인다.
+실패면 틀린 칸만 강조한다. 「실패」 표시는 그 발화의 실패 단계(failure_stage)를 만든 칸에만 붙는다. 인자는 정답표에 적은 것과 모델이 낸 것을 빠짐없이 보인다.
 기대 기능이 읽지 않는 인자는 두 칸 다 「사용 안 함」으로 흐리게 둔다 — 읽는데 값이 null 인 「없음」과 다르다.
 
 화면 낱말은 사람이 읽는 말로 쓴다. 기능 번호는 「기능 015」로 보이고, 인자는
@@ -126,11 +127,15 @@ CATEGORY_LABELS = {"unsupported": "지원하지 않는 요청", "ambiguous": "�
 ALL, FAILED = "전체", "실패"
 # 실패 단계 -> 결과 칸 글자이자 보기 필터 글자. 「실패 · 기능 선택」 꼴
 FAILURE_TEXT = {stage: f"{FAILED} · {STAGE_LABELS[stage]}" for stage in QUALITY_STAGES}
-# 실패를 가른 것들. 보기 필터에서 실패에 딸린 자리로 보인다 (panel_css 가 앞에 선을 긋고 옅게 칠함).
+# 실패를 가른 것들. 보기 필터에서 실패와 한 묶음 테두리 안에 딸린 자리로 보인다 (panel_css).
 FAILURE_FILTERS = tuple(FAILURE_TEXT[stage] for stage in QUALITY_STAGES)
 FILTERS = (ALL, FAILED, *FAILURE_FILTERS)
 # 딸린 자리가 시작하는 칸 번호(1부터). CSS 에 숫자를 박지 않으려고 여기서 센다.
 FIRST_FAILURE_FILTER = len(FILTERS) - len(FAILURE_FILTERS) + 1
+# 묶음의 머리(실패)가 선 칸 번호. 딸린 셋 바로 앞이다
+PARENT_FILTER = FILTERS.index(FAILED) + 1
+# 필터 칸 폭(px)이 이 아래면 묶음 칸이 두 줄이 된다. 한 줄 묶음이 들어가는 폭(1920 창에서 잰 578px)에 여유를 둔 값
+NARROW_FILTER_PX = 620
 # 오류가 있는 결과에서만 FILTERS 뒤에 붙는 보기. 실패에 딸리지 않는다
 ERROR_FILTER = ERROR_TEXT
 
@@ -149,8 +154,10 @@ ALL_GROUPS, OUT_OF_SCOPE_GROUP = "__all__", "__out_of_scope__"
 NONE_TEXT = "없음"
 # 아직 안 돈 발화. 성공도 실패도 아니다
 PENDING_TEXT = "대기"
-# 실행 기록 고르기 글자 끝에 붙는 보관 갈래. run_id 에는 안 들어간다
-KIND_LABELS = {"official": "공식", "local": "로컬"}
+# 실행 기록 고르기 글자에 붙는 보관 갈래. official 만 붙고 local 은 아무것도 안 붙는다. run_id 에는 안 들어간다
+KIND_LABELS = {"official": "Official"}
+# 끝나지 않은 기록 표시. 고르기 글자의 맨 끝이다
+STOPPED_TEXT = "중단됨"
 EMPTY_NUMBER = "—"
 # 기대 기능이 그 인자를 읽지 않음. 「없음」(읽는데 값이 null)과 다르다
 UNUSED_TEXT = "사용 안 함"
@@ -569,7 +576,7 @@ def run_conditions(result: dict | None) -> dict | None:
     return {label: value if value is not None else NONE_TEXT for label, value in shown.items()}
 
 
-def _elapsed(seconds) -> str:
+def _duration(seconds) -> str:
     if not isinstance(seconds, (int, float)):
         return EMPTY_NUMBER
     minutes, rest = divmod(int(round(seconds)), 60)
@@ -627,12 +634,13 @@ def suite_filename(suite: dict) -> str:
 def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
     """실행 개요. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
-    칸  테스트 세트 · 시작 시간 · 전체 소요 시간 · 추론 지연시간(Median · P95 · Max) ·
+    칸  테스트 세트 · 시작 시간 · 전체 추론시간 · 추론 지연시간(Median · P95 · Max) ·
         발화(전체 · 성공 · 실패 · 오류) · 모델 설정(모델 · Temperature …) · 실행 환경(GPU · VRAM)
     규칙  run_evaluation 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
           평가 지표(기능 선택 · 인자 추출 등)는 여기 안 둠. 아래 전체 결과가 보임
-          전체 소요 시간은 meta.elapsed_s (새로 실행을 누른 뒤 끝날 때까지의 벽시계. 팬 대기 포함).
-          팬 대기 합(meta.fan_wait_s) · 추론 합(summary.latency.total)은 기록에만 있고 여기 따로 안 보임
+          전체 추론시간은 summary.latency.total (발화마다 resolve 한 번에 걸린 timing.resolve_s 의 합).
+          materialize · 팬 대기 · 화면 시간이 안 섞임. 잰 것이 없으면 줄표
+          벽시계 소요 시간(meta.elapsed_s) · 팬 대기 합(meta.fan_wait_s)은 기록에만 있고 여기 안 보임
           추론 지연시간은 resolve 한 번에 걸린 시간의 분포. 잰 것이 없으면 줄표
           실행 기록 id 는 여기 안 보임 (정답표 이름이 들어 있어 개발 용어가 샘). 모델 설정 접힘 칸에 있음
     """
@@ -655,7 +663,7 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     return [
         ("테스트 세트", [("", suite_filename(meta.get("suite") or {}))]),
         ("시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
-        ("전체 소요 시간", [("", _elapsed(meta.get("elapsed_s")))]),
+        ("전체 추론시간", [("", _duration(delay.get("total")))]),
         ("추론 지연시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
         ("발화", [
             ("전체", str(total["runs"])),
@@ -701,22 +709,29 @@ def saved_key(entry: dict) -> str:
 
 
 def saved_label(entry: dict) -> str:
-    """실행 기록 고르기 글자. 「<run_id> · 성공/전체 · 공식」 꼴. 전체는 그 기록이 실제로 잰 수다.
+    """실행 기록 고르기 글자. 「<run_id> · 성공/전체」 꼴. 전체는 그 기록이 실제로 잰 수다.
 
-    규칙  끝나지 않은 기록(run.json 없음)은 「<run_id> · 끝난 수/잴 수 · 중단됨 · 로컬」. 잴 수를 모르면 「중단됨」만
-          끝에 보관 갈래(공식 · 로컬). 같은 run_id 가 두 자리에 다 있으면 「중복」을 더 붙임
+    규칙  끝나지 않은 기록(run.json 없음)은 「<run_id> · 끝난 수/잴 수 · 중단됨」. 잴 수를 모르면 수 없이 「중단됨」
+          official 기록만 수 뒤에 「Official」(KIND_LABELS). local 은 갈래 글자를 안 붙임
+          같은 run_id 가 두 자리에 다 있으면 「중복」을 붙임
+          「중단됨」은 늘 맨 끝. 「<run_id> · 끝난 수/잴 수 · Official · 중복 · 중단됨」 차례
     제약  run_id 가 먼저다. 저장 자리가 dev/evaluation/outputs/<official|local>_benchmark/<run_id>/ 라
           고르기 글자와 폴더가 1:1 로 맞아야 한다. 사람용 별칭을 앞에 두지 않는다.
           run_id 안에 이미 정답표 이름과 시각이 들어 있다
     """
-    if entry.get("complete") and entry.get("runs") is not None:
-        score = f"{entry['passed']}/{entry['runs']}"
+    complete = bool(entry.get("complete") and entry.get("runs") is not None)
+    parts = [entry["run_id"]]
+    if complete:
+        parts.append(f"{entry['passed']}/{entry['runs']}")
     elif entry.get("planned") is not None and entry.get("done") is not None:
-        score = f"{entry['done']}/{entry['planned']} · 중단됨"
-    else:
-        score = "중단됨"
-    kind = KIND_LABELS.get(entry.get("kind"), entry.get("kind") or "")
-    return f"{entry['run_id']} · {score} · {kind}" + (" · 중복" if entry.get("duplicate") else "")
+        parts.append(f"{entry['done']}/{entry['planned']}")
+    if entry.get("kind") in KIND_LABELS:
+        parts.append(KIND_LABELS[entry["kind"]])
+    if entry.get("duplicate"):
+        parts.append("중복")
+    if not complete:
+        parts.append(STOPPED_TEXT)
+    return " · ".join(parts)
 
 
 @st.cache_data(show_spinner=False)
@@ -970,18 +985,23 @@ def _key_markup(label: str, name: str | None = None) -> str:
     return f'<div class="tt-c tt-key"><div class="tt-key-label">{_esc(label)}</div>{sub}</div>'
 
 
-def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: bool, graded: bool = True) -> str:
+def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: bool, graded: bool = True,
+                 cause: bool = False) -> str:
     """비교 한 줄. 줄 머리 · 정답표 · AI 모델 출력.
 
     입력  wrong 은 run_evaluation 이 틀렸다고 판정한 칸인가
-    규칙  채점하는 칸이 틀렸으면 모델 출력 칸을 강조하고 「차이」를 닮
+          cause 는 이 칸이 그 발화의 실패 단계(failure_stage)를 만든 칸인가
+    규칙  채점하는 칸이 틀렸으면 모델 출력 칸을 강조함
+          「실패」 표시는 틀렸고 cause 인 칸에만 닮. 틀렸어도 먼저 걸린 단계가 따로 있으면
+          (기능 선택이 틀려 인자는 실패 원인이 아님) 강조만 하고 표시는 안 닮
           graded 가 거짓인 칸(기대 기능이 안 읽는 인자)은 줄 전체를 흐리게 둠. 강조하지 않음
     """
     tag, cell = "", "tt-c tt-model"
     row = "" if graded else " tt-ungraded"
     if wrong and graded:
         cell += " tt-diff"
-        tag = '<span class="tt-tag tt-tag-diff">차이</span>'
+        if cause:
+            tag = f'<span class="tt-tag tt-tag-fail">{FAILED}</span>'
     return (
         f'<div class="tt-row{row}">{key_html}'
         f'<div class="tt-c tt-answer">{answer_html}</div>'
@@ -1033,6 +1053,8 @@ def detail_markup(row: dict, functions: dict) -> str:
           정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부(field_rows).
           AI 모델 출력의 기능은 _picked_markup (되묻기면 후보 기능 pill 여럿)
           기능 칸 강조는 run_evaluation 의 recipe_correct, 인자 칸 강조는 spoken_fields 의 correct
+          「실패」 표시는 failure_stage 를 만든 칸에만 — function 이면 기능 칸, input 이면 틀린 인자 칸,
+          scope 면 범위 밖 기능 칸. error 는 모델 출력이 없어 강조 · 표시 둘 다 안 함
           인자 값 칸은 셋으로 가름 — 기대 기능이 안 읽는 인자는 두 칸 다 「사용 안 함」,
           읽는데 값이 null 이면 「없음」, 값이 있으면 그 값
           범위 밖 발화는 기능 칸에 「범위 밖 · 선택할 기능 없음」과 모델이 고른 것을 맞댐. 인자 줄 없음.
@@ -1067,7 +1089,8 @@ def detail_markup(row: dict, functions: dict) -> str:
                 f'<div class="tt-fn">범위 밖 · 선택할 기능 없음</div>'
                 f'<div class="tt-desc">{_esc(CATEGORY_LABELS.get(category, category))}</div>',
                 picked,
-                wrong=not row["passed"],
+                wrong=failed(row),
+                cause=row.get("failure_stage") == "scope",
             ),
         ]
         return f'{head}<div class="tt-cmp">{"".join(rows)}</div>{_extra_markup(row, functions)}'
@@ -1078,7 +1101,8 @@ def detail_markup(row: dict, functions: dict) -> str:
             _key_markup("기능"),
             _function_markup(row["expected"]["recipe_ids"], functions),
             picked,
-            wrong=not row["recipe_correct"],
+            wrong=row.get("recipe_correct") is False and not errored(row),
+            cause=row.get("failure_stage") == "function",
         ),
         '<div class="tt-sec">인자 추출</div>',
     ]
@@ -1091,6 +1115,7 @@ def detail_markup(row: dict, functions: dict) -> str:
                 if f["used"] else _muted_markup(UNUSED_TEXT),
                 wrong=f["correct"] is False,
                 graded=f["used"],
+                cause=row.get("failure_stage") == "input",
             )
         )
 
@@ -1135,19 +1160,21 @@ def run_selected(dataset_id: str, on_progress=None, should_stop=None, *, fan_qui
     )
 
 
-def resume_selected(kind: str, run_id: str, on_progress=None, should_stop=None, *, monitor=None) -> dict:
+def resume_selected(kind: str, run_id: str, on_progress=None, should_stop=None, *, fan_quiet: bool = True,
+                    monitor=None) -> dict:
     """끝나지 않은 local 기록을 같은 run_id 로 이어 잰 결과. run_evaluation.resume 그대로.
 
-    규칙  조건 · 문맥 · 부르는 순간 · 팬 소음 억제는 기록에 저장된 것을 평가 쪽이 씀. 여기서 넘기지 않음
+    규칙  조건 · 문맥 · 부르는 순간은 기록에 저장된 것을 평가 쪽이 씀. 여기서 넘기지 않음
+          팬 소음 억제는 실행 박자라 누른 순간의 화면 값(fan_quiet)을 넘김. 평가 쪽이 이 구간 값으로 기록함
           monitor 는 팬을 보는 자일 뿐임. 없으면 여기서 만듦. 실행 하드웨어는 저장된 것이 없을 때만 이 기계
-    제약  st.* 를 부르지 않는다 (백그라운드 thread 에서 불림). 화면의 체크박스 값을 넘기지 않는다
+    제약  st.* 를 부르지 않는다 (백그라운드 thread 에서 불림)
     """
     from dev.evaluation import run_evaluation
     from dev.evaluation.engine import monitor_gpu
 
     return run_evaluation.resume(
         kind, run_id, progress=on_progress, monitor=monitor or monitor_gpu.GpuMonitor(),
-        environment=monitor_gpu.environment(), should_stop=should_stop,
+        environment=monitor_gpu.environment(), should_stop=should_stop, fan_quiet_mode=fan_quiet,
     )
 
 
@@ -1168,7 +1195,7 @@ class _Job:
     규칙  평가 thread 는 add 로 끝난 줄을 넣고, 끝나면 result 또는 error 를 적고 finished 를 켬
           화면은 rows() · stop_requested() · finished · fan_waiting() 만 읽고, 「중지」는 request_stop 으로 알림
           rows 는 이어 실행이면 전에 잰 줄부터 시작함
-          fan_quiet 는 이 실행의 팬 소음 억제. 새로 실행은 누른 순간의 체크박스, 이어 실행은 저장된 값.
+          fan_quiet 는 이 실행의 팬 소음 억제. 새로 실행 · 이어 실행 둘 다 누른 순간의 체크박스.
           도는 동안 체크박스가 이 값을 보임. monitor 는 평가 thread 에 넘기는 팬 보는 자 (없으면 None)
     제약  st.* · session_state 를 만지지 않는다. 줄을 채점하지 않는다
     """
@@ -1272,7 +1299,7 @@ def _start_resume(stored: dict) -> None:
 
     규칙  누른 순간 resume_check 를 다시 봄. 막히면 까닭을 RUN_ERROR_KEY 에 두고 파일을 안 건드림
           잴 수 · 전에 잰 줄은 불러온 결과 그대로
-          팬 소음 억제는 저장된 meta.fan_quiet_mode. 화면 체크박스 값을 안 씀 (평가 쪽도 저장된 값을 씀)
+          팬 소음 억제는 누른 순간의 체크박스(FAN_QUIET_KEY). 저장된 meta.fan_quiet_mode 가 덮지 않음
     """
     from dev.evaluation.engine import manage_benchmark
 
@@ -1285,8 +1312,9 @@ def _start_resume(stored: dict) -> None:
         return
     planned = manage_benchmark.planned_runs(result["meta"]) or len(result["cases"])
     job = _Job(RESUME, stored["dataset_id"], planned, result["cases"], kind=stored["kind"], run_id=run_id,
-               fan_quiet=bool(result["meta"].get("fan_quiet_mode")), monitor=_new_monitor())
-    if start_job(job, lambda: resume_selected(job.kind, job.run_id, job.add, job.stop_requested, monitor=job.monitor)):
+               fan_quiet=bool(st.session_state.get(FAN_QUIET_KEY, True)), monitor=_new_monitor())
+    if start_job(job, lambda: resume_selected(job.kind, job.run_id, job.add, job.stop_requested, fan_quiet=job.fan_quiet,
+                                              monitor=job.monitor)):
         _watch(job)
 
 
@@ -1424,7 +1452,8 @@ def _render_controls(job: _Job | None, stored: dict | None, dataset_id: str) -> 
           stopped          「이어 실행」 · 「새로 실행」. 이어 잴 수 있으면 이어 실행이 앞 단추.
                            못 하면 이어 실행을 숨기지 않고 눌리지 않게 두고, 까닭과 「변경된 조건 보기」를 보임
           단추 바로 앞에 「GPU 팬 소음 억제」 체크박스. 기본 켜짐. 도는 동안(running · stopping)은
-          눌리지 않고 그 실행의 값(job.fan_quiet)을 보임. 끝난 뒤에도 그 값이 남음
+          눌리지 않고 그 실행의 값(job.fan_quiet)을 보임. 끝난 뒤에도 그 값이 남음 (persist_state="page".
+          없으면 도는 동안 fragment 로만 그린 체크박스 값이 끝난 뒤 버려져 기본값(켜짐)으로 돌아감)
     제약  단추 콜백 말고는 평가를 시작하지 않는다
     """
     state = control_state(job, stored)
@@ -1447,7 +1476,7 @@ def _render_controls(job: _Job | None, stored: dict | None, dataset_id: str) -> 
         if running and job.planned:
             st.progress(min(1.0, len(job.rows()) / job.planned))
     with quiet:
-        st.checkbox(FAN_QUIET_LABEL, key=FAN_QUIET_KEY, help=FAN_QUIET_HELP, disabled=running)
+        st.checkbox(FAN_QUIET_LABEL, key=FAN_QUIET_KEY, help=FAN_QUIET_HELP, disabled=running, persist_state="page")
     with buttons:
         if phase == "running":
             st.button("중지", key="test_stop", width="stretch", on_click=_request_stop)
@@ -1646,8 +1675,8 @@ def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tup
     출력  (보기, 검색어, 기능 자리, (정렬 칸, 정렬 방향))
     규칙  결과가 있으면 필터 글자 옆에 그 보기의 건수를 붙임. 전체는 표의 줄 수
           보기는 칸 하나다 — 전체 · 실패 다음에 실패를 가른 셋(실패 · 기능 선택 …)이 딸려 붙음.
-          글자는 결과 칸 글자(verdict_label)와 같음. 딸린 것으로 보이게 하는 일은 CSS 가 하고
-          (FIRST_FAILURE_FILTER), 고르는 뜻 · 건수는 안 바뀜
+          글자는 결과 칸 글자(verdict_label)와 같음. 실패와 셋을 한 테두리로 묶어 실패가 머리로 보이게 하는
+          일은 CSS 가 하고(PARENT_FILTER · FIRST_FAILURE_FILTER), 고르는 뜻 · 건수는 안 바뀜
           오류 줄이 있을 때만 맨 뒤에 오류 보기가 붙음. 실패에 딸리지 않음. 오류가 없어지면 전체로 돌림
           기능 고르기는 표에 있는 기대 기능과 범위 밖. 대기 줄도 제 기능 자리에 들어감
           결과가 없으면(대기 줄뿐) 건수를 안 붙임. 대기 줄을 성공 · 실패로 세지 않음
@@ -1951,7 +1980,7 @@ def panel_css() -> str:
 
     규칙  글자색은 테마를 따름(inherit). 선 · 바탕은 회색 반투명이라 밝은 테마 · 어두운
           테마 어느 쪽에서도 읽힘. 성공 · 실패 · AI 모델 출력 강조색만 고정
-          보기 필터의 칸 번호는 FIRST_FAILURE_FILTER 에서 옴. CSS 에 숫자를 박지 않음
+          보기 필터의 칸 번호는 PARENT_FILTER · FIRST_FAILURE_FILTER · FILTERS 에서 옴. CSS 에 숫자를 박지 않음
           칸 설정 메뉴 규칙만 .st-key-test_tab 밖에 있음 — 그 메뉴가 portal 로 탭 밖에 그려짐
     """
     return """<style>
@@ -2051,37 +2080,53 @@ def panel_css() -> str:
 .st-key-test_tab .tt-kpis-empty .tt-cause-v { opacity: 0.35; }
 
 /* 보기 필터. 붙은 막대(segmented)가 아니라 떨어진 pill 로 둔다.
-   전체는 기본 모양, 실패는 붉은 테두리 · 글자로 조금 강하게, 실패를 가른 셋({first_failure_filter} 번째부터)은
-   같은 붉은 계열로 옅게 둔다. 실패와 셋 사이는 조금 넓게 떼고 가는 세로선을 긋는다. 글자로 묶음 이름을
-   달지 않는다. 오류 보기(있을 때만 맨 뒤)는 실패에 딸리지 않으므로 선으로 떼고 황색으로 둔다.
-   고르는 뜻은 그대로다. 골라진 pill 은 같은 계열의 진한 바탕이다. */
-.st-key-test_tab .st-key-test_filter [role="radiogroup"] { gap: 0.4rem; flex-wrap: wrap; row-gap: 0.35rem; }
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"] {
-  border-radius: 999px; margin: 0; position: relative; padding-left: 0.8rem; padding-right: 0.8rem;
+   전체는 홀로 서고, 실패({parent_filter} 번째)와 실패를 가른 셋({first_failure_filter}~{last_failure_filter} 번째)은
+   붉은 테두리 한 칸 안에 함께 든다 — 그 칸이 「실패 = 셋의 합」이라는 묶음이다. 실패는 칸 맨 앞에서
+   진한 바탕 · 굵은 글자로 서고 뒤에 가는 세로선, 셋은 바탕 없이 옅게 선다. 글자로 묶음 이름을 달지 않는다.
+   칸은 radiogroup 을 grid 로 두고 그 ::before 를 grid 칸 {parent_filter} ~ {last_failure_filter} 뒤에 깔아 그린다. pill 은 제 칸에 박는다
+   (자동 배치면 ::before 가 첫 칸을 먹는다). 한 줄이라 높이가 안 는다.
+   오류 보기(있을 때만 맨 뒤)는 실패에 딸리지 않으므로 칸 밖에 황색으로 둔다. 고르는 뜻은 그대로다. */
+.st-key-test_tab .st-key-test_filter [role="radiogroup"] {
+  display: grid; grid-auto-flow: column; grid-auto-columns: max-content; justify-content: start;
+  align-items: center; column-gap: 0.35rem;
 }
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(2) {
-  color: var(--tt-ng); border-color: rgba(229, 83, 75, 0.6); background: rgba(229, 83, 75, 0.07); font-weight: 600;
+.st-key-test_tab .st-key-test_filter [role="radiogroup"]::before {
+  content: ""; grid-row: 1; grid-column: {parent_filter} / {group_end}; align-self: stretch;
+  border: 1px solid rgba(229, 83, 75, 0.42); border-radius: 12px; background: rgba(229, 83, 75, 0.045);
+}
+{placements}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"] {
+  border-radius: 999px; margin: 0.22rem 0; position: relative; padding-left: 0.8rem; padding-right: 0.8rem;
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(1) { margin-right: 0.45rem; }
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) {
+  margin-left: 0.3rem; margin-right: 0.55rem;
+  color: var(--tt-ng); border-color: rgba(229, 83, 75, 0.7); background: rgba(229, 83, 75, 0.12); font-weight: 700;
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter})::after {
+  content: ""; position: absolute; right: -0.48rem; top: 18%; bottom: 18%; width: 1px; background: rgba(229, 83, 75, 0.45);
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{first_failure_filter}):nth-of-type(-n+{last_failure_filter}) {
-  color: rgba(229, 83, 75, 0.82); border-color: rgba(229, 83, 75, 0.26); background: rgba(229, 83, 75, 0.03);
-  font-size: 0.84rem;
+  color: rgba(229, 83, 75, 0.85); border-color: rgba(229, 83, 75, 0.24); background: transparent;
+  font-size: 0.82rem; padding-left: 0.65rem; padding-right: 0.65rem;
 }
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+2):nth-of-type(-n+{last_failure_filter})[aria-checked="true"] {
-  color: var(--tt-ng); border-color: var(--tt-ng); background: rgba(229, 83, 75, 0.18);
-}
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({first_failure_filter}),
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter}) {
-  margin-left: 0.85rem;
-}
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({first_failure_filter})::before,
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter})::before {
-  content: ""; position: absolute; left: -0.68rem; top: 22%; bottom: 22%; width: 1px; background: rgba(140, 150, 165, 0.45);
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({last_failure_filter}) { margin-right: 0.3rem; }
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{parent_filter}):nth-of-type(-n+{last_failure_filter})[aria-checked="true"] {
+  color: var(--tt-ng); border-color: var(--tt-ng); background: rgba(229, 83, 75, 0.2);
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter}) {
-  color: var(--tt-err); border-color: rgba(210, 153, 34, 0.45); font-size: 0.84rem;
+  margin-left: 0.45rem; color: var(--tt-err); border-color: rgba(210, 153, 34, 0.45); font-size: 0.84rem;
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter})[aria-checked="true"] {
   border-color: var(--tt-err); background: rgba(210, 153, 34, 0.16);
+}
+/* 필터 칸이 좁으면(창이 좁을 때) 한 줄 grid 가 옆 칸을 덮는다. 그때는 묶음 칸만 두 줄이 된다 —
+   실패는 칸 왼쪽에 세로 가운데로 서고, 셋은 그 오른쪽에 두 줄로 든다. 오류는 첫 줄 맨 뒤다. */
+.st-key-test_tab [data-testid="stColumn"]:has(.st-key-test_filter) { container: tt-filter / inline-size; }
+@container tt-filter (max-width: {narrow_filter}px) {
+  .st-key-test_tab .st-key-test_filter [role="radiogroup"]::before { grid-row: 1 / 3; grid-column: {parent_filter} / {narrow_end}; }
+  .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) { grid-row: 1 / 3; }
+{narrow_placements}
 }
 
 /* 팬 소음 억제 체크박스는 단추 바로 옆에 붙인다. */
@@ -2192,7 +2237,7 @@ def panel_css() -> str:
   position: absolute; top: 0.45rem; right: 0.5rem;
   font-size: 0.66rem; font-weight: 600; padding: 0.05rem 0.4rem; border-radius: 999px;
 }
-.st-key-test_tab .tt-tag-diff { color: var(--tt-ng); border: 1px solid rgba(229, 83, 75, 0.5); }
+.st-key-test_tab .tt-tag-fail { color: var(--tt-ng); border: 1px solid rgba(229, 83, 75, 0.5); }
 .st-key-test_tab .tt-model:has(.tt-tag) .tt-val,
 .st-key-test_tab .tt-model:has(.tt-tag) .tt-desc { padding-right: 3.8rem; display: inline-block; }
 
@@ -2238,6 +2283,27 @@ def panel_css() -> str:
   opacity: 1; visibility: visible;
   transition: opacity 80ms ease {tip_delay}ms, visibility 0s linear {tip_delay}ms;
 }
-</style>""".replace("{first_failure_filter}", str(FIRST_FAILURE_FILTER)).replace("{error_filter}", str(len(FILTERS) + 1)) \
+</style>""".replace("{placements}", _filter_placements()) \
+        .replace("{first_failure_filter}", str(FIRST_FAILURE_FILTER)).replace("{error_filter}", str(len(FILTERS) + 1)) \
+        .replace("{narrow_placements}", _filter_placements(narrow=True)).replace("{narrow_filter}", str(NARROW_FILTER_PX)) \
+        .replace("{narrow_end}", str(PARENT_FILTER + 3)) \
+        .replace("{parent_filter}", str(PARENT_FILTER)).replace("{group_end}", str(len(FILTERS) + 1)) \
         .replace("{last_failure_filter}", str(len(FILTERS))) \
         .replace("{tip_delay}", str(TIP_DELAY_MS))
+
+
+def _filter_placements(narrow: bool = False) -> str:
+    """보기 필터 pill 마다 grid 칸 자리 (오류 보기 자리까지).
+
+    규칙  넓으면 n 번째 pill 을 첫 줄 n 번째 칸에
+          narrow 면 실패를 가른 셋만 실패 오른쪽 두 칸에 두 줄로 (차례대로 가로 먼저), 오류는 그 뒤 첫 줄
+    """
+    rule = '.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({n}) {{ {place} }}'
+    if not narrow:
+        return "\n".join(rule.format(n=n, place=f"grid-row: 1; grid-column: {n};") for n in range(1, len(FILTERS) + 2))
+    lines = [
+        rule.format(n=FIRST_FAILURE_FILTER + i, place=f"grid-row: {i // 2 + 1}; grid-column: {PARENT_FILTER + 1 + i % 2};")
+        for i in range(len(FAILURE_FILTERS))
+    ]
+    lines.append(rule.format(n=len(FILTERS) + 1, place=f"grid-row: 1; grid-column: {PARENT_FILTER + 3};"))
+    return "\n".join(lines)

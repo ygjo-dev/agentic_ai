@@ -30,7 +30,8 @@ KST = zoneinfo.ZoneInfo("Asia/Seoul")
 # 3: 줄에 scope · recipe_group · outcome · oos_correct · timing.started_at, summary 에 metrics ·
 #    latency · recipes, meta 에 run_id · elapsed_s · suite.name · suite.group_labels
 #    뒤에 판을 안 올리고 더한 선택 칸: expected.reads · conditions.request · meta.environment ·
-#    conditions.registry · meta.stopped_at · meta.resumed_at · meta.fan_quiet_mode · meta.fan_wait_s.
+#    conditions.registry · meta.stopped_at · meta.resumed_at · meta.fan_quiet_mode · meta.fan_wait_s ·
+#    meta.resumed_fan_quiet_mode.
 #    이 칸이 없는 옛 결과도 그대로 읽힌다(이어 실행만 막힘). 옛 결과의 meta.gpu(온도 기록) · meta.cooldown(고정 쉼)은
 #    더 쓰지 않는다
 RESULT_VERSION = 3
@@ -217,7 +218,8 @@ def benchmark_meta(
 
     규칙  정답표 신원은 load_test_suite.identity. dataset 이 있으면 dataset_id · label 을 붙임
           conditions · functions · git HEAD 를 여기서 읽음
-          fan_quiet_mode 는 GPU 팬 소음 억제를 켰나(참 · 거짓). 이어 실행이 그대로 다시 씀
+          fan_quiet_mode 는 첫 실행 구간에서 GPU 팬 소음 억제를 켰나(참 · 거짓). 이어 실행 구간의 값은
+          run_evaluation.resume 이 resumed_fan_quiet_mode 에 따로 적음. 이어 실행 조건이 아님
     """
     import paths
 
@@ -250,6 +252,7 @@ def benchmark_meta(
 # 이어 실행할 때 같아야 하는 조건. (화면 글자, 저장된 meta 에서 값을 꺼내는 경로).
 # 「남은 발화를 같은 평가 계약으로 재나」만 본다. run_id · 시각 · git HEAD · 저장 자리 · GPU · 팬 소음 억제 ·
 # 화면 정렬 · 필터는 안 본다 — 재는 값을 안 바꾸거나 저장된 값을 그대로 다시 쓴다.
+# 팬 소음 억제는 실행 박자일 뿐이라 이어 실행 구간마다 그때 값을 쓴다 (RESUME_REPLAYED 에도 없음).
 RESUME_FIELDS = (
     ("Test Suite", (("suite", "dataset_id"), ("suite", "sha256"))),
     ("Model", (("conditions", "model"), ("conditions", "provider"), ("conditions", "role_version"),
@@ -270,7 +273,6 @@ RESUME_REPLAYED = (
     ("materialize",),
     ("context", "label"),
     ("context", "payload"),
-    ("fan_quiet_mode",),
 )
 
 _MISSING = object()

@@ -33,8 +33,8 @@ class StopRun(Exception):
 QUERY = "index,name,fan.speed,clocks_event_reasons.hw_thermal_slowdown,clocks_event_reasons.sw_thermal_slowdown"
 
 # 팬 소음 억제. fan.speed(%)는 GPU 전부 중 가장 높은 것.
-FAN_PAUSE_AT = 55     # 다음 발화 앞에서 이 이상이면 기다림
-FAN_RESUME_AT = 50    # 기다리다 모두 이 이하가 되면 바로 다음 발화
+FAN_PAUSE_AT = 46     # 다음 발화 앞에서 이 이상이면 기다림
+FAN_RESUME_AT = 42    # 기다리다 모두 이 이하가 되면 바로 다음 발화
 FAN_POLL_S = 1.0      # 기다리는 동안 팬을 다시 보는 간격(초)
 
 
@@ -134,10 +134,10 @@ class GpuMonitor:
     def before_case(self, done: int, *, fan_quiet: bool, should_stop=None) -> float:
         """다음 발화를 불러도 되나 보고 필요하면 기다림. 기다린 초.
 
-        입력  done 은 이 평가에서 끝난 발화 수(StopRun 문장에 씀). fan_quiet 는 이 실행 기록의 팬 소음 억제
+        입력  done 은 이 평가에서 끝난 발화 수(StopRun 문장에 씀). fan_quiet 는 이번 실행 구간의 팬 소음 억제
         규칙  fan_quiet 가 거짓이면 nvidia-smi 를 안 부르고 0
               GPU 전부의 fan.speed 중 가장 높은 것이 FAN_PAUSE_AT 이상이면 FAN_POLL_S 마다 다시 보고,
-              모두 FAN_RESUME_AT 이하가 되면 바로 돌아감 (55 · 50 hysteresis)
+              모두 FAN_RESUME_AT 이하가 되면 바로 돌아감 (46 · 42 hysteresis)
               FAN_RESUME_AT 초과 · FAN_PAUSE_AT 미만이면 안 기다림
               못 읽거나(nvidia-smi 없음 · 실패) fan.speed 가 전부 [N/A] 면 안 기다림. 기다리다 못 읽게 돼도 그만 기다림
               기다리는 동안 should_stop() 이 참이면 그만 기다림. 멈추는 것은 부르는 쪽이 함
