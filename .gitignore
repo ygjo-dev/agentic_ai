@@ -63,3 +63,8 @@ dev/tools/probe_out/
 # dev/tools/sweep_utterances.py 가 남긴다. 내일 발화를 고를 재료지만 측정
 # 산출물이라 저장소에 담을 것이 아니다.
 dev/tools/sweep_out/
+
+# --- 평가 보통 실행 ---
+# 화면 · 개발 중에 돌린 벤치마크. 기준으로 남길 것은 사람이 outputs/official_benchmark/ 로 옮긴다.
+/dev/evaluation/outputs/local_benchmark/*
+!/dev/evaluation/outputs/local_benchmark/.gitkeep

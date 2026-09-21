@@ -1,6 +1,6 @@
 """테스트 탭. runner 결과를 화면 글자로 바꾸는 순수 함수와, 무엇이 LLM 을 부르는지를 본다.
 
-결과는 dev/evaluation/runner.run 을 가짜 resolve 로 돌려 만든다. 화면만을 위한 결과 모양을
+결과는 dev/evaluation/run_evaluation.run 을 가짜 resolve 로 돌려 만든다. 화면만을 위한 결과 모양을
 따로 지어내면 runner 결과가 바뀌어도 여기가 안 빨개진다.
 
 **화면을 봐도 모르는 것은 숫자가 어긋났는지 · 개발 용어가 샜는지 · 무엇이 LLM 을 부르는지다.**
@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 
 from app.ui.components import testing_panel as panel
-from dev.evaluation import runner
-from dev.evaluation import suite as suite_module
+from dev.evaluation import run_evaluation
+from dev.evaluation.engine import load_test_suite, manage_benchmark, monitor_metadata, score
 
 # 사람이 보는 화면에 나오면 안 되는 개발 용어
 BANNED = ("Recipe", "recipe", "Resolve", "resolve", "Semantic", "semantic", "Menu",
@@ -38,13 +38,13 @@ def _case(number, utterance, recipe_id, spoken=None):
     expected = {"recipe_ids": [recipe_id]}
     if spoken is not None:
         expected["spoken"] = spoken
-    return {"id": number, "group": suite_module.GROUP_IDS[0], "utterance": utterance,
+    return {"id": number, "group": load_test_suite.GROUP_IDS[0], "utterance": utterance,
             "enabled": True, "expected": expected}
 
 
 SUITE = {
     "version": 1,
-    "groups": [{"id": name, "label": f"묶음{name}"} for name in suite_module.GROUP_IDS],
+    "groups": [{"id": name, "label": f"묶음{name}"} for name in load_test_suite.GROUP_IDS],
     "cases": [
         _case(1, "철도 공약 모아줘", "recipe_010", {"argument": "철도"}),
         _case(2, "오송역 둘레 인구", "recipe_045"),
@@ -75,7 +75,7 @@ def _resolve(utterance):
 @pytest.fixture(scope="module")
 def result():
     """runner 결과 한 벌. 기능 설명은 고정 글자로 바꿔 둠."""
-    measured = runner.run(SUITE, resolve=_resolve, materialize=False)
+    measured = run_evaluation.run(SUITE, resolve=_resolve, materialize=False)
     measured["meta"]["functions"] = dict(FUNCTIONS)
     return measured
 
@@ -140,7 +140,7 @@ def test_the_live_result_carries_the_runner_rows_unchanged(result):
 
 def test_the_stage_names_are_the_runner_stages():
     """화면 글자가 runner 의 실패 단계 값과 하나씩 맞아야 필터가 빠짐없이 걸림."""
-    assert set(panel.STAGE_LABELS) == set(runner.STAGES)
+    assert set(panel.STAGE_LABELS) == set(score.STAGES)
 
 
 def test_the_filters_pick_failures_by_stage_and_search_ignores_spaces(result):
@@ -261,7 +261,7 @@ def _tab_script():
 
 @pytest.fixture
 def app(monkeypatch):
-    """테스트 탭 AppTest. 평가는 진짜 runner.run 을 SUITE 와 가짜 resolve 로 돌림.
+    """테스트 탭 AppTest. 평가는 진짜 run_evaluation.run 을 SUITE 와 가짜 resolve 로 돌림.
 
     at.calls        run_selected 가 불린 정답표 id
     at.resolved     가짜 resolve 가 받은 발화 (LLM 호출 수 자리)
@@ -277,7 +277,7 @@ def app(monkeypatch):
 
     def run_selected(dataset_id, on_progress=None):
         calls.append(dataset_id)
-        measured = runner.run(SUITE, resolve=resolve, progress=on_progress, materialize=False)
+        measured = run_evaluation.run(SUITE, resolve=resolve, progress=on_progress, materialize=False)
         measured["meta"]["functions"] = dict(FUNCTIONS)
         return measured
 
@@ -350,9 +350,9 @@ def _live_script(count):
 
     from app.ui.components import testing_panel
     from dev.tests.app.ui.test_testing_panel import FUNCTIONS, SUITE, _resolve
-    from dev.evaluation import runner as evaluation_runner
+    from dev.evaluation import run_evaluation
 
-    rows = evaluation_runner.run(SUITE, resolve=_resolve, materialize=False)["cases"][:count]
+    rows = run_evaluation.run(SUITE, resolve=_resolve, materialize=False)["cases"][:count]
     slots = {name: st.empty() for name in ("status", "kpi", "list", "detail")}
     testing_panel._render_live(slots, rows, 48, FUNCTIONS, 420)
 
@@ -374,15 +374,15 @@ def test_the_live_view_shows_exactly_the_finished_rows(count):
 
 # ── 테스트 세트 v2 · 범위 밖 · 실행 기록 ─────────────────────────────
 def _oos_suite():
-    groups = [{"id": name, "label": f"묶음{name}"} for name in (*suite_module.GROUP_IDS, suite_module.OUT_OF_SCOPE)]
+    groups = [{"id": name, "label": f"묶음{name}"} for name in (*load_test_suite.GROUP_IDS, load_test_suite.OUT_OF_SCOPE)]
     return {
         "version": 2,
         "groups": groups,
         "cases": [
             _case(1, "철도 공약 모아줘", "recipe_010", {"argument": "철도"}),
-            {"id": 2, "group": suite_module.OUT_OF_SCOPE, "utterance": "내일 날씨 어때", "enabled": True,
+            {"id": 2, "group": load_test_suite.OUT_OF_SCOPE, "utterance": "내일 날씨 어때", "enabled": True,
              "expected": {"category": "unsupported", "outcomes": ["NO_MATCH"]}},
-            {"id": 3, "group": suite_module.OUT_OF_SCOPE, "utterance": "달러 환율 알려줘", "enabled": True,
+            {"id": 3, "group": load_test_suite.OUT_OF_SCOPE, "utterance": "달러 환율 알려줘", "enabled": True,
              "expected": {"category": "unsupported", "outcomes": ["NO_MATCH"]}},
         ],
     }
@@ -400,7 +400,7 @@ def _oos_resolve(utterance):
 
 @pytest.fixture(scope="module")
 def oos_result():
-    measured = runner.run(_oos_suite(), resolve=_oos_resolve, context=runner.context_payload("both"))
+    measured = run_evaluation.run(_oos_suite(), resolve=_oos_resolve, context=run_evaluation.context_payload("both"))
     measured["meta"]["functions"] = dict(FUNCTIONS)
     return measured
 
@@ -481,13 +481,13 @@ def test_the_model_reason_keeps_the_words_but_shows_function_numbers(result):
 
 
 def test_the_function_descriptions_are_the_published_menu_sentences():
-    """화면이 따로 설명표를 두지 않는다. runner.functions 가 게시 menu 의 function 문장 그대로다."""
+    """화면이 따로 설명표를 두지 않는다. monitor_metadata.functions 가 게시 menu 의 function 문장 그대로다."""
     import yaml
 
     import paths
 
     menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))
-    assert runner.functions() == {rid: entry["function"] for rid, entry in menu["recipes"].items()}
+    assert monitor_metadata.functions() == {rid: entry["function"] for rid, entry in menu["recipes"].items()}
     assert not hasattr(panel, "FUNCTION_DESCRIPTIONS")
 
 
@@ -574,10 +574,8 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
 
 def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app, monkeypatch, tmp_path):
     """불러온 기록은 방금 잰 결과와 같은 자리 · 같은 함수로 그려지고 LLM 을 안 부른다."""
-    from dev.evaluation import test_runs
-
-    monkeypatch.setattr(test_runs, "RUNS_DIR", tmp_path)
-    saved = runner.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path)
+    saved = run_evaluation.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
                        dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
 
     app.run()
@@ -591,20 +589,56 @@ def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app
     assert [e.label for e in app.expander] == ["모델 설정", "기능별 결과"]
     shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
     assert not [w for w in RETIRED if w in shown], [w for w in RETIRED if w in shown]
-    assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == test_runs.load_run(
+    assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == manage_benchmark.load_benchmark(
         saved["meta"]["run_id"], tmp_path
     )["summary"]
+
+
+def test_the_saved_run_picker_offers_official_and_local_runs_and_loads_either(app, monkeypatch, tmp_path):
+    """기준 벤치마크와 보통 실행이 한 목록에 run_id 그대로 나오고, 어느 쪽을 골라도 같은 화면으로 그려진다."""
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path)
+    local = run_evaluation.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
+                               dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
+    official = "20260921-090538-test_suite_v2-87532e"
+
+    app.run()
+    options = app.selectbox(key=panel.SAVED_KEY).options
+    assert any(o.startswith(official) for o in options)
+    assert any(o.startswith(local["meta"]["run_id"]) for o in options)
+
+    app.selectbox(key=panel.SAVED_KEY).set_value(official).run()
+    assert not app.exception and app.calls == []
+    assert app.session_state[panel.RESULT_KEY]["result"]["meta"]["run_id"] == official
+    assert app.session_state[panel.DATASET_KEY] == "test_suite_v2"
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 203
+
+    app.selectbox(key=panel.SAVED_KEY).set_value(local["meta"]["run_id"]).run()
+    assert not app.exception and app.calls == []
+    assert app.session_state[panel.RESULT_KEY]["result"]["meta"]["run_id"] == local["meta"]["run_id"]
+
+
+def test_the_tab_imports_only_the_new_evaluation_modules():
+    source = Path(panel.__file__).read_text(encoding="utf-8")
+    imported = set(re.findall(r"from (dev\.evaluation[\w.]*) import (\w+)", source))
+    assert imported == {
+        ("dev.evaluation.engine", "load_test_suite"),
+        ("dev.evaluation.engine", "score"),
+        ("dev.evaluation.engine", "monitor_gpu"),
+        ("dev.evaluation.engine", "monitor_metadata"),
+        ("dev.evaluation.engine", "manage_benchmark"),
+        ("dev.evaluation", "run_evaluation"),
+    }, imported
 
 
 # ── 테스트 세트 고르기 · 화면 정리 ───────────────────────────────────
 def test_both_test_suites_are_offered_and_the_case_count_comes_from_the_chosen_file():
     """화면에 48 도 203 도 박지 않는다. 고른 파일에서 세므로 발화를 더하면 저절로 따라간다."""
-    entries = suite_module.datasets()
+    entries = load_test_suite.datasets()
     assert [e["id"] for e in entries] == ["test_suite_v1", "test_suite_v2"]
 
     counts = {}
     for entry in entries:
-        loaded = suite_module.load(entry["path"])
+        loaded = load_test_suite.load(entry["path"])
         counts[entry["id"]] = sum(1 for case in loaded["cases"] if case["enabled"])
         name = Path(entry["path"]).name
         assert panel.dataset_label(entry) == f"{name} · {counts[entry['id']]}개 발화"
@@ -620,7 +654,7 @@ def test_choosing_a_test_suite_changes_what_the_run_measures(app):
     """고른 세트가 평가에 그대로 넘어가지 않으면 v2 를 골라도 FULL48 을 재게 된다."""
     app.run()
     assert app.selectbox(key=panel.DATASET_KEY).options == [
-        panel.dataset_label(entry) for entry in suite_module.datasets()
+        panel.dataset_label(entry) for entry in load_test_suite.datasets()
     ]
 
     app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
@@ -632,12 +666,12 @@ def test_choosing_a_test_suite_changes_what_the_run_measures(app):
 
 def test_the_names_on_screen_are_the_files_and_folders_in_the_repo():
     """별칭이 앞에 서면 화면의 이름과 저장소의 자산이 서로 다른 말이 되어 되짚을 수가 없다."""
-    for entry in suite_module.datasets():
+    for entry in load_test_suite.datasets():
         shown = panel.dataset_label(entry)
         assert shown.startswith(Path(entry["path"]).name), shown
         assert not shown.startswith(entry["label"]), shown
 
-    assert panel.suite_filename({"path": "dev/evaluation/test_suites/test_suite_v2.yaml",
+    assert panel.suite_filename({"path": "dev/evaluation/inputs/test_suites/test_suite_v2.yaml",
                                  "label": "테스트 세트 v2"}) == "test_suite_v2.yaml"
     assert panel.suite_filename({"dataset_id": "test_suite_v1"}) == "test_suite_v1.yaml"
     assert panel.suite_filename({}) == "정답표"
@@ -652,7 +686,7 @@ def test_the_names_on_screen_are_the_files_and_folders_in_the_repo():
 def test_the_overview_names_the_suite_by_its_file(result):
     """실행 개요가 별칭을 보이면 이 결과가 저장소의 어느 파일을 잰 것인지 알 수 없다."""
     result = {**result, "meta": {**result["meta"],
-                                 "suite": {"path": "dev/evaluation/test_suites/test_suite_v1.yaml",
+                                 "suite": {"path": "dev/evaluation/inputs/test_suites/test_suite_v1.yaml",
                                            "label": "FULL48 회귀 테스트"}}}
     shown = dict(panel.overview(result))["테스트 세트"]
     assert shown == [("", "test_suite_v1.yaml")]
@@ -689,17 +723,15 @@ def test_a_function_card_carries_its_menu_description_without_a_second_table(res
 
 def test_the_two_suites_stay_separate_datasets():
     """한 벌로 합치면 얼린 기준선의 값이 옛 기록과 안 맞아 이어 읽을 수가 없다."""
-    v1, v2 = (suite_module.load(entry["path"]) for entry in suite_module.datasets())
+    v1, v2 = (load_test_suite.load(entry["path"]) for entry in load_test_suite.datasets())
     assert v1["version"] == 1 and v2["version"] == 2
     assert {case["utterance"] for case in v1["cases"]} != {case["utterance"] for case in v2["cases"]}
 
 
 def test_the_function_results_section_is_titled_기능별_결과_and_nothing_else(app, monkeypatch, tmp_path):
     """제목에 기능 수 · 실패한 기능 수를 달면 같은 숫자가 바로 아래 표에 또 있다."""
-    from dev.evaluation import test_runs
-
-    monkeypatch.setattr(test_runs, "RUNS_DIR", tmp_path)
-    saved = runner.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path)
+    saved = run_evaluation.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
                        dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
     app.run()
     app.selectbox(key=panel.SAVED_KEY).set_value(saved["meta"]["run_id"]).run()

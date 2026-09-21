@@ -1,11 +1,11 @@
-"""실행 하드웨어 기록과, 원하면 사무실 조용 정책의 쉼표.
+"""평가용 GPU 지원. 실행 하드웨어 기록과, 원하면 사무실 조용 정책의 쉼표.
 
     environment()                     이 기계의 GPU 이름 · VRAM. Test Run 의 meta.environment 에 실림
     monitor = GpuMonitor(gate=True)   조용 정책(아래 POLICY)으로 부르는 박자만 조절
 
 GPU 를 기록하는 까닭은 **실행 하드웨어의 재현성**이다 (어느 GPU · 몇 장 · VRAM). 온도는 결과에
 남기지 않는다. GpuMonitor 는 발화와 발화 사이에서 쉬거나 멈출 뿐이고 그 기록(summary)은 부르는
-쪽이 원할 때만 읽는다 — runner 는 결과에 싣지 않는다. **판정에는 안 섞인다.** 재는 시간
+쪽이 원할 때만 읽는다 — run_evaluation 은 결과에 싣지 않는다. **판정에는 안 섞인다.** 재는 시간
 (timing.resolve_s)은 resolve 호출 하나만 감싸므로 쉬어도 안 늘어난다.
 
 nvidia-smi 가 없거나 읽을 수 없는 기계에서는 available 이 거짓인 한 벌만 남고 평가는 그대로 돈다.
@@ -18,6 +18,13 @@ import time
 import zoneinfo
 
 KST = zoneinfo.ZoneInfo("Asia/Seoul")
+
+
+class StopRun(Exception):
+    """평가를 여기서 멈춘다. 까닭이 meta.stopped 에 남고 거기까지의 결과는 그대로 나감.
+
+    monitor(GPU 열 제한 등)나 progress 가 던짐. 다른 예외는 삼키지 않음
+    """
 
 # nvidia-smi 에 묻는 칸. 차례가 _parse 의 차례다.
 QUERY = (
@@ -121,10 +128,10 @@ def _peak(gpus: list[dict], key: str) -> int | None:
 class GpuMonitor:
     """평가 한 번의 박자 조절. gate 면 조용 정책대로 쉬고 멈춤. 본 온도는 이 객체에만 남고 결과에는 안 실림.
 
-    규칙  before_run · after_case · after_run 은 runner.run 이 부름
+    규칙  before_run · after_case · after_run 은 run_evaluation.run 이 부름
           기록은 샘플마다 {at, phase, done, temp, util, fan, throttle} 한 줄. 여럿이면 가장 높은 값
           gate 가 아니면 쉬지 않음. 샘플도 시작 · 끝 · every 마다만 떠서 박자가 안 바뀜
-          gate 면 열 제한을 보는 순간 식히고 runner.StopRun 으로 평가를 멈춤
+          gate 면 열 제한을 보는 순간 식히고 StopRun 으로 평가를 멈춤
     제약  GPU 설정을 바꾸지 않는다. 판정 · 결과 줄에 손대지 않는다
     """
 
@@ -197,10 +204,8 @@ class GpuMonitor:
         if not self.gate or entry is None:
             return
         if entry["throttle"]:
-            from dev.evaluation import runner
-
             self._wait("throttle_cooldown", done, lambda e: (e["temp"] or 0) <= policy["resume_at"])
-            raise runner.StopRun(f"GPU 열 제한 감지 ({done}/{planned} 뒤)")
+            raise StopRun(f"GPU 열 제한 감지 ({done}/{planned} 뒤)")
         if entry["temp"] is not None and entry["temp"] >= policy["pause_at"]:
             self.pauses += 1
             started = self._clock()
@@ -208,9 +213,7 @@ class GpuMonitor:
             cooled = self._wait("pause", done, lambda e: (e["temp"] or 0) <= policy["resume_at"])
             self.pause_seconds += self._clock() - started
             if not cooled:
-                from dev.evaluation import runner
-
-                raise runner.StopRun(f"GPU 가 {policy['max_wait_s']:.0f}초 안에 식지 않음 ({done}/{planned} 뒤)")
+                raise StopRun(f"GPU 가 {policy['max_wait_s']:.0f}초 안에 식지 않음 ({done}/{planned} 뒤)")
 
     def after_run(self, done: int) -> None:
         entry = self._take("end", done)
@@ -221,7 +224,7 @@ class GpuMonitor:
             self._wait("cooldown", done, lambda e: (e["temp"] or 0) <= self.policy["resume_at"])
 
     def summary(self) -> dict:
-        """이 monitor 가 본 것 한 벌. runner 는 결과에 싣지 않음 (부르는 쪽이 원할 때 읽음).
+        """이 monitor 가 본 것 한 벌. run_evaluation 은 결과에 싣지 않음 (부르는 쪽이 원할 때 읽음).
 
         출력  {available, gpus, start_temp, max_temp, end_temp, max_util, max_fan, pauses,
                pause_seconds, thermal_throttle, samples, gate, policy, notes, log}

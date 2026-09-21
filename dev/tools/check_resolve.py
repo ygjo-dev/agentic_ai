@@ -17,9 +17,9 @@ LLM 이 그 recipe 를 고르는지 잰다. 「이 recipe 를 어떤 말로도 �
     python dev/tools/check_resolve.py --context bbox    실행에 실을 문맥을 우클릭 전 모양으로
     python dev/tools/check_resolve.py --execute         ★ 실행까지 부른다. 실행 칸 표가 하나 더 나온다
 
-정답표(발화 · 기대 recipe · 이름 있는 값 · 표시 · 묶음)는 `dev/evaluation/test_suites/test_suite_v1.yaml`
-이고 읽는 곳은 `dev/evaluation/suite.py` 다. 같은 정답표를 JSON 결과 한 벌로 재는 공통 runner 는
-`dev/evaluation/runner.py` 다.
+정답표(발화 · 기대 recipe · 이름 있는 값 · 표시 · 묶음)는 `dev/evaluation/inputs/test_suites/test_suite_v1.yaml`
+이고 읽는 곳은 `dev/evaluation/engine/load_test_suite.py` 다. 같은 정답표를 JSON 결과 한 벌로 재는
+벤치마크 main 은 `dev/evaluation/run_evaluation.py` 다.
 
 ## 한 번 눌러본 것은 근거가 안 된다
 
@@ -69,7 +69,7 @@ POST /resolve 를 부른다. 화면이 지나는 것과 같은 경로여야 표�
     보이는 범위    실행에 보고 있는 화면이 있어야 닿는다  group: view_extent
     합계           셋을 더한 값도 내지만 묶음 값이 그 위에 따로 보인다
 
-★ **묶음은 정답표의 각 발화 group 이 갖는다** (dev/evaluation/test_suites/test_suite_v1.yaml).
+★ **묶음은 정답표의 각 발화 group 이 갖는다** (dev/evaluation/inputs/test_suites/test_suite_v1.yaml).
 여기 숫자를 다시 적으면 발화가 늘 때마다 두 곳이 어긋난다.
 
 **묶음의 점수를 서로 견주지 않는다.** 발화가 다르므로 다른 자다. 한쪽만
@@ -164,11 +164,11 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
 import paths  # noqa: E402
-from dev.evaluation import suite  # noqa: E402
+from dev.evaluation.engine import load_test_suite as suite  # noqa: E402
 
 # ── 정답표 ──────────────────────────────────────────────────────────
 #
-# **정답표는 dev/evaluation/test_suites/test_suite_v1.yaml 에 있다** (2026-09-15 옮김).
+# **정답표는 dev/evaluation/inputs/test_suites/test_suite_v1.yaml 에 있다** (2026-09-15 옮김).
 # 발화 · 기대 recipe · 이름 있는 값 · 표시 · 묶음을 그 파일이 갖는다. 옮기기 전 이 자리에
 # 있던 주석(발화별 실측 · 지운 까닭 · 번호가 밀린 이력)도 글자 그대로 그리로 옮겼다.
 # 기대값을 고치려면 그 파일을 고친다. 여기서 다시 적지 않는다 — 두 곳이 되면 조용히 어긋난다.

@@ -1,11 +1,13 @@
-"""발화 해석 정답표(evaluation suite)를 읽는 유일한 곳.
+"""발화 해석 정답표(Test Suite)를 읽는 유일한 곳. 등록 목록 · 읽기 · 구조 검사 · 신원.
 
-정답표(Test Suite)는 `dev/evaluation/test_suites/` 의 두 파일이다.
+정답표는 `dev/evaluation/inputs/test_suites/` 의 두 파일이다.
 
     test_suite_v1.yaml   FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
     test_suite_v2.yaml   테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖(NO_MATCH) 묶음
 
-공통 runner `dev/evaluation/runner.py` 와 화면 테스트 탭이 이 모듈로 읽는다.
+`dev/evaluation/run_evaluation.py` 와 화면 테스트 탭이 이 모듈로 읽는다.
+정답표가 게시 자산(recipe · menu · prompt)과 맞물리는지는 여기서 안 본다.
+그것은 dev/tests/evaluation/test_test_suite_integrity.py 가 커밋마다 본다.
 
 기대값을 여기서 고치거나 채우지 않는다. 무엇이 정답인지는 파일에 사람이 적는다.
 """
@@ -14,8 +16,8 @@ from pathlib import Path
 
 import yaml
 
-# 정답표 파일이 사는 폴더. 결과(test_runs) · 보고서(reports)와 한 지붕 아래 나란히 둔다.
-SUITES_DIR = Path(__file__).resolve().parent / "test_suites"
+# 정답표 파일이 사는 폴더. 평가의 입력이다. 결과는 outputs/ 에 따로 둔다.
+SUITES_DIR = Path(__file__).resolve().parents[1] / "inputs" / "test_suites"
 
 SUITE_PATH = SUITES_DIR / "test_suite_v1.yaml"
 SUITE_V2_PATH = SUITES_DIR / "test_suite_v2.yaml"
@@ -47,7 +49,7 @@ OUT_OF_SCOPE = "out_of_scope"
 OOS_CATEGORIES = ("unsupported",)
 
 # 범위 밖 발화가 받아들이는 결과. resolve 응답 schema 의 status 이름이다
-# (spoken_audit._selfcheck 가 schema 에 실제로 있는지 본다).
+# (dev/tests/evaluation/test_test_suite_integrity.py 가 schema 에 실제로 있는지 본다).
 OOS_OUTCOMES = ("NO_MATCH",)
 
 
@@ -135,6 +137,23 @@ def datasets() -> list[dict]:
     제약  파일을 여기서 읽지 않는다. 읽는 것은 load 임
     """
     return [{"id": dataset_id, "label": label, "path": path} for dataset_id, label, path in DATASETS]
+
+
+def dataset(dataset_id: str) -> dict:
+    """id 로 고른 정답표 한 줄. {id, label, path}. 모르는 id 면 KeyError."""
+    chosen = next((entry for entry in datasets() if entry["id"] == dataset_id), None)
+    if chosen is None:
+        raise KeyError(f"모르는 정답표: {dataset_id!r}")
+    return chosen
+
+
+def dataset_of_path(path: Path) -> dict | None:
+    """그 파일이 등록된 정답표면 {id, label}. 아니면 None."""
+    return next(
+        ({"id": entry["id"], "label": entry["label"]} for entry in datasets()
+         if Path(entry["path"]).resolve() == Path(path).resolve()),
+        None,
+    )
 
 
 def in_scope(case: dict) -> bool:

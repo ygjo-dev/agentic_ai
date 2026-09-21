@@ -254,9 +254,9 @@ execution 칸은 등록 저장소가 게시한 것을 그대로 받는다. 온�
 고쳤을 때도 거기서 다시 게시한다. 후보를 받아들이는 것도 거기 일이다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
-`dev/evaluation/test_suites/test_suite_v1.yaml` 이고, 발화를 더하면 그 발화의 묶음(`group`)도
-함께 적는다. 테스트 세트 v2(`dev/evaluation/test_suites/test_suite_v2.yaml`)에는 그 recipe 의 발화를
-다섯 이상 더한다 — `spoken_audit._selfcheck` 가 받아들인 recipe 마다 센다.
+`dev/evaluation/inputs/test_suites/test_suite_v1.yaml` 이고, 발화를 더하면 그 발화의 묶음(`group`)도
+함께 적는다. 테스트 세트 v2(`dev/evaluation/inputs/test_suites/test_suite_v2.yaml`)에는 그 recipe 의 발화를
+다섯 이상 더한다 — `dev/tests/evaluation/test_test_suite_integrity.py` 가 받아들인 recipe 마다 센다.
 
 ---
 
@@ -416,7 +416,7 @@ streamlit run app/ui/main.py                   화면 (8501)
 아무것도 안 띄우고        check_wiring · pytest
 Gateway 만               probe_tools · probe_shapes
 LLM 만                   check_llm  (창구를 안 지나고 resolve_service 를 직접 부른다)
-창구(8000) + LLM         check_resolve · check_demo · dev/evaluation/runner.py
+창구(8000) + LLM         check_resolve · check_demo · dev/evaluation/run_evaluation.py
 창구 + LLM + Gateway     check_argument  (도구를 실제로 불러 본다)
 ```
 

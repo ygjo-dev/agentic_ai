@@ -1,7 +1,7 @@
 """테스트 탭. 정답표로 발화 해석을 재고, 발화별 기능 선택 · 인자 추출 결과를 훑고 한 건씩 들여다본다.
 
 평가는 dev/evaluation 이 한다. 이 탭은 정답표를 고르고, 「테스트 실행」을 누르면
-dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
+dev/evaluation/run_evaluation.run_dataset 을 부르고, 돌아온 결과를 그린다.
 
     제목 · 테스트 세트 · 실행 기록 · 테스트 실행
     실행 개요 (테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
@@ -14,18 +14,18 @@ dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
 **테스트 세트는 고르는 것이다.** 고른 정답표가 발화 목록 · 발화 수 · 실행 · 저장한 실행 기록의
 신원을 함께 정한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다.
 
-낱말은 dev/evaluation/test_runs 머리 주석과 같다 — 정답표 한 벌(Test Suite)은 「테스트 세트」,
+낱말은 dev/evaluation/engine/manage_benchmark 머리 주석과 같다 — 정답표 한 벌(Test Suite)은 「테스트 세트」,
 한 번 잰 것(Test Run)은 「실행 기록」, 발화 하나의 결과(Case Result)는 「발화 결과」다.
 
 **이 화면이 보는 것은 둘이다 — 기능을 옳게 골랐나, 그 기능이 읽는 인자를 옳게 뽑았나.**
 workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지만 여기서 보이지 않는다.
 실행 하드웨어는 재현을 위해 GPU 이름 · VRAM 만 보인다. 온도는 보이지 않는다.
 
-**새로 잰 결과와 불러온 실행 기록이 같은 길로 그려진다.** 실행 기록을 고르면 test_runs.load_run 이
+**새로 잰 결과와 불러온 실행 기록이 같은 길로 그려진다.** 실행 기록을 고르면 manage_benchmark.load_benchmark 가
 돌려준 결과 한 벌을 방금 잰 결과와 같은 자리(RESULT_KEY)에 둔다. 그리는 함수가 따로 없다.
 
 **여기서 채점하지 않는다.** 성공 · 실패 · 실패 단계(passed · failure_stage) · 기능이 맞았나
-(recipe_correct) · 정답표에 적은 값마다 맞았나(spoken_fields) 는 runner 결과에 이미 있다.
+(recipe_correct) · 정답표에 적은 값마다 맞았나(spoken_fields) 는 run_evaluation 결과에 이미 있다.
 이 탭은 그 칸을 읽어 글자와 색으로 바꾼다. 값끼리 맞대지 않는다.
 
 **LLM 은 「테스트 실행」을 누를 때만 부른다.** 결과는 session_state 에 두고 필터 · 검색 ·
@@ -41,7 +41,7 @@ workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지
 
 **기능 번호가 보이는 자리에는 그 기능이 무엇을 하는지가 마우스에 붙는다.** 번호를 그리는
 자리는 전부 `number_markup` 하나를 지난다 (기대 기능 · AI 가 고른 기능 · 후보 기능 ·
-기능별 결과 · 모델 판단 문장 안의 번호). 설명의 원천은 runner 결과 meta.functions 하나고,
+기능별 결과 · 모델 판단 문장 안의 번호). 설명의 원천은 run_evaluation 결과 meta.functions 하나고,
 화면에 {번호: 설명} 표를 따로 두지 않는다.
 
     ★ 두 자리는 못 붙인다. 결과 목록 표의 「기능」 칸과 기능 고르기 목록이다.
@@ -67,7 +67,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from dev.evaluation import suite as evaluation_suite
+from dev.evaluation.engine import load_test_suite as evaluation_suite
 
 # 인자 표시명. 여기 없는 인자는 변수명 그대로 나온다.
 # argument 는 기능마다 뜻이 달라 표시명을 두지 않는다.
@@ -78,7 +78,7 @@ FIELD_LABELS = {
 }
 
 STATUS_LABELS = {"SELECT": "선택", "CLARIFY": "되묻기", "NO_MATCH": "해당 없음"}
-# runner 결과의 failure_stage 값 -> 화면 글자
+# run_evaluation 결과의 failure_stage 값 -> 화면 글자
 STAGE_LABELS = {"function": "기능 선택", "input": "인자 추출", "scope": "범위 밖 처리", "error": "실행 오류"}
 
 # 범위 밖 갈래 -> 화면 글자. ambiguous · insufficient 는 옛 실행 기록을 불러올 때만 나옴
@@ -99,13 +99,13 @@ EMPTY_NUMBER = "—"
 # 기대 기능이 그 인자를 읽지 않음. 「없음」(읽는데 값이 null)과 다르다
 UNUSED_TEXT = "사용 안 함"
 
-# 테스트 실행이 runner 에 넘기는 값. 화면에 안 보인다.
+# 테스트 실행이 run_evaluation 에 넘기는 값. 화면에 안 보인다.
 # materialize 는 켠다. 화면에는 안 보이지만 결과(실행 기록)에 남겨 뒤에 실행 화면이 쓴다.
 # MCP 는 안 부른다. 문맥은 계기판 기본값(both)과 같다. GPU 쉼표는 run_selected 가 넘기는
-# gpu.GpuMonitor(gate=True) 가 맡는다 (3건마다 5초 · 뜨거우면 멈춤). 온도는 결과에 안 남는다.
+# monitor_gpu.GpuMonitor(gate=True) 가 맡는다 (3건마다 5초 · 뜨거우면 멈춤). 온도는 결과에 안 남는다.
 RUN_OPTIONS = {"materialize": True, "context_label": "both"}
 
-# 모델 설정 칸. 화면 글자 -> runner 결과 meta.conditions 의 칸. 파일 셋은 경로만 보임
+# 모델 설정 칸. 화면 글자 -> run_evaluation 결과 meta.conditions 의 칸. 파일 셋은 경로만 보임
 CONDITION_ROWS = (
     ("모델", "model"),
     ("provider", "provider"),
@@ -144,10 +144,10 @@ def summarize(result: dict | None) -> dict | None:
 
     출력  {"total", "done", "passed", "failed", "function", "input", "scope", "error", "oos_runs"}
           total 은 잴 발화 수, done 은 끝난 발화 수
-          function · input · scope · error 는 그 단계 때문에 실패한 건수. runner 가 발화마다 단계를
+          function · input · scope · error 는 그 단계 때문에 실패한 건수. run_evaluation 이 발화마다 단계를
           하나만 적음(오류 -> 기능 선택 -> 인자 추출 차례로 먼저 걸린 것). 범위 밖은 scope 뿐
           oos_runs 는 범위 밖 발화 수. 옛 결과에 칸이 없으면 0
-    규칙  runner 결과 summary.total 을 옮겨 적음. 여기서 세지 않음
+    규칙  run_evaluation 결과 summary.total 을 옮겨 적음. 여기서 세지 않음
           실행 중 결과(live_result)면 total 은 잴 수 전체, 성공 · 실패는 끝난 것만
     """
     if not result:
@@ -170,14 +170,14 @@ def summarize(result: dict | None) -> dict | None:
 def live_result(rows: list[dict], planned: int) -> dict:
     """실행 중 화면에 그릴 결과. 끝난 결과 줄만 담음.
 
-    입력  runner 가 progress 로 넘긴 결과 줄들 · 잴 발화 수
+    입력  run_evaluation 이 progress 로 넘긴 결과 줄들 · 잴 발화 수
     출력  {"summary", "cases", "planned"}. summarize · filter_results 가 끝난 결과처럼 읽음
-    규칙  합계는 runner.summarize 로 셈. 판정은 줄에 이미 있음
+    규칙  합계는 score.summarize 로 셈. 판정은 줄에 이미 있음
     제약  줄을 다시 채점하지 않는다
     """
-    from dev.evaluation import runner
+    from dev.evaluation.engine import score
 
-    return {"summary": runner.summarize(rows, ()), "cases": list(rows), "planned": planned}
+    return {"summary": score.summarize(rows, ()), "cases": list(rows), "planned": planned}
 
 
 def _squash(text: str) -> str:
@@ -195,7 +195,7 @@ def row_group(row: dict) -> str:
 def filter_results(rows: list[dict], view: str, query: str = "", group: str = ALL_GROUPS) -> list[dict]:
     """보기 필터 · 기능 고르기 · 발화 검색을 건 목록.
 
-    입력  runner 결과 cases. view 는 FILTERS 중 하나. 모르는 값이면 전체
+    입력  run_evaluation 결과 cases. view 는 FILTERS 중 하나. 모르는 값이면 전체
           group 은 ALL_GROUPS · OUT_OF_SCOPE_GROUP · 기대 recipe id
     출력  원래 순서를 지킨 부분 목록
     규칙  실패는 성공이 아닌 것 전부(실행 오류 포함). 기능 선택 · 인자 추출 · 범위 밖 처리는 그 단계에서 실패한 것
@@ -273,13 +273,13 @@ def field_rows(row: dict) -> list[dict]:
 
     출력  [{"name", "label", "used", "graded", "answer", "model", "in_model", "correct"}]
     규칙  모델 출력 차례가 먼저, 모델이 안 낸 인자는 뒤에 정답표 · 읽는 칸 차례로
-          used 는 기대 기능(Recipe.execution)이 그 인자를 읽나. runner 가 적은 expected.reads.
+          used 는 기대 기능(Recipe.execution)이 그 인자를 읽나. run_evaluation 이 적은 expected.reads.
           그 칸이 없는 옛 결과면 정답표에 적은 이름(정답표는 읽는 칸만 적음)
-          graded 는 정답표에 그 이름이 적혔나. runner 의 spoken_fields 에 있는 이름임
-          correct 는 runner 가 맞댄 결과 그대로. 채점하지 않은 칸이면 None
+          graded 는 정답표에 그 이름이 적혔나. run_evaluation 의 spoken_fields 에 있는 이름임
+          correct 는 run_evaluation 이 맞댄 결과 그대로. 채점하지 않은 칸이면 None
           answer 는 정답표에 적은 값. 안 적었으면 None
           label 은 FIELD_LABELS 에 없으면 변수명 그대로
-    제약  값끼리 맞대지 않는다. 판정은 runner 결과에 있음
+    제약  값끼리 맞대지 않는다. 판정은 run_evaluation 결과에 있음
     """
     graded = {field["name"]: field for field in row.get("spoken_fields") or []}
     reads = row["expected"].get("reads")
@@ -333,7 +333,7 @@ def list_height(ratios: dict) -> int:
 def request_rows(conditions: dict) -> dict:
     """provider 요청 설정. {화면 글자: 값}. Temperature 가 맨 앞. 못 읽은 기록이면 빈 dict.
 
-    규칙  runner 결과 meta.conditions.request (provider 코드가 실제로 싣는 값을 runner 가 읽어 둔 것)
+    규칙  run_evaluation 결과 meta.conditions.request (provider 코드가 실제로 싣는 값을 run_evaluation 이 읽어 둔 것)
           화면 글자는 REQUEST_LABELS, 없는 칸은 이름 그대로. 값은 그대로 글자로
     제약  값을 여기 적지 않는다. 옛 결과에 칸이 없으면 안 보일 뿐임
     """
@@ -347,7 +347,7 @@ def request_rows(conditions: dict) -> dict:
 def run_conditions(result: dict | None) -> dict | None:
     """모델 설정 전부. {화면 글자: 값}. 결과가 없으면 None.
 
-    규칙  runner 결과 meta.conditions 에서 옮김. 모델 · provider · 요청 설정(Temperature 등) ·
+    규칙  run_evaluation 결과 meta.conditions 에서 옮김. 모델 · provider · 요청 설정(Temperature 등) ·
           호출 상한 · 파일 셋(경로만)
           조건을 못 읽은 결과면 그 까닭 한 줄
     """
@@ -379,7 +379,7 @@ def _elapsed(seconds) -> str:
 def environment_rows(result: dict) -> dict:
     """실행 환경. {"GPU": …, "VRAM": …}. 기록이 없으면 두 칸 다 「기록 없음」.
 
-    규칙  runner 결과 meta.environment.gpus. 이름이 모두 같으면 「이름 × 장수」, 다르면 이름을 이음
+    규칙  run_evaluation 결과 meta.environment.gpus. 이름이 모두 같으면 「이름 × 장수」, 다르면 이름을 이음
           VRAM 은 GPU 마다의 총량(GiB). 모두 같으면 「장당 N GiB」
           온도 · 사용률은 안 보임 (옛 결과의 meta.gpu 도 안 읽음)
     """
@@ -414,7 +414,7 @@ def suite_filename(suite: dict) -> str:
 
     규칙  meta.suite.path 의 파일 이름 -> 등록된 정답표의 파일 이름(dataset_id 로 찾음) -> 「정답표」
     제약  사람용 별칭(meta.suite.label)을 앞에 두지 않는다 — 화면에 보이는 이름이
-          dev/evaluation/test_suites/ 의 파일과 바로 맞아야 무엇을 잰 것인지 되짚을 수 있다
+          dev/evaluation/inputs/test_suites/ 의 파일과 바로 맞아야 무엇을 잰 것인지 되짚을 수 있다
     """
     if suite.get("path"):
         return Path(suite["path"]).name
@@ -429,7 +429,7 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
 
     칸  테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간(Median · P95 · Max) ·
         발화(전체 · 성공 · 실패 · 오류) · 모델 설정(모델 · Temperature …) · 실행 환경(GPU · VRAM)
-    규칙  runner 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
+    규칙  run_evaluation 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
           평가 지표(기능 선택 · 인자 추출 등)는 여기 안 둠. 아래 전체 결과가 보임
           추론 지연시간은 resolve 한 번에 걸린 시간의 분포. 잰 것이 없으면 줄표
           실행 기록 id 는 여기 안 보임 (정답표 이름이 들어 있어 개발 용어가 샘). 모델 설정 접힘 칸에 있음
@@ -475,7 +475,7 @@ def _recipe_number(recipe_id: str) -> int:
 def recipe_rows(result: dict | None) -> list[dict]:
     """기능별 결과. [{group, label, runs, passed, failed}] 기능 번호의 숫자 차례.
 
-    규칙  runner 결과 summary.recipes 를 옮김. 범위 안(지원하는 기능)만. 범위 밖은 기능이 아니라 안 넣음
+    규칙  run_evaluation 결과 summary.recipes 를 옮김. 범위 안(지원하는 기능)만. 범위 밖은 기능이 아니라 안 넣음
           차례는 번호를 숫자로 읽어 오름차순 (글자 차례가 아님)
     """
     if not result:
@@ -495,7 +495,7 @@ def first_failure(rows: list[dict]) -> int | None:
 def saved_label(entry: dict) -> str:
     """실행 기록 고르기 글자. 「<run_id> · 성공/전체」 꼴. 전체는 그 기록이 실제로 잰 수다.
 
-    제약  run_id 가 먼저다. 저장 자리가 dev/evaluation/test_runs/<run_id>/ 라
+    제약  run_id 가 먼저다. 저장 자리가 dev/evaluation/outputs/<official|local>_benchmark/<run_id>/ 라
           고르기 글자와 폴더가 1:1 로 맞아야 한다. 사람용 별칭을 앞에 두지 않는다 —
           run_id 안에 이미 정답표 이름과 시각이 들어 있다
     """
@@ -668,7 +668,7 @@ def _muted_markup(text: str) -> str:
 
 
 def _tip(recipe_id: str | None, functions: dict) -> str:
-    """기능 번호에 걸 title 속성. 설명은 runner 결과 meta.functions (게시 menu 의 function 문장)."""
+    """기능 번호에 걸 title 속성. 설명은 run_evaluation 결과 meta.functions (게시 menu 의 function 문장)."""
     text = (functions or {}).get(recipe_id)
     return f' title="{_esc(text)}"' if text else ""
 
@@ -678,7 +678,7 @@ def number_markup(recipe_id: str | None, functions: dict, css: str = "") -> str:
 
     입력  css 는 이 자리에서 더 붙일 class. 없으면 안 붙음
     출력  <span class="tt-fnum …" title="설명">기능 004</span>. 번호가 없으면 빈 글자
-    규칙  설명의 원천은 runner 결과 meta.functions 하나 (게시 menu 의 function 문장)
+    규칙  설명의 원천은 run_evaluation 결과 meta.functions 하나 (게시 menu 의 function 문장)
           설명이 없는 번호면 title 없이 번호만 보임
     제약  기능 번호를 보이는 자리는 전부 이것을 쓴다.
           마크업에 function_label 을 직접 넣으면 그 자리만 설명이 안 뜬다.
@@ -723,7 +723,7 @@ def _key_markup(label: str, name: str | None = None) -> str:
 def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: bool, graded: bool = True) -> str:
     """비교 한 줄. 줄 머리 · 정답표 · AI 모델 출력.
 
-    입력  wrong 은 runner 가 틀렸다고 판정한 칸인가
+    입력  wrong 은 run_evaluation 이 틀렸다고 판정한 칸인가
     규칙  채점하는 칸이 틀렸으면 모델 출력 칸을 강조하고 「차이」를 닮
           graded 가 거짓인 칸(기대 기능이 안 읽는 인자)은 줄 전체를 흐리게 둠. 강조하지 않음
     """
@@ -778,14 +778,14 @@ def _extra_markup(row: dict, functions: dict | None = None) -> str:
 def detail_markup(row: dict, functions: dict) -> str:
     """선택한 발화 상세. 성공 · 실패가 같은 틀.
 
-    입력  runner 결과 cases 한 줄 · meta.functions
+    입력  run_evaluation 결과 cases 한 줄 · meta.functions
     규칙  맨 위 한 줄에 번호 · 발화 · 판정
           정답표 | AI 모델 출력 두 칸에 기능 번호 · 설명과 인자 전부(field_rows)
-          기능 칸 강조는 runner 의 recipe_correct, 인자 칸 강조는 spoken_fields 의 correct
+          기능 칸 강조는 run_evaluation 의 recipe_correct, 인자 칸 강조는 spoken_fields 의 correct
           인자 값 칸은 셋으로 가름 — 기대 기능이 안 읽는 인자는 두 칸 다 「사용 안 함」,
           읽는데 값이 null 이면 「없음」, 값이 있으면 그 값
           범위 밖 발화는 기능 칸에 「범위 밖 · 선택할 기능 없음」과 모델이 고른 것을 맞댐. 인자 줄 없음.
-          강조는 runner 의 passed
+          강조는 run_evaluation 의 passed
           그 아래 AI 모델 출력의 판정 상태 · 후보 기능(설명은 마우스를 올리면) · 판단 · 추론 지연시간
     """
     model = row.get("actual") or {}
@@ -854,18 +854,19 @@ def _note_markup(text: str) -> str:
 
 # ================================================================ 실행
 def run_selected(dataset_id: str, on_progress=None) -> dict:
-    """고른 정답표를 dev/evaluation 공통 runner 로 잰 결과.
+    """고른 정답표를 dev/evaluation/run_evaluation 으로 잰 결과.
 
-    규칙  runner.run_dataset 에 RUN_OPTIONS 와 그 문맥 · GPU 조용 정책을 넘김. 판정은 전부 runner 가 함
-          run_dataset 이 Test Run 을 test_runs 에 저절로 남김
-          runner 를 여기서 import 함. 탭을 열기만 해서는 계기판 모듈을 안 읽음
+    규칙  run_evaluation.run_dataset 에 RUN_OPTIONS 와 그 문맥 · GPU 조용 정책을 넘김. 판정은 전부 평가 쪽이 함
+          run_dataset 이 Test Run 을 outputs/local_benchmark 에 저절로 남김
+          run_evaluation 을 여기서 import 함. 탭을 열기만 해서는 계기판 모듈을 안 읽음
     제약  판정 · 채점을 여기서 하지 않는다
     """
-    from dev.evaluation import gpu, runner
+    from dev.evaluation import run_evaluation
+    from dev.evaluation.engine import monitor_gpu
 
     options = dict(RUN_OPTIONS)
-    options["context"] = runner.context_payload(options["context_label"])
-    return runner.run_dataset(dataset_id, progress=on_progress, monitor=gpu.GpuMonitor(gate=True), **options)
+    options["context"] = run_evaluation.context_payload(options["context_label"])
+    return run_evaluation.run_dataset(dataset_id, progress=on_progress, monitor=monitor_gpu.GpuMonitor(gate=True), **options)
 
 
 def _execute(dataset_id: str, slots: dict, height: int) -> None:
@@ -873,21 +874,21 @@ def _execute(dataset_id: str, slots: dict, height: int) -> None:
 
     입력  slots 는 진행 · 요약 · 목록 · 상세 자리({"status", "kpi", "list", "detail"}의 st.empty)
     규칙  시작하자마자 0건 화면을 그림. 잴 수는 정답표에서 센 발화 수
-          runner 가 progress 로 넘긴 결과 줄(판정까지 끝난 것)을 모아 네 자리를 갈아 그림.
+          run_evaluation 이 progress 로 넘긴 결과 줄(판정까지 끝난 것)을 모아 네 자리를 갈아 그림.
           같은 script 실행 안에서 자리만 바꾸므로 발화마다 rerun 하지 않음
           다 끝나면 결과를 RESULT_KEY 에 두고 한 번 rerun 함. 그때 같은 자리에 보통 화면이 그려져
           실행 중 표와 끝난 표가 겹치지 않음
           예외로 끝나면 문장을 RUN_ERROR_KEY 에 두고 지난 결과는 안 지움
           새 결과가 들어오면 고른 발화 · 표 선택을 처음으로 돌림
-    제약  결과 줄을 여기서 채점하지 않는다. 합계는 live_result 가 runner.summarize 로 셈
+    제약  결과 줄을 여기서 채점하지 않는다. 합계는 live_result 가 score.summarize 로 셈
           실행 중에 session_state 를 바꾸지 않는다. 발화마다 rerun 하지 않는다
     """
-    from dev.evaluation import runner
+    from dev.evaluation.engine import monitor_metadata
 
     entry = next(entry for entry in evaluation_suite.datasets() if entry["id"] == dataset_id)
     path = Path(entry["path"])
     planned = _case_count(str(path), path.stat().st_mtime_ns) or 0
-    functions = runner.functions()
+    functions = monitor_metadata.functions()
     done_rows: list[dict] = []
 
     with slots["status"].container():
@@ -942,11 +943,11 @@ def _render_live(slots: dict, rows: list[dict], planned: int, functions: dict, h
 
 # ================================================================ 그리기
 def saved_runs() -> list[dict]:
-    """저장된 실행 기록 목록. test_runs.list_runs 그대로. 못 읽으면 빈 목록."""
-    from dev.evaluation import test_runs
+    """저장된 실행 기록 목록. official · local 두 자리. manage_benchmark.list_benchmarks 그대로. 못 읽으면 빈 목록."""
+    from dev.evaluation.engine import manage_benchmark
 
     try:
-        return test_runs.list_runs()
+        return manage_benchmark.list_benchmarks()
     except OSError:
         return []
 
@@ -954,19 +955,19 @@ def saved_runs() -> list[dict]:
 def _load_saved() -> None:
     """실행 기록 고르기의 콜백. 고른 기록을 방금 잰 결과와 같은 자리에 둠.
 
-    규칙  test_runs.load_run 이 돌려준 결과 한 벌을 RESULT_KEY 에 둠. 테스트 세트 고르기를 그 기록의
+    규칙  manage_benchmark.load_benchmark 가 돌려준 결과 한 벌을 RESULT_KEY 에 둠. 테스트 세트 고르기를 그 기록의
           정답표로 맞춤. 고른 발화 · 표 선택을 처음으로 돌림
           못 읽으면 문장을 LOAD_ERROR_KEY 에 두고 지난 결과는 안 지움
     제약  평가 · LLM 을 부르지 않는다
     """
-    from dev.evaluation import test_runs
+    from dev.evaluation.engine import manage_benchmark
 
     run_id = st.session_state.get(SAVED_KEY)
     st.session_state.pop(LOAD_ERROR_KEY, None)
     if not run_id:
         return
     try:
-        result = test_runs.load_run(run_id)
+        result = manage_benchmark.load_benchmark(run_id)
     except (OSError, ValueError) as exc:
         st.session_state[LOAD_ERROR_KEY] = f"실행 기록을 읽지 못했습니다 — {type(exc).__name__}: {exc}"
         return
@@ -1236,7 +1237,7 @@ def render_test_tab(ratios: dict) -> None:
           실행 개요 · 기능별 결과는 결과가 있을 때만
           진행 · 요약 · 목록 · 상세를 st.empty 자리로 잡아 둠. 실행 중에는 _execute 가 그 자리를
           갈아 그리고, 보통 때는 같은 자리에 결과를 그림
-          테스트 실행을 누른 회차에만 _execute 가 runner 를 부름
+          테스트 실행을 누른 회차에만 _execute 가 run_evaluation 을 부름
     제약  테스트 실행을 누르지 않은 회차에는 평가 · LLM 을 부르지 않는다.
           필터 · 검색 · 행 선택 · 탭 전환이 다시 재게 하면 한 번에 수십 분이 듦
     """

@@ -3229,6 +3229,36 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-21 · 평가 코드와 입출력 자리를 갈랐다 — main 하나 · engine 다섯 · inputs · outputs(official/local)
+
+재지 않았다 (LLM 호출 0). 자리와 책임만 옮겼고 채점 규칙은 그대로다.
+
+```
+dev/evaluation/runner.py         -> run_evaluation.py (흐름) + engine/score.py (채점 · 합계 · 요약 글)
+                                    + engine/monitor_metadata.py (실행 조건 · git HEAD)
+dev/evaluation/suite.py          -> engine/load_test_suite.py
+dev/evaluation/test_runs.py      -> engine/manage_benchmark.py
+dev/evaluation/gpu.py            -> engine/monitor_gpu.py (StopRun 도 여기로)
+dev/evaluation/spoken_audit.py   -> spoken_refs 는 score.py, 정답표 · 게시 자산 불변식은
+                                    dev/tests/evaluation/test_test_suite_integrity.py, 감사표 CLI 는 지움
+dev/evaluation/test_suites/      -> inputs/test_suites/ (바이트 그대로)
+dev/evaluation/test_runs/20260921-090538-test_suite_v2-87532e/
+                                 -> outputs/official_benchmark/ (바이트 그대로, 추적)
+dev/evaluation/reports/          -> 지움. 3f2edee 까지의 git 이력에 있다
+```
+
+새 실행은 `outputs/local_benchmark/<YYYYMMDD-HHMMSS>-<정답표>` 에 남고 .gitignore 다. 같은 초에 또 뜨면
+`-2` · `-3` 을 붙인다(mkdir exist_ok=False 로 자리를 잡는다). 기준으로 남길 것은 사람이 official 로 옮긴다.
+
+**0918 의 219 발화 raw 실행 기록(20260918-161110-test_suite_v2-e2cf28)은 지웠다.** 그 숫자는 아래
+0918 항목들에만 남는다. 아래 09-21 항목의 `dev/evaluation/reports/…canonical-run.md` 도 이제 git 이력에만 있다.
+
+정답표 두 벌의 YAML 머리 주석은 아직 옛 이름(`suite.py` · `spoken_audit`)을 가리킨다. 파일 바이트를 그대로
+두는 것이 옮기기의 조건이라 고치지 않았다. 다음에 정답표 내용을 고칠 때 함께 고친다.
+
+같은 가짜 resolve 로 옛 runner 와 새 run_evaluation 을 맞댄 결과: 판정 · 합계 · 지표 · 요약 글 전부 같음
+(다른 것은 정답표 경로와 materialize 가 박는 부르는 순간의 시각뿐). 기준 벤치마크를 줄에서 다시 세도 188/203.
+
 ### 2026-09-21 · 테스트 세트 v2(203 발화)의 기준 실측 — 평가 자산을 dev/evaluation 아래로 모으고 한 번만 쟀다
 
 환경 vLLM solar-open2-250b · 192.168.68.231:18000 · resolve 역할 v1(prompt v1 · schema v1, 얼림) ·
