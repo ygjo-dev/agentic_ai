@@ -1,0 +1,1878 @@
+{
+ "meta": {
+  "result_version": 3,
+  "run_id": "20260918-161110-test_suite_v2-e2cf28",
+  "suite": {
+   "path": "dev/evaluation/test_suite_v2.yaml",
+   "name": "test_suite_v2",
+   "version": 2,
+   "sha256": "50244e5bb343245cc6cab024f370e506ec4685baed8cdcd5e30bee600b32095f",
+   "case_count": 219,
+   "group_labels": [
+    "말한 것",
+    "찍은 지점",
+    "보이는 범위",
+    "범위 밖"
+   ],
+   "selected_case_ids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    146,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    154,
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219
+   ],
+   "dataset_id": "test_suite_v2",
+   "label": "테스트 세트 v2"
+  },
+  "runs": 1,
+  "resolver": "api /resolve",
+  "role": "역할 resolve v1 · solar-open2-250b (vllm) · prompt v1 · response_schema v1",
+  "conditions": {
+   "model": "solar-open2-250b",
+   "provider": "vllm",
+   "role_version": 1,
+   "inference": {
+    "timeout": 180
+   },
+   "prompt": {
+    "path": "llm_engine/roles/resolve/prompts/v1.yaml",
+    "sha256": "85ed04e9358dc3e2dd3cb369c0efa8d6072056244aa64894b38eea57e92dfcb3"
+   },
+   "response_schema": {
+    "path": "llm_engine/roles/resolve/response_schemas/v1.yaml",
+    "sha256": "22a9a42f1afff661c2e6f810b2ee344c99988b77131ec64d47575f1ee1659c31"
+   },
+   "menu": {
+    "path": "KRRI_Ontology_Registry/menu/menu.yaml",
+    "sha256": "83fdaf1b84d9e5e29232778570e7d70a4b33c5ad96bad646f840c5858a77f96a"
+   }
+  },
+  "functions": {
+   "recipe_001": "오송역처럼 장소 이름을 말하면, 그곳이 지도 어디인지 위경도 좌표로 짚어 준다. 좌표까지만 주고 끝낸다.",
+   "recipe_002": "경부선처럼 철도 구간 이름을 말하면, 그 구간 선로가 어떻게 놓였는지 선형 좌표만 준다. 노선 목록도 역 목록도 안 준다.",
+   "recipe_003": "어떤 철도 노선이 지나는지 알고 싶을 때. 오송역처럼 역 이름이나 경부선처럼 노선 이름을 말하면, 그 이름으로 철도 노선과 역을 조회해 알려준다.",
+   "recipe_004": "오송 테스트트랙의 터널·교량·선로처럼 시설물 이름을 말하면, 그것을 디지털 트윈 화면에 띄워 보여준다.",
+   "recipe_005": "충청북도·청주시처럼 행정구역 이름 자체나 코드를 그대로 대면, 그 이름으로 행정경계를 조회해 준다. 시도·시군구·읍면동 어느 층위든 이름 자체를 말한 자리다.",
+   "recipe_008": "청주처럼 지역 이름이나 시도 약칭, 코드를 대면, 거기 제22대 국회의원 선거구가 무엇무엇인지 이름으로 목록을 뽑는다.",
+   "recipe_010": "청주나 민주당처럼 지역·당선인·정당을 대면, 제22대 국회의원이 내건 공약 자체를 검색해 보여준다.",
+   "recipe_012": "사람이 몇 명이나 사는지 알고 싶을 때. 시군구처럼 지역 단위나 이름, 코드를 대면, 지역별 인구 수와 순위를 집계해 낸다.",
+   "recipe_014": "철도안전법처럼 문서 이름이나 그 안에 나올 말을 대면, 지식베이스에 든 문서 본문에서 찾아 준다.",
+   "recipe_015": "충북 청주서원처럼 선거구 이름이나 선거구 코드를 집어 말하면, 그 제22대 국회의원 선거구 한 곳을 조회해 준다. 당선인·정당·공약은 주지 않는다.",
+   "recipe_016": "청주시 흥덕구처럼 행정구역 이름이나 선거구 코드를 집어 말하면, 그 제22대 국회의원 선거구 한 곳을 당선인·정당·공약까지 붙여 조회해 준다.",
+   "recipe_018": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리가 어느 시·군·구·동인지와 행정구역 코드를 알려준다.",
+   "recipe_019": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 둘레에 있는 CCTV 를 보여준다.",
+   "recipe_020": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리가 무슨 제22대 국회의원 선거구에 드는지 선거구 이름만 알려준다.",
+   "recipe_021": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 제22대 국회의원 선거구의 당선인이 누구고 어느 정당인지 알려준다. 공약은 몇 건인지 세기만 하고 공약 내용은 주지 않는다.",
+   "recipe_022": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 제22대 국회의원 선거구가 내건 공약을 분야로 걸러 보여준다.",
+   "recipe_024": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면에 걸친 행정구역 경계를 이름·코드·레이어로 조회해 준다.",
+   "recipe_026": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면 안에 있는 CCTV 를 보여준다.",
+   "recipe_027": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면에 걸친 철도 노선과 역을 조회해 알려준다.",
+   "recipe_029": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면에 걸친 제22대 국회의원 공약을 당선인·정당·분야로 검색한다.",
+   "recipe_031": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면 안에 사람이 몇 명이나 사는지 인구 수와 순위를 낸다.",
+   "recipe_033": "오송역처럼 역·시설같이 행정구역이 아닌 곳을 말하면, 먼저 그 좌표를 찾고 그 자리 둘레의 행정구역 경계를 조회해 준다.",
+   "recipe_034": "오송역처럼 장소 이름을 말하면, 그곳이 어느 시·군·구·동인지와 행정구역 코드를 알려준다.",
+   "recipe_036": "오송역처럼 장소 이름을 말하면, 그 자리 둘레에 있는 CCTV 를 보여준다.",
+   "recipe_038": "오송역처럼 장소 이름을 말하면, 그곳이 무슨 제22대 국회의원 선거구에 드는지 선거구 이름만 알려준다.",
+   "recipe_040": "오송역처럼 장소 이름을 말하면, 그곳 제22대 국회의원 선거구의 당선인이 누구고 어느 정당인지 알려준다. 공약은 몇 건인지 세기만 하고 공약 내용은 주지 않는다.",
+   "recipe_042": "오송역처럼 장소 이름을 말하면, 그곳 제22대 국회의원 선거구가 내건 공약을 분야로 걸러 보여준다.",
+   "recipe_045": "오송역처럼 장소 이름을 말하면, 그 둘레에 사람이 몇 명이나 사는지 인구 수와 순위를 낸다.",
+   "recipe_049": "경부선처럼 철도 노선이나 구간 이름을 말하면, 그 선로를 따라가며 CCTV 를 보여준다.",
+   "recipe_052": "전기차 충전소를 이름·주소·운영기관으로 검색한 다음, 그 충전소의 충전기가 몇 대 비어 있는지까지 자세히 알려준다.",
+   "recipe_054": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 행정구역의 연령대별 남녀 인구 구성을 알려준다.",
+   "recipe_055": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 행정구역에서 달마다 인구가 얼마나 늘고 줄었는지 알려준다.",
+   "recipe_056": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면 안 전기차 충전소를 찾아 충전기가 몇 대 비어 있는지까지 자세히 알려준다.",
+   "recipe_058": "오송역처럼 장소 이름을 말하면, 그곳 행정구역의 연령대별 남녀 인구 구성을 알려준다.",
+   "recipe_059": "오송역처럼 장소 이름을 말하면, 그곳 행정구역에서 달마다 인구가 얼마나 늘고 줄었는지 알려준다.",
+   "recipe_060": "오송역 근처처럼 장소 이름과 그 둘레를 함께 말하면, 그 자리 둘레의 전기차 충전소를 찾아 충전기가 몇 대 비어 있는지까지 자세히 알려준다.",
+   "recipe_061": "오송역처럼 출발할 장소 이름을 말하면, 그곳에서 걸어서나 자전거·차·대중교통으로 말한 시간 안에 닿는 범위를 계산해 지도에 그려 준다. 발화에 출발할 장소 이름이 없으면 쓰지 않는다.",
+   "recipe_062": "출발지에서 도착지까지 가는 길이 필요할 때. 찍어 둔 자리에서 이름을 말한 곳까지 대중교통으로 어떻게 가는지, 갈아타는 곳과 걸리는 시간을 알려준다.",
+   "recipe_063": "발화에 출발할 장소 이름이 없고 「여기」·「여기서」·「이 위치」·「선택한 지점」이라고 가리키면 그 자리에서 걸어서나 자전거·차·대중교통으로 말한 시간 안에 닿는 범위를 계산해 지도에 그려 준다."
+  },
+  "cooldown": {
+   "every": 0,
+   "seconds": 5.0
+  },
+  "context": {
+   "label": "both",
+   "payload": {
+    "view": {
+     "bbox": [
+      [
+       127.1598,
+       36.4853
+      ],
+      [
+       127.4956,
+       36.7547
+      ]
+     ]
+    },
+    "selectedLocation": {
+     "lon": 127.3277,
+     "lat": 36.62,
+     "label": "관심 지점",
+     "source": "map-right-click"
+    }
+   }
+  },
+  "materialize": true,
+  "materialize_now": "2026-09-18T16:11:10.260482+09:00",
+  "artifact_root": "/home/ubuntu/source/agentic_ai/KRRI_Ontology_Registry",
+  "git_head": "2010a92",
+  "started_at": "2026-09-18T16:11:10.260482+09:00",
+  "finished_at": "2026-09-18T16:33:43.479402+09:00",
+  "elapsed_s": 1353.2,
+  "stopped": null,
+  "gpu": {
+   "available": true,
+   "gpus": [
+    {
+     "index": 0,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    },
+    {
+     "index": 1,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    },
+    {
+     "index": 2,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    },
+    {
+     "index": 3,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition"
+    }
+   ],
+   "start_temp": 37,
+   "max_temp": 70,
+   "end_temp": 70,
+   "max_util": 99,
+   "max_fan": 39,
+   "pauses": 14,
+   "pause_seconds": 635.4,
+   "thermal_throttle": false,
+   "samples": 120,
+   "gate": true,
+   "policy": {
+    "start_max_util": 5,
+    "start_max_temp": 58,
+    "every": 3,
+    "sleep_s": 5.0,
+    "pause_at": 66,
+    "resume_at": 58,
+    "end_cooldown_above": 62,
+    "poll_s": 15.0,
+    "max_wait_s": 1800.0
+   },
+   "notes": [],
+   "log": [
+    {
+     "at": "2026-09-18T16:11:10+09:00",
+     "phase": "start",
+     "done": 0,
+     "temp": 37,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:11:19+09:00",
+     "phase": "during",
+     "done": 3,
+     "temp": 41,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:11:28+09:00",
+     "phase": "during",
+     "done": 6,
+     "temp": 43,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:11:39+09:00",
+     "phase": "during",
+     "done": 9,
+     "temp": 46,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:11:49+09:00",
+     "phase": "during",
+     "done": 12,
+     "temp": 48,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:11:59+09:00",
+     "phase": "during",
+     "done": 15,
+     "temp": 50,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:12:09+09:00",
+     "phase": "during",
+     "done": 18,
+     "temp": 52,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:12:19+09:00",
+     "phase": "during",
+     "done": 21,
+     "temp": 54,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:12:28+09:00",
+     "phase": "during",
+     "done": 24,
+     "temp": 55,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:12:38+09:00",
+     "phase": "during",
+     "done": 27,
+     "temp": 57,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:12:49+09:00",
+     "phase": "during",
+     "done": 30,
+     "temp": 59,
+     "util": 0,
+     "fan": 30,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:12:59+09:00",
+     "phase": "during",
+     "done": 33,
+     "temp": 61,
+     "util": 0,
+     "fan": 31,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:13:09+09:00",
+     "phase": "during",
+     "done": 36,
+     "temp": 62,
+     "util": 0,
+     "fan": 33,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:13:19+09:00",
+     "phase": "during",
+     "done": 39,
+     "temp": 63,
+     "util": 0,
+     "fan": 34,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:13:29+09:00",
+     "phase": "during",
+     "done": 42,
+     "temp": 64,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:13:39+09:00",
+     "phase": "during",
+     "done": 45,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:13:50+09:00",
+     "phase": "during",
+     "done": 48,
+     "temp": 67,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:14:05+09:00",
+     "phase": "pause",
+     "done": 48,
+     "temp": 63,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:14:20+09:00",
+     "phase": "pause",
+     "done": 48,
+     "temp": 60,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:14:35+09:00",
+     "phase": "pause",
+     "done": 48,
+     "temp": 57,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:14:46+09:00",
+     "phase": "during",
+     "done": 51,
+     "temp": 61,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:14:56+09:00",
+     "phase": "during",
+     "done": 54,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:15:06+09:00",
+     "phase": "during",
+     "done": 57,
+     "temp": 64,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:15:17+09:00",
+     "phase": "during",
+     "done": 60,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:15:32+09:00",
+     "phase": "pause",
+     "done": 60,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:15:47+09:00",
+     "phase": "pause",
+     "done": 60,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:16:02+09:00",
+     "phase": "pause",
+     "done": 60,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:16:12+09:00",
+     "phase": "during",
+     "done": 63,
+     "temp": 61,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:16:22+09:00",
+     "phase": "during",
+     "done": 66,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:16:32+09:00",
+     "phase": "during",
+     "done": 69,
+     "temp": 65,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:16:41+09:00",
+     "phase": "during",
+     "done": 72,
+     "temp": 66,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:16:56+09:00",
+     "phase": "pause",
+     "done": 72,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:17:11+09:00",
+     "phase": "pause",
+     "done": 72,
+     "temp": 60,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:17:26+09:00",
+     "phase": "pause",
+     "done": 72,
+     "temp": 58,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:17:36+09:00",
+     "phase": "during",
+     "done": 75,
+     "temp": 61,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:17:46+09:00",
+     "phase": "during",
+     "done": 78,
+     "temp": 63,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:17:56+09:00",
+     "phase": "during",
+     "done": 81,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:18:06+09:00",
+     "phase": "during",
+     "done": 84,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:18:22+09:00",
+     "phase": "pause",
+     "done": 84,
+     "temp": 64,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:18:37+09:00",
+     "phase": "pause",
+     "done": 84,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:18:52+09:00",
+     "phase": "pause",
+     "done": 84,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:19:02+09:00",
+     "phase": "during",
+     "done": 87,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:19:12+09:00",
+     "phase": "during",
+     "done": 90,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:19:21+09:00",
+     "phase": "during",
+     "done": 93,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:19:31+09:00",
+     "phase": "during",
+     "done": 96,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:19:46+09:00",
+     "phase": "pause",
+     "done": 96,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:20:02+09:00",
+     "phase": "pause",
+     "done": 96,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:20:17+09:00",
+     "phase": "pause",
+     "done": 96,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:20:27+09:00",
+     "phase": "during",
+     "done": 99,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:20:37+09:00",
+     "phase": "during",
+     "done": 102,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:20:46+09:00",
+     "phase": "during",
+     "done": 105,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:20:57+09:00",
+     "phase": "during",
+     "done": 108,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:21:12+09:00",
+     "phase": "pause",
+     "done": 108,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:21:27+09:00",
+     "phase": "pause",
+     "done": 108,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:21:42+09:00",
+     "phase": "pause",
+     "done": 108,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:21:52+09:00",
+     "phase": "during",
+     "done": 111,
+     "temp": 61,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:22:02+09:00",
+     "phase": "during",
+     "done": 114,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:22:12+09:00",
+     "phase": "during",
+     "done": 117,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:22:22+09:00",
+     "phase": "during",
+     "done": 120,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:22:37+09:00",
+     "phase": "pause",
+     "done": 120,
+     "temp": 64,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:22:52+09:00",
+     "phase": "pause",
+     "done": 120,
+     "temp": 61,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:23:07+09:00",
+     "phase": "pause",
+     "done": 120,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:23:17+09:00",
+     "phase": "during",
+     "done": 123,
+     "temp": 61,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:23:27+09:00",
+     "phase": "during",
+     "done": 126,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:23:36+09:00",
+     "phase": "during",
+     "done": 129,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:23:46+09:00",
+     "phase": "during",
+     "done": 132,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:24:01+09:00",
+     "phase": "pause",
+     "done": 132,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:24:16+09:00",
+     "phase": "pause",
+     "done": 132,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:24:32+09:00",
+     "phase": "pause",
+     "done": 132,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:24:42+09:00",
+     "phase": "during",
+     "done": 135,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:24:52+09:00",
+     "phase": "during",
+     "done": 138,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:25:01+09:00",
+     "phase": "during",
+     "done": 141,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:25:11+09:00",
+     "phase": "during",
+     "done": 144,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:25:26+09:00",
+     "phase": "pause",
+     "done": 144,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:25:41+09:00",
+     "phase": "pause",
+     "done": 144,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:25:56+09:00",
+     "phase": "pause",
+     "done": 144,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:26:06+09:00",
+     "phase": "during",
+     "done": 147,
+     "temp": 61,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:26:15+09:00",
+     "phase": "during",
+     "done": 150,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:26:25+09:00",
+     "phase": "during",
+     "done": 153,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:26:35+09:00",
+     "phase": "during",
+     "done": 156,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:26:51+09:00",
+     "phase": "pause",
+     "done": 156,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:27:06+09:00",
+     "phase": "pause",
+     "done": 156,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:27:21+09:00",
+     "phase": "pause",
+     "done": 156,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:27:31+09:00",
+     "phase": "during",
+     "done": 159,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:27:42+09:00",
+     "phase": "during",
+     "done": 162,
+     "temp": 64,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:27:52+09:00",
+     "phase": "during",
+     "done": 165,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:28:02+09:00",
+     "phase": "during",
+     "done": 168,
+     "temp": 67,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:28:17+09:00",
+     "phase": "pause",
+     "done": 168,
+     "temp": 64,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:28:32+09:00",
+     "phase": "pause",
+     "done": 168,
+     "temp": 61,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:28:47+09:00",
+     "phase": "pause",
+     "done": 168,
+     "temp": 58,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:28:57+09:00",
+     "phase": "during",
+     "done": 171,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:29:07+09:00",
+     "phase": "during",
+     "done": 174,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:29:17+09:00",
+     "phase": "during",
+     "done": 177,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:29:26+09:00",
+     "phase": "during",
+     "done": 180,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:29:41+09:00",
+     "phase": "pause",
+     "done": 180,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:29:56+09:00",
+     "phase": "pause",
+     "done": 180,
+     "temp": 60,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:30:12+09:00",
+     "phase": "pause",
+     "done": 180,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:30:22+09:00",
+     "phase": "during",
+     "done": 183,
+     "temp": 62,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:30:32+09:00",
+     "phase": "during",
+     "done": 186,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:30:41+09:00",
+     "phase": "during",
+     "done": 189,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:30:50+09:00",
+     "phase": "during",
+     "done": 192,
+     "temp": 66,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:31:06+09:00",
+     "phase": "pause",
+     "done": 192,
+     "temp": 63,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:31:21+09:00",
+     "phase": "pause",
+     "done": 192,
+     "temp": 60,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:31:36+09:00",
+     "phase": "pause",
+     "done": 192,
+     "temp": 58,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:31:46+09:00",
+     "phase": "during",
+     "done": 195,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:31:54+09:00",
+     "phase": "during",
+     "done": 198,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:32:03+09:00",
+     "phase": "during",
+     "done": 201,
+     "temp": 64,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:32:13+09:00",
+     "phase": "during",
+     "done": 204,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:32:23+09:00",
+     "phase": "during",
+     "done": 207,
+     "temp": 67,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:32:38+09:00",
+     "phase": "pause",
+     "done": 207,
+     "temp": 64,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:32:53+09:00",
+     "phase": "pause",
+     "done": 207,
+     "temp": 61,
+     "util": 0,
+     "fan": 39,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:33:08+09:00",
+     "phase": "pause",
+     "done": 207,
+     "temp": 58,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:33:19+09:00",
+     "phase": "during",
+     "done": 210,
+     "temp": 62,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:33:28+09:00",
+     "phase": "during",
+     "done": 213,
+     "temp": 63,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:33:38+09:00",
+     "phase": "during",
+     "done": 216,
+     "temp": 65,
+     "util": 0,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:33:43+09:00",
+     "phase": "end",
+     "done": 219,
+     "temp": 70,
+     "util": 99,
+     "fan": 37,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:33:58+09:00",
+     "phase": "cooldown",
+     "done": 219,
+     "temp": 65,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:34:13+09:00",
+     "phase": "cooldown",
+     "done": 219,
+     "temp": 61,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:34:28+09:00",
+     "phase": "cooldown",
+     "done": 219,
+     "temp": 59,
+     "util": 0,
+     "fan": 38,
+     "throttle": false
+    },
+    {
+     "at": "2026-09-18T16:34:43+09:00",
+     "phase": "cooldown",
+     "done": 219,
+     "temp": 57,
+     "util": 0,
+     "fan": 36,
+     "throttle": false
+    }
+   ]
+  }
+ },
+ "summary": {
+  "groups": {
+   "말한 것": {
+    "runs": 120,
+    "in_scope_runs": 120,
+    "HIT": 110,
+    "NEAR": 9,
+    "MISS": 1,
+    "UNATTACHED": 0,
+    "spoken_hits": 117,
+    "spoken_runs": 120,
+    "field_hits": 152,
+    "field_runs": 155,
+    "passed": 107,
+    "in_scope_passed": 107,
+    "oos_runs": 0,
+    "oos_passed": 0,
+    "oos_categories": {},
+    "failure_stages": {
+     "function": 10,
+     "input": 3,
+     "scope": 0,
+     "error": 0
+    },
+    "materialize": {
+     "NOT_SELECTED": 9,
+     "READY": 111
+    },
+    "in_scope_ready": 111,
+    "in_scope_materialized": 120,
+    "errors": 0
+   },
+   "찍은 지점": {
+    "runs": 45,
+    "in_scope_runs": 45,
+    "HIT": 45,
+    "NEAR": 0,
+    "MISS": 0,
+    "UNATTACHED": 0,
+    "spoken_hits": 25,
+    "spoken_runs": 25,
+    "field_hits": 30,
+    "field_runs": 30,
+    "passed": 45,
+    "in_scope_passed": 45,
+    "oos_runs": 0,
+    "oos_passed": 0,
+    "oos_categories": {},
+    "failure_stages": {
+     "function": 0,
+     "input": 0,
+     "scope": 0,
+     "error": 0
+    },
+    "materialize": {
+     "READY": 45
+    },
+    "in_scope_ready": 45,
+    "in_scope_materialized": 45,
+    "errors": 0
+   },
+   "보이는 범위": {
+    "runs": 30,
+    "in_scope_runs": 30,
+    "HIT": 29,
+    "NEAR": 1,
+    "MISS": 0,
+    "UNATTACHED": 0,
+    "spoken_hits": 5,
+    "spoken_runs": 5,
+    "field_hits": 5,
+    "field_runs": 5,
+    "passed": 29,
+    "in_scope_passed": 29,
+    "oos_runs": 0,
+    "oos_passed": 0,
+    "oos_categories": {},
+    "failure_stages": {
+     "function": 1,
+     "input": 0,
+     "scope": 0,
+     "error": 0
+    },
+    "materialize": {
+     "NOT_SELECTED": 1,
+     "READY": 29
+    },
+    "in_scope_ready": 29,
+    "in_scope_materialized": 30,
+    "errors": 0
+   },
+   "범위 밖": {
+    "runs": 24,
+    "in_scope_runs": 0,
+    "HIT": 0,
+    "NEAR": 0,
+    "MISS": 0,
+    "UNATTACHED": 0,
+    "spoken_hits": 0,
+    "spoken_runs": 0,
+    "field_hits": 0,
+    "field_runs": 0,
+    "passed": 15,
+    "in_scope_passed": 0,
+    "oos_runs": 24,
+    "oos_passed": 15,
+    "oos_categories": {
+     "ambiguous": {
+      "runs": 8,
+      "passed": 2
+     },
+     "insufficient": {
+      "runs": 8,
+      "passed": 6
+     },
+     "unsupported": {
+      "runs": 8,
+      "passed": 7
+     }
+    },
+    "failure_stages": {
+     "function": 0,
+     "input": 0,
+     "scope": 9,
+     "error": 0
+    },
+    "materialize": {
+     "MISSING_ARGUMENT": 7,
+     "NOT_SELECTED": 12,
+     "READY": 5
+    },
+    "in_scope_ready": 0,
+    "in_scope_materialized": 0,
+    "errors": 0
+   }
+  },
+  "total": {
+   "runs": 219,
+   "in_scope_runs": 195,
+   "HIT": 184,
+   "NEAR": 10,
+   "MISS": 1,
+   "UNATTACHED": 0,
+   "spoken_hits": 147,
+   "spoken_runs": 150,
+   "field_hits": 187,
+   "field_runs": 190,
+   "passed": 196,
+   "in_scope_passed": 181,
+   "oos_runs": 24,
+   "oos_passed": 15,
+   "oos_categories": {
+    "ambiguous": {
+     "runs": 8,
+     "passed": 2
+    },
+    "insufficient": {
+     "runs": 8,
+     "passed": 6
+    },
+    "unsupported": {
+     "runs": 8,
+     "passed": 7
+    }
+   },
+   "failure_stages": {
+    "function": 11,
+    "input": 3,
+    "scope": 9,
+    "error": 0
+   },
+   "materialize": {
+    "MISSING_ARGUMENT": 7,
+    "NOT_SELECTED": 22,
+    "READY": 190
+   },
+   "in_scope_ready": 185,
+   "in_scope_materialized": 195,
+   "errors": 0
+  },
+  "metrics": {
+   "selection": {
+    "correct": 184,
+    "total": 195
+   },
+   "semantic_fields": {
+    "correct": 187,
+    "total": 190
+   },
+   "semantic_cases": {
+    "correct": 147,
+    "total": 150
+   },
+   "joint": {
+    "correct": 181,
+    "total": 195
+   },
+   "oos": {
+    "correct": 15,
+    "total": 24
+   },
+   "ready": {
+    "correct": 185,
+    "total": 195
+   }
+  },
+  "latency": {
+   "count": 219,
+   "min": 1.066,
+   "median": 1.637,
+   "p95": 1.882,
+   "max": 2.182,
+   "total": 353.19
+  },
+  "recipes": {
+   "recipe_001": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_002": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_003": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_004": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_005": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_008": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_010": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_012": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_014": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_015": {
+    "runs": 5,
+    "passed": 1,
+    "hit": 1
+   },
+   "recipe_016": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_018": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_019": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_020": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_021": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_022": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_024": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_026": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_027": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_029": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_031": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_033": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 5
+   },
+   "recipe_034": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_036": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_038": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_040": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_042": {
+    "runs": 5,
+    "passed": 3,
+    "hit": 3
+   },
+   "recipe_045": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_049": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_052": {
+    "runs": 5,
+    "passed": 2,
+    "hit": 4
+   },
+   "recipe_054": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_055": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_056": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_058": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_059": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_060": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_061": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_062": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_063": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   }
+  }
+ }
+}

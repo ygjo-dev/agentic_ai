@@ -6,9 +6,9 @@
     python dev/evaluation/runner.py --no-materialize       /resolve 만
     python dev/evaluation/runner.py --out 결과.json        결과 파일 자리
     python dev/evaluation/runner.py --cooldown-every 6     6번마다 5초 쉼 (발열 · 팬 소음)
-    python dev/evaluation/runner.py --suite dev/evaluation/test_suite_v2.yaml --gpu gate
+    python dev/evaluation/runner.py --suite dev/evaluation/test_suites/test_suite_v2.yaml --gpu gate
                                                            테스트 세트 v2 · 사무실 조용 정책(박자만, 기록 안 함)
-    python dev/evaluation/runner.py --no-save              Test Run 을 test_runs 에 안 남김
+    python dev/evaluation/runner.py --no-save              Test Run 을 dev/evaluation/test_runs 에 안 남김
 
 화면(app/ui 테스트 탭)은 run_dataset 으로 같은 run 을 부른다. 판정 · 결과 모양이 창구와 같다.
 
@@ -32,7 +32,8 @@ VRAM)가 meta.environment 에 실린다. monitor 는 부르는 박자만 조절�
 **MCP 도구를 부르지 않는다.** `/resolve` 를 부르고, 고른 recipe 를 workflow_materializer 로 KRRI
 native workflow 까지만 만든다. Gateway 실행은 `check_resolve --execute` 의 일이다.
 
-결과는 `dev/tools/sweep_out/` 에 둔다 (`.gitignore`). Test Run 은 그 아래 `test_runs/<run_id>/` 다.
+`--out` 의 결과 JSON 한 장은 `dev/tools/sweep_out/` 에 둔다 (`.gitignore`). Test Run 은 저장소가 들고 있는
+`dev/evaluation/test_runs/<run_id>/` 다 — 여기서 git 을 부르지 않고 파일만 남긴다.
 """
 
 import argparse
@@ -820,7 +821,7 @@ def _selfcheck_suite(suite: dict, anchor: bool) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="정답표로 발화 해석을 재고 JSON 결과 한 벌을 남긴다.")
-    parser.add_argument("--suite", default=str(suite_module.SUITE_PATH), help="정답표 YAML (기본 dev/evaluation/resolve_regression.yaml)")
+    parser.add_argument("--suite", default=str(suite_module.SUITE_PATH), help="정답표 YAML (기본 dev/evaluation/test_suites/test_suite_v1.yaml)")
     parser.add_argument("--runs", type=int, default=1, help="발화마다 몇 번 (기본 1)")
     parser.add_argument("--only", default="", help="돌릴 발화 번호. 예: 2,4")
     parser.add_argument(
@@ -838,7 +839,7 @@ def main() -> int:
         help="record 는 실행 하드웨어(GPU 이름 · VRAM)만 적음, gate 는 거기에 사무실 조용 정책"
              "(dev/evaluation/gpu.POLICY)으로 쉬고 멈춤, off 는 둘 다 안 함 (기본 record)",
     )
-    parser.add_argument("--no-save", action="store_true", help="Test Run 을 dev/tools/sweep_out/test_runs 에 안 남김")
+    parser.add_argument("--no-save", action="store_true", help="Test Run 을 dev/evaluation/test_runs 에 안 남김")
     args = parser.parse_args()
 
     # --only 와 같은 자리에서 막는다. 정답표를 읽기 전에 죽어야 오래 도는 회귀평가가

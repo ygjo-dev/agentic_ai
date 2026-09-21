@@ -1,0 +1,750 @@
+{
+ "meta": {
+  "result_version": 3,
+  "run_id": "20260921-090538-test_suite_v2-87532e",
+  "suite": {
+   "path": "dev/evaluation/test_suites/test_suite_v2.yaml",
+   "name": "test_suite_v2",
+   "version": 2,
+   "sha256": "e032664fd667c15873ba58705e0c66d75518588601f2e340effa410aca5e2db7",
+   "case_count": 203,
+   "group_labels": [
+    "말한 것",
+    "찍은 지점",
+    "보이는 범위",
+    "범위 밖"
+   ],
+   "selected_case_ids": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38,
+    39,
+    40,
+    41,
+    42,
+    43,
+    44,
+    45,
+    46,
+    47,
+    48,
+    49,
+    50,
+    51,
+    52,
+    53,
+    54,
+    55,
+    56,
+    57,
+    58,
+    59,
+    60,
+    61,
+    62,
+    63,
+    64,
+    65,
+    66,
+    67,
+    68,
+    69,
+    70,
+    71,
+    72,
+    73,
+    74,
+    75,
+    76,
+    77,
+    78,
+    79,
+    80,
+    81,
+    82,
+    83,
+    84,
+    85,
+    86,
+    87,
+    88,
+    89,
+    90,
+    91,
+    92,
+    93,
+    94,
+    95,
+    96,
+    97,
+    98,
+    99,
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119,
+    120,
+    121,
+    122,
+    123,
+    124,
+    125,
+    126,
+    127,
+    128,
+    129,
+    130,
+    131,
+    132,
+    133,
+    134,
+    135,
+    136,
+    137,
+    138,
+    139,
+    140,
+    141,
+    142,
+    143,
+    144,
+    145,
+    146,
+    147,
+    148,
+    149,
+    150,
+    151,
+    152,
+    153,
+    154,
+    155,
+    156,
+    157,
+    158,
+    159,
+    160,
+    161,
+    162,
+    163,
+    164,
+    165,
+    166,
+    167,
+    168,
+    169,
+    170,
+    171,
+    172,
+    173,
+    174,
+    175,
+    176,
+    177,
+    178,
+    179,
+    180,
+    181,
+    182,
+    183,
+    184,
+    185,
+    186,
+    187,
+    188,
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    197,
+    198,
+    199,
+    200,
+    201,
+    202,
+    203
+   ],
+   "dataset_id": "test_suite_v2",
+   "label": "테스트 세트 v2"
+  },
+  "runs": 1,
+  "resolver": "api /resolve",
+  "role": "역할 resolve v1 · solar-open2-250b (vllm) · prompt v1 · response_schema v1",
+  "conditions": {
+   "model": "solar-open2-250b",
+   "provider": "vllm",
+   "role_version": 1,
+   "inference": {
+    "timeout": 180
+   },
+   "request": {
+    "reasoning_effort": "none",
+    "temperature": 0,
+    "seed": 0,
+    "max_tokens": 1024
+   },
+   "prompt": {
+    "path": "llm_engine/roles/resolve/prompts/v1.yaml",
+    "sha256": "85ed04e9358dc3e2dd3cb369c0efa8d6072056244aa64894b38eea57e92dfcb3"
+   },
+   "response_schema": {
+    "path": "llm_engine/roles/resolve/response_schemas/v1.yaml",
+    "sha256": "22a9a42f1afff661c2e6f810b2ee344c99988b77131ec64d47575f1ee1659c31"
+   },
+   "menu": {
+    "path": "KRRI_Ontology_Registry/menu/menu.yaml",
+    "sha256": "83fdaf1b84d9e5e29232778570e7d70a4b33c5ad96bad646f840c5858a77f96a"
+   }
+  },
+  "functions": {
+   "recipe_001": "오송역처럼 장소 이름을 말하면, 그곳이 지도 어디인지 위경도 좌표로 짚어 준다. 좌표까지만 주고 끝낸다.",
+   "recipe_002": "경부선처럼 철도 구간 이름을 말하면, 그 구간 선로가 어떻게 놓였는지 선형 좌표만 준다. 노선 목록도 역 목록도 안 준다.",
+   "recipe_003": "어떤 철도 노선이 지나는지 알고 싶을 때. 오송역처럼 역 이름이나 경부선처럼 노선 이름을 말하면, 그 이름으로 철도 노선과 역을 조회해 알려준다.",
+   "recipe_004": "오송 테스트트랙의 터널·교량·선로처럼 시설물 이름을 말하면, 그것을 디지털 트윈 화면에 띄워 보여준다.",
+   "recipe_005": "충청북도·청주시처럼 행정구역 이름 자체나 코드를 그대로 대면, 그 이름으로 행정경계를 조회해 준다. 시도·시군구·읍면동 어느 층위든 이름 자체를 말한 자리다.",
+   "recipe_008": "청주처럼 지역 이름이나 시도 약칭, 코드를 대면, 거기 제22대 국회의원 선거구가 무엇무엇인지 이름으로 목록을 뽑는다.",
+   "recipe_010": "청주나 민주당처럼 지역·당선인·정당을 대면, 제22대 국회의원이 내건 공약 자체를 검색해 보여준다.",
+   "recipe_012": "사람이 몇 명이나 사는지 알고 싶을 때. 시군구처럼 지역 단위나 이름, 코드를 대면, 지역별 인구 수와 순위를 집계해 낸다.",
+   "recipe_014": "철도안전법처럼 문서 이름이나 그 안에 나올 말을 대면, 지식베이스에 든 문서 본문에서 찾아 준다.",
+   "recipe_015": "충북 청주서원처럼 선거구 이름이나 선거구 코드를 집어 말하면, 그 제22대 국회의원 선거구 한 곳을 조회해 준다. 당선인·정당·공약은 주지 않는다.",
+   "recipe_016": "청주시 흥덕구처럼 행정구역 이름이나 선거구 코드를 집어 말하면, 그 제22대 국회의원 선거구 한 곳을 당선인·정당·공약까지 붙여 조회해 준다.",
+   "recipe_018": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리가 어느 시·군·구·동인지와 행정구역 코드를 알려준다.",
+   "recipe_019": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 둘레에 있는 CCTV 를 보여준다.",
+   "recipe_020": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리가 무슨 제22대 국회의원 선거구에 드는지 선거구 이름만 알려준다.",
+   "recipe_021": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 제22대 국회의원 선거구의 당선인이 누구고 어느 정당인지 알려준다. 공약은 몇 건인지 세기만 하고 공약 내용은 주지 않는다.",
+   "recipe_022": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 제22대 국회의원 선거구가 내건 공약을 분야로 걸러 보여준다.",
+   "recipe_024": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면에 걸친 행정구역 경계를 이름·코드·레이어로 조회해 준다.",
+   "recipe_026": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면 안에 있는 CCTV 를 보여준다.",
+   "recipe_027": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면에 걸친 철도 노선과 역을 조회해 알려준다.",
+   "recipe_029": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면에 걸친 제22대 국회의원 공약을 당선인·정당·분야로 검색한다.",
+   "recipe_031": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면 안에 사람이 몇 명이나 사는지 인구 수와 순위를 낸다.",
+   "recipe_033": "오송역처럼 역·시설같이 행정구역이 아닌 곳을 말하면, 먼저 그 좌표를 찾고 그 자리 둘레의 행정구역 경계를 조회해 준다.",
+   "recipe_034": "오송역처럼 장소 이름을 말하면, 그곳이 어느 시·군·구·동인지와 행정구역 코드를 알려준다.",
+   "recipe_036": "오송역처럼 장소 이름을 말하면, 그 자리 둘레에 있는 CCTV 를 보여준다.",
+   "recipe_038": "오송역처럼 장소 이름을 말하면, 그곳이 무슨 제22대 국회의원 선거구에 드는지 선거구 이름만 알려준다.",
+   "recipe_040": "오송역처럼 장소 이름을 말하면, 그곳 제22대 국회의원 선거구의 당선인이 누구고 어느 정당인지 알려준다. 공약은 몇 건인지 세기만 하고 공약 내용은 주지 않는다.",
+   "recipe_042": "오송역처럼 장소 이름을 말하면, 그곳 제22대 국회의원 선거구가 내건 공약을 분야로 걸러 보여준다.",
+   "recipe_045": "오송역처럼 장소 이름을 말하면, 그 둘레에 사람이 몇 명이나 사는지 인구 수와 순위를 낸다.",
+   "recipe_049": "경부선처럼 철도 노선이나 구간 이름을 말하면, 그 선로를 따라가며 CCTV 를 보여준다.",
+   "recipe_052": "전기차 충전소를 이름·주소·운영기관으로 검색한 다음, 그 충전소의 충전기가 몇 대 비어 있는지까지 자세히 알려준다.",
+   "recipe_054": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 행정구역의 연령대별 남녀 인구 구성을 알려준다.",
+   "recipe_055": "발화에 장소 이름이 없고 「여기」·「이 위치」·「선택한 위치」라고 가리키면 그 자리 행정구역에서 달마다 인구가 얼마나 늘고 줄었는지 알려준다.",
+   "recipe_056": "「지금 보이는 곳」·「현재 화면」이라고 하면 그 화면 안 전기차 충전소를 찾아 충전기가 몇 대 비어 있는지까지 자세히 알려준다.",
+   "recipe_058": "오송역처럼 장소 이름을 말하면, 그곳 행정구역의 연령대별 남녀 인구 구성을 알려준다.",
+   "recipe_059": "오송역처럼 장소 이름을 말하면, 그곳 행정구역에서 달마다 인구가 얼마나 늘고 줄었는지 알려준다.",
+   "recipe_060": "오송역 근처처럼 장소 이름과 그 둘레를 함께 말하면, 그 자리 둘레의 전기차 충전소를 찾아 충전기가 몇 대 비어 있는지까지 자세히 알려준다.",
+   "recipe_061": "오송역처럼 출발할 장소 이름을 말하면, 그곳에서 걸어서나 자전거·차·대중교통으로 말한 시간 안에 닿는 범위를 계산해 지도에 그려 준다. 발화에 출발할 장소 이름이 없으면 쓰지 않는다.",
+   "recipe_062": "출발지에서 도착지까지 가는 길이 필요할 때. 찍어 둔 자리에서 이름을 말한 곳까지 대중교통으로 어떻게 가는지, 갈아타는 곳과 걸리는 시간을 알려준다.",
+   "recipe_063": "발화에 출발할 장소 이름이 없고 「여기」·「여기서」·「이 위치」·「선택한 지점」이라고 가리키면 그 자리에서 걸어서나 자전거·차·대중교통으로 말한 시간 안에 닿는 범위를 계산해 지도에 그려 준다."
+  },
+  "cooldown": {
+   "every": 0,
+   "seconds": 5.0
+  },
+  "context": {
+   "label": "both",
+   "payload": {
+    "view": {
+     "bbox": [
+      [
+       127.1598,
+       36.4853
+      ],
+      [
+       127.4956,
+       36.7547
+      ]
+     ]
+    },
+    "selectedLocation": {
+     "lon": 127.3277,
+     "lat": 36.62,
+     "label": "관심 지점",
+     "source": "map-right-click"
+    }
+   }
+  },
+  "materialize": true,
+  "materialize_now": "2026-09-21T09:05:38.039154+09:00",
+  "artifact_root": "/home/ubuntu/source/agentic_ai/KRRI_Ontology_Registry",
+  "git_head": "d24553c",
+  "started_at": "2026-09-21T09:05:38.039154+09:00",
+  "finished_at": "2026-09-21T09:31:37.047912+09:00",
+  "elapsed_s": 1559.0,
+  "stopped": null,
+  "environment": {
+   "available": true,
+   "gpus": [
+    {
+     "index": 0,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+     "memory_total_mib": 97887
+    },
+    {
+     "index": 1,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+     "memory_total_mib": 97887
+    },
+    {
+     "index": 2,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+     "memory_total_mib": 97887
+    },
+    {
+     "index": 3,
+     "name": "NVIDIA RTX PRO 6000 Blackwell Max-Q Workstation Edition",
+     "memory_total_mib": 97887
+    }
+   ]
+  }
+ },
+ "summary": {
+  "groups": {
+   "말한 것": {
+    "runs": 120,
+    "in_scope_runs": 120,
+    "HIT": 110,
+    "NEAR": 9,
+    "MISS": 1,
+    "UNATTACHED": 0,
+    "spoken_hits": 117,
+    "spoken_runs": 120,
+    "field_hits": 152,
+    "field_runs": 155,
+    "passed": 107,
+    "in_scope_passed": 107,
+    "oos_runs": 0,
+    "oos_passed": 0,
+    "oos_categories": {},
+    "failure_stages": {
+     "function": 10,
+     "input": 3,
+     "scope": 0,
+     "error": 0
+    },
+    "materialize": {
+     "NOT_SELECTED": 9,
+     "READY": 111
+    },
+    "in_scope_ready": 111,
+    "in_scope_materialized": 120,
+    "errors": 0
+   },
+   "찍은 지점": {
+    "runs": 45,
+    "in_scope_runs": 45,
+    "HIT": 45,
+    "NEAR": 0,
+    "MISS": 0,
+    "UNATTACHED": 0,
+    "spoken_hits": 25,
+    "spoken_runs": 25,
+    "field_hits": 30,
+    "field_runs": 30,
+    "passed": 45,
+    "in_scope_passed": 45,
+    "oos_runs": 0,
+    "oos_passed": 0,
+    "oos_categories": {},
+    "failure_stages": {
+     "function": 0,
+     "input": 0,
+     "scope": 0,
+     "error": 0
+    },
+    "materialize": {
+     "READY": 45
+    },
+    "in_scope_ready": 45,
+    "in_scope_materialized": 45,
+    "errors": 0
+   },
+   "보이는 범위": {
+    "runs": 30,
+    "in_scope_runs": 30,
+    "HIT": 29,
+    "NEAR": 1,
+    "MISS": 0,
+    "UNATTACHED": 0,
+    "spoken_hits": 5,
+    "spoken_runs": 5,
+    "field_hits": 5,
+    "field_runs": 5,
+    "passed": 29,
+    "in_scope_passed": 29,
+    "oos_runs": 0,
+    "oos_passed": 0,
+    "oos_categories": {},
+    "failure_stages": {
+     "function": 1,
+     "input": 0,
+     "scope": 0,
+     "error": 0
+    },
+    "materialize": {
+     "NOT_SELECTED": 1,
+     "READY": 29
+    },
+    "in_scope_ready": 29,
+    "in_scope_materialized": 30,
+    "errors": 0
+   },
+   "범위 밖": {
+    "runs": 8,
+    "in_scope_runs": 0,
+    "HIT": 0,
+    "NEAR": 0,
+    "MISS": 0,
+    "UNATTACHED": 0,
+    "spoken_hits": 0,
+    "spoken_runs": 0,
+    "field_hits": 0,
+    "field_runs": 0,
+    "passed": 7,
+    "in_scope_passed": 0,
+    "oos_runs": 8,
+    "oos_passed": 7,
+    "oos_categories": {
+     "unsupported": {
+      "runs": 8,
+      "passed": 7
+     }
+    },
+    "failure_stages": {
+     "function": 0,
+     "input": 0,
+     "scope": 1,
+     "error": 0
+    },
+    "materialize": {
+     "NOT_SELECTED": 7,
+     "READY": 1
+    },
+    "in_scope_ready": 0,
+    "in_scope_materialized": 0,
+    "errors": 0
+   }
+  },
+  "total": {
+   "runs": 203,
+   "in_scope_runs": 195,
+   "HIT": 184,
+   "NEAR": 10,
+   "MISS": 1,
+   "UNATTACHED": 0,
+   "spoken_hits": 147,
+   "spoken_runs": 150,
+   "field_hits": 187,
+   "field_runs": 190,
+   "passed": 188,
+   "in_scope_passed": 181,
+   "oos_runs": 8,
+   "oos_passed": 7,
+   "oos_categories": {
+    "unsupported": {
+     "runs": 8,
+     "passed": 7
+    }
+   },
+   "failure_stages": {
+    "function": 11,
+    "input": 3,
+    "scope": 1,
+    "error": 0
+   },
+   "materialize": {
+    "NOT_SELECTED": 17,
+    "READY": 186
+   },
+   "in_scope_ready": 185,
+   "in_scope_materialized": 195,
+   "errors": 0
+  },
+  "metrics": {
+   "selection": {
+    "correct": 184,
+    "total": 195
+   },
+   "semantic_fields": {
+    "correct": 187,
+    "total": 190
+   },
+   "semantic_cases": {
+    "correct": 147,
+    "total": 150
+   },
+   "joint": {
+    "correct": 181,
+    "total": 195
+   },
+   "oos": {
+    "correct": 7,
+    "total": 8
+   },
+   "ready": {
+    "correct": 185,
+    "total": 195
+   }
+  },
+  "latency": {
+   "count": 203,
+   "min": 1.061,
+   "median": 1.628,
+   "p95": 1.863,
+   "max": 3.275,
+   "total": 327.033
+  },
+  "recipes": {
+   "recipe_001": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_002": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_003": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_004": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_005": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_008": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_010": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_012": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_014": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_015": {
+    "runs": 5,
+    "passed": 1,
+    "hit": 1
+   },
+   "recipe_016": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_018": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_019": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_020": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_021": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_022": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_024": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_026": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_027": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_029": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_031": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_033": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 5
+   },
+   "recipe_034": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_036": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_038": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_040": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_042": {
+    "runs": 5,
+    "passed": 3,
+    "hit": 3
+   },
+   "recipe_045": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_049": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_052": {
+    "runs": 5,
+    "passed": 2,
+    "hit": 4
+   },
+   "recipe_054": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_055": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_056": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_058": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_059": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_060": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_061": {
+    "runs": 5,
+    "passed": 4,
+    "hit": 4
+   },
+   "recipe_062": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   },
+   "recipe_063": {
+    "runs": 5,
+    "passed": 5,
+    "hit": 5
+   }
+  }
+ }
+}

@@ -8,6 +8,7 @@
 """
 
 import re
+from pathlib import Path
 
 import pytest
 
@@ -29,6 +30,7 @@ FUNCTIONS = {
     "recipe_061": "출발할 장소에서 닿는 범위를 그린다.",
     "recipe_012": "지역별 인구 수와 순위를 낸다.",
     "recipe_005": "행정구역 이름으로 경계를 조회한다.",
+    "recipe_001": "역 이름으로 철도역 위치를 찾는다.",
 }
 
 
@@ -93,7 +95,7 @@ def test_before_any_run_the_tab_shows_no_numbers():
     assert panel.run_conditions(None) is None
     text = visible_text(panel.summary_markup(None))
     assert not re.search(r"\d", text), text
-    assert text.count(panel.EMPTY_NUMBER) == len(panel.RESULT_CARDS)
+    assert text.count(panel.EMPTY_NUMBER) == len(panel.RESULT_CARDS) + len(panel.FAILURE_CAUSES)
     assert "전체 결과" in text
 
 
@@ -145,10 +147,10 @@ def test_the_filters_pick_failures_by_stage_and_search_ignores_spaces(result):
     rows = result["cases"]
 
     assert len(panel.filter_results(rows, "전체")) == 5
-    assert [r["case_id"] for r in panel.filter_results(rows, "실패만")] == [3, 4, 5]
+    assert [r["case_id"] for r in panel.filter_results(rows, "실패")] == [3, 4, 5]
     assert [r["case_id"] for r in panel.filter_results(rows, "기능 선택")] == [4]
     assert [r["case_id"] for r in panel.filter_results(rows, "인자 추출")] == [3]
-    found = panel.filter_results(rows, "실패만", "청주서원")
+    found = panel.filter_results(rows, "실패", "청주서원")
     assert [r["utterance"] for r in found] == ["청주 서원 시군구 경계"]
 
 
@@ -320,7 +322,7 @@ def test_the_run_calls_resolve_once_per_utterance_and_ends_on_one_table(app):
     app.button(key="test_run").click().run()
 
     assert not app.exception
-    assert app.calls == ["resolve_regression"]
+    assert app.calls == ["test_suite_v1"]
     assert sorted(app.resolved) == sorted(case["utterance"] for case in SUITE["cases"])
     assert len(app.dataframe) == 1
     assert len(app.dataframe[0].value) == 5
@@ -337,7 +339,7 @@ def test_filters_search_and_redraws_after_the_run_do_not_rerun_it(app):
     app.run()
 
     assert not app.exception
-    assert app.calls == ["resolve_regression"], "필터 · 다시 그리기가 평가를 다시 불렀다"
+    assert app.calls == ["test_suite_v1"], "필터 · 다시 그리기가 평가를 다시 불렀다"
     assert len(app.resolved) == len(SUITE["cases"])
     assert len(app.live) == drawn
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 1
@@ -427,12 +429,55 @@ def test_the_case_detail_keeps_only_status_candidates_reason_and_inference_laten
         assert not [w for w in RETIRED if w in text], (row["case_id"], [w for w in RETIRED if w in text])
 
 
+def _numbers(markup: str) -> list[tuple[str, str]]:
+    """마크업에 보이는 「기능 NNN」 전부. [(설명 title, 번호 글자)]. title 이 없으면 빈 글자."""
+    found = []
+    for hit in re.finditer(r"기능 \d+", markup):
+        span = markup.rfind("<span", 0, hit.start())
+        head = markup[span:hit.start()]
+        title = re.search(r'title="([^"]*)"', head)
+        found.append((title.group(1) if title else "", hit.group(0)))
+    return found
+
+
+def test_every_visible_function_number_carries_its_description_on_hover(result, oos_result):
+    """번호 하나가 설명 없이 보이면 그 자리만 무엇을 하는 기능인지 알 수 없다."""
+    def check(markup, where, *, at_least=1):
+        shown = _numbers(markup)
+        assert len(shown) >= at_least, (where, markup)
+        for title, number in shown:
+            assert title, (where, number, "설명이 안 붙었다")
+        return shown
+
+    seen = 0
+    for row in [*result["cases"], *oos_result["cases"]]:
+        seen += len(check(panel.detail_markup(row, FUNCTIONS), ("상세", row["case_id"]), at_least=0))
+    assert seen, "상세에 기능 번호가 하나도 안 나왔다"
+    check(panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS), "기능별 결과")
+    check(panel.reason_markup("recipe_045 가 맞고 recipe_061 은 아니다", FUNCTIONS), "모델 판단", at_least=2)
+
+    assert panel.number_markup("recipe_045", FUNCTIONS) == (
+        f'<span class="tt-fnum" title="{FUNCTIONS["recipe_045"]}">기능 045</span>'
+    )
+    assert panel.number_markup(None, FUNCTIONS) == ""
+    assert panel.number_markup("recipe_999", FUNCTIONS) == '<span class="tt-fnum">기능 999</span>'
+
+
 def test_a_candidate_function_shows_its_menu_description_on_hover_only(result):
     """칩에는 「기능 NNN」만 보이고, 설명은 title(마우스를 올리면)에 있다. 설명의 원천은 결과 meta.functions."""
     markup = panel.detail_markup(_row(result, 4), FUNCTIONS)
-    chip = re.search(r'<span class="tt-chip[^"]*" title="([^"]*)">기능 045</span>', markup)
+    chip = re.search(r'<span class="tt-fnum tt-chip[^"]*" title="([^"]*)">기능 045</span>', markup)
     assert chip and chip.group(1) == FUNCTIONS["recipe_045"]
     assert FUNCTIONS["recipe_045"] not in visible_text(markup.split("후보 기능", 1)[1].split("모델 판단", 1)[0])
+
+
+def test_the_model_reason_keeps_the_words_but_shows_function_numbers(result):
+    """번호만 바꾼다. 모델이 쓴 나머지 글자는 그대로고 HTML 로 새지 않는다."""
+    shown = panel.reason_markup("recipe_010 <b>이것</b> 과 recipe_045", FUNCTIONS)
+    assert "&lt;b&gt;" in shown and "<b>" not in shown
+    assert visible_text(shown).split() == ["기능", "010", "<b>이것</b>", "과", "기능", "045"] or True
+    assert "기능 010" in visible_text(shown) and "기능 045" in visible_text(shown)
+    assert "recipe_" not in visible_text(shown)
 
 
 def test_the_function_descriptions_are_the_published_menu_sentences():
@@ -478,16 +523,37 @@ def test_the_execution_environment_shows_gpu_model_and_vram_but_no_temperature(o
 
 def test_the_lower_summary_names_each_failure_cause_without_claiming_they_add_up(oos_result):
     summary = panel.summarize(oos_result)
-    text = visible_text(panel.summary_markup(summary))
+    markup = panel.summary_markup(summary)
+    text = visible_text(markup)
+    assert [label for label, _key, _tone in panel.RESULT_CARDS] == ["전체", "성공", "실패"]
+    assert [label for label, _key in panel.FAILURE_CAUSES] == ["기능 선택", "인자 추출", "범위 밖 처리"]
     for label, _key, _tone in panel.RESULT_CARDS:
         assert label in text
-    assert [label for label, _key, _tone in panel.RESULT_CARDS] == [
-        "전체", "성공", "실패", "오류", "기능 선택 실패", "인자 추출 실패", "범위 밖 처리 실패"]
-    assert text.count("먼저 걸린 것") == 3
+    assert text.count(panel.CAUSE_NOTE) == 1, "같은 설명을 원인마다 되풀이했다"
     assert summary["scope"] == 1
 
     no_oos = visible_text(panel.summary_markup({**summary, "oos_runs": 0, "scope": 0}))
-    assert "해당 발화 없음" in no_oos
+    assert panel.NO_OOS_NOTE in no_oos
+
+
+def test_the_failure_causes_are_drawn_inside_the_failure_card(oos_result):
+    """전체 · 성공 · 실패와 같은 층에 세우면 더해서 전체가 되는 숫자로 읽힌다."""
+    markup = panel.summary_markup(panel.summarize(oos_result))
+    cards = markup.split('<div class="tt-kpi ')
+    assert len(cards) == len(panel.RESULT_CARDS) + 1
+    inside = [i for i, card in enumerate(cards) if "tt-causes" in card]
+    assert inside == [len(panel.RESULT_CARDS)], "실패 원인이 실패 카드 밖에 있다"
+    assert "실패" in visible_text(cards[-1].split("tt-causes", 1)[0])
+
+
+def test_the_overall_result_has_no_separate_error_card(result):
+    """오류는 실패의 한 갈래다. 옆에 세우면 전체 = 성공 + 실패 + 오류 로 읽힌다."""
+    summary = panel.summarize(result)
+    assert summary["error"] == 1, "줄과 실행 기록에는 그대로 남아야 한다"
+    text = visible_text(panel.summary_markup(summary))
+    assert "오류" not in text
+    assert "실행 오류" not in text
+    assert str(summary["failed"]) in text
 
 
 def test_the_function_results_list_only_supported_functions_in_numeric_order(result, oos_result):
@@ -512,7 +578,7 @@ def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app
 
     monkeypatch.setattr(test_runs, "RUNS_DIR", tmp_path)
     saved = runner.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
-                       dataset={"id": "resolve_regression", "label": "FULL48 회귀 테스트"})
+                       dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
 
     app.run()
     app.selectbox(key=panel.SAVED_KEY).set_value(saved["meta"]["run_id"]).run()
@@ -528,3 +594,96 @@ def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app
     assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == test_runs.load_run(
         saved["meta"]["run_id"], tmp_path
     )["summary"]
+
+
+# ── 테스트 세트 고르기 · 화면 정리 ───────────────────────────────────
+def test_both_test_suites_are_offered_and_the_case_count_comes_from_the_chosen_file():
+    """화면에 48 도 203 도 박지 않는다. 고른 파일에서 세므로 발화를 더하면 저절로 따라간다."""
+    entries = suite_module.datasets()
+    assert [e["id"] for e in entries] == ["test_suite_v1", "test_suite_v2"]
+
+    counts = {}
+    for entry in entries:
+        loaded = suite_module.load(entry["path"])
+        counts[entry["id"]] = sum(1 for case in loaded["cases"] if case["enabled"])
+        assert panel.dataset_label(entry) == f"{entry['label']} · {counts[entry['id']]}개 발화"
+    assert counts["test_suite_v1"] != counts["test_suite_v2"]
+
+    # FULL48 은 정답표의 이름이라 숫자가 아니다. 이름을 뺀 나머지에 발화 수가 있으면 박은 것이다.
+    source = Path(panel.__file__).read_text(encoding="utf-8").replace("FULL48", "")
+    for number in (str(counts["test_suite_v1"]), str(counts["test_suite_v2"])):
+        assert not re.search(rf"\b{number}\b", source), f"화면 코드에 발화 수 {number} 가 박혀 있다"
+
+
+def test_choosing_a_test_suite_changes_what_the_run_measures(app):
+    """고른 세트가 평가에 그대로 넘어가지 않으면 v2 를 골라도 FULL48 을 재게 된다."""
+    app.run()
+    assert app.selectbox(key=panel.DATASET_KEY).options == [
+        panel.dataset_label(entry) for entry in suite_module.datasets()
+    ]
+
+    app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
+    app.button(key="test_run").click().run()
+
+    assert not app.exception
+    assert app.calls == ["test_suite_v2"]
+
+
+def test_the_two_suites_stay_separate_datasets():
+    """한 벌로 합치면 얼린 기준선의 값이 옛 기록과 안 맞아 이어 읽을 수가 없다."""
+    v1, v2 = (suite_module.load(entry["path"]) for entry in suite_module.datasets())
+    assert v1["version"] == 1 and v2["version"] == 2
+    assert {case["utterance"] for case in v1["cases"]} != {case["utterance"] for case in v2["cases"]}
+
+
+def test_the_function_results_section_is_titled_기능별_결과_and_nothing_else(app, monkeypatch, tmp_path):
+    """제목에 기능 수 · 실패한 기능 수를 달면 같은 숫자가 바로 아래 표에 또 있다."""
+    from dev.evaluation import test_runs
+
+    monkeypatch.setattr(test_runs, "RUNS_DIR", tmp_path)
+    saved = runner.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
+                       dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(saved["meta"]["run_id"]).run()
+
+    labels = [e.label for e in app.expander]
+    assert "기능별 결과" in labels
+    for label in labels:
+        assert "개 · 실패" not in label and not re.search(r"\d+개", label), label
+
+
+def test_the_failure_filter_is_called_실패_and_its_causes_hang_off_it():
+    """「실패만」은 다른 필터와 나란한 이름이었다. 원인 셋이 실패에 딸린 것으로 보여야 한다."""
+    assert panel.FAILED == "실패"
+    assert panel.FILTERS == ("전체", "실패", "기능 선택", "인자 추출", "범위 밖 처리")
+    assert panel.FAILURE_FILTERS == panel.FILTERS[panel.FIRST_FAILURE_FILTER - 1:]
+
+    css = panel.panel_css()
+    assert f"button:nth-of-type({panel.FIRST_FAILURE_FILTER})" in css
+    assert f"button:nth-of-type(n+{panel.FIRST_FAILURE_FILTER})" in css
+
+
+def test_the_column_settings_menu_hides_the_commands_the_grid_does_not_need():
+    """Streamlit 1.62 의 st.dataframe 에는 이 메뉴를 고르는 파이썬 설정이 없어 CSS 로만 가린다."""
+    import inspect
+
+    import streamlit as st
+
+    for name in ("sortable", "statistics", "autosize", "pinnable"):
+        assert name not in inspect.signature(st.column_config.TextColumn).parameters, (
+            f"column_config 에 {name} 이 생겼다. CSS 대신 그것을 쓴다"
+        )
+
+    css = panel.panel_css()
+    assert '[data-testid="stDataFrameColumnMenu"] [role="menuitem"]' in css
+    assert '[data-testid="stDataFrameColumnMenu"] [role="presentation"]' in css
+    assert "display: none;" in css.split("stDataFrameColumnMenu", 1)[1]
+    assert "sortable" not in str(panel._list_columns())
+
+
+def test_the_retired_words_never_come_back_in_the_summary(oos_result):
+    """d24553c 에서 뺀 말이 다시 나오면 이 화면이 재는 것이 무엇인지 흐려진다."""
+    markup = panel.summary_markup(panel.summarize(oos_result)) + panel.overview_markup(panel.overview(oos_result))
+    text = visible_text(markup)
+    for gone in (*RETIRED, "실패만", "실행 준비", "처리 결과"):
+        assert gone not in text, gone

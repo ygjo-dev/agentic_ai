@@ -3229,6 +3229,49 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-21 · 테스트 세트 v2(203 발화)의 기준 실측 — 평가 자산을 dev/evaluation 아래로 모으고 한 번만 쟀다
+
+환경 vLLM solar-open2-250b · 192.168.68.231:18000 · resolve 역할 v1(prompt v1 · schema v1, 얼림) ·
+temperature 0 · seed 0 · max_tokens 1024 · reasoning effort none · context both · materialize on ·
+RTX PRO 6000 Blackwell Max-Q ×4 (95.6 GiB/장) · 사무실 조용 정책(gpu.POLICY)으로 박자만 조절 ·
+시작 HEAD d24553c · 브랜치 feature/mcp-expansion.
+
+**한 번만 쟀다.** 결과를 보고 Resolve · 정답표를 고치지 않았고 다시 돌리지 않았다.
+
+```
+정답표     dev/evaluation/test_suites/test_suite_v2.yaml
+           sha256 e032664fd667c15873ba58705e0c66d75518588601f2e340effa410aca5e2db7 · 203 발화
+           범위 안 195 (39 recipe × 5) · 범위 밖 8 (전부 NO_MATCH)
+실행 기록  dev/evaluation/test_runs/20260921-090538-test_suite_v2-87532e/  (저장소가 들고 있다)
+LLM 호출   203 · 재시도 0 · 오류 0 · 09:05:38 -> 09:31:37 KST (1559.0 s, 그중 추론 327.0 s)
+지연시간   median 1.628 s · p95 1.863 s · max 3.275 s (min 1.061)
+
+  Selection        184/195 (94.4%)   NEAR 10 · MISS 1 · UNATTACHED 0
+  Semantic fields  187/190 (98.4%)   cases 147/150
+  Joint            181/195 (92.8%)
+  범위 밖          7/8 (87.5%)
+  합계             188/203 (92.6%)   실패 15 = 기능 선택 11 · 인자 추출 3 · 범위 밖 1 · 오류 0
+```
+
+실패 15 건의 갈래와 발화별 표는 `dev/evaluation/reports/20260921-test-suite-v2-canonical-run.md` 에 있다.
+
+**범위 안은 0918 판(219 발화)과 숫자도 실패한 발화도 같다** — Selection 184/195 · fields 187/190 ·
+Joint 181/195, 실패한 14 발화가 같은 14 다. 정답표를 219 -> 203 으로 줄인 것이 범위 안을 안 건드렸다는
+뜻이다. 범위 밖 15/24 -> 7/8 은 **맞대지 않는다** — 옛 24 중 16(되묻기 · 값 부족이 정답이던 것)을
+빼서 자가 달라졌다. 옛 기록은 219 발화 그대로 저장소에 남아 있고 새 정의로 다시 세지 않았다.
+
+**평가 자산이 한 지붕 아래로 모였다.**
+
+```
+dev/evaluation/test_suites/test_suite_v1.yaml   (옛 resolve_regression.yaml. 바이트 그대로 · sha 1bd40444…)
+dev/evaluation/test_suites/test_suite_v2.yaml
+dev/evaluation/test_runs/                       (옛 dev/tools/sweep_out/test_runs, .gitignore 였음 -> 추적한다)
+dev/evaluation/reports/                         (옛 ~/claude_handoff 의 평가 보고서)
+```
+
+dataset id 도 파일 이름을 따라갔다 — `resolve_regression` -> `test_suite_v1`. 저장해 둔 FULL48
+실행 기록은 없어서 잃은 것이 없다. runner 는 파일만 남기고 git 을 부르지 않는다.
+
 ### 2026-09-15 · 정답표를 YAML(dev/evaluation/resolve_regression.yaml)로 옮기고 공통 evaluation runner 를 둔다
 
 환경 오프라인(LLM 안 부름 — resolve 역할 vLLM solar-open2-250b · 192.168.68.231:18000 이 못 닿음) ·

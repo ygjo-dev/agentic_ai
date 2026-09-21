@@ -264,7 +264,7 @@ def _selfcheck() -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="정답표의 채점 칸을 Recipe.execution 이 읽는 칸과 맞댄다.")
-    parser.add_argument("--suite", default=str(suite_module.SUITE_PATH), help="정답표 YAML (판 2: dev/evaluation/test_suite_v2.yaml)")
+    parser.add_argument("--suite", default=str(suite_module.SUITE_PATH), help="정답표 YAML (판 2: dev/evaluation/test_suites/test_suite_v2.yaml)")
     parser.add_argument("--json", action="store_true", help="JSON 으로 찍는다")
     args = parser.parse_args()
 

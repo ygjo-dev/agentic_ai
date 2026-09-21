@@ -6,10 +6,13 @@ dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
     제목 · 테스트 세트 · 실행 기록 · 테스트 실행
     실행 개요 (테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
     모델 설정 (접힘. 파일 · 실행 기록 id 까지)
-    전체 결과 (전체 · 성공 · 실패 · 오류 · 실패 원인 셋)
+    전체 결과 (전체 · 성공 · 실패. 실패 원인 셋은 실패 카드 안에)
     기능별 결과 (접힘)
     보기 필터 · 기능 고르기 · 발화 검색
     결과 목록 (한 발화 한 줄, 고정 높이) | 선택한 발화 상세 (고정 높이)
+
+**테스트 세트는 고르는 것이다.** 고른 정답표가 발화 목록 · 발화 수 · 실행 · 저장한 실행 기록의
+신원을 함께 정한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다.
 
 낱말은 dev/evaluation/test_runs 머리 주석과 같다 — 정답표 한 벌(Test Suite)은 「테스트 세트」,
 한 번 잰 것(Test Run)은 「실행 기록」, 발화 하나의 결과(Case Result)는 「발화 결과」다.
@@ -36,7 +39,18 @@ workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지
 표시명이 있으면 표시명 아래에 변수명을 작게 단다. 표시명이 없는 인자도 변수명
 그대로 나온다 — 새 인자가 들어와도 여기를 안 고친다.
 
-CSS 는 .st-key-test_tab 안으로만 건다. 서비스 화면에 새지 않는다.
+**기능 번호가 보이는 자리에는 그 기능이 무엇을 하는지가 마우스에 붙는다.** 번호를 그리는
+자리는 전부 `number_markup` 하나를 지난다 (기대 기능 · AI 가 고른 기능 · 후보 기능 ·
+기능별 결과 · 모델 판단 문장 안의 번호). 설명의 원천은 runner 결과 meta.functions 하나고,
+화면에 {번호: 설명} 표를 따로 두지 않는다.
+
+    ★ 두 자리는 못 붙인다. 결과 목록 표의 「기능」 칸과 기능 고르기 목록이다.
+      st.dataframe 은 칸 값마다의 tooltip 을 받는 파이썬 API 가 없고(Streamlit 1.62 의
+      column_config 는 칸 머리의 help 만 받는다), st.selectbox 도 보기마다의 tooltip 이 없다.
+      둘 다 고르면 상세 칸에 그 기능의 설명이 그대로 나온다.
+
+CSS 는 .st-key-test_tab 안으로만 건다. 서비스 화면에 새지 않는다. 한 자리만 예외다 —
+결과 표 칸 머리의 설정 메뉴는 portal 로 탭 밖에 그려진다 (panel_css 에 까닭이 적혀 있다).
 """
 
 import datetime
@@ -65,8 +79,12 @@ STAGE_LABELS = {"function": "기능 선택", "input": "인자 추출", "scope": 
 # 범위 밖 갈래 -> 화면 글자. ambiguous · insufficient 는 옛 실행 기록을 불러올 때만 나옴
 CATEGORY_LABELS = {"unsupported": "지원하지 않는 요청", "ambiguous": "기능 여럿", "insufficient": "정보 부족"}
 
-ALL, FAILED = "전체", "실패만"
-FILTERS = (ALL, FAILED, STAGE_LABELS["function"], STAGE_LABELS["input"], STAGE_LABELS["scope"])
+ALL, FAILED = "전체", "실패"
+# 실패를 가른 것들. 보기 필터에서 실패에 딸린 자리로 보인다 (panel_css 가 앞에 선을 긋고 눌러 둠).
+FAILURE_FILTERS = (STAGE_LABELS["function"], STAGE_LABELS["input"], STAGE_LABELS["scope"])
+FILTERS = (ALL, FAILED, *FAILURE_FILTERS)
+# 딸린 자리가 시작하는 칸 번호(1부터). CSS 에 숫자를 박지 않으려고 여기서 센다.
+FIRST_FAILURE_FILTER = len(FILTERS) - len(FAILURE_FILTERS) + 1
 
 # 기능 고르기의 두 자리. 나머지는 기대 recipe id 다.
 ALL_GROUPS, OUT_OF_SCOPE_GROUP = "__all__", "__out_of_scope__"
@@ -175,7 +193,7 @@ def filter_results(rows: list[dict], view: str, query: str = "", group: str = AL
     입력  runner 결과 cases. view 는 FILTERS 중 하나. 모르는 값이면 전체
           group 은 ALL_GROUPS · OUT_OF_SCOPE_GROUP · 기대 recipe id
     출력  원래 순서를 지킨 부분 목록
-    규칙  실패만은 성공이 아닌 것 전부(실행 오류 포함). 기능 선택 · 인자 추출 · 범위 밖 처리는 그 단계에서 실패한 것
+    규칙  실패는 성공이 아닌 것 전부(실행 오류 포함). 기능 선택 · 인자 추출 · 범위 밖 처리는 그 단계에서 실패한 것
           group 이 ALL_GROUPS 가 아니면 row_group 이 같은 줄만
           검색은 띄어쓰기를 무시한 부분 일치. 빈 검색어는 거르지 않음
     """
@@ -240,12 +258,9 @@ def function_label(recipe_id: str | None) -> str | None:
     return f"기능 {recipe_id.rsplit('_', 1)[-1]}"
 
 
-def readable_reason(text: str) -> str:
-    """모델 판단 문장의 기능 번호를 화면 글자로. "recipe_061" -> "기능 061".
-
-    규칙  번호만 바꿈. 그 밖의 글자는 모델이 쓴 그대로
-    """
-    return re.sub(r"\brecipe_(\d+)", r"기능 \1", text)
+def recipe_ids_in(text: str) -> list[str]:
+    """글자 안에 적힌 기능 id 들. 나온 차례 그대로."""
+    return re.findall(r"\brecipe_\d+", str(text))
 
 
 def field_rows(row: dict) -> list[dict]:
@@ -287,7 +302,11 @@ def _seconds(value) -> str:
 
 
 def list_frame(rows: list[dict]) -> pd.DataFrame:
-    """결과 목록 표. 한 발화 한 줄, 칸 여섯. 추론 지연시간은 resolve 한 번에 걸린 시간."""
+    """결과 목록 표. 한 발화 한 줄, 칸 여섯. 추론 지연시간은 resolve 한 번에 걸린 시간.
+
+    제약  기능 칸에 설명을 붙이지 않는다. st.dataframe 은 칸 값마다의 tooltip 을 받는 API 가 없다.
+          줄을 고르면 상세 칸에 그 기능의 설명이 나온다
+    """
     return pd.DataFrame(
         {
             "번호": [f"{r['case_id']:03d}" for r in rows],
@@ -495,37 +514,65 @@ def _esc(value) -> str:
     return html.escape(str(value))
 
 
-# 전체 결과 카드. (글자, summarize 칸, 색)
+# 전체 결과 카드 셋. (글자, summarize 칸, 색). 이것이 동등한 지표의 전부다.
+# **「오류」 카드를 두지 않는다** — 실행 오류는 실패의 한 갈래고 줄(failure_stage=error)과
+# 실행 기록에 그대로 남는다. 위에 따로 세우면 전체 = 성공 + 실패 + 오류 로 읽힌다.
 RESULT_CARDS = (
     ("전체", "total", ""),
     ("성공", "passed", "ok"),
     ("실패", "failed", "ng"),
-    ("오류", "error", "ng"),
-    ("기능 선택 실패", "function", "cause"),
-    ("인자 추출 실패", "input", "cause"),
-    ("범위 밖 처리 실패", "scope", "cause"),
 )
+
+# 실패 카드 **안에** 들어가는 원인 셋. 동등한 지표가 아니라 실패를 가른 것이다.
+FAILURE_CAUSES = (
+    (STAGE_LABELS["function"], "function"),
+    (STAGE_LABELS["input"], "input"),
+    (STAGE_LABELS["scope"], "scope"),
+)
+
+# 원인 묶음에 한 번만 붙는 말. 카드마다 같은 문장을 되풀이하지 않는다.
+CAUSE_NOTE = "최초 실패 원인 기준"
+
+# 범위 밖 발화가 없는 정답표(FULL48)에서 범위 밖 처리 원인 자리에 적는 말.
+NO_OOS_NOTE = "해당 발화 없음"
 
 
 def summary_markup(summary: dict | None) -> str:
-    """전체 결과. 머리 한 줄과 카드 일곱. 결과가 없으면 숫자 자리에 줄표만.
+    """전체 결과. 머리 한 줄과 카드 셋. 결과가 없으면 숫자 자리에 줄표만.
 
-    규칙  성공 · 실패는 전체에 대한 백분율을 닮. 오류는 실행 오류 건수
-          실패 원인 셋은 발화마다 먼저 걸린 원인 하나로 셈 — 그렇다고 카드에 적음. 셋(과 오류)을
-          더해 실패를 맞추라는 뜻으로 보이지 않게 합계를 따로 안 적음
-          범위 밖 발화가 없는 정답표(FULL48)면 범위 밖 처리 실패는 「해당 발화 없음」
+    규칙  전체 · 성공 · 실패가 나란한 카드 셋. 성공 · 실패는 전체에 대한 백분율을 닮
+          실패 원인 셋(기능 선택 · 인자 추출 · 범위 밖 처리)은 실패 카드 **안에** 들어감.
+          동등한 카드로 세우면 전체 · 성공 · 실패와 같은 층으로 읽힘
+          원인은 발화마다 먼저 걸린 것 하나로 셈. 그 말(CAUSE_NOTE)은 묶음에 한 번만 붙음
+          실행 오류는 카드로 세우지 않음. 줄과 실행 기록에 남고 실패에 포함됨
+          범위 밖 발화가 없는 정답표면 범위 밖 처리 자리에 「해당 발화 없음」
     """
     head = '<div class="tt-sum-title">전체 결과</div>'
 
-    def card(label, number, tone="", note=""):
+    def cause(label, number, note=""):
+        note_html = f'<span class="tt-cause-note">{_esc(note)}</span>' if note else ""
+        return (
+            f'<div class="tt-cause"><span class="tt-cause-k">{_esc(label)}</span>'
+            f'<span class="tt-cause-v">{_esc(number)}</span>{note_html}</div>'
+        )
+
+    def card(label, number, tone="", note="", causes=""):
         note_html = f'<div class="tt-kpi-note">{_esc(note)}</div>' if note else ""
         return (
             f'<div class="tt-kpi {tone}"><div class="tt-kpi-label">{_esc(label)}</div>'
-            f'<div class="tt-kpi-num">{_esc(number)}</div>{note_html}</div>'
+            f'<div class="tt-kpi-num">{_esc(number)}</div>{note_html}{causes}</div>'
         )
 
+    def causes_block(numbers, notes):
+        rows = "".join(cause(label, numbers[key], notes.get(key, "")) for label, key in FAILURE_CAUSES)
+        return f'<div class="tt-causes"><div class="tt-causes-head">{_esc(CAUSE_NOTE)}</div>{rows}</div>'
+
     if summary is None:
-        cards = [card(label, EMPTY_NUMBER, tone) for label, _key, tone in RESULT_CARDS]
+        empty = causes_block({key: EMPTY_NUMBER for _label, key in FAILURE_CAUSES}, {})
+        cards = [
+            card(label, EMPTY_NUMBER, tone, causes=empty if key == "failed" else "")
+            for label, key, tone in RESULT_CARDS
+        ]
         return head + '<div class="tt-kpis tt-kpis-empty">' + "".join(cards) + "</div>"
 
     done = summary["done"]
@@ -538,13 +585,11 @@ def summary_markup(summary: dict | None) -> str:
         "total": "발화 수" if finished else f"완료 {done} / {summary['total']}",
         "passed": share(summary["passed"]),
         "failed": share(summary["failed"]),
-        "error": "실행 오류",
-        "function": "실패 원인 · 먼저 걸린 것",
-        "input": "실패 원인 · 먼저 걸린 것",
-        "scope": "실패 원인 · 먼저 걸린 것" if summary.get("oos_runs") else "해당 발화 없음",
     }
+    causes = causes_block(summary, {} if summary.get("oos_runs") else {"scope": NO_OOS_NOTE})
     return head + '<div class="tt-kpis">' + "".join(
-        card(label, summary[key], tone, notes[key]) for label, key, tone in RESULT_CARDS
+        card(label, summary[key], tone, notes[key], causes if key == "failed" else "")
+        for label, key, tone in RESULT_CARDS
     ) + "</div>"
 
 
@@ -574,13 +619,14 @@ def overview_markup(info: list | None) -> str:
     return '<div class="tt-ovs">' + "".join(cell(title, rows) for title, rows in info) + "</div>"
 
 
-def recipe_summary_markup(entries: list[dict]) -> str:
-    """기능별 결과 표. 실패가 있는 줄은 붉게."""
+def recipe_summary_markup(entries: list[dict], functions: dict | None = None) -> str:
+    """기능별 결과 표. 실패가 있는 줄은 붉게. 기능 번호에 설명이 붙음."""
     if not entries:
         return '<div class="tt-empty">결과가 없습니다.</div>'
+    functions = functions or {}
     rows = "".join(
         f'<div class="tt-rs{" tt-rs-ng" if e["failed"] else ""}">'
-        f'<div>{_esc(e["label"])}</div><div>{e["passed"]}/{e["runs"]}</div>'
+        f'<div>{number_markup(e["group"], functions)}</div><div>{e["passed"]}/{e["runs"]}</div>'
         f'<div>{"실패 " + str(e["failed"]) if e["failed"] else "모두 성공"}</div></div>'
         for e in entries
     )
@@ -599,22 +645,48 @@ def _muted_markup(text: str) -> str:
     return f'<span class="tt-val tt-none">{_esc(text)}</span>'
 
 
-def _tip(recipe_id: str, functions: dict) -> str:
+def _tip(recipe_id: str | None, functions: dict) -> str:
     """기능 번호에 걸 title 속성. 설명은 runner 결과 meta.functions (게시 menu 의 function 문장)."""
-    text = functions.get(recipe_id)
+    text = (functions or {}).get(recipe_id)
     return f' title="{_esc(text)}"' if text else ""
+
+
+def number_markup(recipe_id: str | None, functions: dict, css: str = "") -> str:
+    """화면에 보이는 기능 번호 하나. 「기능 004」만 보이고 설명은 마우스를 올리면 뜸.
+
+    입력  css 는 이 자리에서 더 붙일 class. 없으면 안 붙음
+    출력  <span class="tt-fnum …" title="설명">기능 004</span>. 번호가 없으면 빈 글자
+    규칙  설명의 원천은 runner 결과 meta.functions 하나 (게시 menu 의 function 문장)
+          설명이 없는 번호면 title 없이 번호만 보임
+    제약  기능 번호를 보이는 자리는 전부 이것을 쓴다.
+          마크업에 function_label 을 직접 넣으면 그 자리만 설명이 안 뜬다.
+          {번호: 설명} 표를 화면에 따로 두지 않는다
+    """
+    label = function_label(recipe_id)
+    if label is None:
+        return ""
+    classes = " ".join(part for part in ("tt-fnum", css) if part)
+    return f'<span class="{classes}"{_tip(recipe_id, functions)}>{_esc(label)}</span>'
+
+
+def reason_markup(text: str, functions: dict) -> str:
+    """모델 판단 문장. 안에 적힌 기능 id 를 「기능 NNN」으로 보이고 설명을 마우스에 붙임.
+
+    규칙  번호 자리만 바꿈. 그 밖의 글자는 모델이 쓴 그대로 (HTML 로 새지 않게 escape)
+    """
+    return re.sub(r"\brecipe_\d+", lambda hit: number_markup(hit.group(0), functions), _esc(text))
 
 
 def _function_markup(recipe_ids: list, functions: dict, empty: str = "선택 없음") -> str:
     """기능 번호와 설명. 고르지 않았으면 empty 글자.
 
-    규칙  기능이 여럿이면 차례대로 모두 보임. 설명은 runner 결과의 meta.functions
+    규칙  기능이 여럿이면 차례대로 모두 보임. 설명은 줄로도 보이고 번호의 마우스에도 붙음
     """
     shown = [rid for rid in recipe_ids if rid]
     if not shown:
         return f'<div class="tt-fn tt-none">{_esc(empty)}</div>'
     return "".join(
-        f'<div class="tt-fn">{_esc(function_label(rid))}</div>'
+        f'<div class="tt-fn">{number_markup(rid, functions)}</div>'
         f'<div class="tt-desc">{_esc(functions.get(rid) or "")}</div>'
         for rid in shown
     )
@@ -656,15 +728,15 @@ def _extra_markup(row: dict, functions: dict | None = None) -> str:
     model = row.get("actual") or {}
     if row.get("error"):
         status_text = STAGE_LABELS["error"]
-        reason = row["error"]
+        reason = reason_markup(row["error"], functions)
     else:
         status = model.get("status")
         status_text = STATUS_LABELS.get(status, status or NONE_TEXT)
-        reason = readable_reason(model.get("reason") or NONE_TEXT)
+        reason = reason_markup(model.get("reason") or NONE_TEXT, functions)
     picked = model.get("recipe_id")
     timing = row.get("timing") or {}
     chips = "".join(
-        f'<span class="tt-chip{" tt-chip-on" if cid == picked else ""}"{_tip(cid, functions)}>{_esc(function_label(cid))}</span>'
+        number_markup(cid, functions, "tt-chip tt-chip-on" if cid == picked else "tt-chip")
         for cid in model.get("candidate_recipe_ids") or []
     ) or f'<span class="tt-val tt-none">{NONE_TEXT}</span>'
     return (
@@ -674,7 +746,7 @@ def _extra_markup(row: dict, functions: dict | None = None) -> str:
         f'<div class="tt-kv-v"><span class="tt-status">{_esc(status_text)}</span></div></div>'
         f'<div class="tt-kv"><div class="tt-kv-k">후보 기능</div><div class="tt-kv-v">{chips}</div></div>'
         f'<div class="tt-kv"><div class="tt-kv-k">모델 판단</div>'
-        f'<div class="tt-kv-v tt-reason">{_esc(reason)}</div></div>'
+        f'<div class="tt-kv-v tt-reason">{reason}</div></div>'
         f'<div class="tt-kv"><div class="tt-kv-k">추론 지연시간</div>'
         f'<div class="tt-kv-v">{_esc(_seconds(timing.get("resolve_s")) or NONE_TEXT)}</div></div>'
         "</div>"
@@ -931,13 +1003,20 @@ def _render_overview(result: dict | None) -> None:
 
 
 def _render_recipe_summary(result: dict | None) -> None:
-    """기능별 결과 (접힘). 지원하는 기능만, 번호 차례. 실패가 있으면 펼침."""
+    """기능별 결과 (접힘). 지원하는 기능만, 번호 차례. 실패가 있으면 펼침.
+
+    제약  제목은 「기능별 결과」 하나다. 기능 수 · 실패한 기능 수를 제목에 달지 않는다 —
+          같은 숫자가 바로 아래 표에 있고, 제목이 길어지면 무엇을 여는 칸인지가 흐려진다
+    """
     entries = recipe_rows(result)
     if not entries:
         return
     failed = sum(1 for e in entries if e["failed"])
     with st.expander("기능별 결과", expanded=bool(failed)):
-        st.markdown(recipe_summary_markup(entries), unsafe_allow_html=True)
+        st.markdown(
+            recipe_summary_markup(entries, (result or {}).get("meta", {}).get("functions") or {}),
+            unsafe_allow_html=True,
+        )
 
 
 def _render_conditions(result: dict | None) -> None:
@@ -955,7 +1034,10 @@ def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tup
 
     출력  (보기, 검색어, 기능 자리)
     규칙  결과가 있으면 필터 글자 옆에 그 보기의 건수를 붙임
+          보기는 칸 하나다 — 전체 · 실패 다음에 실패를 가른 셋이 딸려 붙음.
+          딸린 것으로 보이게 하는 일은 CSS 가 하고(FIRST_FAILURE_FILTER), 고르는 뜻은 안 바뀜
           기능 고르기는 결과에 나온 기대 기능과 범위 밖. 결과가 없으면 모든 기능 하나
+    제약  보기 위해 채점 · 거르는 뜻을 바꾸지 않는다
     """
     rows = rows or []
     counts = {}
@@ -1047,7 +1129,11 @@ def _styled_frame(rows: list[dict]):
 
 
 def _list_columns() -> dict:
-    """결과 목록 표의 칸 폭."""
+    """결과 목록 표의 칸 폭.
+
+    제약  칸 머리의 설정 메뉴에서 정렬 · 통계 · 자동 너비 · 칸 고정을 여기서 못 끈다.
+          Streamlit 1.62 의 column_config 에 그 칸이 없다 — panel_css 가 감춘다
+    """
     return {
         "번호": st.column_config.TextColumn("번호", width=56),
         "기능": st.column_config.TextColumn("기능", width=76),
@@ -1177,6 +1263,8 @@ def panel_css() -> str:
 
     규칙  글자색은 테마를 따름(inherit). 선 · 바탕은 회색 반투명이라 밝은 테마 · 어두운
           테마 어느 쪽에서도 읽힘. 성공 · 실패 · AI 모델 출력 강조색만 고정
+          보기 필터의 칸 번호는 FIRST_FAILURE_FILTER 에서 옴. CSS 에 숫자를 박지 않음
+          칸 설정 메뉴 규칙만 .st-key-test_tab 밖에 있음 — 그 메뉴가 portal 로 탭 밖에 그려짐
     """
     return """<style>
 .st-key-test_tab {
@@ -1203,7 +1291,6 @@ def panel_css() -> str:
 .st-key-test_tab .tt-ov-v { font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; text-align: right; }
 .st-key-test_tab .tt-ov-row:only-child .tt-ov-v { text-align: left; }
 .st-key-test_tab .tt-sum-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin: 0.2rem 0 0.45rem; }
-.st-key-test_tab .tt-chip[title] { cursor: help; }
 
 /* ---------------------------------------------- 기능별 결과 */
 .st-key-test_tab .tt-rss { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.3rem 0.8rem; }
@@ -1240,10 +1327,47 @@ def panel_css() -> str:
 .st-key-test_tab .tt-kpi.ok .tt-kpi-num { color: var(--tt-ok); }
 .st-key-test_tab .tt-kpi.ng { box-shadow: inset 3px 0 0 var(--tt-ng); }
 .st-key-test_tab .tt-kpi.ng .tt-kpi-num { color: var(--tt-ng); }
-.st-key-test_tab .tt-kpi.cause .tt-kpi-label::before {
-  content: ""; display: inline-block; width: 0.45rem; height: 0.45rem; border-radius: 50%;
-  background: var(--tt-ng); opacity: 0.75; margin-right: 0.4rem; vertical-align: 0.05rem;
+
+/* 실패 카드 안의 원인 셋. 전체 · 성공 · 실패와 같은 층으로 보이면 안 되므로
+   카드 **안에** 들여쓰고 선으로 매단다. 같은 설명을 셋에 되풀이하지 않고 묶음에 한 번만 적는다. */
+.st-key-test_tab .tt-kpi.ng { flex-grow: 1.9; }
+.st-key-test_tab .tt-causes {
+  grid-column: 1 / -1; margin: 0.5rem 0 0 0.2rem; padding: 0.35rem 0 0.05rem 0.7rem;
+  border-left: 2px solid rgba(229, 83, 75, 0.35); border-top: 1px solid var(--tt-line);
 }
+.st-key-test_tab .tt-causes-head { font-size: 0.7rem; opacity: 0.5; margin-bottom: 0.2rem; }
+.st-key-test_tab .tt-cause {
+  display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.78rem; line-height: 1.7;
+}
+.st-key-test_tab .tt-cause-k { opacity: 0.7; }
+.st-key-test_tab .tt-cause-k::before {
+  content: ""; display: inline-block; width: 0.3rem; height: 0.3rem; border-radius: 50%;
+  background: var(--tt-ng); opacity: 0.7; margin-right: 0.35rem; vertical-align: 0.1rem;
+}
+.st-key-test_tab .tt-cause-v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-key-test_tab .tt-cause-note { font-size: 0.72rem; opacity: 0.5; }
+.st-key-test_tab .tt-kpis-empty .tt-cause-v { opacity: 0.35; }
+
+/* 보기 필터. 실패를 가른 셋(FIRST_FAILURE_FILTER 번째부터)은 실패에 딸린 것으로 보이게
+   앞에 선을 긋고 글자를 눌러 둔다. 고르는 뜻은 그대로다. */
+.st-key-test_tab .st-key-test_filter [data-testid="stButtonGroup"] button:nth-of-type({first_failure_filter}) {
+  margin-left: 0.7rem; border-left: 1px solid var(--tt-line); padding-left: 0.85rem; border-radius: 0;
+}
+.st-key-test_tab .st-key-test_filter [data-testid="stButtonGroup"] button:nth-of-type(n+{first_failure_filter}) {
+  font-size: 0.82rem;
+}
+
+/* 결과 표 칸 머리의 「설정」 메뉴. 정렬 · 통계 · 자동 너비 · 칸 고정 명령을 감춘다.
+   **기능 자체는 살아 있다** — 머리글을 눌러 정렬하는 것과 칸 폭 조정은 그대로다.
+   Streamlit 1.62 의 st.dataframe 에는 이 메뉴를 고르는 파이썬 설정이 없어 CSS 로만 가려진다
+   (column_config 에 sortable · statistics · pinnable 같은 칸이 없다).
+   메뉴는 portal 로 .st-key-test_tab 밖에 그려지므로 이 규칙만 탭 밖에 있다.
+   이 화면이 st.dataframe 을 쓰는 유일한 자리라 다른 화면에 새지 않는다.
+   마지막 줄(칸 숨기기)만 남긴다. */
+[data-testid="stDataFrameColumnMenu"] [role="menuitem"],
+[data-testid="stDataFrameColumnMenu"] [role="presentation"],
+[data-testid="stDataFrameColumnMenu"] [role="menu"] > div:not([role]):not(:first-child) { display: none; }
+[data-testid="stDataFrameColumnMenu"] [role="menu"] > [role="menuitem"]:last-child { display: flex; }
 
 /* 표 세로 스크롤바. 기본 얇은 막대는 마우스로 잡기 어렵다. */
 .st-key-test_tab [data-testid="stDataFrame"] .dvn-scroller { scrollbar-width: auto; }
@@ -1335,4 +1459,5 @@ def panel_css() -> str:
   display: block; line-height: 1.55; font-size: 0.83rem;
   background: var(--tt-softer); border-radius: 6px; padding: 0.4rem 0.55rem; overflow-wrap: anywhere;
 }
-</style>"""
+.st-key-test_tab .tt-fnum[title] { cursor: help; }
+</style>""".replace("{first_failure_filter}", str(FIRST_FAILURE_FILTER))

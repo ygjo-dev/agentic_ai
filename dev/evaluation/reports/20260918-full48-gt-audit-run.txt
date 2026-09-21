@@ -1,0 +1,28 @@
+FULL48 — new GT (f3e020e content; the run's suite sha256 equals the audited file), 1 run only
+model solar-open2-250b · vllm · resolve role v1 · prompt v1 · schema v1 · context both · materialize on
+git_head at run 03ea2fc (GT file edited in the working tree; committed afterwards as f3e020e, content identical)
+started 2026-09-18T15:01:41+09:00  finished 15:05:02  resolve latency min/med/max 1.33/1.64/1.95 s
+
+Selection (HIT)          48/48   NEAR 0 · MISS 0 · UNATTACHED 0
+Spoken cases scored      38      correct 38/38
+Spoken fields scored     55      correct 55/55
+  argument               29/29
+  admin_level            14/14
+  travel_mode             6/6
+  minutes                 6/6
+Joint (passed)           48/48   failure_stages function 0 · input 0 · error 0
+Errors                    0
+Materialize READY        48/48
+LLM calls                48      Retries 0
+
+FAIL CASES: none
+
+Unscored observations (fields no recipe reads, or REVIEW):
+  #9  argument = 철도안전법  (REVIEW; not scored)
+  #6  admin_level = 시도 · #8/#10/#11/#20 admin_level = 시군구  (recipe does not read it)
+  #37 travel_mode = 대중교통  (recipe_062 does not read it)
+  context recipes: argument = null everywhere
+
+GPU (office quiet policy): start util 0 / 38°C · max 66°C · fan max 38% (recorded only)
+  1 pause at call 42 (66→58°C, 45 s) · end 66°C → cooldown to 57°C · thermal throttle none
+  Raw: GPU_LOG.tsv · full JSON: evaluation_full48.json

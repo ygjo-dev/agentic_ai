@@ -1,9 +1,9 @@
 """발화 해석 정답표(evaluation suite)를 읽는 유일한 곳.
 
-정답표(Test Suite)는 같은 폴더의 두 파일이다.
+정답표(Test Suite)는 `dev/evaluation/test_suites/` 의 두 파일이다.
 
-    resolve_regression.yaml   FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
-    test_suite_v2.yaml        테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖(NO_MATCH) 묶음
+    test_suite_v1.yaml   FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
+    test_suite_v2.yaml   테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖(NO_MATCH) 묶음
 
 공통 runner `dev/evaluation/runner.py` 와 화면 테스트 탭이 이 모듈로 읽는다.
 
@@ -14,15 +14,18 @@ from pathlib import Path
 
 import yaml
 
-SUITE_PATH = Path(__file__).resolve().parent / "resolve_regression.yaml"
-SUITE_V2_PATH = Path(__file__).resolve().parent / "test_suite_v2.yaml"
+# 정답표 파일이 사는 폴더. 결과(test_runs) · 보고서(reports)와 한 지붕 아래 나란히 둔다.
+SUITES_DIR = Path(__file__).resolve().parent / "test_suites"
+
+SUITE_PATH = SUITES_DIR / "test_suite_v1.yaml"
+SUITE_V2_PATH = SUITES_DIR / "test_suite_v2.yaml"
 
 # 화면 · 계기판이 이름으로 고를 수 있는 정답표(Test Suite). (id, 사람이 읽는 이름, 경로)
 # 정답표 파일을 더하면 여기 한 줄을 더한다. 첫 줄이 화면의 기본값이다.
-#   resolve_regression   FULL48. 얼린 회귀 기준선. 발화 · 기대값을 바꾸지 않는다
-#   test_suite_v2        일반화를 재는 넓은 자. recipe 마다 발화 다섯 이상 + 범위 밖
+#   test_suite_v1   FULL48. 얼린 회귀 기준선. 발화 · 기대값을 바꾸지 않는다
+#   test_suite_v2   일반화를 재는 넓은 자. recipe 마다 발화 다섯 이상 + 범위 밖
 DATASETS = (
-    ("resolve_regression", "FULL48 회귀 테스트", SUITE_PATH),
+    ("test_suite_v1", "FULL48 회귀 테스트", SUITE_PATH),
     ("test_suite_v2", "테스트 세트 v2", SUITE_V2_PATH),
 )
 

@@ -2,7 +2,7 @@
 
 낱말 (화면 · 보고서 · 코드가 같은 뜻으로 쓴다)
 
-    Test Suite    정답표 한 벌. 바뀌지 않는 발화 · 기대값 정의 (dev/evaluation/*.yaml)
+    Test Suite    정답표 한 벌. 바뀌지 않는 발화 · 기대값 정의 (dev/evaluation/test_suites/*.yaml)
                   FULL48 은 얼린 회귀 기준선, 테스트 세트 v2 는 일반화를 재는 넓은 자
     Test Run      정답표 한 벌을 한 모델 · 설정 · 시각에 한 번 잰 것. runner.run 의 결과 한 벌
     Case Result   Test Run 안의 발화 하나의 결과. 결과의 cases 한 줄
@@ -18,7 +18,11 @@ Test Run 하나가 폴더 하나다. DB · 서비스를 두지 않는다.
 run.json 이 있으면 그것이 Test Run 이다. 없으면(도중에 죽음) meta.json 과 cases.jsonl 로
 다시 세운다 — 합계는 runner.summarize 가 다시 센다. 화면은 어느 쪽이든 같은 모양을 받는다.
 
-RUNS_DIR 는 dev/tools/sweep_out/ 아래라 .gitignore 다. 기계마다 다른 측정 산출물이다.
+RUNS_DIR 는 dev/evaluation/test_runs/ 다. **추적한다** — 어느 판의 정답표를 언제 어느 모델로 재서
+무엇이 나왔나는 저장소가 들고 있어야 뒤에 이어 읽을 수 있다. 기계마다 다시 만들 수 있는 값이 아니다.
+
+**여기서 git 을 부르지 않는다.** Recorder 는 파일만 남기고, 무엇을 언제 커밋할지는 사람이 정한다.
+자동 커밋을 만들면 평가를 한 번 돌릴 때마다 작업 트리 이력이 사람 몰래 늘어난다.
 """
 
 import datetime
@@ -28,7 +32,7 @@ import secrets
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-RUNS_DIR = REPO_ROOT / "dev" / "tools" / "sweep_out" / "test_runs"
+RUNS_DIR = REPO_ROOT / "dev" / "evaluation" / "test_runs"
 
 META_FILE = "meta.json"
 CASES_FILE = "cases.jsonl"

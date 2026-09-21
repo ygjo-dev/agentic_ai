@@ -254,8 +254,8 @@ execution 칸은 등록 저장소가 게시한 것을 그대로 받는다. 온�
 고쳤을 때도 거기서 다시 게시한다. 후보를 받아들이는 것도 거기 일이다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
 menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
-`dev/evaluation/resolve_regression.yaml` 이고, 발화를 더하면 그 발화의 묶음(`group`)도
-함께 적는다. 테스트 세트 v2(`dev/evaluation/test_suite_v2.yaml`)에는 그 recipe 의 발화를
+`dev/evaluation/test_suites/test_suite_v1.yaml` 이고, 발화를 더하면 그 발화의 묶음(`group`)도
+함께 적는다. 테스트 세트 v2(`dev/evaluation/test_suites/test_suite_v2.yaml`)에는 그 recipe 의 발화를
 다섯 이상 더한다 — `spoken_audit._selfcheck` 가 받아들인 recipe 마다 센다.
 
 ---
