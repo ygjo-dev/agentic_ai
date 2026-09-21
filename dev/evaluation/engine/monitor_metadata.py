@@ -1,9 +1,10 @@
 """벤치마크를 어떻게 쟀나를 적는 곳. 재현에 필요한 실행 조건 · 파일 신원 · git HEAD.
 
-    conditions()    모델 · provider · 역할 판 · 요청 설정 · prompt · 응답 schema · menu 파일과 sha256
+    conditions()    모델 · provider · 역할 판 · 요청 설정 · prompt · 응답 schema · menu 파일과 sha256 · 게시 자산 sha256
     functions()     기능 설명 {recipe id: menu 의 function 문장}. 화면이 기능 번호 옆에 보임
     role_label()    resolve 역할 한 줄 (계기판 check_resolve 도 이것을 씀)
     benchmark_meta  위 셋과 정답표 신원 · 문맥 · 쉼 설정을 모은 결과 meta 머리
+    resume_identity 이어 실행할 때 같아야 하는 조건 (저장된 머리 · 지금 이 저장소)
 
 실행 하드웨어(GPU 이름 · VRAM)는 monitor_gpu.environment 가 적는다.
 **판정에는 안 섞인다.** 여기서 Resolve 를 부르지 않고 채점하지 않는다.
@@ -28,8 +29,9 @@ KST = zoneinfo.ZoneInfo("Asia/Seoul")
 # 결과 JSON 의 판. 칸의 뜻을 바꾸면 올린다.
 # 3: 줄에 scope · recipe_group · outcome · oos_correct · timing.started_at, summary 에 metrics ·
 #    latency · recipes, meta 에 run_id · elapsed_s · suite.name · suite.group_labels
-#    뒤에 판을 안 올리고 더한 선택 칸: expected.reads · conditions.request · meta.environment.
-#    이 칸이 없는 옛 결과도 그대로 읽힌다. 옛 결과의 meta.gpu(온도 기록)는 더 쓰지 않는다
+#    뒤에 판을 안 올리고 더한 선택 칸: expected.reads · conditions.request · meta.environment ·
+#    conditions.registry · meta.stopped_at · meta.resumed_at.
+#    이 칸이 없는 옛 결과도 그대로 읽힌다(이어 실행만 막힘). 옛 결과의 meta.gpu(온도 기록)는 더 쓰지 않는다
 RESULT_VERSION = 3
 
 
@@ -71,11 +73,29 @@ def _file_record(path: Path) -> dict:
     return {"path": shown, "sha256": hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None}
 
 
+def _tree_record(folder: Path) -> dict:
+    """실행 조건에 적을 폴더 하나. {path, sha256}. sha256 은 안의 파일 전부(상대 경로 · 바이트)를 이름 차례로 이은 것.
+
+    규칙  경로 표기는 _file_record 와 같음. 폴더가 없으면 sha256 은 None
+    """
+    folder = Path(folder)
+    record = _file_record(folder)
+    if not folder.is_dir():
+        return record
+    digest = hashlib.sha256()
+    for path in sorted(item for item in folder.rglob("*") if item.is_file()):
+        digest.update(path.relative_to(folder).as_posix().encode("utf-8") + b"\0")
+        digest.update(hashlib.sha256(path.read_bytes()).digest())
+    return {**record, "sha256": digest.hexdigest()}
+
+
 def conditions() -> dict:
     """이번 평가를 잰 조건. 모델 · prompt · 응답 schema · menu 파일과 그 sha256.
 
-    출력  {model, provider, role_version, inference, request, prompt, response_schema, menu}. 파일 셋은 _file_record 꼴
+    출력  {model, provider, role_version, inference, request, prompt, response_schema, menu, registry}. 파일 셋은 _file_record 꼴
           request 는 provider 가 요청마다 싣는 고정 설정(temperature · seed · …). request_settings 가 셈
+          registry 는 게시 자산 뿌리(ontology · menu · recipes) 전체의 sha256 (_tree_record).
+          정답표 reads · 범위 밖 결과(materialize 판정)가 recipe 의 execution 을 읽으므로 적음
           역할 설정을 못 읽으면 {error} 하나
     규칙  이 저장소의 역할 manifest 와 게시 menu 를 읽음. 창구가 같은 사본에서 떠 있을 때
           창구가 쓰는 판과 같음. /resolve 응답에는 판이 안 실림 (role_label 과 같음)
@@ -99,6 +119,7 @@ def conditions() -> dict:
         "prompt": _file_record(role_dir / "prompts" / f"v{role.prompt_version}.yaml"),
         "response_schema": _file_record(role_dir / "response_schemas" / f"v{role.response_schema_version}.yaml"),
         "menu": _file_record(paths.MENU_YAML_PATH),
+        "registry": _tree_record(paths.ARTIFACT_ROOT),
     }
 
 
@@ -222,3 +243,104 @@ def benchmark_meta(
         "git_head": _git_head(),
         "started_at": started.isoformat(),
     }
+
+
+# ================================================================ 이어 실행
+# 이어 실행할 때 같아야 하는 조건. (화면 글자, 저장된 meta 에서 값을 꺼내는 경로).
+# 「남은 발화를 같은 평가 계약으로 재나」만 본다. run_id · 시각 · git HEAD · 저장 자리 · GPU · 쉼 설정 ·
+# 화면 정렬 · 필터는 안 본다 — 재는 값을 안 바꾸거나 저장된 값을 그대로 다시 쓴다.
+RESUME_FIELDS = (
+    ("Test Suite", (("suite", "dataset_id"), ("suite", "sha256"))),
+    ("Model", (("conditions", "model"), ("conditions", "provider"), ("conditions", "role_version"),
+               ("conditions", "inference"))),
+    ("Prompt", (("conditions", "prompt", "sha256"),)),
+    ("Schema", (("conditions", "response_schema", "sha256"),)),
+    ("Menu", (("conditions", "menu", "sha256"),)),
+    ("Registry", (("conditions", "registry", "sha256"),)),
+    ("Request settings", (("conditions", "request"),)),
+    ("Evaluation version", (("result_version",),)),
+)
+
+# 이어 실행이 저장된 값을 그대로 다시 쓰는 칸. 지금 값과 맞대지 않지만 없으면 같은 실행을 못 만든다.
+RESUME_REPLAYED = (
+    ("suite", "selected_case_ids"),
+    ("runs",),
+    ("resolver",),
+    ("materialize",),
+    ("context", "label"),
+    ("context", "payload"),
+    ("cooldown",),
+)
+
+_MISSING = object()
+
+
+def _dig(meta: dict, path: tuple):
+    value = meta
+    for key in path:
+        if not isinstance(value, dict) or key not in value:
+            return _MISSING
+        value = value[key]
+    return value
+
+
+def resume_identity(meta: dict) -> dict:
+    """저장된 머리의 이어 실행 조건. {화면 글자: 값}. 값을 못 찾은 칸은 None.
+
+    규칙  RESUME_FIELDS 차례. 칸 하나에 경로가 여럿이면 [값, …] 목록
+          경로 중 하나라도 없거나 null 이거나 {error} 면 그 칸은 None (기록 없음)
+    """
+    shown = {}
+    for label, routes in RESUME_FIELDS:
+        values = [_dig(meta, route) for route in routes]
+        broken = any(v is _MISSING or v is None or (isinstance(v, dict) and "error" in v) for v in values)
+        shown[label] = None if broken else (values[0] if len(values) == 1 else values)
+    return shown
+
+
+def resume_gaps(meta: dict) -> list[str]:
+    """이어 실행에 필요한데 저장된 머리에 없는 칸 이름들. 비면 다 있음.
+
+    규칙  RESUME_FIELDS 가 None 인 칸 · RESUME_REPLAYED 경로가 없는 칸
+          materialize 가 참이면 materialize_now 도 있어야 함 (부르는 순간을 같게 하려고)
+          조건을 못 읽은 기록(conditions.error)도 여기 걸림
+    """
+    gaps = [label for label, value in resume_identity(meta).items() if value is None]
+    gaps += [".".join(route) for route in RESUME_REPLAYED if _dig(meta, route) is _MISSING]
+    if meta.get("materialize") and not meta.get("materialize_now"):
+        gaps.append("materialize_now")
+    return gaps
+
+
+def current_resume_identity(meta: dict) -> dict:
+    """지금 이 저장소에서 같은 기록을 이어 잴 때의 조건. resume_identity 와 같은 모양.
+
+    규칙  정답표는 저장된 dataset_id 의 등록 파일, 없으면 저장된 suite.path 를 지금 읽어 sha256 을 셈
+          모델 · prompt · schema · menu · 게시 자산 · 요청 설정은 conditions() 를 지금 읽음
+          평가 판은 RESULT_VERSION
+    제약  저장된 값을 여기서 고치지 않는다
+    """
+    suite = meta.get("suite") or {}
+    path = None
+    try:
+        path = load_test_suite.dataset(suite.get("dataset_id"))["path"]
+    except KeyError:
+        path = suite.get("path")
+    sha = None
+    if path and Path(path).is_file():
+        sha = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    now = {"result_version": RESULT_VERSION, "suite": {"dataset_id": suite.get("dataset_id"), "sha256": sha},
+           "conditions": conditions()}
+    return resume_identity(now)
+
+
+def compare_resume(stored: dict, current: dict) -> list[dict]:
+    """이어 실행 조건 맞대기. [{label, stored, current, same}] RESUME_FIELDS 차례.
+
+    규칙  같은지는 값 전체로 봄 (sha256 전체 · 요청 설정 dict 전체). 한쪽이 None 이면 다름
+    """
+    return [
+        {"label": label, "stored": stored.get(label), "current": current.get(label),
+         "same": stored.get(label) is not None and stored.get(label) == current.get(label)}
+        for label, _routes in RESUME_FIELDS
+    ]

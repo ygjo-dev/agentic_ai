@@ -21,6 +21,8 @@
     python dev/evaluation/run_evaluation.py --out 결과.json        결과 JSON 한 장의 자리
 
 화면(app/ui 테스트 탭)은 run_dataset 으로 같은 run 을 부른다. 판정 · 결과 모양이 창구와 같다.
+화면의 「중지」는 should_stop 으로, 「이어 실행」은 resume 으로 들어온다. 멈춘 기록은 run.json 없이
+meta.json + cases.jsonl 로 남고, 이어 재면 같은 run_id · 같은 폴더에서 남은 발화만 잰다.
 
 **MCP 도구를 부르지 않는다.** `/resolve` 를 부르고, 고른 recipe 를 workflow_materializer 로 KRRI
 native workflow 까지만 만든다. Gateway 실행은 `check_resolve --execute` 의 일이다.
@@ -177,6 +179,80 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
 
 
 # ================================================================ 정답표 한 벌
+# 사람이 「중지」를 눌러 멈춘 까닭. meta.stopped 에 적힌다.
+USER_STOP = "user_stop: 사용자가 중지함"
+
+
+def _measure(plan: list, rows: list, *, planned: int, label_of: dict, resolve, context, materialize: bool, now,
+             cooldown_every: int, cooldown_seconds: float, recorder, progress, monitor, should_stop) -> tuple[str | None, int]:
+    """plan 의 (발화, 차례) 를 차례로 재서 rows 에 덧붙임. (멈춘 까닭 또는 None, 이번에 부른 수).
+
+    규칙  줄마다 차례대로: recorder.case · progress(끝난 수, 전체 수, 그 줄) · monitor.after_case(끝난 수, 전체 수).
+          끝난 수는 rows 전체(이어 재면 전에 잰 줄 포함)
+          should_stop 은 Resolve 를 부르기 바로 앞에서 봄(쉼 뒤). 참이면 USER_STOP 으로 멈춤.
+          이미 부른 Resolve 는 끝까지 기다려 그 줄을 남긴 뒤에 멈춤
+          마지막 줄 뒤에는 안 봄. 다 잰 뒤에 눌린 중지는 끝난 것으로 둠
+          서버에 못 닿거나(ServerDown) StopRun · KeyboardInterrupt 면 거기서 멈추고 까닭을 돌려줌
+    제약  두 줄을 동시에 재지 않는다. 다음 발화를 미리 부르지 않는다
+    """
+    stopped, called = None, 0
+    try:
+        if monitor:
+            monitor.before_run()
+        for case, number in plan:
+            # 다음 요청 앞에서 쉰다. 뒤에서 쉬면 마지막 요청 뒤에도 쉬게 되고,
+            # 그만큼은 아무도 기다릴 이유가 없는 시간이다.
+            if cooldown_every and called and called % cooldown_every == 0:
+                time.sleep(cooldown_seconds)
+            if should_stop and should_stop():
+                stopped = USER_STOP
+                break
+            rows.append(run_case(case, label_of[case["group"]], number, resolve, context, materialize, now))
+            called += 1
+            if recorder:
+                recorder.case(rows[-1])
+            if progress:
+                progress(len(rows), planned, rows[-1])
+            if monitor:
+                monitor.after_case(len(rows), planned)
+    except ServerDown as exc:
+        stopped = f"ServerDown: {exc}"
+    except StopRun as exc:
+        stopped = f"StopRun: {exc}"
+    except KeyboardInterrupt:
+        stopped = "interrupted"
+
+    if monitor:
+        try:
+            monitor.after_run(called)
+        except KeyboardInterrupt:
+            pass
+    return stopped, called
+
+
+def _close(head: dict, rows: list, labels: tuple, *, stopped: str | None, complete: bool, elapsed_s: float,
+           ended: datetime.datetime, environment, recorder) -> dict:
+    """잰 줄로 결과 한 벌을 세우고 남김. 다 쟀으면 run.json, 아니면 meta.json 만 다시 씀.
+
+    규칙  다 잰 것(complete)만 finished_at 을 적고 recorder.finish 로 run.json 을 씀
+          못 다 잰 것은 finished_at None · stopped(까닭) · stopped_at 을 적어 recorder.interrupt. cases.jsonl 은 그대로
+          합계는 score.summarize 가 줄에 적힌 판정을 셈
+    제약  못 다 잰 것에 run.json 을 쓰지 않는다
+    """
+    tail = {"finished_at": ended.isoformat(), "elapsed_s": round(elapsed_s, 1), "stopped": None, "environment": environment}
+    if not complete:
+        tail = {"finished_at": None, "elapsed_s": round(elapsed_s, 1), "stopped": stopped or manage_benchmark.INCOMPLETE,
+                "stopped_at": ended.isoformat(), "environment": environment}
+    result = {"meta": {**head, **tail}, "summary": score.summarize(rows, labels), "cases": rows}
+    if recorder:
+        if complete:
+            recorder.finish(result)
+        else:
+            recorder.interrupt(result["meta"])
+        result["meta"]["saved_to"] = str(recorder.dir)
+    return result
+
+
 def run(
     suite: dict,
     *,
@@ -196,14 +272,17 @@ def run(
     save_dir: Path | None = None,
     dataset: dict | None = None,
     environment: dict | None = None,
+    should_stop=None,
 ) -> dict:
     """정답표를 재서 결과 한 벌 (Test Run).
 
     출력  {meta, summary, cases}. json 으로 바로 쓸 수 있는 값만
-          meta 머리는 monitor_metadata.benchmark_meta. 끝에 finished_at · elapsed_s · stopped · environment 를 더함
+          meta 머리는 monitor_metadata.benchmark_meta. 끝에 finished_at · elapsed_s · stopped · environment 를 더함.
+          다 못 잰 것은 finished_at 이 None 이고 stopped_at 이 더 붙음
     규칙  only 가 있으면 그 번호만, 없으면 enabled 인 발화만. 파일 차례 그대로
           발화마다 runs 회
-          서버에 못 닿거나 끊기거나 StopRun 이면 거기서 멈추고 거기까지의 결과와 까닭(meta.stopped)을 냄
+          서버에 못 닿거나 끊기거나 StopRun 이거나 should_stop() 이 참이면 거기서 멈추고
+          거기까지의 결과와 까닭(meta.stopped)을 냄. should_stop 은 Resolve 를 부르기 바로 앞에서만 봄 (_measure)
           materialize 의 부르는 순간은 now 하나로 고정함. 안 주면 시작 시각
           cooldown_every 가 0 보다 크면 그만큼 부른 뒤 cooldown_seconds 초 쉼.
           센 수는 발화 × runs 전체를 통틀어서임. 0 이면 안 쉼(기본)
@@ -215,7 +294,8 @@ def run(
           monitor 가 있으면 시작 전 before_run, 끝나고 after_run. 결과에 아무것도 안 실음 (박자만)
           environment 는 실행 하드웨어 한 벌(monitor_gpu.environment). 그대로 meta.environment 에 실림
           save_dir 이면 manage_benchmark.Recorder 가 <save_dir>/<run_id>/ 에 남김.
-          도는 동안 meta.json + cases.jsonl, 끝나면 run.json 하나만 남음
+          도는 동안 meta.json + cases.jsonl, 다 재면 run.json 하나만 남음.
+          멈추면 run.json 을 안 쓰고 meta.json 에 까닭을 적음. 이어 재기는 resume
           dataset 은 {id, label}. 있으면 meta.suite 에 dataset_id · label 로 실림
     제약  MCP 도구를 부르지 않는다.
           쉬는 것을 재는 값에 섞지 않는다.
@@ -250,55 +330,154 @@ def run(
         recorder.start(head)
 
     # 3. 발화마다 Resolve → 채점
-    rows, stopped = [], None
-    called, planned = 0, len(cases) * runs
-    try:
-        if monitor:
-            monitor.before_run()
-        for case in cases:
-            for number in range(1, runs + 1):
-                # 다음 요청 앞에서 쉰다. 뒤에서 쉬면 마지막 요청 뒤에도 쉬게 되고,
-                # 그만큼은 아무도 기다릴 이유가 없는 시간이다.
-                if cooldown_every and called and called % cooldown_every == 0:
-                    time.sleep(cooldown_seconds)
-                rows.append(run_case(case, label_of[case["group"]], number, resolve, context, materialize, now))
-                called += 1
-                if recorder:
-                    recorder.case(rows[-1])
-                if progress:
-                    progress(called, planned, rows[-1])
-                if monitor:
-                    monitor.after_case(called, planned)
-    except ServerDown as exc:
-        stopped = f"ServerDown: {exc}"
-    except StopRun as exc:
-        stopped = f"StopRun: {exc}"
-    except KeyboardInterrupt:
-        stopped = "interrupted"
-
-    finished = datetime.datetime.now(KST)
-    if monitor:
-        try:
-            monitor.after_run(called)
-        except KeyboardInterrupt:
-            pass
+    plan = [(case, number) for case in cases for number in range(1, runs + 1)]
+    rows: list[dict] = []
+    stopped, _called = _measure(
+        plan, rows, planned=len(plan), label_of=label_of, resolve=resolve, context=context, materialize=materialize,
+        now=now, cooldown_every=cooldown_every, cooldown_seconds=cooldown_seconds, recorder=recorder,
+        progress=progress, monitor=monitor, should_stop=should_stop,
+    )
 
     # 4. 합계 · 저장
-    result = {
-        "meta": {
-            **head,
-            "finished_at": finished.isoformat(),
-            "elapsed_s": round((finished - started).total_seconds(), 1),
-            "stopped": stopped,
-            "environment": environment,
-        },
-        "summary": score.summarize(rows, labels),
-        "cases": rows,
-    }
-    if recorder:
-        recorder.finish(result)
-        result["meta"]["saved_to"] = str(recorder.dir)
-    return result
+    finished = datetime.datetime.now(KST)
+    return _close(head, rows, labels, stopped=stopped, complete=stopped is None,
+                  elapsed_s=(finished - started).total_seconds(), ended=finished, environment=environment,
+                  recorder=recorder)
+
+
+# ================================================================ 이어 실행
+# 이어 실행을 막는 까닭. 화면이 그대로 보인다.
+RESUME_CHANGED = "실행 조건이 변경되어 이어 실행할 수 없습니다."
+RESUME_UNREPRODUCIBLE = "저장된 실행 조건만으로 동일 실행을 재현할 수 없습니다."
+RESUME_OFFICIAL = "공식 기록은 이어 실행하지 않습니다."
+RESUME_FINISHED = "완료 파일(run.json)로 저장된 기록이라 이어 실행할 수 없습니다."
+RESUME_ROWS = "저장된 발화 결과가 실행 계획과 맞지 않습니다."
+
+# meta.json 머리에서 멈출 때마다 새로 적는 칸. 이어 잴 때 머리에서 뗀다.
+_SEGMENT_KEYS = ("finished_at", "elapsed_s", "stopped", "stopped_at", "environment", "saved_to")
+
+
+class ResumeRefused(ValueError):
+    """이 기록은 이어 잴 수 없다. 까닭이 문장으로 붙음. 파일은 안 건드림."""
+
+
+def _unit(row: dict) -> tuple:
+    """결과 줄 하나의 실행 신원. (case_id, run)."""
+    return row["case_id"], row.get("run", 1)
+
+
+def resume_check(kind: str, run_id: str, *, resolver: str = "api /resolve") -> dict:
+    """저장된 기록을 같은 run_id 로 이어 잴 수 있나.
+
+    출력  {resumable, reason, fields, gaps, done, planned}
+          fields 는 monitor_metadata.compare_resume 의 줄들 (조건마다 저장된 값 · 지금 값 · 같나).
+          resolver 가 다르면 Resolver 줄이 끝에 붙음. gaps 는 저장된 머리에 없는 칸 이름
+    규칙  local 의 끝나지 않은 기록(meta.json + cases.jsonl)만 이어 잼. official 은 RESUME_OFFICIAL, run.json 은 RESUME_FINISHED
+          저장된 머리에 이어 잴 칸이 없으면 RESUME_UNREPRODUCIBLE. 짐작하지 않음
+          조건이 하나라도 다르면 RESUME_CHANGED
+          끝난 줄이 계획(selected_case_ids × runs)에 없거나 같은 (case_id, run) 이 둘이면 RESUME_ROWS
+    제약  파일을 쓰거나 고치지 않는다. Resolve 를 부르지 않는다
+    """
+    def refused(reason, **extra):
+        return {"resumable": False, "reason": reason, "fields": [], "gaps": [], "done": None, "planned": None, **extra}
+
+    if kind != manage_benchmark.LOCAL:
+        return refused(RESUME_OFFICIAL)
+    folder = manage_benchmark.run_dir(kind, run_id)
+    if (folder / manage_benchmark.RUN_FILE).is_file():
+        return refused(RESUME_FINISHED)
+    try:
+        stored = manage_benchmark.read_incomplete(folder)
+    except (OSError, ValueError, KeyError) as exc:
+        return refused(f"{RESUME_UNREPRODUCIBLE} ({type(exc).__name__}: {exc})")
+    meta, rows = stored["meta"], stored["rows"]
+    counts = {"done": len(rows), "planned": manage_benchmark.planned_runs(meta)}
+
+    gaps = monitor_metadata.resume_gaps(meta)
+    fields = monitor_metadata.compare_resume(
+        monitor_metadata.resume_identity(meta), monitor_metadata.current_resume_identity(meta)
+    )
+    if meta.get("resolver") not in (None, resolver):
+        fields.append({"label": "Resolver", "stored": meta.get("resolver"), "current": resolver, "same": False})
+    if gaps:
+        return {**refused(RESUME_UNREPRODUCIBLE), "fields": fields, "gaps": gaps, **counts}
+    if not all(field["same"] for field in fields):
+        return {**refused(RESUME_CHANGED), "fields": fields, **counts}
+
+    plan = {(case_id, number) for case_id in meta["suite"]["selected_case_ids"] for number in range(1, meta["runs"] + 1)}
+    units = [_unit(row) for row in rows]
+    if len(set(units)) != len(units) or not set(units) <= plan:
+        return {**refused(RESUME_ROWS), "fields": fields, **counts}
+    return {"resumable": True, "reason": None, "fields": fields, "gaps": [], **counts}
+
+
+def resume(
+    kind: str,
+    run_id: str,
+    *,
+    resolve=resolve_via_api,
+    resolver: str = "api /resolve",
+    progress=None,
+    monitor=None,
+    environment: dict | None = None,
+    should_stop=None,
+) -> dict:
+    """끝나지 않은 local 기록을 같은 run_id · 같은 폴더에서 이어 잰 결과 한 벌 (Test Run).
+
+    출력  run 과 같은 모양. cases 는 전에 잰 줄과 새로 잰 줄을 계획 차례로 한 번씩
+    규칙  resume_check 가 막으면 ResumeRefused. 그때 파일을 안 건드림
+          잴 것은 계획(selected_case_ids × runs) 중 끝난 줄에 없는 (case_id, run) 뿐. 끝난 발화를 다시 안 부름
+          정답표 · 문맥 · materialize · 부르는 순간(materialize_now) · 쉼 설정은 저장된 머리 그대로 씀
+          끝이 잘린 cases.jsonl 은 끝난 줄만 남기고 이어 씀
+          시작할 때 meta.json 에서 지난번 멈춘 까닭을 떼고 resumed_at 에 이번 시각을 더함.
+          다시 멈추면 run 과 같이 meta.json 에 까닭을 적고, 다 재면 같은 폴더에 run.json 을 쓰고 meta.json · cases.jsonl 을 지움
+          elapsed_s 는 잰 동안의 시간을 더한 것 (멈춰 있던 시간은 안 셈). environment 는 저장된 것이 있으면 그것
+    제약  새 run_id · 새 폴더를 만들지 않는다. 전에 잰 줄을 다시 채점하거나 고치지 않는다.
+          지금 조건을 저장된 조건 대신 쓰지 않는다
+    """
+    verdict = resume_check(kind, run_id, resolver=resolver)
+    if not verdict["resumable"]:
+        raise ResumeRefused(verdict["reason"])
+    folder = manage_benchmark.run_dir(kind, run_id)
+    stored = manage_benchmark.read_incomplete(folder)
+    meta, rows = stored["meta"], list(stored["rows"])
+
+    suite_path = Path(load_test_suite.dataset(meta["suite"]["dataset_id"])["path"])
+    suite = load_test_suite.load(suite_path)
+    by_id = {case["id"]: case for case in suite["cases"]}
+    cases = [by_id[case_id] for case_id in meta["suite"]["selected_case_ids"]]
+    runs = meta["runs"]
+    order = {(case["id"], number): index for index, (case, number) in
+             enumerate((case, number) for case in cases for number in range(1, runs + 1))}
+    done = {_unit(row) for row in rows}
+    plan = [(case, number) for case in cases for number in range(1, runs + 1) if (case["id"], number) not in done]
+
+    if stored["torn"]:
+        manage_benchmark.repair_rows(folder, rows)
+    recorder = manage_benchmark.Recorder.reopen(folder)
+    started = datetime.datetime.now(KST)
+    head = {key: value for key, value in meta.items() if key not in _SEGMENT_KEYS}
+    head["resumed_at"] = [*(meta.get("resumed_at") or []), started.isoformat()]
+    before = meta.get("elapsed_s") or 0.0
+    environment = meta.get("environment") or environment
+    recorder.interrupt({**head, "elapsed_s": before, "environment": environment})
+
+    materialize = meta["materialize"]
+    now = datetime.datetime.fromisoformat(meta["materialize_now"]) if materialize else started
+    cooldown = meta.get("cooldown") or {}
+    stopped, _called = _measure(
+        plan, rows, planned=len(order), label_of=load_test_suite.label_of(suite), resolve=resolve,
+        context=meta["context"]["payload"], materialize=materialize, now=now,
+        cooldown_every=cooldown.get("every") or 0, cooldown_seconds=cooldown.get("seconds") or 0.0,
+        recorder=recorder, progress=progress, monitor=monitor, should_stop=should_stop,
+    )
+
+    finished = datetime.datetime.now(KST)
+    rows.sort(key=lambda row: order[_unit(row)])
+    return _close(head, rows, tuple(meta["suite"].get("group_labels") or ()), stopped=stopped,
+                  complete=stopped is None and len(rows) == len(order),
+                  elapsed_s=before + (finished - started).total_seconds(), ended=finished, environment=environment,
+                  recorder=recorder)
 
 
 def run_dataset(dataset_id: str, *, save: bool = True, runs_dir: Path | None = None, **options) -> dict:

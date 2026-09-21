@@ -21,12 +21,15 @@ run_id 는 「<시작 시각>-<정답표 이름>」(20260921-132500-test_suite_v
 
     도는 동안      <run_id>/meta.json     시작할 때 쓴 머리(meta). 도중에 죽으면 복구에 씀
                             cases.jsonl   발화 하나가 끝날 때마다 한 줄씩 덧붙임
+    중단됨         <run_id>/meta.json     머리에 멈춘 까닭(stopped) · 멈춘 시각 · 잰 시간을 더해 다시 씀
+                            cases.jsonl   끝난 줄 그대로. 이어 실행하면 같은 파일에 덧붙임
     끝나면         <run_id>/run.json      결과 한 벌 그대로 (run_evaluation.run 의 반환값과 같은 모양)
-                                          run.json 을 다 쓴 뒤에만 meta.json · cases.jsonl 을 지움
+                                          잴 것을 다 잰 때만 씀. run.json 을 다 쓴 뒤에만 meta.json · cases.jsonl 을 지움
 
 run.json 이 있으면 그것이 Test Run 이다(끝남). 남은 meta.json · cases.jsonl 은 안 읽는다.
-없으면(도중에 죽음) meta.json 과 cases.jsonl 로 다시 세운다 — 합계는 score.summarize 가 줄에 적힌
+없으면(중단 · 도중에 죽음) meta.json 과 cases.jsonl 로 다시 세운다 — 합계는 score.summarize 가 줄에 적힌
 판정을 다시 센다. 줄을 다시 채점하지 않는다. 끝나지 않은 것에 run.json 을 지어 쓰지 않는다.
+끝나지 않은 local 기록은 같은 폴더 · 같은 run_id 로 이어 잴 수 있다(Recorder.reopen). 새 폴더를 안 만든다.
 
 사람이 읽는 보고서(요약 글 · 표 · 그림)는 아직 형식이 정해지지 않아 만들지 않는다.
 
@@ -98,9 +101,21 @@ class Recorder:
     규칙  run_id 는 official · local 두 자리와 root 를 통틀어 아직 없는 이름. 있으면 -2, -3, …
           폴더를 exist_ok=False 로 만들어 자리를 잡음. 동시에 둘이 떠도 mkdir 이 하나만 이김
           case 는 줄마다 바로 flush. 도중에 죽어도 끝난 줄이 남음
+          interrupt 는 meta.json 만 다시 씀(멈춘 까닭 등). cases.jsonl 은 그대로 둠
           finish 는 run.json 을 다 쓴 뒤에만 meta.json · cases.jsonl 을 지움
+          reopen 은 끝나지 않은 폴더를 그대로 잡음. 이름 · 폴더를 새로 안 만듦
     제약  다른 Test Run 을 덮어쓰지 않는다. 결과를 고치거나 다시 채점하지 않는다
     """
+
+    @classmethod
+    def reopen(cls, folder: Path) -> "Recorder":
+        """끝나지 않은 Test Run 폴더를 이어 쓰는 자. run.json 이 있거나 meta.json 이 없으면 ValueError."""
+        folder = Path(folder)
+        if (folder / RUN_FILE).is_file() or not (folder / META_FILE).is_file():
+            raise ValueError(f"이어 쓸 수 있는 끝나지 않은 Test Run 이 아니다: {folder}")
+        recorder = cls.__new__(cls)
+        recorder.run_id, recorder.dir = folder.name, folder
+        return recorder
 
     def __init__(self, root: Path, started: datetime.datetime, suite_name: str):
         root = Path(root)
@@ -128,6 +143,10 @@ class Recorder:
             handle.write(json.dumps(row, ensure_ascii=False) + "\n")
             handle.flush()
 
+    def interrupt(self, meta: dict) -> None:
+        """끝나지 않고 멈춘 머리를 meta.json 에 다시 씀. cases.jsonl 은 안 건드림."""
+        _write_atomic(self.dir / META_FILE, _dump({"meta": meta}))
+
     def finish(self, result: dict) -> None:
         _write_atomic(self.dir / RUN_FILE, _dump(result))
         for name in (META_FILE, CASES_FILE):
@@ -149,6 +168,50 @@ def duplicate_run_ids() -> set[str]:
     return found[OFFICIAL] & found[LOCAL]
 
 
+def _read_rows(folder: Path) -> tuple[list[dict], bool]:
+    """cases.jsonl 의 끝난 줄들과, 끝이 잘렸나(마지막 줄이 깨졌거나 줄바꿈 없이 끝남).
+
+    규칙  깨진 줄을 만나면 거기서 멈춤. 그 뒤는 안 읽음. 파일이 없으면 ([], False)
+    """
+    path = folder / CASES_FILE
+    if not path.is_file():
+        return [], False
+    text = path.read_text(encoding="utf-8")
+    rows, torn = [], bool(text) and not text.endswith("\n")
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except json.JSONDecodeError:
+            torn = True
+            break
+    return rows, torn
+
+
+def read_incomplete(folder: Path) -> dict:
+    """끝나지 않은 Test Run 한 벌을 이어 재려고 읽음. {"meta", "rows", "torn"}.
+
+    규칙  meta 는 meta.json 머리 그대로(INCOMPLETE 를 채우지 않음). rows 는 cases.jsonl 의 끝난 줄
+          torn 은 끝이 잘렸나. 잘렸으면 이어 쓰기 전에 repair_rows 로 끝난 줄만 남김
+          run.json 이 있거나 meta.json 이 없으면 ValueError
+    제약  줄을 다시 채점하지 않는다
+    """
+    folder = Path(folder)
+    if (folder / RUN_FILE).is_file():
+        raise ValueError(f"끝난 Test Run 이다: {folder}")
+    if not (folder / META_FILE).is_file():
+        raise ValueError(f"meta.json 이 없다: {folder}")
+    meta = json.loads((folder / META_FILE).read_text(encoding="utf-8"))["meta"]
+    rows, torn = _read_rows(folder)
+    return {"meta": meta, "rows": rows, "torn": torn}
+
+
+def repair_rows(folder: Path, rows: list[dict]) -> None:
+    """cases.jsonl 을 끝난 줄만으로 다시 씀. 잘린 끝 뒤에 새 줄을 덧붙이면 그 줄까지 못 읽게 되므로."""
+    _write_atomic(Path(folder) / CASES_FILE, "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
+
+
 def read_run_dir(folder: Path) -> dict:
     """폴더 하나의 Test Run. run_evaluation.run 의 반환값과 같은 모양.
 
@@ -167,14 +230,7 @@ def read_run_dir(folder: Path) -> dict:
     from dev.evaluation.engine import score
 
     head = json.loads((folder / META_FILE).read_text(encoding="utf-8"))["meta"]
-    rows = []
-    for line in (folder / CASES_FILE).read_text(encoding="utf-8").splitlines() if (folder / CASES_FILE).is_file() else []:
-        if not line.strip():
-            continue
-        try:
-            rows.append(json.loads(line))
-        except json.JSONDecodeError:
-            break
+    rows, _torn = _read_rows(folder)
     meta = {**head, "finished_at": head.get("finished_at"), "stopped": head.get("stopped") or INCOMPLETE}
     labels = tuple((head.get("suite") or {}).get("group_labels") or ())
     return {"meta": meta, "summary": score.summarize(rows, labels), "cases": rows}
@@ -198,6 +254,15 @@ def load_benchmark(kind: str, run_id: str) -> dict:
 _ENTRY_CACHE: dict[tuple, dict] = {}
 
 
+def planned_runs(meta: dict) -> int | None:
+    """Test Run 이 잴 수 전체. 고른 발화 수 × runs. meta 에 칸이 없으면 None."""
+    selected = (meta.get("suite") or {}).get("selected_case_ids")
+    runs = meta.get("runs")
+    if not isinstance(selected, list) or not isinstance(runs, int):
+        return None
+    return len(selected) * runs
+
+
 def _entry(path: Path, kind: str) -> dict | None:
     """폴더 하나의 목록 줄. 읽을 수 없으면 None."""
     complete = (path / RUN_FILE).is_file()
@@ -206,6 +271,9 @@ def _entry(path: Path, kind: str) -> dict | None:
         return None
     stat = source.stat()
     key = (str(source), stat.st_size, stat.st_mtime_ns)
+    if not complete and (path / CASES_FILE).is_file():
+        rows_stat = (path / CASES_FILE).stat()
+        key += (rows_stat.st_size, rows_stat.st_mtime_ns)
     if key not in _ENTRY_CACHE:
         try:
             document = json.loads(source.read_text(encoding="utf-8"))
@@ -224,6 +292,8 @@ def _entry(path: Path, kind: str) -> dict | None:
             "runs": total.get("runs"),
             "passed": total.get("passed"),
             "stopped": meta.get("stopped"),
+            "done": total.get("runs") if complete else len(_read_rows(path)[0]),
+            "planned": planned_runs(meta),
         }
     return {"run_id": path.name, "kind": kind, "path": str(path), "complete": complete, **_ENTRY_CACHE[key]}
 
@@ -231,10 +301,12 @@ def _entry(path: Path, kind: str) -> dict | None:
 def list_benchmarks() -> list[dict]:
     """저장한 Test Run 목록. official · local 을 한 줄로 합쳐 최근 것이 앞.
 
-    출력  [{run_id, kind, path, complete, duplicate, started_at, dataset_id, suite_label, suite_name, runs, passed, stopped}]
+    출력  [{run_id, kind, path, complete, duplicate, started_at, dataset_id, suite_label, suite_name, runs, passed, stopped,
+            done, planned}]
           run_id 는 폴더 이름 그대로. kind 는 official · local
           complete 는 run.json 이 있나. 끝난 것은 run.json 만으로 목록에 오름
           끝나지 않은 것(meta.json 만)도 complete 거짓으로 오름. runs · passed 는 None
+          done 은 끝난 줄 수(끝나지 않은 것은 cases.jsonl 의 줄 수), planned 는 잴 수 전체(planned_runs)
           duplicate 는 같은 run_id 가 다른 자리에도 있나. 목록에서 빼지 않고 표시만 함
     규칙  두 자리를 섞어 started_at 으로 정렬. kind 로 먼저 가르지 않음
           읽을 수 없는 폴더(run.json · meta.json 이 없거나 깨짐)는 건너뜀. 파일을 옮기거나 베끼지 않음

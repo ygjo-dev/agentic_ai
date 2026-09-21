@@ -130,8 +130,13 @@ def _fake_suite():
 
 def _counted(monkeypatch, **kwargs):
     """가짜 정답표를 가짜 resolve 로 돌리고 (resolve 횟수, 잔 시간들) 을 돌려줌."""
+    import time
+    from types import SimpleNamespace
+
+    # run_evaluation 의 time 만 바꿔 끼운다. time 모듈 자체를 바꾸면 subprocess(git rev-parse)가 기다리며
+    # 부르는 sleep 까지 여기 적혀 쉰 횟수가 흔들린다.
     slept = []
-    monkeypatch.setattr(run_evaluation.time, "sleep", lambda seconds: slept.append(seconds))
+    monkeypatch.setattr(run_evaluation, "time", SimpleNamespace(sleep=slept.append, perf_counter=time.perf_counter))
 
     asked = []
 
@@ -644,3 +649,337 @@ def test_an_old_test_run_without_the_new_fields_still_loads(tmp_path, monkeypatc
     loaded = manage_benchmark.load_benchmark(entry["kind"], entry["run_id"])
     assert loaded == old
     assert loaded["cases"][-1]["passed"] is True, "옛 판정을 새 규칙으로 덮어썼다"
+
+
+# ── 중지 · 중단된 기록 · 이어 실행 ───────────────────────────────────
+#
+# 화면의 「중지」는 should_stop 으로, 「이어 실행」은 resume 으로 들어온다. 멈춘 기록이 run.json 으로
+# 끝난 척하거나, 이어 재면서 끝난 발화를 다시 부르거나, 지금 조건을 몰래 섞으면 두 번 잰 것이 한 기록이 된다.
+# 진짜 정답표(FULL48)의 앞 다섯 발화를 가짜 resolve 로 잰다. 이어 재기는 등록된 정답표만 다시 읽는다.
+import threading  # noqa: E402
+
+import pytest  # noqa: E402
+
+FIVE = [1, 2, 3, 4, 5]
+
+
+def _v1_resolve(asked, hold=None):
+    """FULL48 발화에 기대 recipe 와 기대 값을 그대로 돌려주는 가짜 resolve. 부른 발화를 asked 에 적음.
+
+    hold 는 {부른 차례: (entered, release)}. 그 차례면 entered 를 켜고 release 를 기다림
+    """
+    by_utterance = {case["utterance"]: case for case in load_test_suite.load(load_test_suite.SUITE_PATH)["cases"]}
+
+    def resolve(utterance):
+        asked.append(utterance)
+        if hold and len(asked) in hold:
+            entered, release = hold[len(asked)]
+            entered.set()
+            assert release.wait(20)
+        case = by_utterance[utterance]
+        rid = case["expected"]["recipe_ids"][0]
+        return {"reason": "가짜", "status": "SELECT", "recipe_id": rid, "candidate_recipe_ids": [rid], "paths": {},
+                **(case["expected"].get("spoken") or {})}
+
+    return resolve
+
+
+def _utterances(ids):
+    by_id = {case["id"]: case["utterance"] for case in load_test_suite.load(load_test_suite.SUITE_PATH)["cases"]}
+    return [by_id[number] for number in ids]
+
+
+def _run_v1(local, asked, *, only=FIVE, runs=1, should_stop=None, hold=None, materialize=False, context=None):
+    return run_evaluation.run(
+        load_test_suite.load(load_test_suite.SUITE_PATH), suite_path=load_test_suite.SUITE_PATH,
+        resolve=_v1_resolve(asked, hold), only=only, runs=runs, materialize=materialize, context=context,
+        context_label="both" if context else None, save_dir=local, should_stop=should_stop,
+        dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"},
+    )
+
+
+def _stopped_after(local, count, **kwargs):
+    """count 번 부른 뒤 멈춘 local 기록. (결과, 폴더)."""
+    asked = []
+    result = _run_v1(local, asked, should_stop=lambda: len(asked) >= count, **kwargs)
+    return result, Path(result["meta"]["saved_to"])
+
+
+def _files(folder):
+    return sorted(p.name for p in folder.iterdir())
+
+
+def _snapshot(folder):
+    return {p.name: p.read_bytes() for p in folder.iterdir()}
+
+
+def _lines(folder):
+    return [json.loads(line) for line in (folder / manage_benchmark.CASES_FILE).read_text(encoding="utf-8").splitlines()]
+
+
+def test_a_stop_while_one_resolve_is_in_flight_saves_that_case_and_never_starts_the_next(tmp_path, monkeypatch):
+    """37 개가 끝나고 38 번째를 부르는 중에 중지를 누르면 38 번째는 남고 39 번째는 안 불린다. 여기서는 2 와 3."""
+    local = _isolate(monkeypatch, tmp_path)
+    asked, stop = [], threading.Event()
+    entered, release = threading.Event(), threading.Event()
+    done = {}
+    worker = threading.Thread(target=lambda: done.update(result=_run_v1(
+        local, asked, should_stop=stop.is_set, hold={2: (entered, release)})))
+    worker.start()
+    assert entered.wait(20)
+    stop.set()
+    release.set()
+    worker.join(20)
+
+    assert asked == _utterances([1, 2]), "중지 뒤에 다음 발화를 불렀다"
+    result = done["result"]
+    folder = Path(result["meta"]["saved_to"])
+    assert _files(folder) == [manage_benchmark.CASES_FILE, manage_benchmark.META_FILE], "멈춘 기록에 run.json 이 생겼다"
+    assert [row["case_id"] for row in _lines(folder)] == [1, 2]
+    meta = json.loads((folder / manage_benchmark.META_FILE).read_text(encoding="utf-8"))["meta"]
+    assert meta["stopped"] == run_evaluation.USER_STOP and meta["stopped_at"] and meta["finished_at"] is None
+    assert result["meta"]["stopped"] == run_evaluation.USER_STOP and len(result["cases"]) == 2
+    [entry] = manage_benchmark.list_benchmarks()
+    assert (entry["complete"], entry["done"], entry["planned"]) == (False, 2, 5)
+
+
+def test_a_stop_requested_after_the_last_case_is_a_completed_run(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    asked = []
+    result = _run_v1(local, asked, should_stop=lambda: len(asked) >= 5)
+    folder = Path(result["meta"]["saved_to"])
+
+    assert len(asked) == 5 and result["meta"]["stopped"] is None
+    assert _files(folder) == [manage_benchmark.RUN_FILE]
+
+
+@pytest.mark.parametrize("error", ["server", "gpu", "interrupt"])
+def test_server_down_gpu_stop_and_interrupt_keep_an_incomplete_record_without_run_json(tmp_path, monkeypatch, error):
+    """a60f002 까지는 멈춘 길도 Recorder.finish 를 불러 run.json 을 썼다. 부분 기록이 끝난 기록처럼 보였다."""
+    local = _isolate(monkeypatch, tmp_path)
+    asked = []
+    echo = _v1_resolve(asked)
+
+    def resolve(utterance):
+        if len(asked) == 2 and error != "gpu":
+            raise {"server": run_evaluation.ServerDown("닿지 않음"), "interrupt": KeyboardInterrupt()}[error]
+        return echo(utterance)
+
+    class Hot:
+        """두 번째 발화 뒤에 열 제한을 본 GPU 조용 정책."""
+
+        def before_run(self):
+            pass
+
+        def after_case(self, done, total):
+            if done == 2:
+                raise monitor_gpu.StopRun("열 제한")
+
+        def after_run(self, called):
+            pass
+
+    result = run_evaluation.run(load_test_suite.load(load_test_suite.SUITE_PATH), suite_path=load_test_suite.SUITE_PATH,
+                                resolve=resolve, only=FIVE, materialize=False, save_dir=local,
+                                monitor=Hot() if error == "gpu" else None,
+                                dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
+    folder = Path(result["meta"]["saved_to"])
+
+    assert _files(folder) == [manage_benchmark.CASES_FILE, manage_benchmark.META_FILE]
+    assert len(_lines(folder)) == 2
+    loaded = manage_benchmark.load_benchmark("local", folder.name)
+    assert loaded["meta"]["stopped"] == result["meta"]["stopped"] != manage_benchmark.INCOMPLETE
+    assert loaded["meta"]["finished_at"] is None
+
+
+def test_resume_runs_only_the_missing_cases_in_the_same_folder_and_ends_as_one_run_json(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    first, folder = _stopped_after(local, 2)
+    stored = _lines(folder)
+
+    asked = []
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve(asked))
+
+    assert asked == _utterances([3, 4, 5]), "끝난 발화를 다시 불렀다"
+    assert result["meta"]["run_id"] == first["meta"]["run_id"] == folder.name
+    assert sorted(p.name for p in local.iterdir()) == [folder.name], "새 폴더가 생겼다"
+    assert _files(folder) == [manage_benchmark.RUN_FILE]
+    saved = json.loads((folder / manage_benchmark.RUN_FILE).read_text(encoding="utf-8"))
+    assert [row["case_id"] for row in saved["cases"]] == FIVE
+    assert saved["cases"][:2] == stored, "전에 잰 줄이 바뀌었다"
+    assert saved["meta"]["stopped"] is None and saved["meta"]["finished_at"]
+    assert saved["meta"]["started_at"] == first["meta"]["started_at"]
+    assert len(saved["meta"]["resumed_at"]) == 1
+    assert saved["summary"] == score.summarize(saved["cases"], tuple(saved["meta"]["suite"]["group_labels"]))
+    assert manage_benchmark.list_benchmarks()[0]["complete"]
+
+
+def test_a_resumed_run_can_be_stopped_again_and_resumed_again(tmp_path, monkeypatch):
+    """1 · 2 가 끝난 기록을 이어 재다 3 이 끝나고 4 를 부르는 중에 멈추면 4 는 남고 5 는 안 불린다. 다음 이어 실행은 5 만."""
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2)
+
+    asked, stop = [], threading.Event()
+    entered, release = threading.Event(), threading.Event()
+    worker = threading.Thread(target=lambda: run_evaluation.resume(
+        "local", folder.name, resolve=_v1_resolve(asked, {2: (entered, release)}), should_stop=stop.is_set))
+    worker.start()
+    assert entered.wait(20)
+    stop.set()
+    release.set()
+    worker.join(20)
+
+    assert asked == _utterances([3, 4])
+    assert _files(folder) == [manage_benchmark.CASES_FILE, manage_benchmark.META_FILE]
+    assert [row["case_id"] for row in _lines(folder)] == [1, 2, 3, 4]
+    assert run_evaluation.resume_check("local", folder.name)["resumable"]
+
+    again = []
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve(again))
+    assert again == _utterances([5])
+    assert [row["case_id"] for row in result["cases"]] == FIVE
+    assert _files(folder) == [manage_benchmark.RUN_FILE]
+    assert len(result["meta"]["resumed_at"]) == 2
+
+
+def test_resume_finds_missing_work_by_case_and_run_not_by_count(tmp_path, monkeypatch):
+    """끝난 줄이 앞에서부터가 아니어도 (case_id, run) 로 빈 것만 잰다. runs 가 여럿이어도 겹쳐 재지 않는다."""
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 5, runs=2)
+    kept = [row for row in _lines(folder) if (row["case_id"], row["run"]) in {(1, 1), (1, 2), (2, 2), (3, 1)}]
+    manage_benchmark.repair_rows(folder, kept)
+
+    asked = []
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve(asked))
+
+    assert asked == _utterances([2, 3, 4, 4, 5, 5])
+    assert [(row["case_id"], row["run"]) for row in result["cases"]] == [(n, r) for n in FIVE for r in (1, 2)]
+    assert _files(folder) == [manage_benchmark.RUN_FILE]
+
+
+def test_resume_replays_the_stored_context_and_materialize_moment(tmp_path, monkeypatch):
+    """이어 잰 발화가 지금 시각 · 다른 문맥으로 materialize 되면 한 기록 안의 발화가 다른 조건으로 잰 것이 된다."""
+    local = _isolate(monkeypatch, tmp_path)
+    seen = []
+    monkeypatch.setattr(run_evaluation, "materialized",
+                        lambda response, context, now: seen.append((context, now)) or {"status": "READY", "workflow": None})
+    context = run_evaluation.context_payload("both")
+    _first, folder = _stopped_after(local, 2, materialize=True, context=context)
+    stored = json.loads((folder / manage_benchmark.META_FILE).read_text(encoding="utf-8"))["meta"]
+
+    run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]))
+
+    assert len(seen) == 5
+    assert {json.dumps(ctx, sort_keys=True) for ctx, _now in seen} == {json.dumps(context, sort_keys=True)}
+    assert {now.isoformat() for _ctx, now in seen} == {stored["materialize_now"]}
+
+
+def test_a_torn_last_line_is_dropped_before_resume_appends(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2)
+    with (folder / manage_benchmark.CASES_FILE).open("a", encoding="utf-8") as handle:
+        handle.write('{"case_id": 3, "run"')
+
+    asked = []
+    result = run_evaluation.resume("local", folder.name, resolve=_v1_resolve(asked))
+    assert asked == _utterances([3, 4, 5])
+    assert [row["case_id"] for row in result["cases"]] == FIVE
+
+
+def _edit_meta(folder, edit):
+    path = folder / manage_benchmark.META_FILE
+    document = json.loads(path.read_text(encoding="utf-8"))
+    edit(document["meta"])
+    path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+
+
+CHANGES = {
+    "Test Suite": lambda meta: meta["suite"].update(sha256="0" * 64),
+    "Model": lambda meta: meta["conditions"].update(model="다른-모델"),
+    "Prompt": lambda meta: meta["conditions"]["prompt"].update(sha256="1" * 64),
+    "Schema": lambda meta: meta["conditions"]["response_schema"].update(sha256="2" * 64),
+    "Menu": lambda meta: meta["conditions"]["menu"].update(sha256="3" * 64),
+    "Registry": lambda meta: meta["conditions"]["registry"].update(sha256="4" * 64),
+    "Request settings": lambda meta: meta["conditions"]["request"].update(temperature=0.7),
+    "Evaluation version": lambda meta: meta.update(result_version=2),
+}
+
+
+@pytest.mark.parametrize("label", list(CHANGES))
+def test_a_changed_execution_condition_blocks_resume_and_names_the_changed_field(tmp_path, monkeypatch, label):
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2)
+    _edit_meta(folder, CHANGES[label])
+    before = _snapshot(folder)
+
+    check = run_evaluation.resume_check("local", folder.name)
+    assert not check["resumable"] and check["reason"] == run_evaluation.RESUME_CHANGED
+    assert [field["label"] for field in check["fields"] if not field["same"]] == [label]
+    assert (check["done"], check["planned"]) == (2, 5)
+
+    asked = []
+    with pytest.raises(run_evaluation.ResumeRefused):
+        run_evaluation.resume("local", folder.name, resolve=_v1_resolve(asked))
+    assert asked == [] and _snapshot(folder) == before, "막힌 이어 실행이 파일을 건드렸다"
+
+
+@pytest.mark.parametrize("drop", ["registry", "request", "materialize_now", "selected_case_ids"])
+def test_an_old_record_without_the_resume_conditions_loads_but_cannot_be_resumed(tmp_path, monkeypatch, drop):
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2, materialize=True, context=run_evaluation.context_payload("both"))
+    _edit_meta(folder, {
+        "registry": lambda meta: meta["conditions"].pop("registry"),
+        "request": lambda meta: meta["conditions"].pop("request"),
+        "materialize_now": lambda meta: meta.pop("materialize_now"),
+        "selected_case_ids": lambda meta: meta["suite"].pop("selected_case_ids"),
+    }[drop])
+
+    check = run_evaluation.resume_check("local", folder.name)
+    assert not check["resumable"] and check["reason"] == run_evaluation.RESUME_UNREPRODUCIBLE
+    assert check["gaps"]
+    assert [row["case_id"] for row in manage_benchmark.load_benchmark("local", folder.name)["cases"]] == [1, 2]
+
+
+NOT_CONDITIONS = {
+    "git_head": lambda meta: meta.update(git_head="deadbee"),
+    "started_at": lambda meta: meta.update(started_at="2020-01-01T00:00:00+09:00"),
+    "saved_to": lambda meta: meta.update(saved_to="/어딘가/다른/자리"),
+    "environment": lambda meta: meta.update(environment={"available": True, "gpus": [{"name": "다른 GPU"}]}),
+    "artifact_root": lambda meta: meta.update(artifact_root="/다른/경로/KRRI_Ontology_Registry"),
+    "suite_path": lambda meta: meta["suite"].update(path="/옮긴/자리/test_suite_v1.yaml"),
+    "cooldown": lambda meta: meta.update(cooldown={"every": 3, "seconds": 5.0}),
+    "role_label": lambda meta: meta.update(role="다른 글자"),
+}
+
+
+@pytest.mark.parametrize("name", list(NOT_CONDITIONS))
+def test_values_that_do_not_change_what_is_measured_do_not_block_resume(tmp_path, monkeypatch, name):
+    """git HEAD · 시각 · 저장 자리 · GPU 가 달라도 남은 발화는 같은 평가 계약으로 잰다."""
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2)
+    _edit_meta(folder, NOT_CONDITIONS[name])
+
+    check = run_evaluation.resume_check("local", folder.name)
+    assert check["resumable"], check
+
+
+def test_official_and_finished_records_are_not_resume_targets(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    finished = _run_v1(local, [])
+    assert run_evaluation.resume_check("local", finished["meta"]["run_id"])["reason"] == run_evaluation.RESUME_FINISHED
+
+    _first, folder = _stopped_after(local, 2)
+    official = manage_benchmark.OFFICIAL_DIR / folder.name
+    folder.rename(official)
+    before = _snapshot(official)
+    assert run_evaluation.resume_check("official", folder.name)["reason"] == run_evaluation.RESUME_OFFICIAL
+    with pytest.raises(run_evaluation.ResumeRefused):
+        run_evaluation.resume("official", folder.name, resolve=_v1_resolve([]))
+    assert _snapshot(official) == before
+
+
+def test_resume_refuses_stored_rows_that_are_not_in_the_plan(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    _first, folder = _stopped_after(local, 2)
+    rows = _lines(folder)
+    manage_benchmark.repair_rows(folder, rows + [rows[0]])
+    assert run_evaluation.resume_check("local", folder.name)["reason"] == run_evaluation.RESUME_ROWS

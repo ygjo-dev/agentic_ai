@@ -7,7 +7,9 @@
 그것을 여기서 막는다.
 """
 
+import json
 import re
+import threading
 from pathlib import Path
 
 import pytest
@@ -100,14 +102,17 @@ def test_before_any_run_the_tab_shows_no_numbers():
 
 
 def test_the_summary_is_copied_from_the_runner_not_counted_here(result):
+    """실패는 모델이 잘못한 셋(기능 선택 · 인자 추출 · 범위 밖 처리)만이다. 오류는 따로 센다."""
     total = result["summary"]["total"]
+    stages = total["failure_stages"]
     assert panel.summarize(result) == {
-        "total": total["runs"], "done": total["runs"], "passed": total["passed"], "failed": total["runs"] - total["passed"],
-        "function": total["failure_stages"]["function"], "input": total["failure_stages"]["input"],
-        "scope": total["failure_stages"]["scope"], "error": total["failure_stages"]["error"], "oos_runs": total["oos_runs"],
+        "total": total["runs"], "done": total["runs"], "passed": total["passed"],
+        "failed": stages["function"] + stages["input"] + stages["scope"],
+        "function": stages["function"], "input": stages["input"],
+        "scope": stages["scope"], "error": stages["error"], "oos_runs": total["oos_runs"],
     }
     assert panel.summarize(result) == {
-        "total": 5, "done": 5, "passed": 2, "failed": 3, "function": 1, "input": 1, "scope": 0, "error": 1, "oos_runs": 0,
+        "total": 5, "done": 5, "passed": 2, "failed": 2, "function": 1, "input": 1, "scope": 0, "error": 1, "oos_runs": 0,
     }
 
 
@@ -147,7 +152,8 @@ def test_the_filters_pick_failures_by_stage_and_search_ignores_spaces(result):
     rows = result["cases"]
 
     assert len(panel.filter_results(rows, "전체")) == 5
-    assert [r["case_id"] for r in panel.filter_results(rows, "실패")] == [3, 4, 5]
+    assert [r["case_id"] for r in panel.filter_results(rows, "실패")] == [3, 4], "오류가 실패에 들어갔다"
+    assert [r["case_id"] for r in panel.filter_results(rows, panel.ERROR_FILTER)] == [5]
     assert [r["case_id"] for r in panel.filter_results(rows, "기능 선택")] == [4]
     assert [r["case_id"] for r in panel.filter_results(rows, "인자 추출")] == [3]
     found = panel.filter_results(rows, "실패", "청주서원")
@@ -228,9 +234,12 @@ def test_every_detail_compares_정답표_with_ai_model_output_without_developer_
 
 
 def test_an_error_row_shows_the_error_instead_of_a_model_output(result):
+    """오류는 KRRI · MCP 실행 오류가 아니라 평가가 Resolve 결과를 못 받은 것이다. 「실패 · 실행 오류」로 부르지 않는다."""
     text = visible_text(panel.detail_markup(_row(result, 5), FUNCTIONS))
-    assert "실패 · 실행 오류" in text
+    assert "● 오류" in text
+    assert "실패 · 실행 오류" not in text and "실행 오류" not in text
     assert "연결이 끊겼습니다" in text
+    assert panel.verdict_label(_row(result, 5)) == "오류"
 
 
 def test_the_model_settings_come_from_the_result_metadata_with_the_llm_temperature(result):
@@ -252,7 +261,8 @@ def test_the_model_settings_come_from_the_result_metadata_with_the_llm_temperatu
 # ── 무엇이 LLM 을 부르나 · 결과 표의 줄 ─────────────────────────────
 #
 # 한 번 재는 데 수십 분이 든다. 탭을 열거나 필터를 바꾸는 것만으로 다시 재면 안 된다.
-# AppTest 로 탭을 그리고, 평가를 부르는 자리(run_selected)를 가짜 resolve 로 진짜 정답표를 도는 것으로 바꿔 끼운다.
+# AppTest 로 탭을 그리고, 평가를 부르는 자리(run_selected · resume_selected)를 가짜 resolve 로 진짜 정답표를
+# 도는 것으로 바꿔 끼운다. 평가는 진짜 run_evaluation 이 백그라운드 thread 에서 돌고, 기록은 tmp 의 local 자리에 남는다.
 def _tab_script():
     from app.ui.components.testing_panel import render_test_tab
 
@@ -264,13 +274,30 @@ def _enabled(dataset_id):
     return [case for case in suite["cases"] if case["enabled"]]
 
 
-def _suite_resolve(dataset_id, seen=None):
-    """진짜 정답표를 도는 가짜 resolve. 번호가 10 의 배수면 틀린 기능, 범위 밖은 NO_MATCH. LLM 을 안 부름."""
+class Hold:
+    """가짜 resolve 의 at 번째 부름을 붙잡는 자리. entered 가 켜지면 그 부름이 도는 중이다."""
+
+    def __init__(self, at):
+        self.at, self.entered, self.release = at, threading.Event(), threading.Event()
+
+    def __call__(self, count):
+        if count == self.at:
+            self.entered.set()
+            assert self.release.wait(20), "붙잡은 resolve 를 놓지 않았다"
+
+
+def _suite_resolve(dataset_id, seen=None, hold=None):
+    """진짜 정답표를 도는 가짜 resolve. 번호가 10 의 배수면 틀린 기능, 범위 밖은 NO_MATCH. LLM 을 안 부름.
+
+    seen 에 부른 발화를 차례로 적음. hold 가 있으면 몇 번째 부름인지를 넘겨 붙잡게 함
+    """
     by_utterance = {case["utterance"]: case for case in _enabled(dataset_id)}
 
     def resolve(utterance):
         if seen is not None:
             seen.append(utterance)
+        if hold is not None:
+            hold(len(seen) if seen is not None else 0)
         case = by_utterance[utterance]
         if not load_test_suite.in_scope(case):
             return {"reason": "없음", "status": "NO_MATCH", "recipe_id": None, "candidate_recipe_ids": [], "paths": {}}
@@ -283,60 +310,98 @@ def _suite_resolve(dataset_id, seen=None):
     return resolve
 
 
-def _measure(dataset_id, *, seen=None, progress=None, save_dir=None):
+def _measure(dataset_id, *, seen=None, progress=None, save_dir=None, should_stop=None, hold=None, only=None):
     """진짜 정답표 한 벌을 가짜 resolve 로 잰 결과 (run_evaluation.run_dataset 과 같은 모양)."""
     entry = load_test_suite.dataset(dataset_id)
     measured = run_evaluation.run(
-        load_test_suite.load(entry["path"]), suite_path=Path(entry["path"]), resolve=_suite_resolve(dataset_id, seen),
-        progress=progress, materialize=False, save_dir=save_dir, dataset={"id": entry["id"], "label": entry["label"]},
+        load_test_suite.load(entry["path"]), suite_path=Path(entry["path"]),
+        resolve=_suite_resolve(dataset_id, seen, hold), progress=progress, materialize=False, save_dir=save_dir,
+        dataset={"id": entry["id"], "label": entry["label"]}, should_stop=should_stop, only=only,
     )
     measured["meta"]["functions"] = dict(FUNCTIONS)
     return measured
 
 
 @pytest.fixture
-def app(monkeypatch):
-    """테스트 탭 AppTest. 평가는 진짜 run_evaluation.run 을 고른 정답표와 가짜 resolve 로 돌림.
+def app(monkeypatch, tmp_path):
+    """테스트 탭 AppTest. 평가는 진짜 run_evaluation 을 고른 정답표와 가짜 resolve 로 백그라운드에서 돌림.
 
-    at.calls        run_selected 가 불린 정답표 id
+    at.calls        run_selected 가 불린 정답표 id (새로 실행 수)
+    at.resumed      resume_selected 가 불린 (kind, run_id)
     at.resolved     가짜 resolve 가 받은 발화 (LLM 호출 수 자리)
-    at.live         실행 중 화면을 그릴 때마다 (표 줄 수, 끝난 줄 수, 요약 숫자, 표 줄의 case_id)
+    at.local        이 시험의 local 기록 자리 (tmp)
+    at.hold         None 이 아니면 가짜 resolve 가 그 부름에서 멈춤 (Hold)
     """
     from streamlit.testing.v1 import AppTest
 
-    calls, resolved, live = [], [], []
+    local = tmp_path / "local"
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", local)
+    monkeypatch.setattr(panel, "_job", None)
+    calls, resumed, resolved = [], [], []
+    at = AppTest.from_function(_tab_script, default_timeout=60)
 
-    def run_selected(dataset_id, on_progress=None):
+    def run_selected(dataset_id, on_progress=None, should_stop=None):
         calls.append(dataset_id)
-        return _measure(dataset_id, seen=resolved, progress=on_progress)
+        return _measure(dataset_id, seen=resolved, progress=on_progress, save_dir=manage_benchmark.LOCAL_DIR,
+                        should_stop=should_stop, hold=at.hold)
 
-    render_live = panel._render_live
-
-    def spy(slots, skeleton, rows, planned, functions, height):
-        table = panel.table_rows(skeleton, rows)
-        live.append((len(table), len(rows), panel.summarize(panel.live_result(rows, planned)), [r["case_id"] for r in table], table))
-        render_live(slots, skeleton, rows, planned, functions, height)
+    def resume_selected(kind, run_id, on_progress=None, should_stop=None):
+        resumed.append((kind, run_id))
+        dataset_id = manage_benchmark.read_incomplete(manage_benchmark.run_dir(kind, run_id))["meta"]["suite"]["dataset_id"]
+        return run_evaluation.resume(kind, run_id, resolve=_suite_resolve(dataset_id, resolved, at.hold),
+                                     progress=on_progress, should_stop=should_stop)
 
     monkeypatch.setattr(panel, "run_selected", run_selected)
-    monkeypatch.setattr(panel, "_render_live", spy)
-    at = AppTest.from_function(_tab_script, default_timeout=60)
-    at.calls, at.resolved, at.live = calls, resolved, live
-    return at
+    monkeypatch.setattr(panel, "resume_selected", resume_selected)
+    at.calls, at.resumed, at.resolved, at.local, at.hold = calls, resumed, resolved, local, None
+    yield at
+    job = panel.current_job()
+    if job is not None and job.active():
+        job.request_stop()
+        if at.hold is not None:
+            at.hold.release.set()
+        job.thread.join(20)
 
 
 def _results(at):
     return list(at.dataframe[0].value["결과"])
 
 
+def _wait(at):
+    """도는 job 이 끝나기를 기다리고 한 번 다시 그림 (fragment 가 결과를 받아 오는 회차)."""
+    job = panel.current_job()
+    assert job is not None
+    job.thread.join(30)
+    assert not job.active(), "평가 thread 가 안 끝났다"
+    at.run()
+    return job
+
+
+def _start(at, key="test_run"):
+    at.button(key=key).click().run()
+    assert not at.exception, at.exception
+    return panel.current_job()
+
+
+def _local_dirs(at):
+    return sorted(p.name for p in at.local.iterdir()) if at.local.is_dir() else []
+
+
+def _run_text(at):
+    return " ".join(visible_text(m.value) for m in at.markdown if 'class="tt-run tt-run-' in m.value)
+
+
 def test_opening_the_tab_shows_every_v1_case_as_pending_without_running(app):
     app.run()
 
     assert not app.exception
-    assert app.calls == [] and app.resolved == [] and app.live == []
+    assert app.calls == [] and app.resolved == []
     assert len(app.dataframe) == 1
     assert len(app.dataframe[0].value) == len(_enabled("test_suite_v1")) == 48
     assert set(_results(app)) == {panel.PENDING_TEXT}
     assert list(app.dataframe[0].value["발화"]) == [case["utterance"] for case in _enabled("test_suite_v1")]
+    assert [b.label for b in app.button] == ["새로 실행"]
+    assert _local_dirs(app) == []
 
 
 def test_choosing_v2_shows_all_203_cases_as_pending_without_running(app):
@@ -344,9 +409,10 @@ def test_choosing_v2_shows_all_203_cases_as_pending_without_running(app):
     app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
 
     assert not app.exception
-    assert app.calls == [] and app.resolved == [] and app.live == []
+    assert app.calls == [] and app.resolved == []
     assert len(app.dataframe[0].value) == len(_enabled("test_suite_v2")) == 203
     assert set(_results(app)) == {panel.PENDING_TEXT}
+    assert _local_dirs(app) == []
 
 
 @pytest.mark.parametrize("dataset_id, count", [("test_suite_v1", 48), ("test_suite_v2", 203)])
@@ -355,27 +421,33 @@ def test_a_run_keeps_every_case_row_and_fills_it_in_place_by_case_id(app, datase
     app.run()
     if dataset_id != "test_suite_v1":
         app.selectbox(key=panel.DATASET_KEY).set_value(dataset_id).run()
-    app.button(key="test_run").click().run()
+    app.hold = Hold(4)
+    _start(app)
+    assert app.hold.entered.wait(20)
+    app.run()
 
-    assert not app.exception
     order = [case["id"] for case in _enabled(dataset_id)]
-    assert [done for _, done, _, _, _ in app.live] == list(range(count + 1))
-    assert {size for size, _, _, _, _ in app.live} == {count}
-    for size, done, _, ids, table in app.live:
-        assert ids == order, "줄 차례가 바뀌었거나 줄이 덧붙었다"
-        finished = {row["case_id"] for row in table if not panel.pending(row)}
-        assert finished == set(order[:done])
-        assert all(panel.pending(row) for row in table if row["case_id"] not in finished)
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == count
+    assert [int(n) for n in app.dataframe[0].value["번호"]] == order, "줄 차례가 바뀌었거나 줄이 덧붙었다"
+    assert _results(app).count(panel.PENDING_TEXT) == count - 3
+    assert f"새로 실행 중 · 3 / {count}" in _run_text(app)
+    kpi = next(m.value for m in app.markdown if 'class="tt-kpis' in m.value)
+    assert f"완료 3 / {count}" in visible_text(kpi)
+
+    app.hold.release.set()
+    _wait(app)
+    assert not app.exception
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == count
     assert panel.PENDING_TEXT not in _results(app)
     assert app.selectbox(key=panel.SAVED_KEY).value == ""
     assert sorted(app.resolved) == sorted(case["utterance"] for case in _enabled(dataset_id))
     assert app.calls == [dataset_id]
+    assert f"완료 · {count} / {count}" in _run_text(app)
 
 
 def test_pending_rows_are_never_counted_as_failures(app):
     app.run()
-    app.segmented_control(key="test_filter").set_value(panel.FAILED).run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
     assert not app.exception
     assert not app.dataframe, "대기 줄이 실패 보기에 들어갔다"
 
@@ -386,21 +458,11 @@ def test_pending_rows_are_never_counted_as_failures(app):
     assert all(panel.detail_markup(row, {}).count("실패") == 0 for row in rows[:3])
 
 
-def test_while_running_the_summary_counts_only_finished_cases(app):
-    app.run()
-    app.button(key="test_run").click().run()
-
-    first = app.live[0][2]
-    assert (first["done"], first["passed"], first["failed"], first["total"]) == (0, 0, 0, 48)
-    last = app.live[-1][2]
-    assert last["done"] == 48 and last["passed"] + last["failed"] == 48
-    assert last["function"] == sum(1 for case in _enabled("test_suite_v1") if case["id"] % 10 == 0)
-
-
 def test_the_run_calls_resolve_once_per_utterance_and_ends_on_one_table(app):
     """실행 중 다시 그리기가 LLM 을 더 부르면 안 되고, 끝난 뒤 표가 둘로 남으면 안 됨."""
     app.run()
-    app.button(key="test_run").click().run()
+    _start(app)
+    _wait(app)
 
     assert not app.exception
     assert app.calls == ["test_suite_v1"]
@@ -408,21 +470,25 @@ def test_the_run_calls_resolve_once_per_utterance_and_ends_on_one_table(app):
     assert len(app.dataframe) == 1
     assert len(app.dataframe[0].value) == 48
     assert any("tt-kpi-num\">48<" in m.value for m in app.markdown)
-    assert not any("방금 끝난 발화" in m.value for m in app.markdown)
+    last = panel.summarize(app.session_state[panel.RESULT_KEY]["result"])
+    assert last["done"] == 48 and last["passed"] + last["failed"] + last["error"] == 48
+    assert last["function"] == sum(1 for case in _enabled("test_suite_v1") if case["id"] % 10 == 0)
 
 
-def test_filters_search_and_redraws_after_the_run_do_not_rerun_it(app):
+def test_filters_search_sort_and_redraws_after_the_run_do_not_rerun_it(app):
     app.run()
-    app.button(key="test_run").click().run()
-    drawn = len(app.live)
+    _start(app)
+    _wait(app)
+    folders = _local_dirs(app)
 
     app.text_input(key="test_query").input("청주").run()
+    app.selectbox(key=panel.SORT_COLUMN_KEY).set_value("발화").run()
     app.run()
 
     assert not app.exception
     assert app.calls == ["test_suite_v1"], "필터 · 다시 그리기가 평가를 다시 불렀다"
     assert len(app.resolved) == 48
-    assert len(app.live) == drawn
+    assert _local_dirs(app) == folders
     expected = [case for case in _enabled("test_suite_v1") if "청주" in case["utterance"].replace(" ", "")]
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == len(expected)
 
@@ -432,7 +498,8 @@ def test_switching_the_test_suite_drops_the_old_results_and_shows_the_new_pendin
     app.run()
     if first != "test_suite_v1":
         app.selectbox(key=panel.DATASET_KEY).set_value(first).run()
-    app.button(key="test_run").click().run()
+    _start(app)
+    _wait(app)
     assert panel.RESULT_KEY in app.session_state
 
     app.selectbox(key=panel.DATASET_KEY).set_value(second).run()
@@ -442,32 +509,6 @@ def test_switching_the_test_suite_drops_the_old_results_and_shows_the_new_pendin
     assert len(app.dataframe[0].value) == count
     assert set(_results(app)) == {panel.PENDING_TEXT}
     assert app.calls == [first], "테스트 세트를 고르기만 했는데 평가를 불렀다"
-
-
-def _live_script(count):
-    import streamlit as st
-
-    from app.ui.components import testing_panel
-    from dev.tests.app.ui.test_testing_panel import FUNCTIONS, _measure
-
-    skeleton = testing_panel.suite_rows("test_suite_v1")
-    rows = _measure("test_suite_v1")["cases"][:count]
-    slots = {name: st.empty() for name in ("status", "kpi", "list", "detail")}
-    testing_panel._render_live(slots, skeleton, rows, len(skeleton), FUNCTIONS, 420)
-
-
-@pytest.mark.parametrize("count", [0, 1, 2, 3])
-def test_the_live_view_keeps_every_row_and_counts_exactly_the_finished_ones(count):
-    from streamlit.testing.v1 import AppTest
-
-    at = AppTest.from_function(_live_script, args=(count,), default_timeout=60)
-    at.run()
-
-    assert not at.exception
-    assert len(at.dataframe) == 1 and len(at.dataframe[0].value) == 48
-    assert list(at.dataframe[0].value["결과"]).count(panel.PENDING_TEXT) == 48 - count
-    kpi = next(m.value for m in at.markdown if "tt-kpis" in m.value)
-    assert f"완료 {count} / 48" in visible_text(kpi)
 
 
 def test_table_rows_replace_by_case_id_and_never_append():
@@ -657,14 +698,18 @@ def test_the_failure_causes_are_drawn_inside_the_failure_card(oos_result):
     assert "실패" in visible_text(cards[-1].split("tt-causes", 1)[0])
 
 
-def test_the_overall_result_has_no_separate_error_card(result):
-    """오류는 실패의 한 갈래다. 옆에 세우면 전체 = 성공 + 실패 + 오류 로 읽힌다."""
+def test_an_error_card_appears_only_when_there_is_an_error(result, oos_result):
+    """오류는 모델 품질 실패가 아니다. 있으면 실패와 떼어 따로 세우고, 없으면 0 카드로 자리를 차지하지 않는다."""
     summary = panel.summarize(result)
-    assert summary["error"] == 1, "줄과 실행 기록에는 그대로 남아야 한다"
-    text = visible_text(panel.summary_markup(summary))
-    assert "오류" not in text
-    assert "실행 오류" not in text
-    assert str(summary["failed"]) in text
+    assert summary["error"] == 1 and summary["failed"] == 2
+    markup = panel.summary_markup(summary)
+    assert re.findall(r'class="tt-kpi-label">([^<]+)<', markup) == ["전체", "성공", "실패", "오류"]
+    assert "tt-causes" not in markup.split('class="tt-kpi err"', 1)[1], "오류가 실패 원인 안에 들어갔다"
+    assert "실행 오류" not in visible_text(markup)
+
+    clean = panel.summarize(oos_result)
+    assert clean["error"] == 0
+    assert "오류" not in visible_text(panel.summary_markup(clean))
 
 
 def test_the_function_results_list_only_supported_functions_in_numeric_order(result, oos_result):
@@ -685,6 +730,7 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
 
 CANONICAL = "20260921-090538-test_suite_v2"
 LOCAL_FULL48 = "20260921-102636-test_suite_v1"
+REAL_LOCAL_DIR = manage_benchmark.LOCAL_DIR
 
 
 def _isolated_local(monkeypatch, tmp_path):
@@ -739,14 +785,17 @@ def test_loading_the_official_canonical_run_switches_to_v2_and_fills_its_203_row
     assert stored["kind"] == "official" and stored["result"]["meta"]["run_id"] == CANONICAL
     assert app.session_state[panel.DATASET_KEY] == "test_suite_v2"
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 203
-    assert _results(app).count("성공") == 188 and _results(app).count("실패") == 15
+    assert _results(app).count("성공") == 188
+    assert sum(1 for value in _results(app) if value.startswith("실패 · ")) == 15
+    assert "판정" not in list(app.dataframe[0].value.columns)
     board = stored["result"]["summary"]["metrics"]
     assert board["selection"] == {"correct": 184, "total": 195}
     assert board["joint"] == {"correct": 181, "total": 195}
     assert board["oos"] == {"correct": 7, "total": 8}
 
 
-def test_loading_the_local_full48_run_switches_to_v1_and_fills_its_48_rows(app):
+def test_loading_the_local_full48_run_switches_to_v1_and_fills_its_48_rows(app, monkeypatch):
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", REAL_LOCAL_DIR)
     if not (manage_benchmark.LOCAL_DIR / LOCAL_FULL48).is_dir():
         pytest.skip("이 기계에서 돌린 FULL48 보통 실행이 없다 (.gitignore 라 clone 에는 없음)")
     app.run()
@@ -811,7 +860,7 @@ def test_an_interrupted_local_run_is_listed_as_stopped_and_loads_onto_the_pendin
     with pytest.raises(RuntimeError):
         _measure("test_suite_v1", save_dir=root, progress=die)
     [entry] = [e for e in manage_benchmark.list_benchmarks() if e["kind"] == "local"]
-    assert panel.saved_label(entry) == f"{entry['run_id']} · 중단됨 · 로컬"
+    assert panel.saved_label(entry) == f"{entry['run_id']} · 3/48 · 중단됨 · 로컬"
 
     app.run()
     app.selectbox(key=panel.SAVED_KEY).set_value(panel.saved_key(entry)).run()
@@ -982,3 +1031,331 @@ def test_the_retired_words_never_come_back_in_the_summary(oos_result):
     text = visible_text(markup)
     for gone in (*RETIRED, "실패만", "실행 준비", "처리 결과"):
         assert gone not in text, gone
+
+
+# ── 결과 칸 · 정렬 ───────────────────────────────────────────────────
+RESULT_VALUES = {"대기", "성공", "실패 · 기능 선택", "실패 · 인자 추출", "실패 · 범위 밖 처리", "오류"}
+
+
+def test_the_result_table_has_one_result_column_and_no_판정_column(result, oos_result):
+    """모델 품질 실패 셋 · 오류 · 대기가 한 칸에서 갈린다. 판정 칸이 또 있으면 같은 것을 두 번 읽는다."""
+    rows = [*result["cases"], *oos_result["cases"], *panel.suite_rows("test_suite_v1")[:2]]
+    frame = panel.list_frame(rows)
+    assert list(frame.columns) == ["번호", "기능", "발화", "결과", "추론 지연시간"]
+    assert set(frame["결과"]) == RESULT_VALUES
+    assert "실패 · 실행 오류" not in set(frame["결과"])
+    assert panel.RESULT_ORDER == ("성공", "실패 · 기능 선택", "실패 · 인자 추출", "실패 · 범위 밖 처리", "오류")
+    assert "판정" not in panel._list_columns()
+
+
+def test_the_detail_keeps_the_raw_model_status(result, oos_result):
+    """표의 판정 칸을 뺀 것이지 모델이 낸 판정 상태(SELECT · NO_MATCH …)를 뺀 것이 아니다."""
+    selected = visible_text(panel.detail_markup(_row(result, 1), FUNCTIONS))
+    assert "모델 판정 상태" in selected and "선택" in selected.split("모델 판정 상태", 1)[1]
+    no_match = visible_text(panel.detail_markup(_row(oos_result, 3), FUNCTIONS))
+    assert "해당 없음" in no_match.split("모델 판정 상태", 1)[1]
+
+
+def _latency(row, seconds):
+    return {**row, "timing": {**(row.get("timing") or {}), "resolve_s": seconds}}
+
+
+def test_sort_rows_defaults_to_number_ascending_and_breaks_ties_by_number(result):
+    rows = list(reversed(result["cases"]))
+    assert [r["case_id"] for r in panel.sort_rows(rows)] == [1, 2, 3, 4, 5]
+    assert [r["case_id"] for r in panel.sort_rows(rows, "번호", panel.DESCENDING)] == [5, 4, 3, 2, 1]
+
+    by_result = panel.sort_rows(rows, "결과")
+    assert [panel.verdict_label(r) for r in by_result] == ["성공", "성공", "실패 · 기능 선택", "실패 · 인자 추출", "오류"]
+    assert [r["case_id"] for r in by_result][:2] == [1, 2], "같은 값끼리 번호 차례가 아니다"
+    flipped = panel.sort_rows(rows, "결과", panel.DESCENDING)
+    assert [r["case_id"] for r in flipped] == [5, 3, 4, 1, 2], "내림차순에서 같은 값끼리의 번호 차례가 뒤집혔다"
+
+    by_function = [r["case_id"] for r in panel.sort_rows(rows, "기능")]
+    assert by_function == [3, 1, 2, 5, 4]
+    assert panel.sort_rows(rows, "없는 칸") == panel.sort_rows(rows)
+
+
+def test_pending_rows_and_missing_latency_stay_last_in_both_directions(result):
+    skeleton = panel.suite_rows("test_suite_v1")[5:8]
+    done = [_latency(_row(result, 1), 3.0), _latency(_row(result, 2), 1.0), _latency(_row(result, 3), 2.0)]
+    rows = [skeleton[1], done[0], skeleton[0], done[1], skeleton[2], done[2]]
+    pending_ids = [r["case_id"] for r in skeleton]
+
+    up = [r["case_id"] for r in panel.sort_rows(rows, "추론 지연시간")]
+    down = [r["case_id"] for r in panel.sort_rows(rows, "추론 지연시간", panel.DESCENDING)]
+    assert up == [2, 3, 1, *pending_ids]
+    assert down == [1, 3, 2, *pending_ids]
+    for column in ("결과", "추론 지연시간"):
+        for order in panel.SORT_ORDERS:
+            assert [r["case_id"] for r in panel.sort_rows(rows, column, order)][-3:] == pending_ids
+
+
+def _table_ids(at):
+    return [int(n) for n in at.dataframe[0].value["번호"]]
+
+
+def test_the_sort_choice_survives_row_selection_search_filters_and_loading_a_record(app):
+    """정렬은 session_state 에 있다. 행을 누르거나 검색 · 필터 · 기록 불러오기로 다시 그려도 그대로다."""
+    app.run()
+    assert (app.session_state[panel.SORT_COLUMN_KEY], app.session_state[panel.SORT_ORDER_KEY]) == ("번호", panel.ASCENDING)
+    assert _table_ids(app) == sorted(_table_ids(app))
+
+    app.selectbox(key=panel.SORT_COLUMN_KEY).set_value("발화").run()
+    app.segmented_control(key=panel.SORT_ORDER_KEY).set_value(panel.DESCENDING).run()
+    utterances = list(app.dataframe[0].value["발화"])
+    assert utterances == sorted(utterances, reverse=True)
+    order = _table_ids(app)
+
+    for picked in (order[5], order[17]):
+        app.session_state[panel.SELECTED_KEY] = picked
+        app.run()
+        assert _table_ids(app) == order, "행을 고르자 정렬이 풀렸다"
+        assert f'<span class="tt-no">{picked:03d}</span>' in next(m.value for m in app.markdown if 'class="tt-head"' in m.value)
+
+    app.text_input(key="test_query").input("역").run()
+    shown = list(app.dataframe[0].value["발화"])
+    assert shown == sorted(shown, reverse=True)
+    app.text_input(key="test_query").input("").run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.ALL).run()
+    assert _table_ids(app) == order
+
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    shown = list(app.dataframe[0].value["발화"])
+    assert len(shown) == 203 and shown == sorted(shown, reverse=True)
+    assert (app.session_state[panel.SORT_COLUMN_KEY], app.session_state[panel.SORT_ORDER_KEY]) == ("발화", panel.DESCENDING)
+    assert app.calls == [] and _local_dirs(app) == []
+
+
+def test_the_grid_header_sort_is_switched_off_so_only_the_python_sort_exists(app):
+    """칸 고르기를 켜면 st.dataframe 의 머리글 정렬이 꺼진다 (Streamlit 1.62). 두 정렬이 서로 다르게 보이지 않게."""
+    from streamlit.proto.Dataframe_pb2 import Dataframe
+
+    app.run()
+    modes = set(app.dataframe[0].proto.selection_mode)
+    assert Dataframe.SelectionMode.SINGLE_COLUMN in modes
+    assert {Dataframe.SelectionMode.SINGLE_ROW, Dataframe.SelectionMode.SINGLE_CELL} <= modes
+
+    from unittest import mock
+
+    ids = [r["case_id"] for r in panel.suite_rows("test_suite_v1")]
+    for clicked in ({"rows": [], "columns": ["발화"], "cells": []}, {"rows": [3], "columns": ["결과"], "cells": []}):
+        state = {"표": {"selection": clicked}, panel.SELECTED_KEY: ids[7]}
+        with mock.patch.object(panel.st, "session_state", state):
+            panel._keep_row_selected("표", ids)
+        assert state["표"]["selection"]["columns"] == [], "머리글을 눌러 고른 칸이 남았다"
+        assert state["표"]["selection"]["rows"] == [clicked["rows"][0] if clicked["rows"] else 7]
+
+
+# ── 새로 실행 · 중지 · 이어 실행 ───────────────────────────────────────
+def test_only_새로_실행_creates_a_benchmark_folder(app, monkeypatch, tmp_path):
+    """테스트 세트 · 정렬 · 필터 · 행 · 기록 고르기는 폴더를 만들지 않는다. 새로 실행 한 번이 폴더 하나다."""
+    app.run()
+    app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
+    app.selectbox(key=panel.SORT_COLUMN_KEY).set_value("결과").run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.ALL).run()
+    app.session_state[panel.SELECTED_KEY] = 12
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v1").run()
+    assert not app.exception and _local_dirs(app) == [] and app.calls == []
+
+    _start(app)
+    _wait(app)
+    assert len(_local_dirs(app)) == 1
+    [folder] = _local_dirs(app)
+    assert re.fullmatch(r"\d{8}-\d{6}-test_suite_v1", folder)
+    assert sorted(p.name for p in (app.local / folder).iterdir()) == [manage_benchmark.RUN_FILE]
+
+
+def test_a_finished_run_shows_완료_and_only_새로_실행(app):
+    app.run()
+    _start(app)
+    _wait(app)
+
+    assert "완료 · 48 / 48" in _run_text(app)
+    assert [b.label for b in app.button] == ["새로 실행"]
+    assert not [e for e in app.expander if e.label == "변경된 조건 보기"]
+    [folder] = _local_dirs(app)
+    assert sorted(p.name for p in (app.local / folder).iterdir()) == [manage_benchmark.RUN_FILE]
+
+
+def _stop_at(app, call):
+    """새로 실행을 누르고 call 번째 부름을 붙잡은 채 중지를 누른 뒤 놓아 끝까지 기다림."""
+    app.hold = Hold(call)
+    job = _start(app)
+    assert app.hold.entered.wait(20)
+    app.run()
+    assert [b.label for b in app.button] == ["중지"]
+    app.button(key="test_stop").click().run()
+    assert job.stop_requested()
+    assert [(b.label, b.disabled) for b in app.button] == [("중지 요청됨", True)]
+    assert "중지 요청됨 · 현재 발화를 마친 뒤 중지합니다." in _run_text(app)
+    app.hold.release.set()
+    _wait(app)
+    return job
+
+
+def test_중지_lets_the_call_in_flight_finish_saves_it_and_never_starts_the_next(app):
+    app.run()
+    _stop_at(app, 2)
+
+    assert app.resolved == [case["utterance"] for case in _enabled("test_suite_v1")[:2]], "중지 뒤에 다음 발화를 불렀다"
+    [folder] = _local_dirs(app)
+    files = sorted(p.name for p in (app.local / folder).iterdir())
+    assert files == [manage_benchmark.CASES_FILE, manage_benchmark.META_FILE], "멈춘 기록에 run.json 이 생겼다"
+    lines = (app.local / folder / manage_benchmark.CASES_FILE).read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 2
+
+    assert "중단됨 · 2 / 48" in _run_text(app)
+    assert _results(app).count(panel.PENDING_TEXT) == 46
+    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", False), ("새로 실행", False)]
+    assert any("이어 실행 가능" in m.value for m in app.markdown)
+    label = next(o for o in app.selectbox(key=panel.SAVED_KEY).options if o.startswith(folder))
+    assert label == f"{folder} · 2/48 · 중단됨 · 로컬"
+
+
+def test_while_running_the_pickers_are_locked_and_a_second_run_cannot_start(app):
+    from streamlit.testing.v1 import AppTest
+
+    app.run()
+    app.hold = Hold(1)
+    job = _start(app)
+    assert app.hold.entered.wait(20)
+    app.run()
+    assert app.selectbox(key=panel.DATASET_KEY).disabled and app.selectbox(key=panel.SAVED_KEY).disabled
+    assert [b.label for b in app.button] == ["중지"]
+    assert not panel.start_job(panel._Job(panel.NEW, "test_suite_v1", 48), lambda: None), "두 번째 평가가 시작됐다"
+
+    other = AppTest.from_function(_tab_script, default_timeout=60)
+    other.run()
+    assert [b.label for b in other.button] == ["중지"], "다른 창이 두 번째 실행을 할 수 있다"
+
+    app.hold.release.set()
+    _wait(app)
+    assert not app.selectbox(key=panel.DATASET_KEY).disabled
+    assert app.calls == ["test_suite_v1"] and job is panel.current_job()
+
+
+def test_이어_실행_continues_the_same_run_id_and_calls_only_the_missing_cases(app):
+    app.run()
+    _stop_at(app, 2)
+    [folder] = _local_dirs(app)
+    first_rows = (app.local / folder / manage_benchmark.CASES_FILE).read_text(encoding="utf-8").splitlines()
+
+    app.hold = Hold(4)
+    _start(app, "test_resume")
+    assert app.hold.entered.wait(20)
+    app.run()
+    assert "이어 실행 중 · 3 / 48" in _run_text(app)
+    assert _results(app).count(panel.PENDING_TEXT) == 45, "전에 잰 줄이 대기로 돌아갔다"
+    app.button(key="test_stop").click().run()
+    app.hold.release.set()
+    _wait(app)
+
+    utterances = [case["utterance"] for case in _enabled("test_suite_v1")]
+    assert app.resolved == utterances[:4]
+    assert app.resumed == [("local", folder)] and app.calls == ["test_suite_v1"]
+    assert _local_dirs(app) == [folder], "이어 실행이 새 폴더를 만들었다"
+    assert "중단됨 · 4 / 48" in _run_text(app)
+    rows = (app.local / folder / manage_benchmark.CASES_FILE).read_text(encoding="utf-8").splitlines()
+    assert rows[:2] == first_rows and len(rows) == 4
+
+    app.hold = None
+    _start(app, "test_resume")
+    _wait(app)
+    assert app.resolved == utterances, "끝난 발화를 다시 불렀다"
+    assert _local_dirs(app) == [folder]
+    assert sorted(p.name for p in (app.local / folder).iterdir()) == [manage_benchmark.RUN_FILE]
+    assert "완료 · 48 / 48" in _run_text(app)
+    saved = manage_benchmark.load_benchmark("local", folder)
+    assert saved["meta"]["run_id"] == folder
+    assert [row["case_id"] for row in saved["cases"]] == [case["id"] for case in _enabled("test_suite_v1")]
+
+
+def _stopped_record(root, count, edit=None):
+    """count 개 뒤에 멈춘 FULL48 local 기록. edit 가 있으면 meta.json 머리를 고침. 폴더 이름."""
+    seen = []
+    result = _measure("test_suite_v1", seen=seen, save_dir=root, should_stop=lambda: len(seen) >= count)
+    folder = Path(result["meta"]["saved_to"])
+    if edit:
+        path = folder / manage_benchmark.META_FILE
+        document = json.loads(path.read_text(encoding="utf-8"))
+        edit(document["meta"])
+        path.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    return folder
+
+
+def test_loading_a_compatible_incomplete_record_offers_이어_실행_without_creating_anything(app):
+    folder = _stopped_record(app.local, 5)
+    before = sorted(p.name for p in folder.iterdir())
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{folder.name}").run()
+
+    assert not app.exception
+    assert "중단됨 · 5 / 48" in _run_text(app)
+    assert any("이어 실행 가능" in m.value for m in app.markdown)
+    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", False), ("새로 실행", False)]
+    assert _local_dirs(app) == [folder.name] and sorted(p.name for p in folder.iterdir()) == before
+    assert app.calls == [] and app.resolved == []
+
+
+@pytest.mark.parametrize("label, edit", [
+    ("Prompt", lambda meta: meta["conditions"]["prompt"].update(sha256="1" * 64)),
+    ("Model", lambda meta: meta["conditions"].update(model="다른-모델")),
+    ("Request settings", lambda meta: meta["conditions"]["request"].update(temperature=0.7)),
+])
+def test_an_incompatible_record_keeps_이어_실행_visible_but_disabled_and_shows_what_changed(app, label, edit):
+    folder = _stopped_record(app.local, 3, edit)
+    before = {p.name: p.read_bytes() for p in folder.iterdir()}
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{folder.name}").run()
+
+    assert not app.exception
+    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", True), ("새로 실행", False)]
+    shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
+    assert "이어 실행 불가" in shown and "실행 조건이 변경되어 이어 실행할 수 없습니다." in shown
+    assert [e.label for e in app.expander if e.label == "변경된 조건 보기"] == ["변경된 조건 보기"]
+    table = next(m.value for m in app.markdown if "tt-conds" in m.value and "<style>" not in m.value)
+    changed = re.findall(r'<tr class="tt-changed"><td>([^<]+)</td><td>변경됨</td>', table)
+    assert changed == [label]
+    assert "동일" in visible_text(table)
+
+    # 눌리지 않는 단추의 콜백을 억지로 불러도 파일을 안 건드리고 평가를 시작하지 않는다
+    from unittest import mock
+
+    stored = app.session_state[panel.RESULT_KEY]
+    state = {}
+    with mock.patch.object(panel.st, "session_state", state):
+        panel._start_resume(stored)
+    assert panel.current_job() is None and state[panel.RUN_ERROR_KEY] == "실행 조건이 변경되어 이어 실행할 수 없습니다."
+    assert {p.name: p.read_bytes() for p in folder.iterdir()} == before and _local_dirs(app) == [folder.name]
+
+
+def test_an_old_record_without_resume_conditions_loads_but_cannot_be_resumed(app):
+    folder = _stopped_record(app.local, 3, lambda meta: meta["conditions"].pop("registry"))
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{folder.name}").run()
+
+    assert not app.exception
+    assert _results(app).count(panel.PENDING_TEXT) == 45
+    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", True), ("새로 실행", False)]
+    shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
+    assert "저장된 실행 조건만으로 동일 실행을 재현할 수 없습니다." in shown
+    table = next(m.value for m in app.markdown if "tt-conds" in m.value and "<style>" not in m.value)
+    assert "기록 없음" in visible_text(table)
+
+
+def test_the_condition_table_shows_short_hashes_but_compares_full_values():
+    check = {"fields": [
+        {"label": "Prompt", "stored": "a" * 64, "current": "a" * 63 + "b", "same": False},
+        {"label": "Request settings", "stored": {"temperature": 0, "seed": 0}, "current": {"seed": 0, "temperature": 0},
+         "same": True},
+        {"label": "Registry", "stored": None, "current": "c" * 64, "same": False},
+    ]}
+    rows = panel.condition_rows(check)
+    assert [(r["실행 조건"], r["상태"]) for r in rows] == [("Prompt", "변경됨"), ("Request settings", "동일"), ("Registry", "기록 없음")]
+    assert rows[0]["저장된 값"] == rows[0]["지금 값"] == "a" * 12, "짧게 보여도 맞대기는 전체 값이다"
+    assert rows[1]["저장된 값"] == '{"seed": 0, "temperature": 0}'
