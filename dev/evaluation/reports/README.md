@@ -35,3 +35,11 @@ source of truth 는 여기다 — 그쪽은 기계에 있고 저장소에 없다
   `test_suite_v1` 로 갈렸다. 글은 안 고친다
 - 큰 raw 덤프(전체 diff · 응답 JSON 전문 · GPU 로그)는 안 담는다. diff 는 git 이 들고 있고
   결과 한 벌은 `../test_runs/` 에 있다
+
+## 다음에 할 것
+
+- **평가 결과 시각화.** 리뷰어가 파이 차트를 비롯한 여러 차트를 요구했다
+  (Reviewer requested evaluation-result visualizations including a pie chart and
+  multiple charts). 어느 지표를 어느 차트로 그릴지는 아직 안 정했다 — 지금 화면의
+  숫자(전체 · 성공 · 실패 · 실패 단계 · 기능별 x/y)를 그대로 옮기면 같은 값이 두 번
+  보일 뿐이라, 차트가 숫자로 못 보던 무엇을 보이게 하는지부터 정하고 만든다

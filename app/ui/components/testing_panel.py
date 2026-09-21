@@ -7,7 +7,7 @@ dev/evaluation/runner.run_dataset 을 부르고, 돌아온 결과를 그린다.
     실행 개요 (테스트 세트 · 시작 시간 · 소요 시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
     모델 설정 (접힘. 파일 · 실행 기록 id 까지)
     전체 결과 (전체 · 성공 · 실패. 실패 원인 셋은 실패 카드 안에)
-    기능별 결과 (접힘)
+    기능별 결과 (접힘. 기능마다 카드 하나 — 번호와 x/y 둘만)
     보기 필터 · 기능 고르기 · 발화 검색
     결과 목록 (한 발화 한 줄, 고정 높이) | 선택한 발화 상세 (고정 높이)
 
@@ -48,6 +48,11 @@ workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지
       st.dataframe 은 칸 값마다의 tooltip 을 받는 파이썬 API 가 없고(Streamlit 1.62 의
       column_config 는 칸 머리의 help 만 받는다), st.selectbox 도 보기마다의 tooltip 이 없다.
       둘 다 고르면 상세 칸에 그 기능의 설명이 그대로 나온다.
+
+      Result-grid per-cell feature tooltip: deferred until later UI/chart refinement
+      because native Streamlit 1.62 st.dataframe has no per-cell tooltip API.
+      표를 custom HTML · 다른 grid · 새 frontend component 로 갈아 끼우면 tooltip 하나를
+      얻는 값으로 행 선택 · 정렬 · 스크롤 · 높이가 전부 다시 만들어야 하는 것이 된다.
 
 CSS 는 .st-key-test_tab 안으로만 건다. 서비스 화면에 새지 않는다. 한 자리만 예외다 —
 결과 표 칸 머리의 설정 메뉴는 portal 로 탭 밖에 그려진다 (panel_css 에 까닭이 적혀 있다).
@@ -404,14 +409,18 @@ def run_identity(result: dict) -> dict:
     return shown
 
 
-def suite_label(suite: dict) -> str:
-    """결과 meta.suite 의 화면 이름. 붙은 이름 -> 등록된 정답표의 이름(경로로 찾음) -> 「정답표」."""
-    if suite.get("label"):
-        return suite["label"]
-    path = suite.get("path")
+def suite_filename(suite: dict) -> str:
+    """결과 meta.suite 를 저장소의 파일 이름으로. 「test_suite_v2.yaml」 꼴.
+
+    규칙  meta.suite.path 의 파일 이름 -> 등록된 정답표의 파일 이름(dataset_id 로 찾음) -> 「정답표」
+    제약  사람용 별칭(meta.suite.label)을 앞에 두지 않는다 — 화면에 보이는 이름이
+          dev/evaluation/test_suites/ 의 파일과 바로 맞아야 무엇을 잰 것인지 되짚을 수 있다
+    """
+    if suite.get("path"):
+        return Path(suite["path"]).name
     for entry in evaluation_suite.datasets():
-        if path and Path(entry["path"]).resolve() == Path(path).resolve():
-            return entry["label"]
+        if entry["id"] == suite.get("dataset_id"):
+            return Path(entry["path"]).name
     return "정답표"
 
 
@@ -442,7 +451,7 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     if REQUEST_LABELS["temperature"] not in request:
         model.append((REQUEST_LABELS["temperature"], "기록 없음"))
     return [
-        ("테스트 세트", [("", suite_label(meta.get("suite") or {}))]),
+        ("테스트 세트", [("", suite_filename(meta.get("suite") or {}))]),
         ("시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
         ("소요 시간", [("", _elapsed(meta.get("elapsed_s")))]),
         ("추론 지연시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
@@ -484,11 +493,14 @@ def first_failure(rows: list[dict]) -> int | None:
 
 
 def saved_label(entry: dict) -> str:
-    """실행 기록 고르기 글자. 「09-18 16:02 · 테스트 세트 v2 · 성공 201/219」 꼴."""
-    started = entry.get("started_at")
-    when = f"{datetime.datetime.fromisoformat(started):%m-%d %H:%M}" if started else entry["run_id"]
-    score = f"성공 {entry['passed']}/{entry['runs']}" if entry.get("runs") is not None else "끝나지 않음"
-    return f"{when} · {entry.get('suite_label') or entry.get('suite_name') or ''} · {score}"
+    """실행 기록 고르기 글자. 「<run_id> · 성공/전체」 꼴. 전체는 그 기록이 실제로 잰 수다.
+
+    제약  run_id 가 먼저다. 저장 자리가 dev/evaluation/test_runs/<run_id>/ 라
+          고르기 글자와 폴더가 1:1 로 맞아야 한다. 사람용 별칭을 앞에 두지 않는다 —
+          run_id 안에 이미 정답표 이름과 시각이 들어 있다
+    """
+    score = f"{entry['passed']}/{entry['runs']}" if entry.get("runs") is not None else "끝나지 않음"
+    return f"{entry['run_id']} · {score}"
 
 
 @st.cache_data(show_spinner=False)
@@ -502,10 +514,14 @@ def _case_count(path: str, modified: int) -> int | None:
 
 
 def dataset_label(entry: dict) -> str:
-    """테스트 세트 고르기에 보일 이름. 발화 수를 셀 수 있으면 붙임."""
+    """테스트 세트 고르기에 보일 이름. 정답표 파일 이름이 먼저고, 발화 수를 셀 수 있으면 붙임.
+
+    제약  사람용 별칭(entry["label"])을 앞에 두지 않는다 — 고른 것이 저장소의 어느 파일인지가
+          바로 보여야 한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다
+    """
     path = Path(entry["path"])
     count = _case_count(str(path), path.stat().st_mtime_ns) if path.is_file() else None
-    return f"{entry['label']} · {count}개 발화" if count is not None else entry["label"]
+    return f"{path.name} · {count}개 발화" if count is not None else path.name
 
 
 # ================================================================ 마크업
@@ -620,17 +636,23 @@ def overview_markup(info: list | None) -> str:
 
 
 def recipe_summary_markup(entries: list[dict], functions: dict | None = None) -> str:
-    """기능별 결과 표. 실패가 있는 줄은 붉게. 기능 번호에 설명이 붙음."""
+    """기능별 결과 카드. 카드 하나에 기능 번호와 성공 수(x/y) 둘만. 기능 번호 차례.
+
+    규칙  실패가 하나라도 있으면 붉은 카드, 다 맞았으면 차분한 카드(옆줄만 초록)
+          설명은 카드 전체와 기능 번호 둘 다에 마우스로 붙음. 원천은 결과 meta.functions 하나
+    제약  「모두 성공」 · 「실패 N」 같은 글자를 두지 않는다 — x/y 가 이미 같은 것을 말한다.
+          기능이 마흔 가까이 되므로 성공을 강한 초록으로 칠하지 않는다. 눈에 띄는 쪽은 실패다
+    """
     if not entries:
         return '<div class="tt-empty">결과가 없습니다.</div>'
     functions = functions or {}
-    rows = "".join(
-        f'<div class="tt-rs{" tt-rs-ng" if e["failed"] else ""}">'
-        f'<div>{number_markup(e["group"], functions)}</div><div>{e["passed"]}/{e["runs"]}</div>'
-        f'<div>{"실패 " + str(e["failed"]) if e["failed"] else "모두 성공"}</div></div>'
+    cards = "".join(
+        f'<div class="tt-rs {"tt-rs-ng" if e["failed"] else "tt-rs-ok"}"{_tip(e["group"], functions)}>'
+        f'<div class="tt-rs-fn">{number_markup(e["group"], functions)}</div>'
+        f'<div class="tt-rs-n">{e["passed"]}/{e["runs"]}</div></div>'
         for e in entries
     )
-    return f'<div class="tt-rss">{rows}</div>'
+    return f'<div class="tt-rss">{cards}</div>'
 
 
 def _value_markup(value) -> str:
@@ -1292,13 +1314,24 @@ def panel_css() -> str:
 .st-key-test_tab .tt-ov-row:only-child .tt-ov-v { text-align: left; }
 .st-key-test_tab .tt-sum-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin: 0.2rem 0 0.45rem; }
 
-/* ---------------------------------------------- 기능별 결과 */
-.st-key-test_tab .tt-rss { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.3rem 0.8rem; }
+/* ---------------------------------------------- 기능별 결과
+   기능마다 카드 하나. 카드 사이 gap 으로 경계를 긋는다 (줄이 이어 붙으면 어디까지가 한
+   기능인지가 흐려진다). 기능이 마흔 가까이 되므로 성공은 옆줄만 초록으로 차분히 두고,
+   배경을 칠하는 것은 실패뿐이다 — 전부 초록이면 붉은 것이 안 보인다. */
+.st-key-test_tab .tt-rss { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.55rem; }
 .st-key-test_tab .tt-rs {
-  display: grid; grid-template-columns: 1fr auto auto; gap: 0.5rem; font-size: 0.8rem;
-  padding: 0.2rem 0.45rem; border-radius: 6px; background: var(--tt-softer);
+  display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem;
+  font-size: 0.8rem; padding: 0.42rem 0.7rem; border-radius: 8px;
+  border: 1px solid var(--tt-line); background: var(--tt-softer);
 }
-.st-key-test_tab .tt-rs-ng { color: var(--tt-ng); background: rgba(229, 83, 75, 0.08); font-weight: 600; }
+.st-key-test_tab .tt-rs-n { font-variant-numeric: tabular-nums; font-weight: 600; }
+.st-key-test_tab .tt-rs-ok { box-shadow: inset 3px 0 0 var(--tt-ok); }
+.st-key-test_tab .tt-rs-ok .tt-rs-n { color: var(--tt-ok); }
+.st-key-test_tab .tt-rs-ng {
+  background: rgba(229, 83, 75, 0.1); border-color: rgba(229, 83, 75, 0.45);
+  box-shadow: inset 3px 0 0 var(--tt-ng);
+}
+.st-key-test_tab .tt-rs-ng .tt-rs-n { color: var(--tt-ng); font-weight: 700; }
 
 /* ---------------------------------------------- 모델 설정 */
 .st-key-test_tab .tt-cond {

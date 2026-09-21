@@ -606,7 +606,8 @@ def test_both_test_suites_are_offered_and_the_case_count_comes_from_the_chosen_f
     for entry in entries:
         loaded = suite_module.load(entry["path"])
         counts[entry["id"]] = sum(1 for case in loaded["cases"] if case["enabled"])
-        assert panel.dataset_label(entry) == f"{entry['label']} · {counts[entry['id']]}개 발화"
+        name = Path(entry["path"]).name
+        assert panel.dataset_label(entry) == f"{name} · {counts[entry['id']]}개 발화"
     assert counts["test_suite_v1"] != counts["test_suite_v2"]
 
     # FULL48 은 정답표의 이름이라 숫자가 아니다. 이름을 뺀 나머지에 발화 수가 있으면 박은 것이다.
@@ -627,6 +628,63 @@ def test_choosing_a_test_suite_changes_what_the_run_measures(app):
 
     assert not app.exception
     assert app.calls == ["test_suite_v2"]
+
+
+def test_the_names_on_screen_are_the_files_and_folders_in_the_repo():
+    """별칭이 앞에 서면 화면의 이름과 저장소의 자산이 서로 다른 말이 되어 되짚을 수가 없다."""
+    for entry in suite_module.datasets():
+        shown = panel.dataset_label(entry)
+        assert shown.startswith(Path(entry["path"]).name), shown
+        assert not shown.startswith(entry["label"]), shown
+
+    assert panel.suite_filename({"path": "dev/evaluation/test_suites/test_suite_v2.yaml",
+                                 "label": "테스트 세트 v2"}) == "test_suite_v2.yaml"
+    assert panel.suite_filename({"dataset_id": "test_suite_v1"}) == "test_suite_v1.yaml"
+    assert panel.suite_filename({}) == "정답표"
+
+    run_id = "20260921-090538-test_suite_v2-87532e"
+    entry = {"run_id": run_id, "started_at": "2026-09-21T09:05:38", "runs": 203, "passed": 188,
+             "suite_label": "테스트 세트 v2", "suite_name": "test_suite_v2"}
+    assert panel.saved_label(entry) == f"{run_id} · 188/203"
+    assert panel.saved_label({**entry, "runs": None}) == f"{run_id} · 끝나지 않음"
+
+
+def test_the_overview_names_the_suite_by_its_file(result):
+    """실행 개요가 별칭을 보이면 이 결과가 저장소의 어느 파일을 잰 것인지 알 수 없다."""
+    result = {**result, "meta": {**result["meta"],
+                                 "suite": {"path": "dev/evaluation/test_suites/test_suite_v1.yaml",
+                                           "label": "FULL48 회귀 테스트"}}}
+    shown = dict(panel.overview(result))["테스트 세트"]
+    assert shown == [("", "test_suite_v1.yaml")]
+
+
+def test_a_function_card_shows_only_its_number_and_score(result):
+    """「모두 성공」 · 「실패 N」 은 x/y 가 이미 말한 것을 되풀이한다. 서른아홉 장이면 글자만 는다."""
+    entries = panel.recipe_rows(result)
+    assert entries and any(e["failed"] for e in entries)
+    markup = panel.recipe_summary_markup(entries, FUNCTIONS)
+    text = visible_text(markup)
+    for gone in ("모두 성공", "실패 "):
+        assert gone not in text, gone
+    assert " ".join(text.split()) == " ".join(
+        f"{panel.function_label(e['group'])} {e['passed']}/{e['runs']}" for e in entries
+    )
+
+    # 성공은 옆줄만, 실패는 배경까지. 카드 사이에는 틈이 있다
+    assert markup.count("tt-rs-ok") + markup.count("tt-rs-ng") == len(entries)
+    css = panel.panel_css()
+    assert "rgba(229, 83, 75" in css.split(".tt-rs-ng", 1)[1][:200]
+    assert "background" not in css.split(".tt-rs-ok {", 1)[1].split("}", 1)[0]
+    assert re.search(r"\.tt-rss \{[^}]*gap:", css)
+
+
+def test_a_function_card_carries_its_menu_description_without_a_second_table(result):
+    """카드 전체에도 설명이 붙는다. 원천은 결과 meta.functions 하나다."""
+    markup = panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS)
+    for recipe_id, text in FUNCTIONS.items():
+        if recipe_id in {e["group"] for e in panel.recipe_rows(result)}:
+            assert f'class="tt-rs tt-rs' in markup
+            assert markup.count(f'title="{text}"') >= 2, recipe_id
 
 
 def test_the_two_suites_stay_separate_datasets():
