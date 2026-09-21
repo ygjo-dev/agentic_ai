@@ -249,71 +249,152 @@ def test_the_model_settings_come_from_the_result_metadata_with_the_llm_temperatu
     assert shown["Temperature"] == "0.7" and shown["Seed"] == "3"
 
 
-# ── 무엇이 LLM 을 부르나 ─────────────────────────────────────────────
+# ── 무엇이 LLM 을 부르나 · 결과 표의 줄 ─────────────────────────────
 #
 # 한 번 재는 데 수십 분이 든다. 탭을 열거나 필터를 바꾸는 것만으로 다시 재면 안 된다.
-# AppTest 로 탭을 그리고, 평가를 부르는 자리(run_selected)를 세는 것으로 바꿔 끼운다.
+# AppTest 로 탭을 그리고, 평가를 부르는 자리(run_selected)를 가짜 resolve 로 진짜 정답표를 도는 것으로 바꿔 끼운다.
 def _tab_script():
     from app.ui.components.testing_panel import render_test_tab
 
     render_test_tab({"viewport_height": 900})
 
 
+def _enabled(dataset_id):
+    suite = load_test_suite.load(load_test_suite.dataset(dataset_id)["path"])
+    return [case for case in suite["cases"] if case["enabled"]]
+
+
+def _suite_resolve(dataset_id, seen=None):
+    """진짜 정답표를 도는 가짜 resolve. 번호가 10 의 배수면 틀린 기능, 범위 밖은 NO_MATCH. LLM 을 안 부름."""
+    by_utterance = {case["utterance"]: case for case in _enabled(dataset_id)}
+
+    def resolve(utterance):
+        if seen is not None:
+            seen.append(utterance)
+        case = by_utterance[utterance]
+        if not load_test_suite.in_scope(case):
+            return {"reason": "없음", "status": "NO_MATCH", "recipe_id": None, "candidate_recipe_ids": [], "paths": {}}
+        rid = case["expected"]["recipe_ids"][0]
+        if case["id"] % 10 == 0:
+            rid = "recipe_001" if rid != "recipe_001" else "recipe_002"
+        return {"reason": "가짜", "status": "SELECT", "recipe_id": rid, "candidate_recipe_ids": [rid], "paths": {},
+                **(case["expected"].get("spoken") or {})}
+
+    return resolve
+
+
+def _measure(dataset_id, *, seen=None, progress=None, save_dir=None):
+    """진짜 정답표 한 벌을 가짜 resolve 로 잰 결과 (run_evaluation.run_dataset 과 같은 모양)."""
+    entry = load_test_suite.dataset(dataset_id)
+    measured = run_evaluation.run(
+        load_test_suite.load(entry["path"]), suite_path=Path(entry["path"]), resolve=_suite_resolve(dataset_id, seen),
+        progress=progress, materialize=False, save_dir=save_dir, dataset={"id": entry["id"], "label": entry["label"]},
+    )
+    measured["meta"]["functions"] = dict(FUNCTIONS)
+    return measured
+
+
 @pytest.fixture
 def app(monkeypatch):
-    """테스트 탭 AppTest. 평가는 진짜 run_evaluation.run 을 SUITE 와 가짜 resolve 로 돌림.
+    """테스트 탭 AppTest. 평가는 진짜 run_evaluation.run 을 고른 정답표와 가짜 resolve 로 돌림.
 
     at.calls        run_selected 가 불린 정답표 id
     at.resolved     가짜 resolve 가 받은 발화 (LLM 호출 수 자리)
-    at.live         실행 중 화면을 그릴 때마다 (그린 줄 수, 요약 숫자)
+    at.live         실행 중 화면을 그릴 때마다 (표 줄 수, 끝난 줄 수, 요약 숫자, 표 줄의 case_id)
     """
     from streamlit.testing.v1 import AppTest
 
     calls, resolved, live = [], [], []
 
-    def resolve(utterance):
-        resolved.append(utterance)
-        return _resolve(utterance)
-
     def run_selected(dataset_id, on_progress=None):
         calls.append(dataset_id)
-        measured = run_evaluation.run(SUITE, resolve=resolve, progress=on_progress, materialize=False)
-        measured["meta"]["functions"] = dict(FUNCTIONS)
-        return measured
+        return _measure(dataset_id, seen=resolved, progress=on_progress)
 
     render_live = panel._render_live
 
-    def spy(slots, rows, planned, functions, height):
-        live.append((len(rows), panel.summarize(panel.live_result(rows, planned))))
-        render_live(slots, rows, planned, functions, height)
+    def spy(slots, skeleton, rows, planned, functions, height):
+        table = panel.table_rows(skeleton, rows)
+        live.append((len(table), len(rows), panel.summarize(panel.live_result(rows, planned)), [r["case_id"] for r in table], table))
+        render_live(slots, skeleton, rows, planned, functions, height)
 
     monkeypatch.setattr(panel, "run_selected", run_selected)
     monkeypatch.setattr(panel, "_render_live", spy)
-    at = AppTest.from_function(_tab_script, default_timeout=30)
+    at = AppTest.from_function(_tab_script, default_timeout=60)
     at.calls, at.resolved, at.live = calls, resolved, live
     return at
 
 
-def test_opening_the_tab_does_not_run_the_evaluation(app):
+def _results(at):
+    return list(at.dataframe[0].value["결과"])
+
+
+def test_opening_the_tab_shows_every_v1_case_as_pending_without_running(app):
     app.run()
 
     assert not app.exception
     assert app.calls == [] and app.resolved == [] and app.live == []
-    assert any("테스트 세트를 선택하고 실행하면" in m.value for m in app.markdown)
+    assert len(app.dataframe) == 1
+    assert len(app.dataframe[0].value) == len(_enabled("test_suite_v1")) == 48
+    assert set(_results(app)) == {panel.PENDING_TEXT}
+    assert list(app.dataframe[0].value["발화"]) == [case["utterance"] for case in _enabled("test_suite_v1")]
 
 
-def test_each_finished_utterance_is_drawn_at_once_while_the_run_goes_on(app):
-    """0건 화면부터 시작해 발화 하나가 끝날 때마다 한 줄씩 쌓이고 요약이 따라감."""
+def test_choosing_v2_shows_all_203_cases_as_pending_without_running(app):
     app.run()
+    app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
+
+    assert not app.exception
+    assert app.calls == [] and app.resolved == [] and app.live == []
+    assert len(app.dataframe[0].value) == len(_enabled("test_suite_v2")) == 203
+    assert set(_results(app)) == {panel.PENDING_TEXT}
+
+
+@pytest.mark.parametrize("dataset_id, count", [("test_suite_v1", 48), ("test_suite_v2", 203)])
+def test_a_run_keeps_every_case_row_and_fills_it_in_place_by_case_id(app, dataset_id, count):
+    """실행 중 표가 끝난 줄만큼 줄었다 늘면 어디까지 왔는지와 무엇이 남았는지가 한눈에 안 보인다."""
+    app.run()
+    if dataset_id != "test_suite_v1":
+        app.selectbox(key=panel.DATASET_KEY).set_value(dataset_id).run()
     app.button(key="test_run").click().run()
 
     assert not app.exception
-    assert [count for count, _ in app.live] == [0, 1, 2, 3, 4, 5]
-    assert app.live[0][1]["passed"] == 0 and app.live[0][1]["failed"] == 0
-    assert [(s["passed"], s["function"], s["input"], s["error"]) for _, s in app.live[1:]] == [
-        (1, 0, 0, 0), (2, 0, 0, 0), (2, 0, 1, 0), (2, 1, 1, 0), (2, 1, 1, 1),
-    ]
-    assert {s["total"] for _, s in app.live[1:]} == {5}
+    order = [case["id"] for case in _enabled(dataset_id)]
+    assert [done for _, done, _, _, _ in app.live] == list(range(count + 1))
+    assert {size for size, _, _, _, _ in app.live} == {count}
+    for size, done, _, ids, table in app.live:
+        assert ids == order, "줄 차례가 바뀌었거나 줄이 덧붙었다"
+        finished = {row["case_id"] for row in table if not panel.pending(row)}
+        assert finished == set(order[:done])
+        assert all(panel.pending(row) for row in table if row["case_id"] not in finished)
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == count
+    assert panel.PENDING_TEXT not in _results(app)
+    assert app.selectbox(key=panel.SAVED_KEY).value == ""
+    assert sorted(app.resolved) == sorted(case["utterance"] for case in _enabled(dataset_id))
+    assert app.calls == [dataset_id]
+
+
+def test_pending_rows_are_never_counted_as_failures(app):
+    app.run()
+    app.segmented_control(key="test_filter").set_value(panel.FAILED).run()
+    assert not app.exception
+    assert not app.dataframe, "대기 줄이 실패 보기에 들어갔다"
+
+    rows = panel.suite_rows("test_suite_v1")
+    assert panel.filter_results(rows, panel.FAILED) == []
+    assert panel.first_failure(rows) is None
+    assert all(panel.verdict_label(row) == panel.PENDING_TEXT for row in rows)
+    assert all(panel.detail_markup(row, {}).count("실패") == 0 for row in rows[:3])
+
+
+def test_while_running_the_summary_counts_only_finished_cases(app):
+    app.run()
+    app.button(key="test_run").click().run()
+
+    first = app.live[0][2]
+    assert (first["done"], first["passed"], first["failed"], first["total"]) == (0, 0, 0, 48)
+    last = app.live[-1][2]
+    assert last["done"] == 48 and last["passed"] + last["failed"] == 48
+    assert last["function"] == sum(1 for case in _enabled("test_suite_v1") if case["id"] % 10 == 0)
 
 
 def test_the_run_calls_resolve_once_per_utterance_and_ends_on_one_table(app):
@@ -323,10 +404,10 @@ def test_the_run_calls_resolve_once_per_utterance_and_ends_on_one_table(app):
 
     assert not app.exception
     assert app.calls == ["test_suite_v1"]
-    assert sorted(app.resolved) == sorted(case["utterance"] for case in SUITE["cases"])
+    assert len(app.resolved) == 48
     assert len(app.dataframe) == 1
-    assert len(app.dataframe[0].value) == 5
-    assert any("tt-kpi-num\">5<" in m.value for m in app.markdown)
+    assert len(app.dataframe[0].value) == 48
+    assert any("tt-kpi-num\">48<" in m.value for m in app.markdown)
     assert not any("방금 끝난 발화" in m.value for m in app.markdown)
 
 
@@ -340,36 +421,66 @@ def test_filters_search_and_redraws_after_the_run_do_not_rerun_it(app):
 
     assert not app.exception
     assert app.calls == ["test_suite_v1"], "필터 · 다시 그리기가 평가를 다시 불렀다"
-    assert len(app.resolved) == len(SUITE["cases"])
+    assert len(app.resolved) == 48
     assert len(app.live) == drawn
-    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 1
+    expected = [case for case in _enabled("test_suite_v1") if "청주" in case["utterance"].replace(" ", "")]
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == len(expected)
+
+
+@pytest.mark.parametrize("first, second, count", [("test_suite_v2", "test_suite_v1", 48), ("test_suite_v1", "test_suite_v2", 203)])
+def test_switching_the_test_suite_drops_the_old_results_and_shows_the_new_pending_rows(app, first, second, count):
+    app.run()
+    if first != "test_suite_v1":
+        app.selectbox(key=panel.DATASET_KEY).set_value(first).run()
+    app.button(key="test_run").click().run()
+    assert panel.RESULT_KEY in app.session_state
+
+    app.selectbox(key=panel.DATASET_KEY).set_value(second).run()
+
+    assert not app.exception
+    assert panel.RESULT_KEY not in app.session_state
+    assert len(app.dataframe[0].value) == count
+    assert set(_results(app)) == {panel.PENDING_TEXT}
+    assert app.calls == [first], "테스트 세트를 고르기만 했는데 평가를 불렀다"
 
 
 def _live_script(count):
     import streamlit as st
 
     from app.ui.components import testing_panel
-    from dev.tests.app.ui.test_testing_panel import FUNCTIONS, SUITE, _resolve
-    from dev.evaluation import run_evaluation
+    from dev.tests.app.ui.test_testing_panel import FUNCTIONS, _measure
 
-    rows = run_evaluation.run(SUITE, resolve=_resolve, materialize=False)["cases"][:count]
+    skeleton = testing_panel.suite_rows("test_suite_v1")
+    rows = _measure("test_suite_v1")["cases"][:count]
     slots = {name: st.empty() for name in ("status", "kpi", "list", "detail")}
-    testing_panel._render_live(slots, rows, 48, FUNCTIONS, 420)
+    testing_panel._render_live(slots, skeleton, rows, len(skeleton), FUNCTIONS, 420)
 
 
 @pytest.mark.parametrize("count", [0, 1, 2, 3])
-def test_the_live_view_shows_exactly_the_finished_rows(count):
+def test_the_live_view_keeps_every_row_and_counts_exactly_the_finished_ones(count):
     from streamlit.testing.v1 import AppTest
 
-    at = AppTest.from_function(_live_script, args=(count,), default_timeout=30)
+    at = AppTest.from_function(_live_script, args=(count,), default_timeout=60)
     at.run()
 
     assert not at.exception
-    assert len(at.dataframe) == (1 if count else 0)
-    if count:
-        assert len(at.dataframe[0].value) == count
+    assert len(at.dataframe) == 1 and len(at.dataframe[0].value) == 48
+    assert list(at.dataframe[0].value["결과"]).count(panel.PENDING_TEXT) == 48 - count
     kpi = next(m.value for m in at.markdown if "tt-kpis" in m.value)
     assert f"완료 {count} / 48" in visible_text(kpi)
+
+
+def test_table_rows_replace_by_case_id_and_never_append():
+    skeleton = panel.suite_rows("test_suite_v1")
+    done = _measure("test_suite_v1")["cases"]
+    shuffled = [done[5], done[0], done[2]]
+
+    table = panel.table_rows(skeleton, shuffled)
+
+    assert [row["case_id"] for row in table] == [row["case_id"] for row in skeleton]
+    assert [i for i, row in enumerate(table) if not panel.pending(row)] == [0, 2, 5]
+    assert table[5] is done[5]
+    assert panel.table_rows(skeleton, done + [done[0]])[0]["case_id"] == skeleton[0]["case_id"]
 
 
 # ── 테스트 세트 v2 · 범위 밖 · 실행 기록 ─────────────────────────────
@@ -572,49 +683,142 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
     assert [e["group"] for e in panel.recipe_rows(unordered)] == ["recipe_003", "recipe_020", "recipe_061", "recipe_100"]
 
 
-def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app, monkeypatch, tmp_path):
-    """불러온 기록은 방금 잰 결과와 같은 자리 · 같은 함수로 그려지고 LLM 을 안 부른다."""
+CANONICAL = "20260921-090538-test_suite_v2"
+LOCAL_FULL48 = "20260921-102636-test_suite_v1"
+
+
+def _isolated_local(monkeypatch, tmp_path):
+    """local 자리만 tmp 로. official 은 저장소의 진짜 자리 그대로."""
     monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path)
-    saved = run_evaluation.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
-                       dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
+    return tmp_path
+
+
+def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app, monkeypatch, tmp_path):
+    """불러온 기록은 방금 잰 결과와 같은 자리 · 같은 함수 · 같은 대기 줄 표로 그려지고 LLM 을 안 부른다."""
+    saved = _measure("test_suite_v1", save_dir=_isolated_local(monkeypatch, tmp_path))
 
     app.run()
-    app.selectbox(key=panel.SAVED_KEY).set_value(saved["meta"]["run_id"]).run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{saved['meta']['run_id']}").run()
 
     assert not app.exception
     assert app.calls == [] and app.resolved == []
-    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == len(SUITE["cases"])
+    assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 48
+    assert panel.PENDING_TEXT not in _results(app)
     assert any(saved["meta"]["run_id"] in m.value for m in app.markdown)
     assert any('class="tt-ovs"' in m.value for m in app.markdown)
     assert [e.label for e in app.expander] == ["모델 설정", "기능별 결과"]
     shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
     assert not [w for w in RETIRED if w in shown], [w for w in RETIRED if w in shown]
     assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == manage_benchmark.load_benchmark(
-        saved["meta"]["run_id"], tmp_path
+        "local", saved["meta"]["run_id"]
     )["summary"]
 
 
-def test_the_saved_run_picker_offers_official_and_local_runs_and_loads_either(app, monkeypatch, tmp_path):
-    """기준 벤치마크와 보통 실행이 한 목록에 run_id 그대로 나오고, 어느 쪽을 골라도 같은 화면으로 그려진다."""
-    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path)
-    local = run_evaluation.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
-                               dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
-    official = "20260921-090538-test_suite_v2-87532e"
+def test_the_saved_run_picker_lists_official_and_local_together_newest_first(app, monkeypatch, tmp_path):
+    """기준 벤치마크와 보통 실행이 한 목록에 run_id 그대로 나오고 끝에 공식 · 로컬이 붙는다."""
+    local = _measure("test_suite_v1", save_dir=_isolated_local(monkeypatch, tmp_path))
 
     app.run()
-    options = app.selectbox(key=panel.SAVED_KEY).options
-    assert any(o.startswith(official) for o in options)
-    assert any(o.startswith(local["meta"]["run_id"]) for o in options)
+    labels = app.selectbox(key=panel.SAVED_KEY).options
+    official = next(o for o in labels if o.startswith(CANONICAL))
+    mine = next(o for o in labels if o.startswith(local["meta"]["run_id"]))
+    assert official == f"{CANONICAL} · 188/203 · 공식"
+    total = local["summary"]["total"]
+    assert mine == f"{local['meta']['run_id']} · {total['passed']}/{total['runs']} · 로컬"
+    assert labels.index(mine) < labels.index(official), "최근 것이 앞이 아니다"
+    for entry in manage_benchmark.list_benchmarks():
+        assert "공식" not in entry["run_id"] and "로컬" not in entry["run_id"]
 
-    app.selectbox(key=panel.SAVED_KEY).set_value(official).run()
-    assert not app.exception and app.calls == []
-    assert app.session_state[panel.RESULT_KEY]["result"]["meta"]["run_id"] == official
+
+def test_loading_the_official_canonical_run_switches_to_v2_and_fills_its_203_rows(app):
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+
+    assert not app.exception and app.calls == [] and app.resolved == []
+    stored = app.session_state[panel.RESULT_KEY]
+    assert stored["kind"] == "official" and stored["result"]["meta"]["run_id"] == CANONICAL
     assert app.session_state[panel.DATASET_KEY] == "test_suite_v2"
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 203
+    assert _results(app).count("성공") == 188 and _results(app).count("실패") == 15
+    board = stored["result"]["summary"]["metrics"]
+    assert board["selection"] == {"correct": 184, "total": 195}
+    assert board["joint"] == {"correct": 181, "total": 195}
+    assert board["oos"] == {"correct": 7, "total": 8}
 
-    app.selectbox(key=panel.SAVED_KEY).set_value(local["meta"]["run_id"]).run()
+
+def test_loading_the_local_full48_run_switches_to_v1_and_fills_its_48_rows(app):
+    if not (manage_benchmark.LOCAL_DIR / LOCAL_FULL48).is_dir():
+        pytest.skip("이 기계에서 돌린 FULL48 보통 실행이 없다 (.gitignore 라 clone 에는 없음)")
+    app.run()
+    app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{LOCAL_FULL48}").run()
+
     assert not app.exception and app.calls == []
-    assert app.session_state[panel.RESULT_KEY]["result"]["meta"]["run_id"] == local["meta"]["run_id"]
+    stored = app.session_state[panel.RESULT_KEY]
+    assert stored["kind"] == "local" and stored["result"]["meta"]["run_id"] == LOCAL_FULL48
+    assert app.session_state[panel.DATASET_KEY] == "test_suite_v1"
+    assert len(app.dataframe[0].value) == 48 and _results(app).count("성공") == 48
+
+
+def test_the_saved_run_list_comes_from_the_real_storage_roots_and_is_not_empty(app):
+    """2026-09-21 불러올 기록이 비었다. 화면이 읽던 폴더가 옮겨져 사라졌는데 목록 함수가 빈 목록을 조용히 돌려줬다.
+
+    옮긴 뒤에도 기준 벤치마크가 공식으로 떠야 하고, 읽을 자리가 없으면 빈 목록 대신 까닭이 보여야 한다.
+    """
+    app.run()
+    options = app.selectbox(key=panel.SAVED_KEY).options
+    assert any(o.startswith(f"{CANONICAL} · ") and o.endswith(" · 공식") for o in options), options
+    assert panel.storage_notes() == []
+    assert all(Path(entry["path"]).is_file() for entry in load_test_suite.datasets())
+
+
+def test_a_missing_storage_root_is_shown_instead_of_a_silently_empty_list(app, monkeypatch, tmp_path):
+    monkeypatch.setattr(manage_benchmark, "OFFICIAL_DIR", tmp_path / "없는-자리")
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path / "local")
+    app.run()
+
+    assert not app.exception
+    assert app.selectbox(key=panel.SAVED_KEY).options == ["불러올 기록 고르기"]
+    assert any("공식 기록 폴더가 없습니다" in m.value for m in app.markdown)
+
+
+def test_after_switching_suites_the_same_saved_run_can_be_loaded_again(app):
+    """고른 실행 기록이 남아 있으면 같은 기록을 다시 골라도 바뀐 것이 없어 아무 일도 안 일어난다.
+
+    session_state 에서 지우기만 하면 브라우저는 옛 기록을 계속 보이고 그 값을 도로 보낸다(실제 화면에서 확인).
+    그래서 빈 값으로 적는다.
+    """
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v1").run()
+    assert app.session_state[panel.SAVED_KEY] == ""
+    assert app.selectbox(key=panel.SAVED_KEY).value == ""
+    assert set(_results(app)) == {panel.PENDING_TEXT}
+
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+
+    assert app.session_state[panel.DATASET_KEY] == "test_suite_v2"
+    assert len(app.dataframe[0].value) == 203 and _results(app).count("성공") == 188
+
+
+def test_an_interrupted_local_run_is_listed_as_stopped_and_loads_onto_the_pending_rows(app, monkeypatch, tmp_path):
+    root = _isolated_local(monkeypatch, tmp_path)
+
+    def die(done, total, row):
+        if done == 3:
+            raise RuntimeError("화면이 죽음")
+
+    with pytest.raises(RuntimeError):
+        _measure("test_suite_v1", save_dir=root, progress=die)
+    [entry] = [e for e in manage_benchmark.list_benchmarks() if e["kind"] == "local"]
+    assert panel.saved_label(entry) == f"{entry['run_id']} · 중단됨 · 로컬"
+
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(panel.saved_key(entry)).run()
+
+    assert not app.exception
+    assert len(app.dataframe[0].value) == 48
+    assert _results(app).count(panel.PENDING_TEXT) == 45
 
 
 def test_the_tab_imports_only_the_new_evaluation_modules():
@@ -658,6 +862,7 @@ def test_choosing_a_test_suite_changes_what_the_run_measures(app):
     ]
 
     app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
+    assert app.calls == []
     app.button(key="test_run").click().run()
 
     assert not app.exception
@@ -676,11 +881,13 @@ def test_the_names_on_screen_are_the_files_and_folders_in_the_repo():
     assert panel.suite_filename({"dataset_id": "test_suite_v1"}) == "test_suite_v1.yaml"
     assert panel.suite_filename({}) == "정답표"
 
-    run_id = "20260921-090538-test_suite_v2-87532e"
-    entry = {"run_id": run_id, "started_at": "2026-09-21T09:05:38", "runs": 203, "passed": 188,
-             "suite_label": "테스트 세트 v2", "suite_name": "test_suite_v2"}
-    assert panel.saved_label(entry) == f"{run_id} · 188/203"
-    assert panel.saved_label({**entry, "runs": None}) == f"{run_id} · 끝나지 않음"
+    run_id = "20260921-090538-test_suite_v2"
+    entry = {"run_id": run_id, "kind": "official", "complete": True, "started_at": "2026-09-21T09:05:38",
+             "runs": 203, "passed": 188, "suite_label": "테스트 세트 v2", "suite_name": "test_suite_v2"}
+    assert panel.saved_label(entry) == f"{run_id} · 188/203 · 공식"
+    assert panel.saved_key(entry) == f"official:{run_id}"
+    stopped = {**entry, "kind": "local", "complete": False, "runs": None, "passed": None}
+    assert panel.saved_label(stopped) == f"{run_id} · 중단됨 · 로컬"
 
 
 def test_the_overview_names_the_suite_by_its_file(result):
@@ -730,11 +937,9 @@ def test_the_two_suites_stay_separate_datasets():
 
 def test_the_function_results_section_is_titled_기능별_결과_and_nothing_else(app, monkeypatch, tmp_path):
     """제목에 기능 수 · 실패한 기능 수를 달면 같은 숫자가 바로 아래 표에 또 있다."""
-    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path)
-    saved = run_evaluation.run(SUITE, resolve=_resolve, materialize=False, save_dir=tmp_path,
-                       dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"})
+    saved = _measure("test_suite_v1", save_dir=_isolated_local(monkeypatch, tmp_path))
     app.run()
-    app.selectbox(key=panel.SAVED_KEY).set_value(saved["meta"]["run_id"]).run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{saved['meta']['run_id']}").run()
 
     labels = [e.label for e in app.expander]
     assert "기능별 결과" in labels

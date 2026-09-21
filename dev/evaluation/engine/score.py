@@ -1,7 +1,8 @@
-"""Resolve 출력을 정답표와 맞대 채점하는 곳. 발화 하나의 판정 · 합계 · 지표 · 요약 글.
+"""Resolve 출력을 정답표와 맞대 채점하는 곳. 발화 하나의 판정 · 합계 · 지표.
 
-**check_resolve 와 같은 자를 쓴다.** 판정(`_grade`) · 이름 있는 값 표기(`_value_mark`) 는
-`dev/tools/check_resolve.py` 것을 그대로 부른다. 규칙을 베끼면 두 자가 조용히 어긋난다.
+**판정 자의 원본이 여기다.** 네 칸 판정(`grade`) · 이름 있는 값 표기(`value_mark`) 는 이 파일에 있고,
+계기판 `dev/tools/check_resolve.py` 가 이것을 import 해 쓴다. 평가가 계기판을 부르지 않는다 —
+규칙이 두 곳에 있으면 두 자가 조용히 어긋난다.
 
 **발화 판정은 고르기와 정답표에 적은 값만 본다.** materialize 결과는 줄에 싣지만 범위 안 판정에 안 들어간다.
 범위 밖 발화(정답표 판 2 의 out_of_scope)는 기대 recipe 가 없고, 결과(outcome)가 정답표가 받아들이는
@@ -22,15 +23,55 @@ REPO_ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO_ROOT))
 
 from dev.evaluation.engine import load_test_suite  # noqa: E402
-from dev.tools import check_resolve  # noqa: E402
 
-# check_resolve 의 네 칸 -> 결과에 적는 이름. 칸의 뜻은 check_resolve 머리 주석에 있다.
-GRADES = {
-    check_resolve.HIT: "HIT",
-    check_resolve.NEAR: "NEAR",
-    check_resolve.MISS: "MISS",
-    check_resolve.UNATTACHED: "UNATTACHED",
-}
+# 한 번의 결과를 가르는 네 칸. 계기판 표에 찍히는 글자이기도 하다.
+#   적중     후보가 기대 recipe 와 꼭 같음
+#   근접     기대 recipe 가 후보 안에 있으나 하나로 못 좁힘
+#   빗나감   기대 recipe 가 후보에 없음 — 제일 나쁨. 틀린 것을 자신 있게 고른 자리
+#   못 붙음  NO_MATCH · 후보 없음 · 오류. 답이 안 붙음
+HIT, NEAR, MISS, UNATTACHED = "적중", "근접", "빗나감", "못 붙음"
+
+# 네 칸 -> 결과에 적는 이름.
+GRADES = {HIT: "HIT", NEAR: "NEAR", MISS: "MISS", UNATTACHED: "UNATTACHED"}
+
+# 이름 있는 값이 없다는 것을 표 글자로 어떻게 적나. "-" 는 계기판 인자 표가 쓰는 글자라
+# **null 을 그것과 갈라 적는다** — 사람이 말 안 한 것과 못 뽑은 것이 다르다.
+NULL_MARK = "null"
+
+
+def grade(result, status: str, expected: set) -> str:
+    """한 번의 결과를 네 칸 중 하나로 가름.
+
+    입력  후보 집합(frozenset. 오류면 문자열) · 최종 status · 기대 recipe 집합
+    출력  HIT · NEAR · MISS · UNATTACHED 중 하나
+    규칙  넷이 서로 안 겹치고 빠짐이 없음. 그래야 넷의 합이 시행 횟수가 됨
+          적중 판정은 set(result) == expected 임
+          아래 순서를 바꿔도 적중 수는 안 변함. 못 붙음이 먼저지만
+          NO_MATCH 일 때 후보가 기대값과 같을 수는 없기 때문
+          오류는 못 붙음에 넣음. 답이 안 붙은 것은 마찬가지임
+    """
+    if not isinstance(result, frozenset):  # 오류
+        return UNATTACHED
+    if status == "NO_MATCH" or not result:
+        return UNATTACHED
+    if set(result) == expected:
+        return HIT
+    if expected <= set(result):  # 하나로 못 좁혔을 뿐 정답이 남아 있다
+        return NEAR
+    return MISS
+
+
+def value_mark(value) -> str:
+    """이름 있는 값 하나의 표 글자. 정답표 기대값과 응답 값을 같은 글자로 맞댈 때 씀.
+
+    규칙  None 은 NULL_MARK. 목록은 대괄호 없이 쉼표로 이음. 그 밖에는 str
+    """
+    if value is None:
+        return NULL_MARK
+    if isinstance(value, list):
+        return ",".join(str(item) for item in value)
+    return str(value)
+
 
 # 고른 recipe 가 없어 materialize 하지 않은 자리.
 NOT_SELECTED = "NOT_SELECTED"
@@ -116,8 +157,8 @@ def spoken_fields(expected: dict, response: dict) -> list[dict]:
     """정답표에 적은 이름 있는 값마다 맞았나.
 
     출력  [{name, expected, actual, correct}] 정답표에 적은 차례
-    규칙  check_resolve._spoken_value_verdict 와 같은 대조. 양쪽을 표 글자
-          (check_resolve._value_mark)로 바꿔 맞댐. 기대 None 은 NULL_MARK 라 null 이 정답임
+    규칙  계기판 check_resolve._spoken_value_verdict 와 같은 대조. 양쪽을 표 글자
+          (value_mark)로 바꿔 맞댐. 기대 None 은 NULL_MARK 라 null 이 정답임
           정답표에 적은 이름만 봄. 적지 않은 이름은 응답에 무엇이 와도 안 봄
           이름을 고정 목록으로 거르지 않음. 새 이름도 같은 규칙으로 맞댐
     """
@@ -126,7 +167,7 @@ def spoken_fields(expected: dict, response: dict) -> list[dict]:
             "name": name,
             "expected": value,
             "actual": response.get(name),
-            "correct": check_resolve._value_mark(response.get(name)) == check_resolve._value_mark(value),
+            "correct": value_mark(response.get(name)) == value_mark(value),
         }
         for name, value in expected.items()
     ]
@@ -195,19 +236,19 @@ def case_head(case: dict, label: str, run: int) -> dict:
 def grade_error(case: dict, head: dict, exc: Exception, timing: dict) -> dict:
     """Resolve 가 터진 발화 하나의 결과 줄 (Case Result).
 
-    규칙  오류는 「오류: 예외 이름」 으로 check_resolve._grade 에 넘겨 못 붙음이 됨 (범위 밖이면 grade None)
+    규칙  오류는 「오류: 예외 이름」 으로 grade 에 넘겨 못 붙음이 됨 (범위 밖이면 grade None)
           실패 단계는 STAGE_ERROR
     """
     expected = case["expected"]
     scoped = load_test_suite.in_scope(case)
     wanted_spoken = expected.get("spoken")
-    grade = check_resolve._grade(f"오류: {type(exc).__name__}", "-", set(expected.get("recipe_ids") or []))
+    grade_ = grade(f"오류: {type(exc).__name__}", "-", set(expected.get("recipe_ids") or []))
     error = f"{type(exc).__name__}: {exc}"
     passed, stage = verdict(False, False if wanted_spoken else None, error)
     return {
         **head,
         "actual": None,
-        "grade": GRADES[grade] if scoped else None,
+        "grade": GRADES[grade_] if scoped else None,
         "recipe_correct": False if scoped else None,
         "spoken_fields": [],
         "spoken_correct": False if wanted_spoken else None,
@@ -225,8 +266,8 @@ def grade_case(case: dict, head: dict, response: dict, built: dict | None, timin
     """Resolve 응답 하나를 채점한 결과 줄 (Case Result).
 
     입력  head 는 case_head. built 는 materialize 결과(안 했으면 None)
-    규칙  후보 집합은 recipe_id 와 candidate_recipe_ids 를 합친 것. check_resolve._call_resolve 와 같음
-          범위 안: 판정은 check_resolve._grade. 발화 판정(passed · failure_stage)은 verdict.
+    규칙  후보 집합은 recipe_id 와 candidate_recipe_ids 를 합친 것. 계기판 check_resolve._call_resolve 와 같음
+          범위 안: 판정은 grade. 발화 판정(passed · failure_stage)은 verdict.
           materialize 를 안 봄
           범위 밖: grade · recipe_correct 는 None. outcome 이 expected.outcomes 에 있으면 성공,
           아니면 STAGE_SCOPE
@@ -238,14 +279,14 @@ def grade_case(case: dict, head: dict, response: dict, built: dict | None, timin
     outcome = outcome_of(status, built)
 
     if load_test_suite.in_scope(case):
-        grade = GRADES[check_resolve._grade(found, status, set(expected["recipe_ids"]))]
+        grade_ = GRADES[grade(found, status, set(expected["recipe_ids"]))]
         fields = spoken_fields(expected.get("spoken") or {}, response)
         spoken_correct = all(field["correct"] for field in fields) if fields else None
-        recipe_correct = grade == GRADES[check_resolve.HIT]
+        recipe_correct = grade_ == GRADES[HIT]
         passed, stage = verdict(recipe_correct, spoken_correct, None)
         oos_correct = None
     else:
-        grade, fields, spoken_correct, recipe_correct = None, [], None, None
+        grade_, fields, spoken_correct, recipe_correct = None, [], None, None
         oos_correct = outcome in expected["outcomes"]
         passed, stage = (True, None) if oos_correct else (False, STAGE_SCOPE)
 
@@ -259,7 +300,7 @@ def grade_case(case: dict, head: dict, response: dict, built: dict | None, timin
             "spoken": {name: value for name, value in response.items() if name not in SELECTION_KEYS},
             "reason": response.get("reason"),
         },
-        "grade": grade,
+        "grade": grade_,
         "recipe_correct": recipe_correct,
         "spoken_fields": fields,
         "spoken_correct": spoken_correct,
@@ -309,7 +350,7 @@ def metrics(tally: dict) -> dict:
     제약  묶음을 가로질러 하나의 백분율로 합치지 않는다. 이것은 넘겨받은 tally 한 벌의 값임
     """
     return {
-        "selection": _pair(tally[GRADES[check_resolve.HIT]], tally["in_scope_runs"]),
+        "selection": _pair(tally[GRADES[HIT]], tally["in_scope_runs"]),
         "semantic_fields": _pair(tally["field_hits"], tally["field_runs"]),
         "semantic_cases": _pair(tally["spoken_hits"], tally["spoken_runs"]),
         "joint": _pair(tally["in_scope_passed"], tally["in_scope_runs"]),
@@ -377,7 +418,7 @@ def summarize(rows: list[dict], labels: tuple) -> dict:
         entry = recipes.setdefault(row.get("recipe_group") or row["expected"]["recipe_ids"][0], {"runs": 0, "passed": 0, "hit": 0})
         entry["runs"] += 1
         entry["passed"] += bool(row["passed"])
-        entry["hit"] += row["grade"] == GRADES[check_resolve.HIT]
+        entry["hit"] += row["grade"] == GRADES[HIT]
 
     groups = {label: tally([row for row in rows if row["group_label"] == label]) for label in labels}
     total = tally(rows)
@@ -388,58 +429,3 @@ def summarize(rows: list[dict], labels: tuple) -> dict:
         "latency": latency(rows),
         "recipes": dict(sorted(recipes.items())),
     }
-
-
-# ================================================================ 요약 글
-def _ratio(pair: dict | None) -> str:
-    if not pair or not pair.get("total"):
-        return "-"
-    return f"{pair['correct']}/{pair['total']} ({pair['correct'] / pair['total']:.1%})"
-
-
-def summary_text(result: dict) -> str:
-    """사람이 읽는 벤치마크 요약 (markdown). 저장할 때 summary.md 가 됨."""
-    meta, summary = result["meta"], result["summary"]
-    metrics_ = summary.get("metrics") or {}
-    latency_ = summary.get("latency") or {}
-    conditions = meta.get("conditions") or {}
-    request = conditions.get("request") or {}
-    gpus = (meta.get("environment") or {}).get("gpus") or []
-    suite = meta.get("suite") or {}
-    lines = [
-        f"# Test Run {meta.get('run_id')}",
-        "",
-        f"- Test Suite: {suite.get('label') or suite.get('name')} (v{suite.get('version')}, sha256 {str(suite.get('sha256'))[:12]}, {suite.get('case_count')} cases)",
-        f"- model: {conditions.get('model')} · {conditions.get('provider')} · role v{conditions.get('role_version')} "
-        f"· request {json.dumps(request, ensure_ascii=False)}",
-        "- environment: " + (", ".join(f"GPU{g.get('index')} {g.get('name')} {g.get('memory_total_mib')} MiB" for g in gpus) or "not recorded"),
-        f"- started {meta.get('started_at')} · finished {meta.get('finished_at')} · elapsed {meta.get('elapsed_s')} s",
-        f"- stopped: {meta.get('stopped')}",
-        "",
-        "| metric | result |",
-        "|---|---|",
-        f"| Selection | {_ratio(metrics_.get('selection'))} |",
-        f"| Semantic fields | {_ratio(metrics_.get('semantic_fields'))} |",
-        f"| Semantic cases | {_ratio(metrics_.get('semantic_cases'))} |",
-        f"| Joint | {_ratio(metrics_.get('joint'))} |",
-        f"| OOS | {_ratio(metrics_.get('oos'))} |",
-        f"| Errors | {summary['total'].get('errors')} |",
-        "",
-        f"latency (s): min {latency_.get('min')} · median {latency_.get('median')} · p95 {latency_.get('p95')} · max {latency_.get('max')}",
-        "",
-        "## failed cases",
-        "",
-    ]
-    failed = [row for row in result["cases"] if not row["passed"]]
-    if not failed:
-        lines.append("none")
-    for row in failed:
-        actual = row.get("actual") or {}
-        bad = [f"{f['name']} {f['expected']!r}->{f['actual']!r}" for f in row.get("spoken_fields") or [] if not f["correct"]]
-        expected = row["expected"].get("recipe_ids") or row["expected"].get("outcomes")
-        lines.append(
-            f"- #{row['case_id']} [{row['failure_stage']}] {row['utterance']} · expected {expected} · "
-            f"actual {actual.get('status')} {actual.get('recipe_id')} {actual.get('candidate_recipe_ids')} "
-            f"outcome {row.get('outcome')} {'; '.join(bad)}{' · ' + row['error'] if row.get('error') else ''}"
-        )
-    return "\n".join(lines) + "\n"

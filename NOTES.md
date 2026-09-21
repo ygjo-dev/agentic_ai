@@ -3229,6 +3229,37 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-21 (이어서) · 평가 기록 이름 · run.json 하나 · 불러올 기록이 빈 까닭 · 결과 표 뼈대
+
+재지 않았다 (LLM 호출 0).
+
+**run_id 에서 무작위 6자를 뺐다.** 두 기록의 폴더 이름과 run.json 의 meta.run_id 한 줄만 바꿨다.
+나머지 바이트는 그대로다 (줄 하나 차이를 확인하고 썼다).
+
+```
+official  20260921-090538-test_suite_v2-87532e  ->  20260921-090538-test_suite_v2
+local     20260921-102636-test_suite_v1-3a5465  ->  20260921-102636-test_suite_v1   (.gitignore)
+```
+
+끝난 기록은 run.json 하나다. meta.json · cases.jsonl 은 run.json 과 같은 내용임을 확인하고 지웠고,
+summary.md 도 지웠다 (보고서 형식 미정). 기준 벤치마크를 다시 읽어도 188/203 · Selection 184/195 ·
+Semantic fields 187/190 · Semantic cases 147/150 · Joint 181/195 · OOS 7/8 · 오류 0.
+
+**불러올 기록이 빈 까닭.** 8501 화면 프로세스가 09:50 에 떠서 그 뒤 두 커밋(3f2edee · 78cc9b8)의 모듈을
+못 읽었다. 메모리에 남은 옛 testing_panel 과 옛 `dev.evaluation.suite` · `test_runs` 가 옮겨져 사라진
+`dev/evaluation/test_suites/` · `test_runs/` 를 읽었고, 목록 함수는 폴더가 없으면 빈 목록을 조용히 돌려줬다.
+실제 화면에서 본 증거: 테스트 세트 글자에 발화 수가 없음(파일을 못 찾음) · 실행 기록 목록이 비었음.
+같은 코드를 새 프로세스로 띄우면 둘 다 정상이었다. 그래서 목록이 빈 까닭을 화면에 적게 했다
+(`manage_benchmark.storage_problems`).
+
+**브라우저에서만 보이는 둘째 까닭.** 테스트 세트를 바꿀 때 실행 기록 widget 값을 session_state 에서
+지우기만 하면(pop) 브라우저는 옛 기록을 계속 보이고, 같은 기록을 다시 골라도 바뀐 것이 없어 콜백이
+안 불린다. AppTest 는 이것을 못 본다 (headless firefox 로 확인). 빈 값을 적는 것으로 고쳤다.
+
+check_resolve 의 판정 · 값 표기 · /resolve 부르기 · 지도 문맥 · 역할 한 줄을 평가 쪽 공개 함수로 옮겼다.
+78cc9b8 사본과 같은 가짜 resolve(v1 48 · v2 203, 오답 · 값 오답 · 근접 · 오류 · 범위 밖 셋)로 맞댄
+결과 판정 · 합계 · 지표 · latency 분포 · 네 칸 격자 · 값 표기 · 문맥 차이 0 (artifact_root 경로만 다름).
+
 ### 2026-09-21 · 평가 코드와 입출력 자리를 갈랐다 — main 하나 · engine 다섯 · inputs · outputs(official/local)
 
 재지 않았다 (LLM 호출 0). 자리와 책임만 옮겼고 채점 규칙은 그대로다.

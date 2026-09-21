@@ -162,9 +162,27 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import endpoints  # noqa: E402
 import paths  # noqa: E402
 from dev.evaluation.engine import load_test_suite as suite  # noqa: E402
+from dev.evaluation import run_evaluation as evaluation  # noqa: E402
+from dev.evaluation.engine.monitor_metadata import describe_role as _describe_role  # noqa: E402,F401  check_llm 이 여기서 가져감
+from dev.evaluation.engine.monitor_metadata import role_label as _role_label  # noqa: E402
+from dev.evaluation.engine.score import (  # noqa: E402
+    HIT,
+    MISS,
+    NEAR,
+    NULL_MARK,
+    UNATTACHED,
+    grade as _grade,
+    value_mark as _value_mark,
+)
+
+# **판정 자 · /resolve 부르기 · 지도 문맥의 원본은 평가(dev/evaluation) 쪽이다.** 이 계기판은
+# 그 공개 함수를 가져다 쓴다. 평가가 계기판을 import 하지 않으므로 규칙이 한 곳에만 있다.
+# 밑줄 이름(_grade · _value_mark · _base_url · _role_label · _describe_role · ServerDown)은
+# check_argument · check_llm · check_demo · sweep_utterances 가 여기서 가져가므로 이름을 그대로 둔다.
+ServerDown = evaluation.ServerDown
+TIMEOUT = evaluation.TIMEOUT
 
 # ── 정답표 ──────────────────────────────────────────────────────────
 #
@@ -189,9 +207,7 @@ SPOKEN_VALUES = suite.spoken_values(SUITE)
 # 그 표가 보는 이름의 차례. 표를 찍는 차례이기도 하다.
 SPOKEN_VALUE_NAMES = ("argument", "travel_mode", "minutes", "admin_level")
 
-# 값이 없다는 것을 표에 어떻게 적나. "-" 는 이미 인자 표가 쓰는 글자라
-# **null 을 그것과 갈라 적는다** — 사람이 말 안 한 것과 못 뽑은 것이 다르다.
-NULL_MARK = "null"
+# 값이 없다는 것을 표에 적는 글자(NULL_MARK)는 dev/evaluation/engine/score 에 있다.
 
 
 # ── 표시 ────────────────────────────────────────────────────────────
@@ -300,18 +316,10 @@ load_dotenv(REPO_ROOT / ".env")
 
 
 def _base_url() -> str:
-    """창구 주소(AGENTIC_API_URL).
+    """창구 주소(AGENTIC_API_URL). run_evaluation.base_url 그대로 — 부를 때마다 읽음."""
+    return evaluation.base_url()
 
-    규칙  화면이 부르는 주소와 같아야 표를 믿을 수 있으므로 같은 환경변수를 봄
-          부를 때마다 읽음. import 시점에 굳히면 이 파일의 발화 목록만 빌려
-          쓰는 자(check_llm)까지 주소를 요구하게 됨
-    """
-    return endpoints.agentic_api_url()
-
-# 역할 manifest 의 timeout 보다 짧으면 느린 판을 잴 때 서버가 답하기 전에 여기서
-# 끊겨 표가 오류로만 찬다. 화면(app/ui/api_client.RESOLVE_TIMEOUT 180)과 달리 이
-# 도구는 느린 판도 재므로 값을 넉넉히 따로 둔다.
-TIMEOUT = 900
+# /resolve timeout(TIMEOUT 900)은 run_evaluation 에 있다. 위 import 줄에서 가져옴.
 
 UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번호로 알아본다.
 
@@ -323,37 +331,17 @@ UTTERANCE_WIDTH = 38  # 표에서 발화 칸의 폭. 넘치면 자른다 — 번
 #
 # 기본이 both 인 것은 KRRI_ASAP 화면에서 우클릭한 뒤와 같은 조건이기 때문이다.
 # 우클릭 전을 재려면 `--context bbox`, 아예 안 보내려면 `--context none`.
-CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = "none", "bbox", "both"
+# 세 가지 문맥의 모양(지도 범위 · 찍은 지점)은 run_evaluation.context_payload 가 정한다.
+CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = evaluation.CONTEXT_NONE, evaluation.CONTEXT_BBOX, evaluation.CONTEXT_BOTH
 CONTEXT = CONTEXT_BOTH
-
-# 실행에 쓰는 지도 범위. 오송역(127.3277, 36.6200)에서 반경 15km 이고
-# 온톨로지의 지점 주변 범위 변환(radiusMeters 15000)으로 만든 상자다. 시연이 오송·청주에서 돈다.
-VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
-
-# --context both 일 때 얹는 찍은 지점. bbox 의 중심과 같은 좌표다.
-# label 과 source 는 KRRI_ASAP 의 useChat 이 우클릭 뒤에 얹는 문자열과 같다.
-PICKED_POINT = {
-    "lon": 127.3277,
-    "lat": 36.6200,
-    "label": "관심 지점",
-    "source": "map-right-click",
-}
 
 
 def _context_payload() -> dict | None:
-    """이번 측정에서 /chat/stream 본문에 실을 지도 문맥.
+    """이번 측정에서 /chat/stream 본문에 실을 지도 문맥. --context 로 고른 CONTEXT 의 한 벌.
 
     출력  문맥 dict. --context none 이면 None
-    규칙  bbox 만 있는 것이 우클릭 전 모양임. selectedLocation 은 null
-          both 는 그 위에 찍은 지점을 얹음
     """
-    if CONTEXT == CONTEXT_NONE:
-        return None
-
-    context = {"view": {"bbox": VIEW_BBOX}, "selectedLocation": None}
-    if CONTEXT == CONTEXT_BOTH:
-        context = {**context, "selectedLocation": dict(PICKED_POINT)}
-    return context
+    return evaluation.context_payload(CONTEXT)
 
 
 # ── 한글 폭 ──────────────────────────────────────────────────────────
@@ -385,10 +373,6 @@ def _clip(text: str, width: int) -> str:
 # ── 호출 ────────────────────────────────────────────────────────────
 
 
-class ServerDown(RuntimeError):
-    """서버에 닿지 못했다. 재시도하지 않고 즉시 멈춘다."""
-
-
 def _short(recipe_ids) -> str:
     """{"recipe_004", "recipe_005"} → "{004, 005}"."""
     trimmed = sorted(rid[len("recipe_"):] if rid.startswith("recipe_") else rid for rid in recipe_ids)
@@ -416,18 +400,6 @@ def _spoken_values_of(result: dict) -> tuple:
           목록은 대괄호 없이 이어 적음. Counter 의 key 라 해시가 돼야 함
     """
     return tuple((name, _value_mark(result.get(name))) for name in SPOKEN_VALUE_NAMES)
-
-
-def _value_mark(value) -> str:
-    """이름 있는 값 하나의 표 글자. 정답표 기대값과 응답 값을 같은 글자로 맞댈 때 씀.
-
-    규칙  None 은 NULL_MARK. 목록은 대괄호 없이 쉼표로 이음. 그 밖에는 str
-    """
-    if value is None:
-        return NULL_MARK
-    if isinstance(value, list):
-        return ",".join(str(item) for item in value)
-    return str(value)
 
 
 def _spoken_value_verdict(number: int, seen: Counter) -> tuple:
@@ -480,31 +452,6 @@ def _tally(result: dict) -> tuple:
     return llm_count, result.get("status") or "-"
 
 
-def _describe_role(role) -> str:
-    """역할 설정 한 벌을 표 머리 한 줄로. 계기판들이 같은 글자로 적게 한 곳에 둠."""
-    return (
-        f"역할 {role.role} v{role.version} · {role.model} ({role.provider}) · "
-        f"prompt v{role.prompt_version} · response_schema v{role.response_schema_version}"
-    )
-
-
-def _role_label() -> str:
-    """표 머리에 적을 resolve 역할 한 줄.
-
-    규칙  이 저장소의 역할 manifest 를 읽음. 창구가 같은 사본에서 떠 있을 때
-          창구가 쓰는 판과 같음. /resolve 응답에는 판이 안 실림
-          못 읽으면 그 까닭을 적고 재기는 멈추지 않음. 재는 것은 창구임
-          부를 때 import 함. 이 파일의 발화 목록만 빌려 쓰는 자가 역할 설정까지
-          끌어오지 않게 하려는 것
-    """
-    from llm_engine.role_config import RESOLVE, get_role_config
-
-    try:
-        return _describe_role(get_role_config(RESOLVE))
-    except ValueError as error:
-        return f"역할 {RESOLVE} 못 읽음 ({error})"
-
-
 def _call_resolve(utterance: str) -> tuple:
     """POST /resolve 한 번.
 
@@ -519,21 +466,10 @@ def _call_resolve(utterance: str) -> tuple:
           status 를 후보와 함께 냄. 적중 표가 근접·빗나감을 가르는 데 씀 —
           후보 집합만으로는 CLARIFY 와 SELECT 가 안 갈림
     """
-    params = {"utterance": utterance}
-
     started = time.perf_counter()
-    try:
-        response = requests.post(
-            f"{_base_url()}/resolve",
-            params=params,
-            timeout=TIMEOUT,
-        )
-    except requests.exceptions.ConnectionError as exc:
-        raise ServerDown(str(exc)) from exc
+    result = evaluation.resolve_via_api(utterance)
     elapsed = time.perf_counter() - started
 
-    response.raise_for_status()
-    result = response.json()
     found = [result.get("recipe_id"), *(result.get("candidate_recipe_ids") or [])]
     return (
         frozenset(rid for rid in found if rid),
@@ -866,36 +802,13 @@ def _execute(entries, executions: dict) -> None:
 # ── 표 ──────────────────────────────────────────────────────────────
 
 
-# 적중 표의 네 칸. 자세한 뜻과 「빗나감」이 왜 제일 나쁜지는 파일 맨 위 주석에 있다.
-HIT, NEAR, MISS, UNATTACHED = "적중", "근접", "빗나감", "못 붙음"
+# 적중 표의 네 칸(HIT · NEAR · MISS · UNATTACHED)과 가르는 _grade 는 dev/evaluation/engine/score 에 있다.
+# 자세한 뜻과 「빗나감」이 왜 제일 나쁜지는 파일 맨 위 주석에 있다.
 
 # 칸 폭. 머리글보다 좁으면 표가 어긋난다 ("못 붙음" 이 폭 7).
 NEAR_WIDTH = 8
 MISS_WIDTH = 9
 UNATTACHED_WIDTH = 10
-
-
-def _grade(result, status: str, expected: set) -> str:
-    """한 번의 결과를 네 칸 중 하나로 가름.
-
-    입력  후보 집합(오류면 문자열) · 최종 status · 기대 recipe 집합
-    출력  HIT · NEAR · MISS · UNATTACHED 중 하나
-    규칙  넷이 서로 안 겹치고 빠짐이 없음. 그래야 넷의 합이 시행 횟수가 됨
-          **적중 판정은 예전 그대로 set(result) == expected 임.**
-          아래 순서를 바꿔도 적중 수는 안 변함 — 못 붙음이 먼저지만
-          NO_MATCH 일 때 후보가 기대값과 같을 수는 없기 때문
-          오류는 못 붙음에 넣음. 답이 안 붙은 것은 마찬가지임.
-          몇 번이 오류였는지는 옆 "틀렸을 때 나온 것" 칸에 그대로 보임
-    """
-    if not isinstance(result, frozenset):  # 오류
-        return UNATTACHED
-    if status == "NO_MATCH" or not result:
-        return UNATTACHED
-    if set(result) == expected:
-        return HIT
-    if expected <= set(result):  # 하나로 못 좁혔을 뿐 정답이 남아 있다
-        return NEAR
-    return MISS
 
 
 # 표시 칸의 폭. 머리글("표시" 폭 4)보다 좁으면 표가 어긋난다.

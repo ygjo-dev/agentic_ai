@@ -1,7 +1,7 @@
 {
  "meta": {
   "result_version": 3,
-  "run_id": "20260921-090538-test_suite_v2-87532e",
+  "run_id": "20260921-090538-test_suite_v2",
   "suite": {
    "path": "dev/evaluation/test_suites/test_suite_v2.yaml",
    "name": "test_suite_v2",

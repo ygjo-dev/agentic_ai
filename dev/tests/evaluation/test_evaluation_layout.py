@@ -12,7 +12,10 @@
 
 import datetime
 import hashlib
+import json
+import re
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -22,20 +25,23 @@ from dev.evaluation.engine import load_test_suite, manage_benchmark, monitor_gpu
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 EVALUATION = REPO_ROOT / "dev" / "evaluation"
+sys.path.insert(0, str(REPO_ROOT / "dev" / "tools"))
 
-# 203 발화 정답표의 기준 벤치마크. 폴더 이름(뒤의 무작위 6자 포함)은 그때의 run_id 그대로다.
-CANONICAL = "20260921-090538-test_suite_v2-87532e"
+# 203 발화 정답표의 기준 벤치마크. 폴더 이름이 run_id 다.
+CANONICAL = "20260921-090538-test_suite_v2"
+# 이 기계에서 돌린 FULL48 보통 실행. .gitignore 라 clone 에는 없다
+LOCAL_FULL48 = "20260921-102636-test_suite_v1"
+# 이름을 정하기 전 무작위 6자가 붙어 있던 두 이름. 다시 생기면 안 된다
+RETIRED_RUN_IDS = ("20260921-090538-test_suite_v2-87532e", "20260921-102636-test_suite_v1-3a5465")
 
 # 옮기기 전 바이트의 sha256. 자리만 옮겼고 내용은 한 글자도 안 바뀌어야 옛 측정과 이어 읽는다.
 SUITE_SHA256 = {
     "test_suite_v1.yaml": "1bd40444b9f0daf28a977e4337938bb5af07dab7a7fac9b14787ab27a442670a",
     "test_suite_v2.yaml": "e032664fd667c15873ba58705e0c66d75518588601f2e340effa410aca5e2db7",
 }
+# 끝난 기준 벤치마크는 run.json 하나다. meta.run_id 한 줄만 폴더 이름에 맞췄고 나머지 바이트는 그대로다
 CANONICAL_SHA256 = {
-    "cases.jsonl": "5a5fe48288abf054cfaaa0523b74dcb3b5b650a3e905e59726aa00dd93fc872b",
-    "meta.json": "67aaf9a4abed85e6ee580594da25d9b7c1cadc4062da6f261bee83c8477b62e4",
-    "run.json": "fc7af87cb02cf8d29f849c1620adfcf9f7773b23ae2f93b8cd25e3bb0380505c",
-    "summary.md": "379e0428764e8be3621ed4b1a13d57376c1fdc9e8771f8732af9e12eb4ae068a",
+    "run.json": "66ec7aba228dbdd0aa785fdbd2f4318bff8f10e3815e17b604a10cc8e400e3bb",
 }
 
 
@@ -109,7 +115,8 @@ def test_official_benchmarks_and_test_suites_are_tracked_and_local_benchmarks_ar
     assert not _ignored(manage_benchmark.OFFICIAL_DIR / "어떤-기록" / manage_benchmark.RUN_FILE)
     assert not _ignored(load_test_suite.SUITE_V2_PATH)
     assert _ignored(manage_benchmark.LOCAL_DIR / "어떤-기록" / manage_benchmark.RUN_FILE)
-    assert _ignored(manage_benchmark.LOCAL_DIR / "20260921-102636-test_suite_v1-3a5465")
+    assert _ignored(manage_benchmark.LOCAL_DIR / LOCAL_FULL48 / manage_benchmark.RUN_FILE)
+    assert not _ignored(manage_benchmark.LOCAL_DIR / ".gitkeep")
     assert _ignored(REPO_ROOT / "dev" / "tools" / "sweep_out" / "무엇이든")
 
 
@@ -132,17 +139,22 @@ def test_the_runner_only_writes_files_and_never_commits_them():
 
 
 # ── 기준 벤치마크 ────────────────────────────────────────────────────
-def test_the_canonical_203_benchmark_moved_byte_for_byte_and_still_reads_188_of_203():
+def test_the_canonical_203_benchmark_is_one_run_json_and_still_reads_188_of_203():
     folder = manage_benchmark.OFFICIAL_DIR / CANONICAL
     assert sorted(p.name for p in folder.iterdir()) == sorted(CANONICAL_SHA256)
     for name, digest in CANONICAL_SHA256.items():
         assert _sha256(folder / name) == digest, name
 
-    loaded = manage_benchmark.load_benchmark(CANONICAL)
+    loaded = manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, CANONICAL)
+    assert loaded["meta"]["run_id"] == CANONICAL
     total, board = loaded["summary"]["total"], loaded["summary"]["metrics"]
     assert (total["passed"], total["runs"]) == (188, 203)
+    assert board["selection"] == {"correct": 184, "total": 195}
+    assert board["semantic_fields"] == {"correct": 187, "total": 190}
+    assert board["semantic_cases"] == {"correct": 147, "total": 150}
     assert board["joint"] == {"correct": 181, "total": 195}
     assert board["oos"] == {"correct": 7, "total": 8}
+    assert total["errors"] == 0
     assert loaded["meta"]["suite"]["case_count"] == len(loaded["cases"]) == 203
     # 줄에 적힌 판정을 다시 세면 저장된 합계와 같다. 채점 규칙이 움직이지 않았다
     recount = score.summarize(loaded["cases"], tuple(loaded["meta"]["suite"]["group_labels"]))
@@ -154,6 +166,32 @@ def test_the_old_219_case_raw_run_is_no_longer_kept_anywhere():
     old = "20260918-161110-test_suite_v2-e2cf28"
     assert all(entry["run_id"] != old for entry in manage_benchmark.list_benchmarks())
     assert not any((folder / old).exists() for folder in manage_benchmark.roots().values())
+    leftovers = [p for p in REPO_ROOT.rglob("*e2cf28*") if ".git" not in p.relative_to(REPO_ROOT).parts]
+    assert leftovers == []
+
+
+def test_the_two_kept_runs_are_named_by_time_and_suite_only():
+    """무작위 6자가 붙은 옛 이름은 없어지고, 폴더 이름과 run.json 안의 run_id 가 같다."""
+    assert (manage_benchmark.OFFICIAL_DIR / CANONICAL).is_dir()
+    for folder in manage_benchmark.roots().values():
+        for old in RETIRED_RUN_IDS:
+            assert not (folder / old).exists(), old
+    local = manage_benchmark.LOCAL_DIR / LOCAL_FULL48
+    if not local.exists():
+        pytest.skip("이 기계에서 돌린 FULL48 보통 실행이 없다 (.gitignore 라 clone 에는 없음)")
+    assert sorted(p.name for p in local.iterdir()) == [manage_benchmark.RUN_FILE]
+    loaded = manage_benchmark.load_benchmark(manage_benchmark.LOCAL, LOCAL_FULL48)
+    assert loaded["meta"]["run_id"] == LOCAL_FULL48
+    assert (loaded["summary"]["total"]["passed"], loaded["summary"]["total"]["runs"]) == (48, 48)
+
+
+def test_no_human_report_files_are_kept_or_written():
+    """보고서 형식은 아직 정하지 않았다. summary.md 같은 사람용 파일을 남기지 않는다."""
+    for folder in manage_benchmark.roots().values():
+        assert not list(folder.rglob("summary.md")), folder
+    assert not hasattr(manage_benchmark, "SUMMARY_FILE")
+    assert not hasattr(score, "summary_text")
+    assert not (EVALUATION / "reports").exists()
 
 
 # ── official · local 목록과 저장 ──────────────────────────────────────
@@ -177,8 +215,8 @@ def test_a_local_benchmark_saves_and_is_listed_next_to_the_official_ones(tmp_pat
     kinds = {entry["run_id"]: entry["kind"] for entry in listed}
     assert kinds[saved["meta"]["run_id"]] == manage_benchmark.LOCAL
     assert kinds[CANONICAL] == manage_benchmark.OFFICIAL
-    assert manage_benchmark.load_benchmark(saved["meta"]["run_id"])["summary"] == saved["summary"]
-    assert manage_benchmark.load_benchmark(CANONICAL)["meta"]["run_id"] == CANONICAL
+    assert manage_benchmark.load_benchmark(manage_benchmark.LOCAL, saved["meta"]["run_id"])["summary"] == saved["summary"]
+    assert manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, CANONICAL)["meta"]["run_id"] == CANONICAL
     # 보여주려고 파일을 옮기거나 베끼지 않는다
     assert sorted(p.name for p in tmp_path.iterdir()) == [saved["meta"]["run_id"]]
 
@@ -200,7 +238,8 @@ def test_a_new_run_id_is_time_and_suite_without_random_hex():
     assert manage_benchmark.new_run_id(started, "이상한 이름!") == "20260921-103000-suite"
 
 
-def test_a_second_run_in_the_same_second_gets_a_numeric_suffix_and_never_overwrites(tmp_path):
+def test_a_second_run_in_the_same_second_gets_a_numeric_suffix_and_never_overwrites(tmp_path, monkeypatch):
+    _isolate(monkeypatch, tmp_path)
     started = datetime.datetime(2026, 9, 21, 10, 30, 0)
     first = manage_benchmark.Recorder(tmp_path, started, "test_suite_v2")
     first.start({"run_id": first.run_id})
@@ -218,8 +257,179 @@ def test_a_saved_run_folder_is_named_by_its_run_id(tmp_path):
     saved = _save_one(tmp_path)
     run_id = saved["meta"]["run_id"]
     assert Path(saved["meta"]["saved_to"]) == tmp_path / run_id
-    assert run_id.endswith("-test_suite_v1")
-    assert len(run_id.split("-")) == 3
+    assert re.fullmatch(r"\d{8}-\d{6}-test_suite_v1", run_id), run_id
+
+
+def test_no_random_suffix_generator_is_left_in_the_evaluation_code():
+    for path in EVALUATION.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        for forbidden in ("token_hex", "uuid", "random"):
+            assert forbidden not in source, (path.name, forbidden)
+
+
+def _isolate(monkeypatch, tmp_path) -> tuple[Path, Path]:
+    """official · local 두 자리를 tmp 아래 빈 폴더로 바꿈. (official, local)."""
+    official, local = tmp_path / "official", tmp_path / "local"
+    official.mkdir()
+    local.mkdir()
+    monkeypatch.setattr(manage_benchmark, "OFFICIAL_DIR", official)
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", local)
+    return official, local
+
+
+def _fake_run(folder: Path, run_id: str, started: str, *, complete: bool = True, passed: int = 1, runs: int = 2) -> None:
+    """다 끝난(run.json) 또는 도중에 죽은(meta.json + cases.jsonl) 기록 폴더 하나."""
+    folder.mkdir(parents=True)
+    meta = {"run_id": run_id, "started_at": started, "suite": {"name": "test_suite_v2", "dataset_id": "test_suite_v2"}}
+    if complete:
+        summary = {"total": {"runs": runs, "passed": passed}}
+        (folder / manage_benchmark.RUN_FILE).write_text(json.dumps({"meta": meta, "summary": summary, "cases": []}), encoding="utf-8")
+    else:
+        (folder / manage_benchmark.META_FILE).write_text(json.dumps({"meta": meta}), encoding="utf-8")
+        (folder / manage_benchmark.CASES_FILE).write_text("", encoding="utf-8")
+
+
+# ── run_id 이름 · 두 자리를 통틀어 하나 ──────────────────────────────
+def test_the_collision_check_looks_at_both_official_and_local(tmp_path, monkeypatch):
+    """공식으로 옮긴 기록과 같은 이름을 로컬에 새로 만들면 나중에 옮길 때 부딪힌다."""
+    official, local = _isolate(monkeypatch, tmp_path)
+    started = datetime.datetime(2026, 9, 21, 13, 25, 0)
+    (official / "20260921-132500-test_suite_v2").mkdir()
+    (local / "20260921-132500-test_suite_v2-2").mkdir()
+
+    recorder = manage_benchmark.Recorder(local, started, "test_suite_v2")
+
+    assert recorder.run_id == "20260921-132500-test_suite_v2-3"
+    assert recorder.dir == local / recorder.run_id
+    assert not (official / recorder.run_id).exists()
+
+
+# ── 도는 동안 · 끝난 뒤의 파일 ──────────────────────────────────────
+def test_a_running_benchmark_keeps_meta_and_cases_and_a_finished_one_keeps_only_run_json(tmp_path, monkeypatch):
+    _, local = _isolate(monkeypatch, tmp_path)
+    seen = []
+
+    def watch(done, total, row):
+        folder = next(local.iterdir())
+        seen.append(sorted(p.name for p in folder.iterdir()))
+
+    v1 = load_test_suite.load(load_test_suite.SUITE_PATH)
+    result = run_evaluation.run(v1, suite_path=load_test_suite.SUITE_PATH, resolve=_no_match, only=[1, 2],
+                                materialize=False, save_dir=local, progress=watch)
+
+    assert seen == [[manage_benchmark.CASES_FILE, manage_benchmark.META_FILE]] * 2
+    folder = local / result["meta"]["run_id"]
+    assert sorted(p.name for p in folder.iterdir()) == [manage_benchmark.RUN_FILE]
+    assert "summary" in json.loads((folder / manage_benchmark.RUN_FILE).read_text(encoding="utf-8"))
+
+
+def test_run_json_wins_over_leftover_running_files(tmp_path, monkeypatch):
+    """run.json 을 쓴 뒤 임시 파일을 지우기 전에 죽어도, 끝난 기록으로 읽고 남은 줄에 흔들리지 않는다."""
+    _, local = _isolate(monkeypatch, tmp_path)
+    folder = local / "20260921-140000-test_suite_v2"
+    _fake_run(folder, folder.name, "2026-09-21T14:00:00+09:00", passed=2, runs=2)
+    (folder / manage_benchmark.META_FILE).write_text(json.dumps({"meta": {"run_id": "딴것"}}), encoding="utf-8")
+    (folder / manage_benchmark.CASES_FILE).write_text('{"case_id": 999}\n', encoding="utf-8")
+
+    [entry] = manage_benchmark.list_benchmarks()
+    loaded = manage_benchmark.load_benchmark(manage_benchmark.LOCAL, folder.name)
+
+    assert entry["complete"] and (entry["passed"], entry["runs"]) == (2, 2)
+    assert loaded["meta"]["run_id"] == folder.name and loaded["cases"] == []
+
+
+# ── 불러올 기록 목록 · 불러오기 ─────────────────────────────────────
+def test_official_and_local_are_one_list_sorted_newest_first_with_their_kind(tmp_path, monkeypatch):
+    official, local = _isolate(monkeypatch, tmp_path)
+    _fake_run(official / "20260921-090538-test_suite_v2", "20260921-090538-test_suite_v2", "2026-09-21T09:05:38+09:00")
+    _fake_run(local / "20260921-102636-test_suite_v1", "20260921-102636-test_suite_v1", "2026-09-21T10:26:36+09:00")
+    _fake_run(official / "20260921-120000-test_suite_v2", "20260921-120000-test_suite_v2", "2026-09-21T12:00:00+09:00")
+    _fake_run(local / "20260921-141000-test_suite_v2", "20260921-141000-test_suite_v2", "2026-09-21T14:10:00+09:00",
+              complete=False)
+    (local / "깨진-폴더").mkdir()
+    (local / "깨진-폴더" / manage_benchmark.RUN_FILE).write_text("{", encoding="utf-8")
+
+    listed = manage_benchmark.list_benchmarks()
+
+    assert [(e["run_id"], e["kind"]) for e in listed] == [
+        ("20260921-141000-test_suite_v2", "local"),
+        ("20260921-120000-test_suite_v2", "official"),
+        ("20260921-102636-test_suite_v1", "local"),
+        ("20260921-090538-test_suite_v2", "official"),
+    ]
+    assert [e["complete"] for e in listed] == [False, True, True, True]
+    assert listed[0]["runs"] is None and not any(e["duplicate"] for e in listed)
+    assert manage_benchmark.load_benchmark("official", "20260921-120000-test_suite_v2")["meta"]["run_id"] == "20260921-120000-test_suite_v2"
+    assert manage_benchmark.load_benchmark("local", "20260921-141000-test_suite_v2")["meta"]["stopped"] == manage_benchmark.INCOMPLETE
+    with pytest.raises(FileNotFoundError):
+        manage_benchmark.load_benchmark("local", "20260921-120000-test_suite_v2")
+    with pytest.raises(ValueError):
+        manage_benchmark.load_benchmark("공식", "20260921-120000-test_suite_v2")
+
+
+def test_the_same_run_id_in_both_places_is_reported_not_silently_resolved(tmp_path, monkeypatch):
+    official, local = _isolate(monkeypatch, tmp_path)
+    twin = "20260921-132500-test_suite_v2"
+    _fake_run(official / twin, twin, "2026-09-21T13:25:00+09:00", passed=1)
+    _fake_run(local / twin, twin, "2026-09-21T13:25:00+09:00", passed=2)
+
+    listed = manage_benchmark.list_benchmarks()
+
+    assert sorted(e["kind"] for e in listed) == ["local", "official"]
+    assert all(e["duplicate"] for e in listed)
+    assert manage_benchmark.duplicate_run_ids() == {twin}
+    assert any(twin in problem for problem in manage_benchmark.storage_problems())
+    for kind in manage_benchmark.KINDS:
+        with pytest.raises(manage_benchmark.DuplicateRunId):
+            manage_benchmark.load_benchmark(kind, twin)
+
+
+def test_a_missing_official_folder_is_reported_instead_of_an_empty_list(tmp_path, monkeypatch):
+    """목록을 읽는 자리가 사라지면 빈 목록만 보여서는 원인을 모른다. 2026-09-21 불러올 기록이 빈 까닭이 이것이었다."""
+    monkeypatch.setattr(manage_benchmark, "OFFICIAL_DIR", tmp_path / "없는-자리")
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path / "local")
+    assert manage_benchmark.list_benchmarks() == []
+    assert any("공식 기록 폴더가 없습니다" in problem for problem in manage_benchmark.storage_problems())
+
+
+def test_the_repository_storage_is_valid_and_lists_the_canonical_run():
+    """실제 저장소 자리로 목록을 만들면 기준 벤치마크가 공식으로 나오고 보관 문제가 없다."""
+    assert manage_benchmark.storage_problems() == []
+    entries = {(e["kind"], e["run_id"]): e for e in manage_benchmark.list_benchmarks()}
+    canonical = entries[(manage_benchmark.OFFICIAL, CANONICAL)]
+    assert canonical["complete"] and (canonical["passed"], canonical["runs"]) == (188, 203)
+    assert canonical["dataset_id"] == "test_suite_v2"
+
+
+# ── 평가가 계기판을 부르지 않는다 ────────────────────────────────────
+def test_the_evaluation_code_never_imports_check_resolve():
+    """판정 규칙의 원본은 평가 쪽이다. 평가가 계기판의 밑줄 함수를 빌려 쓰면 방향이 거꾸로다."""
+    for path in EVALUATION.rglob("*.py"):
+        source = path.read_text(encoding="utf-8")
+        imports = [line for line in source.splitlines() if re.match(r"\s*(from|import)\s", line)]
+        assert not [line for line in imports if "check_resolve" in line], path.name
+
+
+def test_check_resolve_uses_the_evaluation_rules_instead_of_its_own_copy():
+    import check_resolve
+
+    assert check_resolve._grade is score.grade
+    assert check_resolve._value_mark is score.value_mark
+    assert (check_resolve.HIT, check_resolve.NEAR, check_resolve.MISS, check_resolve.UNATTACHED) == (
+        score.HIT, score.NEAR, score.MISS, score.UNATTACHED)
+    assert check_resolve.NULL_MARK == score.NULL_MARK
+    assert check_resolve.ServerDown is run_evaluation.ServerDown
+    assert check_resolve.TIMEOUT == run_evaluation.TIMEOUT
+    assert check_resolve._role_label is monitor_metadata.role_label
+    for label in run_evaluation.CONTEXTS:
+        check_resolve.CONTEXT, was = label, check_resolve.CONTEXT
+        try:
+            assert check_resolve._context_payload() == run_evaluation.context_payload(label)
+        finally:
+            check_resolve.CONTEXT = was
+    source = Path(check_resolve.__file__).read_text(encoding="utf-8")
+    for copied in ("def _grade(", "def _value_mark(", "class ServerDown", "def _role_label(", "VIEW_BBOX = "):
+        assert copied not in source, copied
 
 
 @pytest.mark.parametrize("name", ["test_suite_v1", "test_suite_v2"])

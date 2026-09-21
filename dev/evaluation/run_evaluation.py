@@ -25,6 +25,9 @@
 **MCP 도구를 부르지 않는다.** `/resolve` 를 부르고, 고른 recipe 를 workflow_materializer 로 KRRI
 native workflow 까지만 만든다. Gateway 실행은 `check_resolve --execute` 의 일이다.
 
+`/resolve` 부르기(주소 · timeout · ServerDown)와 지도 문맥은 여기가 원본이다. 계기판
+`dev/tools/check_resolve.py` 가 이것을 import 해 쓴다. 평가는 계기판을 import 하지 않는다.
+
 `--out` 의 결과 JSON 한 장은 `dev/tools/sweep_out/` 에 둔다 (`.gitignore`). 벤치마크 폴더는
 `outputs/local_benchmark/` 에 남는다(`.gitignore`). 기준으로 남길 것은 사람이
 `outputs/official_benchmark/` 로 옮긴다. 여기서 git 을 부르지 않는다.
@@ -37,47 +40,86 @@ import sys
 import time
 from pathlib import Path
 
+import requests
+from dotenv import load_dotenv
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
+import endpoints  # noqa: E402
 from dev.evaluation.engine import load_test_suite, manage_benchmark, monitor_gpu, monitor_metadata, score  # noqa: E402
 from dev.evaluation.engine.monitor_gpu import StopRun  # noqa: E402
-from dev.tools import check_resolve  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "dev" / "tools" / "sweep_out"
 KST = monitor_metadata.KST
 
+load_dotenv(REPO_ROOT / ".env")
+
+# 역할 manifest 의 timeout 보다 짧으면 느린 판을 잴 때 서버가 답하기 전에 여기서
+# 끊겨 결과가 오류로만 찬다. 화면의 서비스 호출(app/ui/api_client.RESOLVE_TIMEOUT 180)과 달리
+# 평가는 느린 판도 재므로 값을 넉넉히 따로 둔다.
+TIMEOUT = 900
+
+# materialize 에 실을 지도 문맥 세 가지. 고르는 데는 안 쓰인다 — /resolve 는 문맥을 안 받는다.
+# both 가 KRRI_ASAP 화면에서 우클릭한 뒤와 같은 조건이라 기본이다. bbox 는 우클릭 전, none 은 문맥 없음.
+CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH = "none", "bbox", "both"
+CONTEXTS = (CONTEXT_NONE, CONTEXT_BBOX, CONTEXT_BOTH)
+
+# 지도 범위. 오송역(127.3277, 36.6200)에서 반경 15km 이고
+# 온톨로지의 지점 주변 범위 변환(radiusMeters 15000)으로 만든 상자다. 시연이 오송·청주에서 돈다.
+VIEW_BBOX = [[127.1598, 36.4853], [127.4956, 36.7547]]
+
+# both 일 때 얹는 찍은 지점. bbox 의 중심과 같은 좌표다.
+# label 과 source 는 KRRI_ASAP 의 useChat 이 우클릭 뒤에 얹는 문자열과 같다.
+PICKED_POINT = {
+    "lon": 127.3277,
+    "lat": 36.6200,
+    "label": "관심 지점",
+    "source": "map-right-click",
+}
+
+
+class ServerDown(RuntimeError):
+    """서버에 닿지 못했다. 재시도하지 않고 즉시 멈춘다."""
+
 
 # ================================================================ Resolve
+def base_url() -> str:
+    """창구 주소(AGENTIC_API_URL).
+
+    규칙  화면이 부르는 주소와 같아야 결과를 믿을 수 있으므로 같은 환경변수를 봄
+          부를 때마다 읽음. import 시점에 굳히면 정답표만 빌려 쓰는 자까지 주소를 요구하게 됨
+    """
+    return endpoints.agentic_api_url()
+
+
 def resolve_via_api(utterance: str) -> dict:
     """POST /resolve 한 번의 응답 본문.
 
-    규칙  check_resolve._call_resolve 와 같은 주소 · 같은 timeout · 같은 매개변수
+    규칙  base_url · TIMEOUT · 매개변수 utterance 하나. 지도 문맥을 안 보냄 (/resolve 가 안 받음)
           서버에 못 닿으면 ServerDown. 재시도하지 않음
     """
     try:
-        response = check_resolve.requests.post(
-            f"{check_resolve._base_url()}/resolve",
-            params={"utterance": utterance},
-            timeout=check_resolve.TIMEOUT,
-        )
-    except check_resolve.requests.exceptions.ConnectionError as exc:
-        raise check_resolve.ServerDown(str(exc)) from exc
+        response = requests.post(f"{base_url()}/resolve", params={"utterance": utterance}, timeout=TIMEOUT)
+    except requests.exceptions.ConnectionError as exc:
+        raise ServerDown(str(exc)) from exc
     response.raise_for_status()
     return response.json()
 
 
 def context_payload(label: str) -> dict | None:
-    """check_resolve 의 지도 문맥 한 벌. label 은 CONTEXT_NONE · CONTEXT_BBOX · CONTEXT_BOTH.
+    """지도 문맥 한 벌. label 은 CONTEXT_NONE · CONTEXT_BBOX · CONTEXT_BOTH.
 
-    규칙  check_resolve._context_payload 를 그 label 로 부름. 전역 CONTEXT 는 되돌려 둠
+    출력  문맥 dict. none 이면 None
+    규칙  bbox 만 있는 것이 우클릭 전 모양임. selectedLocation 은 null
+          both 는 그 위에 찍은 지점을 얹음
     """
-    previous = check_resolve.CONTEXT
-    check_resolve.CONTEXT = label
-    try:
-        return check_resolve._context_payload()
-    finally:
-        check_resolve.CONTEXT = previous
+    if label == CONTEXT_NONE:
+        return None
+    context = {"view": {"bbox": VIEW_BBOX}, "selectedLocation": None}
+    if label == CONTEXT_BOTH:
+        context = {**context, "selectedLocation": dict(PICKED_POINT)}
+    return context
 
 
 def materialized(response: dict, context: dict | None, now: datetime.datetime) -> dict:
@@ -118,7 +160,7 @@ def run_case(case: dict, label: str, run: int, resolve, context: dict | None, ma
     started = time.perf_counter()
     try:
         response = resolve(case["utterance"])
-    except check_resolve.ServerDown:
+    except ServerDown:
         raise
     except Exception as exc:  # noqa: BLE001 — 오류도 결과의 하나로 남긴다.
         timing = {"started_at": started_at, "resolve_s": round(time.perf_counter() - started, 3), "materialize_s": None}
@@ -172,7 +214,8 @@ def run(
           (KeyboardInterrupt · StopRun 만 meta.stopped 로 남김). 그래도 끝난 줄은 cases.jsonl 에 남음
           monitor 가 있으면 시작 전 before_run, 끝나고 after_run. 결과에 아무것도 안 실음 (박자만)
           environment 는 실행 하드웨어 한 벌(monitor_gpu.environment). 그대로 meta.environment 에 실림
-          save_dir 이면 manage_benchmark.Recorder 가 <save_dir>/<run_id>/ 에 남김. 끝나면 run.json
+          save_dir 이면 manage_benchmark.Recorder 가 <save_dir>/<run_id>/ 에 남김.
+          도는 동안 meta.json + cases.jsonl, 끝나면 run.json 하나만 남음
           dataset 은 {id, label}. 있으면 meta.suite 에 dataset_id · label 로 실림
     제약  MCP 도구를 부르지 않는다.
           쉬는 것을 재는 값에 섞지 않는다.
@@ -226,7 +269,7 @@ def run(
                     progress(called, planned, rows[-1])
                 if monitor:
                     monitor.after_case(called, planned)
-    except check_resolve.ServerDown as exc:
+    except ServerDown as exc:
         stopped = f"ServerDown: {exc}"
     except StopRun as exc:
         stopped = f"StopRun: {exc}"
@@ -253,7 +296,7 @@ def run(
         "cases": rows,
     }
     if recorder:
-        recorder.finish(result, score.summary_text(result))
+        recorder.finish(result)
         result["meta"]["saved_to"] = str(recorder.dir)
     return result
 
@@ -286,8 +329,8 @@ def main() -> int:
     parser.add_argument("--only", default="", help="돌릴 발화 번호. 예: 2,4")
     parser.add_argument(
         "--context",
-        choices=(check_resolve.CONTEXT_NONE, check_resolve.CONTEXT_BBOX, check_resolve.CONTEXT_BOTH),
-        default=check_resolve.CONTEXT_BOTH,
+        choices=CONTEXTS,
+        default=CONTEXT_BOTH,
         help="materialize 에 실을 지도 문맥. 기본 both",
     )
     parser.add_argument("--no-materialize", action="store_true", help="/resolve 만 잰다")

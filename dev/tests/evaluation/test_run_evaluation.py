@@ -463,29 +463,37 @@ def test_out_of_scope_cases_are_judged_by_their_outcome_and_counted_apart_from_i
     assert result["summary"]["recipes"] == {"recipe_001": {"runs": 2, "passed": 1, "hit": 2}}
 
 
-def test_a_saved_test_run_loads_back_identically_and_its_metrics_recount_the_same(tmp_path):
+def _isolate(monkeypatch, tmp_path) -> Path:
+    """official · local 두 자리를 tmp 아래 빈 폴더로 바꿈. local 자리를 돌려줌."""
+    monkeypatch.setattr(manage_benchmark, "OFFICIAL_DIR", tmp_path / "official")
+    monkeypatch.setattr(manage_benchmark, "LOCAL_DIR", tmp_path / "local")
+    (tmp_path / "official").mkdir()
+    return tmp_path / "local"
+
+
+def test_a_saved_test_run_loads_back_identically_and_its_metrics_recount_the_same(tmp_path, monkeypatch):
     """저장 -> 목록 -> 불러오기가 한 글자도 안 바뀌어야 불러온 기록을 방금 잰 것과 같은 화면으로 그린다."""
-    import json
-
-
+    local = _isolate(monkeypatch, tmp_path)
     result = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"),
-                        save_dir=tmp_path, dataset={"id": "mixed", "label": "섞인 세트"})
-    listed = manage_benchmark.list_benchmarks(tmp_path)
+                        save_dir=local, dataset={"id": "mixed", "label": "섞인 세트"})
+    listed = manage_benchmark.list_benchmarks()
 
     assert [entry["run_id"] for entry in listed] == [result["meta"]["run_id"]]
     assert listed[0]["complete"] and listed[0]["runs"] == 5 and listed[0]["dataset_id"] == "mixed"
-    loaded = manage_benchmark.load_benchmark(listed[0]["run_id"], tmp_path)
+    loaded = manage_benchmark.load_benchmark(listed[0]["kind"], listed[0]["run_id"])
     saved = json.loads(json.dumps(result, ensure_ascii=False))
     saved["meta"].pop("saved_to")
     assert loaded == saved
     assert score.summarize(loaded["cases"], tuple(loaded["meta"]["suite"]["group_labels"])) == loaded["summary"]
-    assert (tmp_path / result["meta"]["run_id"] / manage_benchmark.SUMMARY_FILE).read_text(encoding="utf-8").startswith("# Test Run")
+    # 끝난 기록은 run.json 하나다. 도는 동안의 파일 · 사람이 읽는 요약은 안 남는다
+    assert sorted(p.name for p in (local / result["meta"]["run_id"]).iterdir()) == [manage_benchmark.RUN_FILE]
 
 
-def test_an_interrupted_test_run_keeps_its_finished_cases_and_recounts_them(tmp_path):
+def test_an_interrupted_test_run_keeps_its_finished_cases_and_recounts_them(tmp_path, monkeypatch):
     """도중에 죽어도 끝난 발화 결과는 남아야 원인을 본다. 합계는 남은 줄로 다시 센다."""
     import pytest
 
+    local = _isolate(monkeypatch, tmp_path)
 
     def progress(done, total, row):
         if done == 3:
@@ -493,11 +501,12 @@ def test_an_interrupted_test_run_keeps_its_finished_cases_and_recounts_them(tmp_
 
     with pytest.raises(RuntimeError):
         run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"),
-                   save_dir=tmp_path, progress=progress)
-    [entry] = manage_benchmark.list_benchmarks(tmp_path)
-    assert not entry["complete"]
+                   save_dir=local, progress=progress)
+    [entry] = manage_benchmark.list_benchmarks()
+    assert not entry["complete"] and entry["kind"] == manage_benchmark.LOCAL
+    assert sorted(p.name for p in Path(entry["path"]).iterdir()) == [manage_benchmark.CASES_FILE, manage_benchmark.META_FILE]
 
-    loaded = manage_benchmark.load_benchmark(entry["path"])
+    loaded = manage_benchmark.load_benchmark(entry["kind"], entry["run_id"])
     assert [row["case_id"] for row in loaded["cases"]] == [1, 2, 3]
     assert loaded["meta"]["stopped"] == manage_benchmark.INCOMPLETE
     assert loaded["summary"]["total"]["runs"] == 3
@@ -600,7 +609,7 @@ def test_llm_temperature_and_gpu_hardware_are_saved_and_loaded_with_the_test_run
     monkeypatch.setenv("OLLAMA_URL", "http://192.0.2.1:11434")
     result = run_evaluation.run(_mixed_suite(), resolve=_mixed_resolve, context=run_evaluation.context_payload("both"),
                         save_dir=tmp_path, environment=_ENVIRONMENT)
-    loaded = manage_benchmark.load_benchmark(result["meta"]["run_id"], tmp_path)
+    loaded = manage_benchmark.read_run_dir(tmp_path / result["meta"]["run_id"])
 
     assert "temperature" in loaded["meta"]["conditions"]["request"]
     assert loaded["meta"]["conditions"]["request"] == result["meta"]["conditions"]["request"]
@@ -610,7 +619,7 @@ def test_llm_temperature_and_gpu_hardware_are_saved_and_loaded_with_the_test_run
     assert loaded["cases"][0]["expected"]["reads"] == ["argument"]
 
 
-def test_an_old_test_run_without_the_new_fields_still_loads(tmp_path):
+def test_an_old_test_run_without_the_new_fields_still_loads(tmp_path, monkeypatch):
     """4f9540d 로 남긴 실행 기록(옛 범위 밖 갈래 · meta.gpu 온도 · 요청 설정 · 환경 · reads 없음)이 그대로 읽혀야 한다.
 
     옛 기록을 새 정답표로 다시 채점하지 않는다. 그때의 판정이 그대로 나온다.
@@ -625,13 +634,13 @@ def test_an_old_test_run_without_the_new_fields_still_loads(tmp_path):
         row["expected"].pop("reads", None)
     old["cases"][-1]["expected"].update({"category": "ambiguous", "outcomes": ["CLARIFY"]})
     old["cases"][-1].update({"passed": True, "failure_stage": None, "oos_correct": True})
-    folder = tmp_path / old["meta"]["run_id"]
-    folder.mkdir()
+    folder = _isolate(monkeypatch, tmp_path) / old["meta"]["run_id"]
+    folder.mkdir(parents=True)
     (folder / manage_benchmark.RUN_FILE).write_text(json.dumps(old, ensure_ascii=False), encoding="utf-8")
     (folder / manage_benchmark.META_FILE).write_text(json.dumps({"meta": old["meta"], "summary": old["summary"]}, ensure_ascii=False),
                                               encoding="utf-8")
 
-    [entry] = manage_benchmark.list_benchmarks(tmp_path)
-    loaded = manage_benchmark.load_benchmark(entry["run_id"], tmp_path)
+    [entry] = manage_benchmark.list_benchmarks()
+    loaded = manage_benchmark.load_benchmark(entry["kind"], entry["run_id"])
     assert loaded == old
     assert loaded["cases"][-1]["passed"] is True, "옛 판정을 새 규칙으로 덮어썼다"
