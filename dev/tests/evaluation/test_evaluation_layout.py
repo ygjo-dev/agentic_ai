@@ -28,11 +28,13 @@ EVALUATION = REPO_ROOT / "dev" / "evaluation"
 sys.path.insert(0, str(REPO_ROOT / "dev" / "tools"))
 
 # 기준 벤치마크 둘. 폴더 이름이 run_id 다. official_benchmark 에는 이 둘만 있다
-CANONICAL = "20260921-161258-test_suite_v2"      # 203 발화 정답표
-CANONICAL_V1 = "20260921-160634-test_suite_v1"   # FULL48 회귀 기준선
-# 지금 기준으로 바뀌기 전의 이름들. 무작위 6자가 붙어 있던 둘과 그 뒤의 옛 기준 v2 · 옛 로컬 FULL48. 다시 생기면 안 된다
+CANONICAL = "20260922-163313-test_suite_v2"      # 203 발화 정답표
+CANONICAL_V1 = "20260922-163007-test_suite_v1"   # FULL48 회귀 기준선
+# 지금 기준으로 바뀌기 전의 이름들. 무작위 6자가 붙어 있던 둘, 그 뒤의 옛 기준 v2 · 옛 로컬 FULL48,
+# 팬 소음 억제 칸이 생기기 전에 잰 직전 기준 둘. official 에 다시 생기면 안 된다
 RETIRED_RUN_IDS = ("20260921-090538-test_suite_v2-87532e", "20260921-102636-test_suite_v1-3a5465",
-                   "20260921-090538-test_suite_v2", "20260921-102636-test_suite_v1")
+                   "20260921-090538-test_suite_v2", "20260921-102636-test_suite_v1",
+                   "20260921-161258-test_suite_v2", "20260921-160634-test_suite_v1")
 
 # 옮기기 전 바이트의 sha256. 자리만 옮겼고 내용은 한 글자도 안 바뀌어야 옛 측정과 이어 읽는다.
 SUITE_SHA256 = {
@@ -41,8 +43,8 @@ SUITE_SHA256 = {
 }
 # 끝난 기준 벤치마크는 run.json 하나다. 화면 「새로 실행」이 local 에 남긴 바이트를 그대로 옮겼다
 CANONICAL_SHA256 = {
-    CANONICAL: {"run.json": "37e33faa9aed5238ee493fa75cb8da6f35f8d6bc18e7835a7ef15ed0202ee156"},
-    CANONICAL_V1: {"run.json": "22467f41b45d520e21d4e977d141a952ed9b3d559468a4db534c497d994757a5"},
+    CANONICAL: {"run.json": "e036b9d3109573e8fe9591f9ad58260e81383b3f2b717bf5e6cca0a6ed69fbc9"},
+    CANONICAL_V1: {"run.json": "0b7b2e0748532dadf8d0f9cc43d21b72c47465b9a14aa7d95e14c14281c3f6e2"},
 }
 
 
@@ -176,18 +178,28 @@ def test_the_canonical_full48_benchmark_reads_48_of_48():
     total, board = loaded["summary"]["total"], loaded["summary"]["metrics"]
     assert (total["passed"], total["runs"]) == (48, 48)
     assert board["selection"] == {"correct": 48, "total": 48}
+    assert board["semantic_fields"] == {"correct": 56, "total": 56}
+    assert board["semantic_cases"] == {"correct": 39, "total": 39}
     assert board["joint"] == {"correct": 48, "total": 48}
     assert total["errors"] == 0
     recount = score.summarize(loaded["cases"], tuple(loaded["meta"]["suite"]["group_labels"]))
     assert recount == loaded["summary"]
 
 
-def test_the_canonical_runs_load_without_the_fan_fields_added_after_them():
-    """두 기준은 fan_quiet_mode · fan_wait_s 가 생기기 전에 쟀다. 칸이 없다고 못 읽으면 안 된다."""
+def test_the_canonical_runs_are_complete_and_carry_their_own_timing_fields():
+    """두 기준은 팬 소음 억제 · 소요 시간 칸이 생긴 뒤 화면 「새로 실행」으로 끝까지 쟀다.
+    화면의 소요 시간 네 줄이 저장된 값에서 바로 나와야 한다(「기록 없음」이 아니다). 값 자체는 run.json sha256 이 고정한다."""
     for run_id in CANONICAL_SHA256:
-        meta = manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, run_id)["meta"]
-        assert "fan_quiet_mode" not in meta and "fan_wait_s" not in meta
-        assert meta["stopped"] is None and meta["finished_at"]
+        loaded = manage_benchmark.load_benchmark(manage_benchmark.OFFICIAL, run_id)
+        meta = loaded["meta"]
+        assert meta["stopped"] is None and meta["finished_at"], run_id
+        assert isinstance(meta["fan_quiet_mode"], bool), run_id
+        for key in ("elapsed_s", "fan_wait_s"):
+            assert isinstance(meta[key], (int, float)) and meta[key] >= 0, (run_id, key)
+        inference = loaded["summary"]["latency"]["total"]
+        assert meta["elapsed_s"] >= inference + meta["fan_wait_s"], "전체 평가시간이 추론 · 대기의 합보다 짧다"
+        if not meta["fan_quiet_mode"]:
+            assert meta["fan_wait_s"] == 0.0, run_id
 
 
 def test_the_old_219_case_raw_run_is_no_longer_kept_anywhere():

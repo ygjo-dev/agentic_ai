@@ -794,7 +794,8 @@ def test_the_overview_uses_the_full_width_in_grouped_columns_and_wraps_when_narr
     assert extra.count('<div class="tt-ovc">') == 6, "모르는 섹션이 빠졌다"
 
 def test_missing_time_metadata_says_기록_없음_instead_of_a_false_zero(oos_result):
-    """옛 기록(official v1 · v2)에는 fan_wait_s 칸이 없다. 없는 칸을 0초로 보이면 기다린 적이 없다고 주장하는 것이다."""
+    """팬 소음 억제 칸이 생기기 전 기록에는 fan_wait_s 칸이 없다. 없는 칸을 0초로 보이면 기다린 적이 없다고 주장하는 것이다.
+    지금 기준 벤치마크는 그 칸을 가진 기록이라 네 줄이 모두 저장된 값에서 나온다."""
     old = json.loads(json.dumps(oos_result))
     old["meta"].pop("fan_wait_s", None)
     old["meta"].pop("elapsed_s", None)
@@ -808,10 +809,13 @@ def test_missing_time_metadata_says_기록_없음_instead_of_a_false_zero(oos_re
     assert _times(zero)["기타 진행 시간"] != "기록 없음"
 
     canonical = manage_benchmark.load_benchmark("official", CANONICAL)
-    assert "fan_wait_s" not in canonical["meta"]
-    assert _times(canonical)["GPU 누적 대기시간"] == "기록 없음"
-    assert _times(canonical)["전체 평가시간"] == panel._duration(canonical["meta"]["elapsed_s"])
-    assert _times(canonical)["기타 진행 시간"] == "기록 없음"
+    meta, total = canonical["meta"], canonical["summary"]["latency"]["total"]
+    assert _times(canonical) == {
+        "전체 평가시간": panel._duration(meta["elapsed_s"]),
+        "전체 추론시간": panel._duration(total),
+        "GPU 누적 대기시간": panel._duration(meta["fan_wait_s"]),
+        "기타 진행 시간": panel._duration(meta["elapsed_s"] - total - meta["fan_wait_s"]),
+    }
 
 
 def test_the_top_summary_shows_run_facts_but_no_evaluation_metrics(oos_result):
@@ -904,8 +908,8 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
     assert [e["group"] for e in panel.recipe_rows(unordered)] == ["recipe_003", "recipe_020", "recipe_061", "recipe_100"]
 
 
-CANONICAL = "20260921-161258-test_suite_v2"
-CANONICAL_V1 = "20260921-160634-test_suite_v1"
+CANONICAL = "20260922-163313-test_suite_v2"
+CANONICAL_V1 = "20260922-163007-test_suite_v1"
 
 
 def _isolated_local(monkeypatch, tmp_path):
@@ -1104,7 +1108,7 @@ def test_the_names_on_screen_are_the_files_and_folders_in_the_repo():
     assert panel.suite_filename({}) == "정답표"
 
     run_id = CANONICAL
-    entry = {"run_id": run_id, "kind": "official", "complete": True, "started_at": "2026-09-21T16:12:58",
+    entry = {"run_id": run_id, "kind": "official", "complete": True, "started_at": "2026-09-22T16:33:13",
              "runs": 203, "passed": 188, "suite_label": "테스트 세트 v2", "suite_name": "test_suite_v2"}
     assert panel.saved_label(entry) == f"{run_id} · 188/203 · Official"
     assert panel.saved_key(entry) == f"official:{run_id}"

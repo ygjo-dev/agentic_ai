@@ -3229,6 +3229,34 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-22 · 기준 벤치마크를 팬 44 · 40 박자의 새 v1 · v2 로 바꿈 · Evaluation COMPLETE / FROZEN
+
+이번 작업에서 재지 않았다 (LLM 호출 0). 아래 두 기록은 9c59cef 화면 「새로 실행」(GPU 팬 소음 억제 켬)으로
+사람이 잰 것을 official 로 옮긴 것이다. run.json 은 잰 그대로다.
+
+```
+                         v1 20260922-163007          v2 20260922-163313
+발화 성공                48 / 48                     188 / 203 (92.6 %)
+Selection                48 / 48                     184 / 195
+Semantic fields          56 / 56                     187 / 190
+Semantic cases           39 / 39                     147 / 150
+Joint                    48 / 48                     181 / 195
+OOS                      —                           7 / 8
+오류                     0                           0
+전체 평가시간 elapsed_s  82.3 s                      820.4 s
+전체 추론시간            79.563 s                    325.345 s
+GPU 누적 대기 fan_wait_s 0.0 s                       483.9 s
+run.json sha256          0b7b2e07…c3f6e2             e036b9d3…69fbc9
+```
+
+v2 점수는 옛 기준(20260921-161258, e7be3fd 의 옛 박자로 잼)과 같다. 박자는 판정을 안 바꾼다.
+v2 는 팬 문턱 44 · 40 에서 추론의 1.5 배쯤을 팬 대기로 썼다 (483.9 s / 325.3 s). 옛 기준 둘은 official 에서
+지우고 retired 로 둔다 (dev/tests/evaluation/test_evaluation_layout.py RETIRED_RUN_IDS).
+
+**여기서 Evaluation 을 닫는다 (COMPLETE / FROZEN).** Resolve v1 · Test Suite v1 · v2 · 채점 · 저장 · 중지 ·
+이어 실행 · 팬 44 · 40 · 1 초 · 평가 화면 · 실행 중 소요 시간 · 기준 벤치마크 둘. 화면 버그나 사람이 다시 열자고
+하기 전에는 다음 구조 작업 때문에 고치지 않는다.
+
 ### 2026-09-21 (밤) · 팬 문턱 46 · 42 · 이어 실행은 지금 체크박스 · 「전체 추론시간」 · 실패 묶음
 
 재지 않았다 (LLM 호출 0). 화면 확인은 가짜 resolve 로 띄운 scratch 화면(8597)에서 했다.

@@ -49,17 +49,31 @@ run.json 이 있으면 끝난 기록이다. 남은 meta.json · cases.jsonl 은 
 ## GPU 팬 소음 억제
 
 켜면(화면 체크박스 기본 · 명령줄 `--fan-quiet`) 발화마다 Resolve 를 부르기 바로 앞에서 GPU 전부의
-fan.speed 를 본다. 하나라도 46% 이상이면 모두 42% 이하가 될 때까지 1초마다 다시 보고, 되면 바로 부른다.
+fan.speed 를 본다. 하나라도 44% 이상이면 모두 40% 이하가 될 때까지 1초마다 다시 보고, 되면 바로 부른다
+(`monitor_gpu.FAN_PAUSE_AT` · `FAN_RESUME_AT` · `FAN_POLL_S`).
 부르는 중인 Resolve 는 끊지 않는다. 끄면 nvidia-smi 를 안 부르고 쉬지 않는다. fan.speed 를 못 읽는 기계는
 기다리지 않는다. 장비 보호는 켜져 있을 때 드라이버의 열 제한(thermal slowdown)을 보면 멈추는 것 하나다.
 
 ```
 meta.fan_quiet_mode              첫 구간에서 켰나 (참 · 거짓)
 meta.resumed_fan_quiet_mode      이어 실행 구간마다 켰나. resumed_at 과 같은 차례
-meta.elapsed_s                   벽시계 전체 소요 시간 (팬 대기 포함. 이어 재면 멈춰 있던 시간은 뺀 합). 화면에 안 보임
+meta.elapsed_s                   벽시계 전체 소요 시간 (팬 대기 포함. 이어 재면 멈춰 있던 시간은 뺀 합)
 meta.fan_wait_s                  그중 팬 때문에 기다린 초의 합
-summary.latency.total            Resolve 추론 시간의 합 (발화마다 timing.resolve_s). 화면의 「전체 추론시간」
+summary.latency.total            Resolve 추론 시간의 합 (발화마다 timing.resolve_s)
 ```
+
+## 화면의 소요 시간
+
+```
+전체 평가시간       끝난 기록 meta.elapsed_s          도는 중: 시작부터 계속 는다
+전체 추론시간       끝난 기록 summary.latency.total   도는 중: Resolve 를 부르는 동안만 는다
+GPU 누적 대기시간   끝난 기록 meta.fan_wait_s         도는 중: 팬 때문에 기다리는 동안만 는다
+기타 진행 시간      위 셋의 나머지 (전체 평가시간 − 전체 추론시간 − GPU 누적 대기시간). 저장하지 않는다
+```
+
+- 도는 중의 값은 화면이 그 순간 계산한다. `run` · `resume` 의 `on_start` 로 받은 시작 머리, 화면이 감싼
+  resolve 의 호출 구간, `GpuMonitor.live_wait_s` 를 쓴다. 기록 파일에는 끝날 때 위 칸만 남는다
+- 칸이 없는 옛 기록은 0 이 아니라 「기록 없음」이다. 셋 중 하나라도 없으면 기타 진행 시간도 「기록 없음」
 
 ## 중지 · 이어 실행
 
@@ -78,6 +92,6 @@ summary.latency.total            Resolve 추론 시간의 합 (발화마다 timi
 
 - 목록은 official · local 을 합쳐 시작 시각 최근 것이 앞. 불러올 때는 (kind, run_id) 를 함께 넘긴다
 - 같은 run_id 가 두 자리에 다 있으면 틀린 상태로 알리고 어느 쪽도 골라 주지 않는다
-- 테스트 세트를 고르면 그 발화 전부가 「대기」 줄로 바로 보인다. LLM 은 안 부른다
+- Test Suite 를 고르면 그 발화 전부가 「대기」 줄로 바로 보인다. LLM 은 안 부른다
 - 새로 실행 · 이어 실행은 줄을 덧붙이지 않고 같은 case_id 의 줄을 결과로 바꾼다
-- 저장한 기록을 불러오면 그 테스트 세트의 같은 표에 결과를 얹는다
+- 저장한 기록을 불러오면 그 Test Suite 의 같은 표에 결과를 얹는다
