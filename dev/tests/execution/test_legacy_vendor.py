@@ -1,18 +1,28 @@
-"""대상 : execution/legacy_vendor.py — 완성된 KRRI native workflow 를 vendoring 한 실행기로 부르는 임시 다리
+"""대상 : execution/legacy_vendor.py — 완성된 KRRI native workflow 를 KRRI 실행 창구로 넘기는 임시 다리
 
-여기서 판단하지 않는다. workflow 를 고치지 않고 넘기고, 돌아온 trace 로 단계 이벤트와
-마지막 result 를 낸다. workflow 를 만드는 규칙은 test_workflow_materializer.py 가 본다.
+여기서 판단하지 않는다. workflow 를 고치지 않고 넘기고, 돌아온 trace 로 단계 이벤트를,
+KRRI 의 answer 로 마지막 result 를 낸다. workflow 를 만드는 규칙은
+test_workflow_materializer.py 가, HTTP 로 나르는 일은 test_krri_executor_client.py 가 본다.
 
-LLM 도 Gateway 도 부르지 않는다. vendor 실행기는 가짜로 준다.
+LLM 도 KRRI 도 부르지 않는다. KRRI 실행 창구는 가짜로 준다.
 """
 
+import ast
 import asyncio
 import copy
 
-from execution import legacy_vendor, workflow_materializer
+import pytest
+
+from execution import krri_executor_client, legacy_vendor, workflow_materializer
 from ontology import ONTOLOGY
+from vendor_to_be_deleted.asap import workflow_answer
 
 CCTV_AROUND_A_PLACE = ["place_name", "geocode_place", "point_to_map_extent", "find_cctv"]
+
+# KRRI 가 만든 답이라는 표시. 우리 workflow_answer 문구에 없는 문장이다.
+KRRI_ANSWER = "오송역 주변 15km 안에서 CCTV 3대를 찾았습니다. (KRRI)"
+KRRI_FAILURE = "s2 단계 MCP tool 실행에 실패했습니다: road.getCctv"
+KRRI_COMMAND = {"op": "map.draw", "args": {"layerId": "mcp-place"}}
 
 
 def collect(events):
@@ -39,41 +49,100 @@ def ready(chain, argument, context=None):
     return materialized
 
 
-def _fake_workflow(called):
-    """vendor 실행기 대역. 받은 state · intent 를 남기고 성공 trace 를 돌려준다."""
+def krri_success(workflow, commands=(KRRI_COMMAND,)):
+    """KRRI 창구가 다 돌았을 때 돌려주는 모양."""
+    return {
+        "status": "success",
+        "answer": KRRI_ANSWER,
+        "commands": list(commands),
+        "trace": [
+            {"id": step["id"], "server_id": step["server_id"], "tool": step["tool"], "input": {}, "result": {"items": []}}
+            for step in workflow["steps"]
+        ],
+        "errors": [],
+    }
 
-    async def fake(state, intent):
-        called.append((state, copy.deepcopy(intent)))
-        return {
-            "answer_draft": "답",
-            "errors": [],
-            "commands": [],
-            "artifacts": {"mcp_workflow_trace": [
-                {"id": step["id"], "tool": step["tool"], "status": "success"}
-                for step in intent["steps"]
-            ]},
-        }
+
+def fake_krri(called, respond=krri_success):
+    """KRRI 실행 창구 대역. 받은 것을 남기고 respond 가 만든 응답을 돌려준다."""
+
+    async def fake(workflow, *, user_text, context, user_context):
+        called.append({
+            "workflow": copy.deepcopy(workflow),
+            "user_text": user_text,
+            "context": context,
+            "user_context": user_context,
+        })
+        return respond(workflow)
 
     return fake
 
 
-def test_the_workflow_goes_to_the_executor_as_it_was_materialized(monkeypatch):
-    """다리는 기호를 풀거나 참조 · inputAdapter 를 정하지 않는다. 받은 한 벌이 그대로 intent 다."""
+def test_the_workflow_goes_to_krri_as_it_was_materialized(monkeypatch):
+    """다리는 기호를 풀거나 참조 · inputAdapter 를 정하지 않는다. 받은 한 벌이 그대로 나간다."""
     called = []
-    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
     materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
+    before = copy.deepcopy(materialized["workflow"])
 
     collect(legacy_vendor.run(materialized, "오송역 CCTV 보여줘"))
 
-    (state, intent), = called
-    assert intent == materialized["workflow"]
-    assert state["user_text"] == "오송역 CCTV 보여줘"
-    assert state["context"] == materialized["context"]
+    (sent,) = called
+    assert sent["workflow"] == before == materialized["workflow"]
+    assert sent["user_text"] == "오송역 CCTV 보여줘"
+    assert sent["context"] == materialized["context"]
 
 
-def test_a_step_pair_goes_out_for_every_step_the_vendor_ran(monkeypatch):
+def test_server_tool_order_refs_and_adapter_are_untouched(monkeypatch):
+    """KRRI 가 받는 steps 의 서버 · 도구 · 차례 · raw 참조 · inputAdapter 가 materializer 가 적은 그대로다."""
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
+
+    collect(legacy_vendor.run(materialized, ""))
+
+    sent = called[0]["workflow"]["steps"]
+    assert [(step["id"], step["server_id"], step["tool"]) for step in sent] == [
+        (step["id"], step["server_id"], step["tool"]) for step in materialized["workflow"]["steps"]
+    ]
+    assert [step.get("inputAdapter") for step in sent] == [
+        step.get("inputAdapter") for step in materialized["workflow"]["steps"]
+    ]
+    later = sent[1]["input"]
+    assert any(isinstance(value, (str, list)) and "$s1." in str(value) for value in later.values())
+
+
+def test_the_context_goes_to_krri(monkeypatch):
+    """화면 문맥은 KRRI 가 $context 참조를 푸는 재료다. 받은 그대로 나간다."""
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    context = {"selectedLocation": {"lon": 127.3, "lat": 36.6}}
+    materialized = ready(CCTV_AROUND_A_PLACE, "오송역", context)
+
+    collect(legacy_vendor.run(materialized, ""))
+
+    assert called[0]["context"] == materialized["context"]
+
+
+def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
+    """KRRI 가 이 값을 Gateway 에 넘긴다. 빠뜨리면 workflow 가 맞아도 거부된다.
+
+    실측 — refs 에 없는 서버는 HTTP 500 "MCP tool '<서버>/<도구>' is not
+    applied for this user." 다.
+    """
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+
+    collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    user_context = called[0]["user_context"]
+    assert user_context["user_id"]
+    assert user_context["selected_mcp_tool_refs"] == legacy_vendor.USER_CONTEXT["selected_mcp_tool_refs"]
+
+
+def test_a_step_pair_goes_out_for_every_step_krri_ran(monkeypatch):
     """단계마다 한 쌍이 recipe 순서대로 나감. 마지막은 반드시 result."""
-    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow([]))
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
 
     events = collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -82,54 +151,91 @@ def test_a_step_pair_goes_out_for_every_step_the_vendor_ran(monkeypatch):
 
     assert [event["node"] for event in starts] == ["geocode_place", "find_cctv"]
     assert [event["node"] for event in ends] == ["geocode_place", "find_cctv"]
+    assert starts[0]["message"] == workflow_answer.step_start("geo.geocode")
+    assert ends[0]["message"] == workflow_answer.step_end("geo.geocode", failed=False)
     assert events[-1]["type"] == "result"
 
 
-def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
-    """Gateway 가 이 값으로 권한을 찾는다. 빠뜨리면 workflow 가 맞아도 거부된다.
+def test_the_krri_success_answer_goes_out_as_it_is(monkeypatch):
+    """실제로 실행한 답은 KRRI 가 주인이다. 우리 문구로 다시 쓰지 않는다."""
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
 
-    실측 — refs 에 없는 서버는 HTTP 500 "MCP tool '<서버>/<도구>' is not
-    applied for this user." 다.
-    """
-    called = []
-    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    def forbidden(*args, **kwargs):
+        raise AssertionError("KRRI 답을 우리 문구로 다시 썼다")
 
-    collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
-
-    user_context = called[0][0]["user_context"]
-    assert user_context["user_id"]
-    assert user_context["selected_mcp_tool_refs"] == legacy_vendor.USER_CONTEXT["selected_mcp_tool_refs"]
-
-
-def test_a_failed_run_never_shows_the_vendor_wording(monkeypatch):
-    """vendor 의 answer_draft 가 HTTP 오류 원문 · 내부 URL 을 그대로 담는다(실측).
-
-    errors 가 있으면 trace 로 우리가 다시 만든다.
-    """
-    async def failing(state, intent):
-        return {
-            "answer_draft": "Server error '500' for url 'http://localhost:3000/api/tools/execute'",
-            "errors": ["터졌다"],
-            "commands": [],
-            "artifacts": {"mcp_workflow_trace": []},
-        }
-
-    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", failing)
+    monkeypatch.setattr(workflow_answer, "compose_workflow_answer", forbidden)
 
     events = collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
-    answer = events[-1]["answer"]
-    assert "localhost:3000" not in answer
-    assert "Server error" not in answer
+    assert events[-1]["answer"] == KRRI_ANSWER
 
 
-def test_a_map_command_only_run_never_reaches_the_vendor(monkeypatch):
-    """넘길 steps 가 비고 vendor 는 빈 steps 를 실패로 본다.
+def test_the_krri_failure_answer_goes_out_as_it_is(monkeypatch):
+    """실패도 KRRI 의 답이다. trace 로 우리 실패 문구를 다시 만들지 않는다."""
+
+    def failed(workflow):
+        first = workflow["steps"][0]
+        second = workflow["steps"][1]
+        return {
+            "status": "failed",
+            "answer": KRRI_FAILURE,
+            "commands": [],
+            "trace": [
+                {"id": first["id"], "tool": first["tool"], "result": {"name": "오송역"}},
+                {"id": second["id"], "tool": second["tool"], "error": KRRI_FAILURE},
+            ],
+            "errors": [KRRI_FAILURE],
+        }
+
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], failed))
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("KRRI 답을 우리 문구로 다시 썼다")
+
+    monkeypatch.setattr(workflow_answer, "compose_workflow_answer", forbidden)
+
+    events = collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    ends = [event for event in events if event["type"] == "step_end"]
+    assert ends[-1]["message"] == workflow_answer.step_end("road.getCctv", failed=True)
+    assert events[-1]["answer"] == KRRI_FAILURE
+
+
+def test_krri_commands_come_first_and_materialized_commands_follow(monkeypatch):
+    """지도 명령은 KRRI 가 도구 응답에서 만든 것 뒤에 우리 지도 명령이 붙는다. 순서가 경로 순서다."""
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
+    materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
+    local = {"op": "digitalTwin.showFacility", "args": {"facilityName": "오송역"}}
+    materialized = {**materialized, "commands": [local]}
+
+    events = collect(legacy_vendor.run(materialized, ""))
+
+    assert events[-1]["commands"] == [KRRI_COMMAND, local]
+
+
+@pytest.mark.parametrize("reason", ["연결 실패", "시간 초과", "HTTP 500", "모양이 다름", "주소 없음"])
+def test_an_unreachable_krri_gets_a_local_answer_and_no_fallback(monkeypatch, reason):
+    """KRRI 를 못 부르면 KRRI 가 안 돈 것이다. 우리 문구로 말하고 vendor 실행기로 돌아가지 않는다."""
+
+    async def unreachable(workflow, **kwargs):
+        raise krri_executor_client.KrriExecutorError(reason)
+
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", unreachable)
+
+    events = collect(legacy_vendor.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    assert [event["type"] for event in events] == ["result"]
+    assert events[-1]["answer"] == workflow_answer.EXECUTOR_UNREACHABLE
+    assert reason not in events[-1]["answer"]
+
+
+def test_a_map_command_only_run_never_reaches_krri(monkeypatch):
+    """넘길 steps 가 비고 KRRI 는 빈 steps 를 실패로 본다.
 
     KRRI_ASAP 의 show-facility plugin 에도 `## Run` 절이 없다.
     """
     called = []
-    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", _fake_workflow(called))
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
 
     events = collect(legacy_vendor.run(ready(["place_name", "show_facility"], "오송 테스트트랙"), ""))
 
@@ -152,3 +258,17 @@ def test_the_step_pair_goes_out_in_the_same_shape_as_a_tool_step():
     assert len(starts) == len(ends) == 1
     assert starts[0]["node"] == ends[0]["node"] == "show_facility"
     assert "digitalTwin.showFacility" in starts[0]["message"]
+
+
+def test_the_bridge_no_longer_imports_the_vendor_executor():
+    """제품 길에서 vendoring 한 실행기는 죽은 코드다. 다리가 import 하는 vendor 는 문구 하나뿐이다."""
+    from paths import REPO_ROOT
+
+    tree = ast.parse((REPO_ROOT / "execution" / "legacy_vendor.py").read_text(encoding="utf-8"))
+    vendor = [
+        f"{node.module}.{alias.name}"
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and (node.module or "").startswith("vendor_to_be_deleted")
+        for alias in node.names
+    ]
+    assert vendor == ["vendor_to_be_deleted.asap.workflow_answer"]

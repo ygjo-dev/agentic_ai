@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 
 from app.api import main
 from app.api.services.bridge import recent_service
-from execution import legacy_vendor, workflow_materializer
+from execution import krri_executor_client, workflow_materializer
 from llm_engine.role_config import RESOLVE
 from ontology import ONTOLOGY, Ontology
 from vendor_to_be_deleted.asap import workflow_answer
@@ -318,12 +318,12 @@ def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_onto
     published = workflow_materializer.workflow_of(workflow_materializer.load(spoken), {"argument": "오송역"})["workflow"]
     called = []
 
-    async def fake_workflow(state, intent):
-        called.append(intent)
-        trace = [{"id": step["id"], "tool": step["tool"], "status": "success"} for step in intent["steps"]]
-        return {"answer_draft": "답", "errors": [], "commands": [], "artifacts": {"mcp_workflow_trace": trace}}
+    async def fake_workflow(workflow, **kwargs):
+        called.append(workflow)
+        trace = [{"id": step["id"], "tool": step["tool"], "result": {}} for step in workflow["steps"]]
+        return {"status": "success", "answer": "답", "commands": [], "trace": trace, "errors": []}
 
-    monkeypatch.setattr(legacy_vendor, "_execute_generic_mcp_workflow", fake_workflow)
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_workflow)
     monkeypatch.setattr(
         main.resolve_service, "resolve",
         lambda text, llm_client, role: {**RESOLVED, "recipe_id": spoken, "candidate_recipe_ids": [spoken]},

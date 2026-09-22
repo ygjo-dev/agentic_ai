@@ -21,7 +21,7 @@ pyvis==0.3.2           # 온톨로지 그래프를 그리는 interactive graph l
                        # 좌표를 잡는 자리(app/ui/graph/layout_store.py)가 그것이다
 requests>=2.31.0       # Frontend에서 Backend 호출
 python-dotenv>=1.0.0   # .env 로드. 진입점에서만 부른다
+httpx>=0.27.0          # KRRI 실행 창구 호출 (execution/krri_executor_client) · fastapi TestClient
 
 # --- 개발 / 테스트 ---
 pytest>=9.1.1          # dev/tests/ · 실행은 python -m pytest (저장소 루트가 sys.path 에 필요)
-httpx>=0.27.0          # fastapi TestClient (dev/tests/app/api/)

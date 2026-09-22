@@ -5,9 +5,10 @@
     OLLAMA_URL         agentic_ai  ->  Ollama
     VLLM_URL           agentic_ai  ->  vLLM
     ASAP_GATEWAY_URL   agentic_ai  ->  KRRI_ASAP Gateway
+    ASAP_ORCHESTRATOR_URL  agentic_ai  ->  KRRI_ASAP Orchestrator (workflow 실행)
     AGENTIC_API_URL    화면 · 계기판  ->  agentic_ai API
 
-앞 셋은 백엔드가 밖으로 나가는 길이고, 마지막 하나는 백엔드를 찾아오는 길이다.
+앞 넷은 백엔드가 밖으로 나가는 길이고, 마지막 하나는 백엔드를 찾아오는 길이다.
 그 경계가 곧 app/ui 가 언제든 다른 저장소로 나갈 수 있는 자리다.
 
 **주소와 bind 를 섞지 않는다.** 여기 있는 것은 「부르는 쪽이 찾아갈 주소」뿐이다.
@@ -23,7 +24,7 @@ localhost 로 돌아가지 않고 그 자리에서 멈춘다 — 조용히 loopb
 값(모델 · num_ctx · timeout)을 적는 곳이고 이쪽은 기계마다 다른 값이다. 섞으면
 역할 설정을 기계마다 갈라 두어야 한다.
 
-읽는 때는 부르기 직전이다. import 시점에 넷을 다 읽지 않는다 — Ollama 를 안
+읽는 때는 부르기 직전이다. import 시점에 다섯을 다 읽지 않는다 — Ollama 를 안
 쓰는 배포가 OLLAMA_URL 이 없다고 통째로 못 뜨면 안 된다.
 """
 
@@ -129,6 +130,11 @@ def vllm_url() -> str:
 def asap_gateway_url() -> str:
     """agentic_ai 가 KRRI_ASAP Gateway 를 부를 주소."""
     return service_url("ASAP_GATEWAY_URL", "agentic_ai", "KRRI_ASAP Gateway")
+
+
+def asap_orchestrator_url() -> str:
+    """agentic_ai 가 완성된 workflow 를 KRRI_ASAP Orchestrator 에 넘겨 실행할 주소."""
+    return service_url("ASAP_ORCHESTRATOR_URL", "agentic_ai", "KRRI_ASAP Orchestrator")
 
 
 def agentic_api_url() -> str:

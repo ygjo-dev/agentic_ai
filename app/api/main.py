@@ -2,7 +2,8 @@
 
 **라우팅과 요청 한 건의 얇은 흐름만 둔다.** 발화 한 건은 _process 에서
 해석(orchestrator.resolve_service) -> workflow(execution.workflow_materializer) ->
-실행(execution.legacy_vendor) 차례로 지나고, 답 문구는 workflow_answer 가 만든다.
+실행(execution.legacy_vendor -> KRRI_ASAP /workflow/execute) 차례로 지난다. 실제로 실행한
+답은 KRRI_ASAP 이 만들고, 실행 전에 멈춘 자리의 답은 workflow_answer 가 만든다.
 도메인 로직은 각 모듈과 app/api/services/ 가, 오류 매핑은 아래 미들웨어가 맡는다.
 엔드포인트마다 같은 try/except 를 반복하면 한 곳을 고칠 때 나머지를 빠뜨리게 된다.
 """
@@ -197,8 +198,8 @@ async def _stream(text: str, llm_client, role, context: dict | None):
           정해지지 않았고 NO_MATCH 는 부를 것이 없음
           고른 recipe 의 게시된 execution 과 해석 결과 · 화면 문맥으로
           workflow_materializer 가 workflow 를 만듦. READY 가 아니면 부르지 않음
-          READY 면 legacy_vendor 가 KRRI 실행기로 부름
-          답 문구는 workflow_answer 가 만듦
+          READY 면 legacy_vendor 가 KRRI 실행 창구로 부름. 그 답은 KRRI 것
+          실행 전에 멈춘 자리의 답 문구는 workflow_answer 가 만듦
     제약  여기서 문장을 만들지 않는다
           고른 recipe 를 문맥으로 다시 고르지 않는다
           상태를 두지 않는다.

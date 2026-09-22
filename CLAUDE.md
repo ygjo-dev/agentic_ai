@@ -20,7 +20,7 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 → 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
   (agentic_ai 밖의 등록 저장소가 compile 해 게시한다 = Recipe.execution)
 → 요청 중에는 Recipe.execution 에 이번 요청의 값을 채워 KRRI native call_mcp_workflow 로 만든다
-  (지금은 legacy 다리가 vendoring 한 KRRI 실행기로 Gateway 실행)
+  (legacy 다리가 KRRI_ASAP Orchestrator POST /workflow/execute 로 넘겨 실행)
 → 답 · API · 화면
 ```
 
@@ -65,12 +65,17 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
   `$context.…`, 명시한 inputAdapter, 채운 조건 · 시각. KRRI 실행기의 편의 추론(짧은 도구 이름
   정규화 · 자동 bbox · 참조 이름 특례 · web.search 보수)에 기대는 workflow 를 만들지 않는다.
   부를 수 없으면 문장이 아니라 status · missing 을 돌려준다
-- **KRRI_ASAP 에 agentic_ai 의 기호 해석기를 넣지 않는다.** 지금은 `execution/legacy_vendor.py`
-  가 완성된 workflow 를 vendoring 한 실행기에 그대로 넘긴다. vendor_to_be_deleted 를 import 하는
-  제품 코드는 그 파일 하나고, KRRI_ASAP generic_mcp_executor 에 직접 넘기게 되면 사라진다
-- **사람에게 보일 문장은 workflow_answer 가 만든다.** 창구(`app/api/main.py`) · materializer ·
-  다리는 문장을 만들지 않는다. 답 첫 줄은 판정(성공 · 빈 결과 · 오류)마다 하나다. 노드 ·
-  recipe 마다 문장을 두지 않는다 — 실행 계획에 화면 문구를 섞지 않는다
+- **KRRI_ASAP 에 agentic_ai 의 기호 해석기를 넣지 않는다.** `execution/legacy_vendor.py` 가
+  완성된 workflow 를 `execution/krri_executor_client.py` 로 KRRI_ASAP Orchestrator 의
+  `POST /workflow/execute` 에 그대로 넘긴다. KRRI 를 못 부르면 vendoring 한 실행기로
+  돌아가지 않고 실행 서비스 연결 실패로 답한다. vendor_to_be_deleted 를 import 하는 제품 코드는
+  legacy_vendor 하나고, 남은 것은 workflow_answer 뿐이다
+- **실제로 실행한 답은 KRRI_ASAP 이 주인이다.** 성공이든 실패든 KRRI 가 돌려준 answer 를
+  그대로 낸다. 우리 workflow_answer 로 다시 쓰지 않는다
+- **KRRI 가 안 도는 자리의 문장은 workflow_answer 가 만든다** (해석 실패 · UNREADY · 지도
+  명령만 있는 실행 · KRRI 연결 실패 · 단계 진행 표시). 창구(`app/api/main.py`) · materializer ·
+  다리는 문장을 만들지 않는다. 노드 · recipe 마다 문장을 두지 않는다 — 실행 계획에 화면
+  문구를 섞지 않는다
 
 ---
 
@@ -111,8 +116,8 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
                      읽기만 한다 — 등록 · 게시는 밖의 저장소 일이라 쓰는 API 가 없다
   orchestrator/      발화 해석
   execution/         요청 중의 실행. workflow_materializer 가 게시된 execution 을 KRRI native
-                     workflow 로 만들고, legacy_vendor 는 그것을 vendoring 한 실행기로 부르는
-                     임시 다리다
+                     workflow 로 만들고, legacy_vendor 는 그것을 KRRI_ASAP 실행 창구로
+                     넘기는 임시 다리다 (krri_executor_client 가 HTTP 를 나른다)
   llm_engine/        LLM 역할(logical model 판 · prompt · response schema) · provider
   workflows/static/  menu 를 프롬프트로 읽는 자리(menu/load.py). 자산은 없다
 
@@ -165,6 +170,9 @@ agentic_ai 것 넷      config · schemas_chat · workflow_answer · __init__
 - 우리 넷이 여기 있는 까닭은 vendor 가 그것을 import 하기 때문이다.
   `workflow_answer.py` 를 밖으로 옮기는 것은 아직 정해지지 않았다
 - 어느 것이 누구 것인지 헷갈리면 `asap/README.md` 의 두 표를 본다
+- **원본 다섯과 config · schemas_chat 은 제품 길에서 죽은 코드다.** 실행은 KRRI_ASAP
+  `/workflow/execute` 가 한다. 제품이 아직 읽는 것은 workflow_answer 하나이고, 나머지는
+  시험 · 계기판 참조를 걷는 다음 정리 때 지운다
 
 ### git push
 
@@ -379,13 +387,14 @@ schema 는 판 번호를 올린 새 파일로 더한다. 경로는 manifest 에 
 OLLAMA_URL         agentic_ai  ->  Ollama
 VLLM_URL           agentic_ai  ->  vLLM
 ASAP_GATEWAY_URL   agentic_ai  ->  KRRI_ASAP Gateway
+ASAP_ORCHESTRATOR_URL  agentic_ai  ->  KRRI_ASAP Orchestrator (workflow 실행)
 AGENTIC_API_URL    화면 · 계기판  ->  agentic_ai API
 ```
 
 - **기본값을 두지 않는다.** 안 적으면 localhost 로 돌아가지 않고 멈춘다.
   조용히 loopback 을 부르면 서비스를 다른 기계로 나눴을 때 무엇이 안 보이는지
   아무도 못 찾는다. `localhost` · `127.0.0.0/8` · `::1` 은 값으로도 안 받는다
-- **부를 때 읽는다.** import 시점에 넷을 다 읽지 않는다 — Ollama 를 안 쓰는
+- **부를 때 읽는다.** import 시점에 다섯을 다 읽지 않는다 — Ollama 를 안 쓰는
   배포가 `OLLAMA_URL` 이 없다고 통째로 못 뜨면 안 된다
 - **주소와 bind 를 섞지 않는다.** 서버가 어느 인터페이스에 귀를 여는가는
   띄우는 명령이 정한다 (`uvicorn … --host 0.0.0.0 --port 8000`). 그래서

@@ -1502,6 +1502,10 @@ def _lon_lat(value: Any):
 # 쪽이 무엇을 부르는지 모른다.
 NOTHING_RAN = "화면에 표시했습니다."
 
+# KRRI 실행 창구를 못 불렀을 때의 답. 실행 여부를 모르므로 단계 목록이 없다.
+# 주소 · 오류 원문을 적지 않는다 — 원인은 로그(execution.krri_executor_client)에 있다.
+EXECUTOR_UNREACHABLE = "실행 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+
 # 맞는 경로가 없을 때의 첫 줄.
 NO_MATCH_HEADLINE = "지금 할 수 있는 일 중에 맞는 것이 없습니다."
 
