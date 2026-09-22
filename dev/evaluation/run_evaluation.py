@@ -267,6 +267,7 @@ def run(
     dataset: dict | None = None,
     environment: dict | None = None,
     should_stop=None,
+    on_start=None,
 ) -> dict:
     """정답표를 재서 결과 한 벌 (Test Run).
 
@@ -291,6 +292,7 @@ def run(
           도는 동안 meta.json + cases.jsonl, 다 재면 run.json 하나만 남음.
           멈추면 run.json 을 안 쓰고 meta.json 에 까닭을 적음. 이어 재기는 resume
           dataset 은 {id, label}. 있으면 meta.suite 에 dataset_id · label 로 실림
+          on_start 가 있으면 첫 발화를 부르기 전에 meta 머리(+ environment)를 한 번 넘김. 화면이 도는 동안 개요를 그림
     제약  MCP 도구를 부르지 않는다.
           기다리는 것을 재는 값에 섞지 않는다.
           다음 요청 앞에서만 기다리므로 마지막 요청 뒤에는 안 기다림. resolve_s 는
@@ -317,6 +319,8 @@ def run(
     )
     if recorder:
         recorder.start(head)
+    if on_start:
+        on_start({**head, "environment": environment})
 
     # 3. 발화마다 Resolve → 채점
     plan = [(case, number) for case in cases for number in range(1, runs + 1)]
@@ -411,6 +415,7 @@ def resume(
     environment: dict | None = None,
     should_stop=None,
     fan_quiet_mode: bool = False,
+    on_start=None,
 ) -> dict:
     """끝나지 않은 local 기록을 같은 run_id · 같은 폴더에서 이어 잰 결과 한 벌 (Test Run).
 
@@ -424,6 +429,7 @@ def resume(
           시작할 때 meta.json 에서 지난번 멈춘 까닭을 떼고 resumed_at 에 이번 시각을 더함.
           다시 멈추면 run 과 같이 meta.json 에 까닭을 적고, 다 재면 같은 폴더에 run.json 을 쓰고 meta.json · cases.jsonl 을 지움
           elapsed_s · fan_wait_s 는 잰 동안의 시간을 더한 것 (멈춰 있던 시간은 안 셈). environment 는 저장된 것이 있으면 그것
+          on_start 가 있으면 남은 발화를 부르기 전에 meta 머리를 한 번 넘김. elapsed_s · fan_wait_s 는 지난 구간까지의 합
     제약  새 run_id · 새 폴더를 만들지 않는다. 전에 잰 줄을 다시 채점하거나 고치지 않는다.
           지금 조건을 저장된 조건 대신 쓰지 않는다
     """
@@ -459,6 +465,8 @@ def resume(
     waited = meta.get("fan_wait_s") or 0.0
     environment = meta.get("environment") or environment
     recorder.interrupt({**head, "elapsed_s": before, "fan_wait_s": waited, "environment": environment})
+    if on_start:
+        on_start({**head, "elapsed_s": before, "fan_wait_s": waited, "environment": environment})
 
     materialize = meta["materialize"]
     now = datetime.datetime.fromisoformat(meta["materialize_now"]) if materialize else started

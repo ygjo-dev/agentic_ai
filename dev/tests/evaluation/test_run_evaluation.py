@@ -215,6 +215,46 @@ def test_between_40_and_44_the_next_case_starts_without_waiting():
     assert (monitor_gpu.FAN_PAUSE_AT, monitor_gpu.FAN_RESUME_AT, monitor_gpu.FAN_POLL_S) == (44, 40, 1.0)
 
 
+def test_live_wait_counts_the_wait_in_progress_and_stops_after_it():
+    """화면이 도는 동안 GPU 누적 대기시간을 1초마다 그린다. 기다리는 중이면 그 몫까지, 끝나면 멈춘다."""
+    fake = _Fans([[30], [44], [44], [40]])
+    monitor = fake.monitor()
+    seen = []
+    sleep = fake.sleep
+
+    def sleeping(seconds):
+        sleep(seconds)
+        seen.append(monitor.live_wait_s())
+
+    monitor._sleep = sleeping
+    monitor.before_case(0, fan_quiet=True)
+    assert monitor.live_wait_s() == 0.0
+    monitor.before_case(1, fan_quiet=True)
+    assert seen == [1.0, 2.0]
+    assert monitor.live_wait_s() == monitor.waited_s == 2.0 and not monitor.waiting
+    fake.now += 50
+    assert monitor.live_wait_s() == 2.0, "기다리지 않는데 대기 시간이 늘었다"
+
+
+def test_on_start_hands_the_meta_head_before_the_first_case(tmp_path, monkeypatch):
+    local = _isolate(monkeypatch, tmp_path)
+    heads, asked = [], []
+    resolve = _v1_resolve(asked)
+
+    def watch(head):
+        heads.append((head, len(asked)))
+
+    first = _run_v1(local, asked, should_stop=lambda: len(asked) >= 2, on_start=watch)
+    [(head, called)] = heads
+    assert called == 0 and head["run_id"] == first["meta"]["run_id"] and head["started_at"] == first["meta"]["started_at"]
+    assert "conditions" in head and "elapsed_s" not in head
+
+    heads.clear()
+    run_evaluation.resume("local", Path(first["meta"]["saved_to"]).name, resolve=resolve, on_start=watch)
+    [(head, called)] = heads
+    assert head["elapsed_s"] == first["meta"]["elapsed_s"] and head["fan_wait_s"] == first["meta"]["fan_wait_s"]
+
+
 def test_with_fan_quiet_off_the_fans_are_never_read_and_the_run_never_waits():
     result, fake = _fan_run([[99, 99, 99, 99]], quiet=False)
 
@@ -784,12 +824,13 @@ def _utterances(ids):
 
 
 def _run_v1(local, asked, *, only=FIVE, runs=1, should_stop=None, hold=None, materialize=False, context=None,
-            fan_quiet_mode=False, monitor=None):
+            fan_quiet_mode=False, monitor=None, on_start=None):
     return run_evaluation.run(
         load_test_suite.load(load_test_suite.SUITE_PATH), suite_path=load_test_suite.SUITE_PATH,
         resolve=_v1_resolve(asked, hold), only=only, runs=runs, materialize=materialize, context=context,
         context_label="both" if context else None, save_dir=local, should_stop=should_stop,
         dataset={"id": "test_suite_v1", "label": "FULL48 회귀 테스트"}, fan_quiet_mode=fan_quiet_mode, monitor=monitor,
+        on_start=on_start,
     )
 
 

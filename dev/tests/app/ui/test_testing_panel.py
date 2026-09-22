@@ -391,13 +391,13 @@ def app(monkeypatch, tmp_path):
     calls, resumed, resolved, fans, resume_fans = [], [], [], [], []
     at = AppTest.from_function(_tab_script, default_timeout=60)
 
-    def run_selected(dataset_id, on_progress=None, should_stop=None, *, fan_quiet=True, monitor=None):
+    def run_selected(dataset_id, on_progress=None, should_stop=None, *, fan_quiet=True, monitor=None, clock=None):
         calls.append(dataset_id)
         fans.append(fan_quiet)
         return _measure(dataset_id, seen=resolved, progress=on_progress, save_dir=manage_benchmark.LOCAL_DIR,
                         should_stop=should_stop, hold=at.hold, fan_quiet_mode=fan_quiet)
 
-    def resume_selected(kind, run_id, on_progress=None, should_stop=None, *, fan_quiet=True, monitor=None):
+    def resume_selected(kind, run_id, on_progress=None, should_stop=None, *, fan_quiet=True, monitor=None, clock=None):
         resumed.append((kind, run_id))
         resume_fans.append(fan_quiet)
         dataset_id = manage_benchmark.read_incomplete(manage_benchmark.run_dir(kind, run_id))["meta"]["suite"]["dataset_id"]
@@ -775,14 +775,23 @@ def test_each_time_row_has_a_question_mark_help_icon_and_no_dotted_label(oos_res
     assert "width: 18rem" in css.split(".tt-help[data-tip]::after {", 1)[1].split("}", 1)[0]
 
 
-def test_the_overview_blocks_take_their_content_width_and_wrap_instead_of_stretching():
+def test_the_overview_uses_the_full_width_in_grouped_columns_and_wraps_when_narrow(oos_result):
+    """상자는 탭 폭을 다 쓰고 섹션은 열로 묶인다. 값 한 줄짜리 섹션 셋(Test Suite · 평가 시작 시간 · 모델)은 한 열에 쌓인다.
+    섹션 안 값은 글자 바로 옆 칸이라 열 끝으로 멀리 밀려나지 않는다. 좁으면 열이 다음 줄로 넘어간다."""
+    markup = panel.overview_markup(panel.overview(oos_result))
+    columns = markup.split('<div class="tt-ovc">')[1:]
+    titles = [re.findall(r'class="tt-ov-k">([^<]+)<', column) for column in columns]
+    assert titles == [["Test Suite", "평가 시작 시간", "모델"], ["소요 시간"], ["발화당 추론 시간"], ["평가 결과"], ["실행 환경"]]
     css = panel.panel_css()
-    boxes = css.split(".st-key-test_tab .tt-ovs {", 1)[1].split("}", 1)[0]
-    assert "flex-wrap: wrap" in boxes and "width: fit-content" in boxes
-    block = css.split(".st-key-test_tab .tt-ov {", 1)[1].split("}", 1)[0]
-    assert "flex: 0 1 auto" in block
-    assert ".tt-ov:last-child { flex" not in css and "tt-ov-time" not in css, "남는 폭을 나눠 갖는 규칙이 남았다"
+    box = css.split(".st-key-test_tab .tt-ovs {", 1)[1].split("}", 1)[0]
+    assert "display: grid" in box and "width: 100%" in box and box.count("fr)") == 5
+    assert "fit-content" not in box and "flex-grow" not in css.split("---- 실행 개요", 1)[1].split("---- 기능별 결과", 1)[0]
+    assert "max-content minmax(0, max-content)" in css.split(".tt-ov-rows {", 1)[1].split("}", 1)[0]
+    narrow = css.split("@media (max-width: 1200px) {", 1)[1].split("\n}", 1)[0]
+    assert "auto-fill" in narrow and "border-left: 0" in narrow
 
+    extra = panel.overview_markup([*panel.overview(oos_result), ("새 섹션", [("", "값")])])
+    assert extra.count('<div class="tt-ovc">') == 6, "모르는 섹션이 빠졌다"
 
 def test_missing_time_metadata_says_기록_없음_instead_of_a_false_zero(oos_result):
     """옛 기록(official v1 · v2)에는 fan_wait_s 칸이 없다. 없는 칸을 0초로 보이면 기다린 적이 없다고 주장하는 것이다."""
@@ -1962,6 +1971,8 @@ def test_resume_through_the_real_panel_and_evaluation_path_accepts_the_checkbox_
 
     def resume_with_fake_resolve(kind, run_id, **kwargs):
         dataset_id = manage_benchmark.read_incomplete(manage_benchmark.run_dir(kind, run_id))["meta"]["suite"]["dataset_id"]
+        timed = kwargs.pop("resolve", None)
+        assert timed is not None, "화면이 추론 시간을 재는 resolve 를 안 넘겼다"
         return real_resume(kind, run_id, resolve=_suite_resolve(dataset_id, app.resolved), **kwargs)
 
     def new_monitor():
@@ -1997,6 +2008,93 @@ def test_resume_through_the_real_panel_and_evaluation_path_accepts_the_checkbox_
     assert meta["fan_quiet_mode"] is first
     assert meta["resumed_fan_quiet_mode"] == [then] and len(meta["resumed_at"]) == 1
     assert len(manage_benchmark.load_benchmark("local", folder)["cases"]) == 48
+
+
+# ── 도는 동안의 소요 시간 ──────────────────────────────────────────────
+class LiveFans:
+    """팬 대기 누적을 손으로 정하는 monitor."""
+
+    waiting = False
+
+    def __init__(self):
+        self.waited = 0.0
+
+    def live_wait_s(self):
+        return self.waited
+
+
+def _live_times(job):
+    return {label: value for label, value, _tip in dict(panel.overview(panel.live_record(job), job.live_times()))[panel.TIME_CELL]}
+
+
+def test_live_times_grow_only_while_their_own_thing_is_happening(monkeypatch):
+    """전체 평가시간은 늘 늘고, 전체 추론시간은 resolve 를 부르는 동안만, GPU 누적 대기시간은 팬 대기 동안만 는다.
+    기타 진행 시간은 그 셋의 나머지다."""
+    now = [0.0]
+    monkeypatch.setattr(panel.time, "monotonic", lambda: now[0])
+    fans = LiveFans()
+    job = panel._Job(panel.NEW, "test_suite_v2", 203, monitor=fans)
+    job.started({"started_at": "2026-09-22T16:33:13+09:00", "suite": {"dataset_id": "test_suite_v2"}})
+
+    now[0] = 2.0
+    assert job.live_times() == {"elapsed": 2.0, "inference": 0.0, "fan_wait": 0.0}
+
+    fans.waited, now[0] = 3.0, 5.0
+    assert job.live_times() == {"elapsed": 5.0, "inference": 0.0, "fan_wait": 3.0}, "팬 대기 중에 추론 시간이 늘었다"
+
+    def resolve(utterance):
+        now[0] += 1.5
+        inside = job.live_times()
+        now[0] += 1.0
+        return inside
+
+    inside = job.timed(resolve)("발화")
+    assert inside == {"elapsed": 6.5, "inference": 1.5, "fan_wait": 3.0}, "부르는 동안 추론 시간이 안 늘었다"
+    assert not job.inferring()
+    now[0] = 10.0
+    assert job.live_times() == {"elapsed": 10.0, "inference": 2.5, "fan_wait": 3.0}, "부르지 않는데 추론 시간이 늘었다"
+    assert _live_times(job) == {"전체 평가시간": "10초", "전체 추론시간": "2초", "GPU 누적 대기시간": "3초", "기타 진행 시간": "4초"}
+
+
+def test_a_resumed_job_counts_on_from_the_stored_segment(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(panel.time, "monotonic", lambda: now[0])
+    rows = [{"timing": {"resolve_s": 1.0}}, {"timing": {"resolve_s": 2.0}}, {"timing": None}]
+    job = panel._Job(panel.RESUME, "test_suite_v1", 48, rows, monitor=LiveFans())
+    job.started({"elapsed_s": 100.0, "fan_wait_s": 20.0})
+    now[0] = 4.0
+    assert job.live_times() == {"elapsed": 104.0, "inference": 3.0, "fan_wait": 20.0}
+
+
+def test_a_job_without_a_monitor_or_start_head_still_shows_what_it_knows(monkeypatch):
+    """평가가 시작 머리를 넘기기 전이어도 Test Suite · 평가 시작 시간 · 전체 수는 보이고, 모르는 것은 비운다."""
+    job = panel._Job(panel.NEW, "test_suite_v2", 203)
+    info = dict(panel.overview(panel.live_record(job), job.live_times()))
+    assert info["Test Suite"] == [("", "test_suite_v2.yaml")]
+    assert info["평가 시작 시간"][0][1] != panel.EMPTY_NUMBER
+    assert dict(info["평가 결과"])["전체"] == "203" and dict(info["평가 결과"])["성공"] == "0"
+    assert info["발화당 추론 시간"] == [("Median", "—"), ("P95", "—"), ("Max", "—")]
+    assert info["모델"] == [("", panel.EMPTY_NUMBER)]
+    times = {label: value for label, value, _tip in info[panel.TIME_CELL]}
+    assert times["전체 추론시간"] == "0초" and times["GPU 누적 대기시간"] == "0초"
+
+
+def test_the_overview_is_drawn_while_running_and_a_finished_run_shows_the_stored_values(app):
+    app.run()
+    app.hold = Hold(3)
+    job = _start(app)
+    assert app.hold.entered.wait(20)
+    app.run()
+    running = next(m.value for m in app.markdown if 'class="tt-ovs"' in m.value)
+    assert "전체 평가시간" in visible_text(running) and "기타 진행 시간" in visible_text(running)
+    assert "48" in visible_text(running.split("평가 결과", 1)[1])
+
+    app.hold.release.set()
+    _wait(app)
+    stored = manage_benchmark.load_benchmark("local", _local_dirs(app)[0])
+    finished = next(m.value for m in app.markdown if 'class="tt-ovs"' in m.value)
+    assert panel._duration(stored["meta"]["elapsed_s"]) in visible_text(finished)
+    assert job.finished.is_set()
 
 
 def test_the_run_status_says_when_it_is_waiting_for_the_fans():

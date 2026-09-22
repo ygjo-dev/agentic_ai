@@ -108,6 +108,7 @@ import itertools
 import json
 import re
 import threading
+import time
 from functools import partial
 from pathlib import Path
 
@@ -213,6 +214,14 @@ TIME_HELP = {
 # 기타 진행 시간(나머지)이 이만큼(초)까지 음수면 반올림 오차로 보고 0 으로 둔다. elapsed_s 는 0.1초, latency.total 은
 # 0.001초로 반올림해 저장되므로 그 차이보다 넉넉한 값이다. 이보다 더 음수면 기록이 서로 안 맞는 것이라 값을 안 보인다
 RESIDUAL_TOLERANCE_S = 1.0
+# 실행 개요의 열. 값 한 줄짜리 섹션 셋은 한 열에 쌓고, 나머지는 섹션마다 한 열이다
+OVERVIEW_COLUMNS = (
+    ("Test Suite", "평가 시작 시간", "모델"),
+    (TIME_CELL,),
+    ("발화당 추론 시간",),
+    ("평가 결과",),
+    ("실행 환경",),
+)
 # 옛 기록이라 그 칸이 저장되지 않은 값. 0 으로 채우지 않는다
 MISSING_TEXT = "기록 없음"
 
@@ -669,7 +678,7 @@ def other_seconds(elapsed, inference, fan_wait) -> float | None:
     return max(rest, 0.0)
 
 
-def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
+def overview(result: dict | None, live: dict | None = None) -> list[tuple[str, list[tuple[str, str]]]] | None:
     """실행 개요. 기록을 열면 바로 볼 것만. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
     칸  Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간 · 기타 진행 시간) ·
@@ -683,6 +692,8 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
           materialize · 팬 대기 · 화면 시간이 안 섞임. 잰 것이 없으면 줄표
           GPU 누적 대기시간은 meta.fan_wait_s (팬 소음 억제로 다음 발화를 기다린 합)
           elapsed_s · fan_wait_s 칸이 없는 옛 기록은 「기록 없음」. 0 으로 채우지 않음. 칸이 있고 0 이면 0초
+          live 가 있으면(도는 중, _Job.live_times) 세 시간은 기록 대신 그 값. 전체 추론시간도 부르는 중인 몫까지
+          결과에 planned 가 있으면(도는 중) 평가 결과의 전체는 잴 수, 성공 · 실패 · 오류는 끝난 줄에서
           기타 진행 시간은 세 값에서 계산한 나머지(other_seconds). 하나라도 없으면 「기록 없음」
           발화당 추론 시간은 발화 하나의 resolve 한 번에 걸린 시간의 분포. 소수 둘째 자리. 잰 것이 없으면 줄표
           Temperature 같은 요청 설정 · 파일은 여기 안 보임. 모델 설정 (자세히 보기)에 있음
@@ -698,14 +709,19 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     def seconds(key):
         return _seconds(delay.get(key)) or EMPTY_NUMBER
 
-    def stored(key):
-        return _duration(meta[key]) if isinstance(meta.get(key), (int, float)) else MISSING_TEXT
+    if live:
+        elapsed, inference, fan_wait = live["elapsed"], live["inference"], live["fan_wait"]
+    else:
+        elapsed, inference, fan_wait = meta.get("elapsed_s"), delay.get("total"), meta.get("fan_wait_s")
 
-    other = other_seconds(meta.get("elapsed_s"), delay.get("total"), meta.get("fan_wait_s"))
+    def stored(value):
+        return _duration(value) if isinstance(value, (int, float)) else MISSING_TEXT
+
+    other = other_seconds(elapsed, inference, fan_wait)
     times = [
-        ("전체 평가시간", stored("elapsed_s")),
-        ("전체 추론시간", _duration(delay.get("total"))),
-        ("GPU 누적 대기시간", stored("fan_wait_s")),
+        ("전체 평가시간", stored(elapsed)),
+        ("전체 추론시간", _duration(inference)),
+        ("GPU 누적 대기시간", stored(fan_wait)),
         ("기타 진행 시간", _duration(other) if other is not None else MISSING_TEXT),
     ]
 
@@ -715,7 +731,7 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
         (TIME_CELL, [(label, value, TIME_HELP[label]) for label, value in times]),
         ("발화당 추론 시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
         ("평가 결과", [
-            ("전체", str(total["runs"])),
+            ("전체", str(result.get("planned") or total["runs"])),
             ("성공", str(total["passed"])),
             ("실패", str(total["runs"] - total["passed"] - total["failure_stages"].get("error", 0))),
             ("오류", str(total["errors"])),
@@ -919,11 +935,13 @@ def conditions_markup(conditions: dict) -> str:
 
 
 def overview_markup(info: list | None) -> str:
-    """실행 개요. 칸마다 제목 아래 (글자 · 값) 줄을 세로로. 결과가 없으면 빈 글자.
+    """실행 개요. 섹션마다 제목 아래 (글자 · 값) 줄. 섹션은 OVERVIEW_COLUMNS 의 열로 묶음. 결과가 없으면 빈 글자.
 
-    규칙  줄에 도움말(셋째 값)이 있으면 글자 뒤에 작은 「?」 아이콘(tt-help)을 두고, 그 아이콘에 data-tip 을 걸어
+    규칙  한 열에 섹션 하나 또는 값 한 줄짜리 섹션 여럿(Test Suite · 평가 시작 시간 · 모델)을 세로로 쌓음.
+          OVERVIEW_COLUMNS 에 없는 섹션은 제 열 하나를 받아 뒤에 붙음
+          줄에 도움말(셋째 값)이 있으면 글자 뒤에 작은 「?」 아이콘(tt-help)을 두고, 그 아이콘에 data-tip 을 걸어
           기능 번호와 같은 tooltip 으로 뜸. 글자 자체에는 밑줄 · tooltip 이 없음
-          칸은 내용 폭만 차지함 (panel_css). 남는 폭을 나눠 갖지 않음
+          열 폭 · 줄바꿈은 panel_css 가 정함
     """
     if info is None:
         return ""
@@ -940,9 +958,18 @@ def overview_markup(info: list | None) -> str:
         )
 
     def cell(title, rows):
-        return f'<div class="tt-ov"><div class="tt-ov-k">{_esc(title)}</div>{"".join(line(row) for row in rows)}</div>'
+        return (f'<div class="tt-ov"><div class="tt-ov-k">{_esc(title)}</div>'
+                f'<div class="tt-ov-rows">{"".join(line(row) for row in rows)}</div></div>')
 
-    return '<div class="tt-ovs">' + "".join(cell(title, rows) for title, rows in info) + "</div>"
+    sections = dict(info)
+    grouped = [[title for title in column if title in sections] for column in OVERVIEW_COLUMNS]
+    placed = {title for column in grouped for title in column}
+    grouped += [[title] for title, _rows in info if title not in placed]
+    columns = "".join(
+        '<div class="tt-ovc">' + "".join(cell(title, sections[title]) for title in column) + "</div>"
+        for column in grouped if column
+    )
+    return f'<div class="tt-ovs">{columns}</div>'
 
 
 def recipe_card_key(entry: dict) -> str:
@@ -1228,13 +1255,15 @@ def _note_markup(text: str) -> str:
 
 
 # ================================================================ 실행
-def run_selected(dataset_id: str, on_progress=None, should_stop=None, *, fan_quiet: bool = True, monitor=None) -> dict:
+def run_selected(dataset_id: str, on_progress=None, should_stop=None, *, fan_quiet: bool = True, monitor=None,
+                 clock=None) -> dict:
     """고른 정답표를 dev/evaluation/run_evaluation 으로 새로 잰 결과. 새 run_id · 새 폴더.
 
     규칙  run_evaluation.run_dataset 에 RUN_OPTIONS 와 그 문맥 · 팬 소음 억제(fan_quiet_mode) · monitor · should_stop 을
           넘김. 판정은 전부 평가 쪽이 함. monitor 가 없으면 여기서 monitor_gpu.GpuMonitor 를 만듦
           run_dataset 이 Test Run 을 outputs/local_benchmark 에 저절로 남김. 폴더는 시작하자마자 생김
           run_evaluation 을 여기서 import 함. 탭을 열기만 해서는 계기판 모듈을 안 읽음
+          clock 이 있으면(_Job) resolve 를 clock.timed 로 감싸 추론 중인 구간을 알리고, 시작 머리를 clock.started 에 넘김
     제약  판정 · 채점을 여기서 하지 않는다. st.* 를 부르지 않는다 (백그라운드 thread 에서 불림)
     """
     from dev.evaluation import run_evaluation
@@ -1242,6 +1271,8 @@ def run_selected(dataset_id: str, on_progress=None, should_stop=None, *, fan_qui
 
     options = dict(RUN_OPTIONS)
     options["context"] = run_evaluation.context_payload(options["context_label"])
+    if clock is not None:
+        options.update(resolve=clock.timed(run_evaluation.resolve_via_api), on_start=clock.started)
     return run_evaluation.run_dataset(
         dataset_id, progress=on_progress, fan_quiet_mode=fan_quiet, monitor=monitor or monitor_gpu.GpuMonitor(),
         should_stop=should_stop, **options
@@ -1249,20 +1280,24 @@ def run_selected(dataset_id: str, on_progress=None, should_stop=None, *, fan_qui
 
 
 def resume_selected(kind: str, run_id: str, on_progress=None, should_stop=None, *, fan_quiet: bool = True,
-                    monitor=None) -> dict:
+                    monitor=None, clock=None) -> dict:
     """끝나지 않은 local 기록을 같은 run_id 로 이어 잰 결과. run_evaluation.resume 그대로.
 
     규칙  조건 · 문맥 · 부르는 순간은 기록에 저장된 것을 평가 쪽이 씀. 여기서 넘기지 않음
           팬 소음 억제는 실행 박자라 누른 순간의 화면 값(fan_quiet)을 넘김. 평가 쪽이 이 구간 값으로 기록함
           monitor 는 팬을 보는 자일 뿐임. 없으면 여기서 만듦. 실행 하드웨어는 저장된 것이 없을 때만 이 기계
+          clock 은 run_selected 와 같음
     제약  st.* 를 부르지 않는다 (백그라운드 thread 에서 불림)
     """
     from dev.evaluation import run_evaluation
     from dev.evaluation.engine import monitor_gpu
 
+    timing = {}
+    if clock is not None:
+        timing = {"resolve": clock.timed(run_evaluation.resolve_via_api), "on_start": clock.started}
     return run_evaluation.resume(
         kind, run_id, progress=on_progress, monitor=monitor or monitor_gpu.GpuMonitor(),
-        environment=monitor_gpu.environment(), should_stop=should_stop, fan_quiet_mode=fan_quiet,
+        environment=monitor_gpu.environment(), should_stop=should_stop, fan_quiet_mode=fan_quiet, **timing,
     )
 
 
@@ -1287,7 +1322,10 @@ class _Job:
           rows 는 이어 실행이면 전에 잰 줄부터 시작함
           fan_quiet 는 이 실행의 팬 소음 억제. 새로 실행 · 이어 실행 둘 다 누른 순간의 체크박스.
           도는 동안 체크박스가 이 값을 보임. monitor 는 평가 thread 에 넘기는 팬 보는 자 (없으면 None)
-    제약  st.* · session_state 를 만지지 않는다. 줄을 채점하지 않는다
+          도는 동안의 시간(live_times)은 여기서 셈. 평가가 시작 머리를 넘기면(started) 그때부터 벽시계를 새로 재고,
+          이어 실행이면 머리의 elapsed_s · fan_wait_s 와 전에 잰 줄의 추론 시간 합을 바탕으로 둠.
+          추론 시간은 timed 로 감싼 resolve 가 도는 구간만, 팬 대기는 monitor.live_wait_s 만 셈
+    제약  st.* · session_state 를 만지지 않는다. 줄을 채점하지 않는다. 기록에 시간을 적지 않는다 (기록은 평가 쪽 일)
     """
 
     def __init__(self, mode: str, dataset_id: str, planned: int, rows: list[dict] | None = None,
@@ -1297,6 +1335,12 @@ class _Job:
         self.kind, self.run_id = kind, run_id
         self.fan_quiet, self.monitor = bool(fan_quiet), monitor
         self._rows = list(rows or [])
+        self.meta: dict | None = None
+        self.started_at = datetime.datetime.now(datetime.timezone.utc).astimezone()
+        self._t0 = time.monotonic()
+        self._base = {"elapsed": 0.0, "inference": 0.0, "fan_wait": 0.0}
+        self._inferred = 0.0
+        self._inferring_since: float | None = None
         self._lock = threading.Lock()
         self._stop = threading.Event()
         self.finished = threading.Event()
@@ -1324,6 +1368,50 @@ class _Job:
     def fan_waiting(self) -> bool:
         """지금 팬 때문에 다음 발화를 기다리는 중인가."""
         return bool(getattr(self.monitor, "waiting", False))
+
+    def started(self, head: dict) -> None:
+        """평가가 첫 발화 앞에서 넘긴 meta 머리를 받음. 벽시계를 여기서 다시 재기 시작함 (run_evaluation on_start)."""
+        done = self.rows()
+        with self._lock:
+            self.meta = dict(head)
+            self._t0 = time.monotonic()
+            self._base = {
+                "elapsed": float(head.get("elapsed_s") or 0.0),
+                "inference": sum(float((r.get("timing") or {}).get("resolve_s") or 0.0) for r in done),
+                "fan_wait": float(head.get("fan_wait_s") or 0.0),
+            }
+
+    def timed(self, resolve):
+        """resolve 를 감싸 부르는 동안을 추론 중으로 셈. 반환값 · 예외는 그대로."""
+        def call(*args, **kwargs):
+            with self._lock:
+                self._inferring_since = time.monotonic()
+            try:
+                return resolve(*args, **kwargs)
+            finally:
+                with self._lock:
+                    self._inferred += time.monotonic() - self._inferring_since
+                    self._inferring_since = None
+        return call
+
+    def inferring(self) -> bool:
+        """지금 Resolve 를 부르는 중인가."""
+        return self._inferring_since is not None
+
+    def live_times(self, now: float | None = None) -> dict:
+        """지금 시점의 {"elapsed", "inference", "fan_wait"} 초. 셋 다 이 실행(이어 실행이면 지난 구간 포함)의 누적.
+
+        규칙  elapsed 는 시작 머리를 받은 뒤(또는 job 을 만든 뒤)의 벽시계. inference 는 부르는 중이면 그 몫까지.
+              fan_wait 는 monitor.live_wait_s (없으면 waited_s, monitor 가 없으면 0)
+        """
+        now = time.monotonic() if now is None else now
+        with self._lock:
+            base, t0 = dict(self._base), self._t0
+            inferred = self._inferred + (now - self._inferring_since if self._inferring_since is not None else 0.0)
+        live = getattr(self.monitor, "live_wait_s", None)
+        waited = live() if callable(live) else float(getattr(self.monitor, "waited_s", 0.0) or 0.0)
+        return {"elapsed": base["elapsed"] + (now - t0), "inference": base["inference"] + inferred,
+                "fan_wait": base["fan_wait"] + waited}
 
 
 # 이 process 에서 지금(또는 마지막으로) 도는 평가. 창이 여럿이어도 하나다.
@@ -1380,7 +1468,7 @@ def _start_new(dataset_id: str) -> None:
     fan_quiet = bool(st.session_state.get(FAN_QUIET_KEY, True))
     job = _Job(NEW, dataset_id, planned, fan_quiet=fan_quiet, monitor=_new_monitor())
     if start_job(job, lambda: run_selected(dataset_id, job.add, job.stop_requested, fan_quiet=job.fan_quiet,
-                                           monitor=job.monitor)):
+                                           monitor=job.monitor, clock=job)):
         _watch(job)
 
 
@@ -1404,7 +1492,7 @@ def _start_resume(stored: dict) -> None:
     job = _Job(RESUME, stored["dataset_id"], planned, result["cases"], kind=stored["kind"], run_id=run_id,
                fan_quiet=bool(st.session_state.get(FAN_QUIET_KEY, True)), monitor=_new_monitor())
     if start_job(job, lambda: resume_selected(job.kind, job.run_id, job.add, job.stop_requested, fan_quiet=job.fan_quiet,
-                                              monitor=job.monitor)):
+                                              monitor=job.monitor, clock=job)):
         _watch(job)
 
 
@@ -1718,9 +1806,23 @@ def _render_header(stored: dict, busy: bool = False) -> tuple[str, dict | None]:
     return dataset_id, result
 
 
-def _render_overview(result: dict | None) -> None:
-    """실행 개요 한 판. 결과가 없으면 안 그림."""
-    info = overview(result)
+def live_record(job: "_Job") -> dict:
+    """도는 job 의 개요용 결과 한 벌. {"meta", "summary", "cases", "planned"}.
+
+    규칙  줄 · 합계는 live_result. meta 는 평가가 넘긴 시작 머리(job.meta). 아직 안 넘겼으면 아는 것만
+          (Test Suite 는 고른 dataset_id, 평가 시작 시간은 job 을 만든 시각). 모르는 칸은 비워 둠
+    제약  값을 지어내지 않는다
+    """
+    record = live_result(job.rows(), job.planned)
+    meta = dict(job.meta or {})
+    meta.setdefault("started_at", job.started_at.isoformat())
+    meta.setdefault("suite", {"dataset_id": job.dataset_id})
+    return {**record, "meta": meta}
+
+
+def _render_overview(result: dict | None, job: "_Job | None" = None) -> None:
+    """실행 개요 한 판. 도는 job 이 있으면 그 실시간 값(live_record · live_times), 없으면 결과. 둘 다 없으면 안 그림."""
+    info = overview(live_record(job), job.live_times()) if job is not None else overview(result)
     if info is not None:
         st.markdown(overview_markup(info), unsafe_allow_html=True)
 
@@ -2026,7 +2128,8 @@ def _render_status(stored: dict | None) -> None:
 
 
 def _render_body(ratios: dict, dataset_id: str, result: dict | None) -> None:
-    """실행 제어 · 알림 · 전체 결과 · 기능별 결과 · 보기 필터 · 결과 목록(머리에 검색 · 정렬) · 상세. 도는 동안 fragment 로 스스로 다시 그려짐.
+    """실행 개요 · 모델 설정 · 실행 제어 · 알림 · 전체 결과 · 기능별 결과 · 보기 필터 · 결과 목록 · 상세.
+    도는 동안 fragment 로 스스로 다시 그려짐 (실행 개요의 시간이 1초마다 늘어나는 까닭).
 
     입력  result 는 고른 정답표의 마지막 결과(불러온 기록 포함). 도는 동안에는 안 봄
     규칙  도는 job 이 있으면 표 · 요약은 job.rows() (끝난 줄만. 이어 실행이면 전에 잰 줄 포함) 를 대기 줄 위에 얹은 것
@@ -2043,6 +2146,8 @@ def _render_body(ratios: dict, dataset_id: str, result: dict | None) -> None:
     stored = st.session_state.get(RESULT_KEY) or {}
     record = stored if stored.get("dataset_id") == dataset_id and result is not None else None
 
+    _render_overview(result, job if busy else None)
+    _render_conditions({"meta": job.meta} if busy and job.meta else None if busy else result)
     _render_controls(job if busy else None, record, dataset_id)
     _render_status(None if busy else record)
 
@@ -2092,7 +2197,7 @@ def render_test_tab(ratios: dict) -> None:
           결과는 session_state 의 마지막 실행 하나(방금 잰 것 또는 불러온 실행 기록). 고른 정답표의 것일 때만 얹음
           이 창이 지켜보던 job 이 끝났으면 맨 먼저 그 결과를 받아 옴(_absorb)
           다른 창이 시작한 job 이 돌고 있어도 그것을 지켜봄. 두 번째 실행을 못 하게 단추가 「중지」로 보임
-          실행 개요 · 기능별 결과는 결과가 있고 도는 중이 아닐 때만
+          실행 개요는 도는 동안에도 보임 (그 job 의 실시간 값). 기능별 결과는 결과가 있고 도는 중이 아닐 때만
           몸통(_render_body)은 도는 동안 POLL_SECONDS 마다 스스로 다시 그려짐
     제약  「새로 실행」 · 「이어 실행」을 누르지 않은 회차에는 평가 · LLM 을 부르지 않는다.
           필터 · 검색 · 정렬 · 행 선택 · 탭 전환이 다시 재게 하면 한 번에 수십 분이 듦
@@ -2109,8 +2214,6 @@ def render_test_tab(ratios: dict) -> None:
 
         dataset_id, result = _render_header(st.session_state.get(RESULT_KEY) or {}, busy)
         shown = None if busy else result
-        _render_overview(shown)
-        _render_conditions(shown)
         st.fragment(_render_body, run_every=POLL_SECONDS if busy else None)(ratios, dataset_id, shown)
 
 
@@ -2137,31 +2240,52 @@ def panel_css() -> str:
 .st-key-test_tab .tt-title { font-size: 1.35rem; font-weight: 700; line-height: 1.3; padding-bottom: 0.35rem; }
 
 /* ---------------------------------------------- 실행 개요
-   칸은 내용 폭만 차지하고 사이에 같은 틈만 둔다. 남는 폭을 나눠 갖지 않고(flex-grow 없음), 모자라면 다음 줄로 넘어간다.
-   테두리 상자도 내용 폭까지만. GPU 이름처럼 실제로 긴 글자만 칸을 넓히고, 그것도 상한에서 줄을 바꾼다. */
+   상자는 탭 폭을 다 쓰고, 안은 열 다섯(OVERVIEW_COLUMNS)의 grid 다. 열 사이 가는 세로선이 섹션 묶음의 경계다.
+   열 폭은 최소 폭 + 비율이라 넓은 창에서 고르게 늘고, 실행 환경(긴 GPU 이름) 열이 가장 넓다.
+   섹션 안은 글자 | 값 두 칸 grid 라 값이 열 오른쪽 끝으로 멀리 밀려나지 않는다.
+   창이 좁으면(1200px 이하) 열이 15rem 이상 폭으로 다음 줄에 넘어가고, 세로선은 뺀다. 긴 실행 환경 열은 두 칸을 쓴다. */
 .st-key-test_tab .tt-ovs {
-  display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%;
-  gap: 0.6rem 2.2rem; font-size: 0.82rem; padding: 0.65rem 0.95rem;
+  display: grid; width: 100%; box-sizing: border-box;
+  grid-template-columns: minmax(11rem, 1fr) minmax(15.5rem, 1.25fr) minmax(10rem, 0.9fr) minmax(8rem, 0.75fr) minmax(16rem, 1.6fr);
+  font-size: 0.82rem; padding: 0.7rem 0.2rem;
   border: 1px solid var(--tt-line); border-radius: 10px; background: var(--tt-softer);
 }
-.st-key-test_tab .tt-ov { flex: 0 1 auto; min-width: 0; max-width: 27rem; }
+.st-key-test_tab .tt-ovc {
+  min-width: 0; padding: 0 1.1rem; border-left: 1px solid var(--tt-line);
+  display: flex; flex-direction: column; gap: 0.55rem;
+}
+.st-key-test_tab .tt-ovc:first-child { border-left: 0; }
+@media (max-width: 1200px) {
+  .st-key-test_tab .tt-ovs { grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr)); row-gap: 0.8rem; }
+  .st-key-test_tab .tt-ovc { border-left: 0; }
+  .st-key-test_tab .tt-ovc:last-child { grid-column: span 2; }
+}
+@media (max-width: 700px) {
+  .st-key-test_tab .tt-ovc:last-child { grid-column: auto; }
+}
+.st-key-test_tab .tt-ov { min-width: 0; }
+.st-key-test_tab .tt-ov-rows {
+  display: grid; grid-template-columns: max-content minmax(0, max-content); column-gap: 1.1rem; line-height: 1.55;
+}
+.st-key-test_tab .tt-ov-row { display: contents; }
 /* 도움말이 있는 줄은 글자 뒤 작은 「?」 아이콘(GPU 팬 소음 억제 옆 아이콘과 같은 모양)에만 tooltip 이 붙는다.
-   tooltip 은 줄 아래 고정 폭으로 떠서 오른쪽 값을 덮어도 되고, 칸 폭을 넓히지 않는다. */
-.st-key-test_tab .tt-ov-row { position: relative; }
+   tooltip 은 아이콘 아래 고정 폭으로 떠서 오른쪽 값을 덮어도 되고, 칸 폭을 넓히지 않는다. */
 .st-key-test_tab .tt-help {
-  display: inline-flex; align-items: center; justify-content: center; vertical-align: 0.05rem;
+  position: relative; display: inline-flex; align-items: center; justify-content: center; vertical-align: 0.05rem;
   width: 0.85rem; height: 0.85rem; margin-left: 0.3rem; border: 1px solid currentColor; border-radius: 50%;
   font-size: 0.6rem; font-weight: 700; line-height: 1; color: rgba(140, 150, 165, 0.95);
 }
 /* 흐리게 하는 데 opacity 를 쓰지 않는다 — opacity 는 쌓임 맥락을 만들어 tooltip 까지 비치고 아래 줄 뒤로 깔린다.
    그래서 아이콘은 흐린 줄 글자(.tt-ov-sub) 밖에 둔다 */
 .st-key-test_tab .tt-help:hover { color: inherit; }
-.st-key-test_tab .tt-help[data-tip]::after { left: 0; right: auto; top: 100%; width: 18rem; }
-.st-key-test_tab .tt-ov-k { opacity: 0.6; font-size: 0.74rem; margin-bottom: 0.2rem; }
-.st-key-test_tab .tt-ov-row { display: flex; justify-content: space-between; gap: 0.8rem; line-height: 1.55; }
+.st-key-test_tab .tt-help[data-tip]::after { left: -0.2rem; right: auto; top: 100%; width: 18rem; }
+.st-key-test_tab .tt-ov-k {
+  opacity: 0.6; font-size: 0.72rem; font-weight: 600; letter-spacing: 0.02em; margin-bottom: 0.2rem;
+}
+.st-key-test_tab .tt-ov-label { white-space: nowrap; }
 .st-key-test_tab .tt-ov-sub { opacity: 0.65; }
 .st-key-test_tab .tt-ov-v { font-weight: 600; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; text-align: right; }
-.st-key-test_tab .tt-ov-row:only-child .tt-ov-v { text-align: left; }
+.st-key-test_tab .tt-ov-row > .tt-ov-v:only-child { grid-column: 1 / -1; text-align: left; }
 .st-key-test_tab .tt-sum-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin: 0.2rem 0 0.45rem; }
 
 /* ---------------------------------------------- 기능별 결과

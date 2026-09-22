@@ -123,6 +123,7 @@ class GpuMonitor:
           부르는 중에는 안 불림. 그래서 부르는 중인 Resolve 를 팬 때문에 끊는 일이 없음
           waiting 은 지금 팬 때문에 기다리는 중인가. 화면이 실행 상태 글자에 씀
           waited_s 는 이 monitor 가 팬 때문에 기다린 초의 합. 기다리다 StopRun 으로 멈춰도 거기까지 셈
+          live_wait_s() 는 지금 기다리는 중이면 그 몫까지 더한 합. 화면이 도는 동안의 GPU 누적 대기시간에 씀
     제약  GPU 설정을 바꾸지 않는다. 판정 · 결과 줄에 손대지 않는다. 온도 문턱을 두지 않는다
     """
 
@@ -130,6 +131,12 @@ class GpuMonitor:
         self._sampler, self._sleep, self._clock = sampler, sleep, clock
         self.waiting = False
         self.waited_s = 0.0
+        self._since = None
+
+    def live_wait_s(self) -> float:
+        """지금까지 팬 때문에 기다린 초. 기다리는 중이면 이번 기다림의 지난 몫까지."""
+        since = self._since
+        return self.waited_s + (self._clock() - since if since is not None else 0.0)
 
     def before_case(self, done: int, *, fan_quiet: bool, should_stop=None) -> float:
         """다음 발화를 불러도 되나 보고 필요하면 기다림. 기다린 초.
@@ -151,6 +158,7 @@ class GpuMonitor:
         if peak is None or peak < FAN_PAUSE_AT:
             return 0.0
         started = self._clock()
+        self._since = started
         self.waiting = True
         try:
             while peak is not None and peak > FAN_RESUME_AT:
@@ -159,9 +167,10 @@ class GpuMonitor:
                 self._sleep(FAN_POLL_S)
                 peak = _peak_fan(self._check(done))
         finally:
-            self.waiting = False
             waited = self._clock() - started
             self.waited_s += waited
+            self._since = None
+            self.waiting = False
         return waited
 
     def _check(self, done: int) -> list[dict] | None:
