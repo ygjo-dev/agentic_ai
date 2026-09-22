@@ -3229,6 +3229,34 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-22 (밤) · Accepted Recipe 39 개 실행 배선 전수 대조 · 결함 0 · 고친 것 없음
+
+재기만 했다. 게시된 Recipe.execution 을 다섯 원천과 맞댔다.
+
+```
+온톨로지                노드 tool.id · parameters · outputs(list/pick first -> <list>.0.) · source.fields
+Gateway 스키마 snapshot  dev/tools/probe_out/tools.json (09-09). asap-mcp-core 19 도구는
+                         KRRI_ASAP ASAP-mcp/main.py get_tools() 원문과 properties · required 0 차이
+MCP 처리부              execute_tool_by_name 분기가 보내는 칸을 다 읽는가 (bbox 는 _parse_bbox_input)
+기록된 응답             probe_out/<도구>.*.json 에서 outputs 경로가 실재하는가
+KRRI 실행기             _resolve_reference 이름 특례 · 자동 point_radius_to_bbox 가 발동하는 자리
+KRRI Web 화면 문맥       selectedLocation {lon, lat, label, source} · view.bbox [[w,s],[e,n]]
+```
+
+```
+recipe 39   PASS 39 · FIXED 0 · NEEDS HUMAN DECISION 0
+도구 21     서버 3 (asap-mcp-core 19 · r5-server 1 · otp-router 1)
+```
+
+- 온톨로지 parameters 중 게시에서 빠진 칸 16 자리는 전부 그 타입을 사슬이 안 내놓는 자리다
+  (map_extent 로 시작하면 query 가, keyword 로 시작하면 bbox 가 빠진다). 배선 누락이 아니다
+- KRRI 이름 특례는 한 자리도 안 탄다. 앞 단계 참조는 location.0 · bbox.0.0 · items.0.code 처럼
+  목록 번호로 끝나고, 화면 lat · lon 은 selectedLocation 에 location · bbox 칸이 없어 get 그대로다
+- transform 없는 단계에 반경 칸이 없어 자동 bbox 는 발동 자리가 0 이다
+- 반복할 가치가 있는 넷(snapshot 에 없는 도구 · tool.id 불일치 · required 누락 · outputs 경로 실재)을
+  test_wiring_contract 에 더했다. 온톨로지로 다시 compile 해 맞대는 대조는 test_published_execution 의
+  방침(다시 compile 하지 않는다)과 부딪혀 시험으로 남기지 않았다
+
 ### 2026-09-22 · 기준 벤치마크를 팬 44 · 40 박자의 새 v1 · v2 로 바꿈 · Evaluation COMPLETE / FROZEN
 
 이번 작업에서 재지 않았다 (LLM 호출 0). 아래 두 기록은 9c59cef 화면 「새로 실행」(GPU 팬 소음 억제 켬)으로

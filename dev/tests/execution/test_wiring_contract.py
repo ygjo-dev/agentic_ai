@@ -209,6 +209,89 @@ def test_the_check_actually_has_schemas_to_compare_against():
     assert list(_rows()), "대조된 자리가 하나도 없다"
 
 
+def test_every_published_step_calls_a_tool_the_schema_snapshot_knows():
+    """_rows 는 snapshot 에 없는 도구를 건너뛴다. 건너뛴 자리가 없어야 위 시험이 전부를 본 것이다."""
+    schemas = _schemas()
+    모르는_도구 = sorted({f"{recipe_id} -> {entry['tool']}" for recipe_id, entry in _published_steps() if entry["tool"] not in schemas})
+
+    assert 모르는_도구 == [], f"스키마 snapshot 에 없는 도구를 부른다: {모르는_도구}"
+
+
+def test_every_published_step_calls_the_tool_its_node_names_in_the_ontology():
+    """게시된 server_id · tool 은 그 노드의 tool.id 그대로다. 다르면 다른 도구가 불린다."""
+    어긋난_곳 = [
+        f"{recipe_id} × {entry['node']}: {entry['server_id']}/{entry['tool']} ≠ {ONTOLOGY.tool_of(entry['node'])['id']}"
+        for recipe_id, entry in _published_steps()
+        if f"{entry['server_id']}/{entry['tool']}" != ONTOLOGY.tool_of(entry["node"])["id"]
+    ]
+
+    assert 어긋난_곳 == [], "\n  ".join(어긋난_곳)
+
+
+def test_every_required_field_of_the_tool_is_always_sent():
+    """required 칸이 빠지면 KRRI 실행기가 부르기 전에 그 단계를 실패로 멈춘다.
+
+    조건(if_endswith · unless_endswith)이 붙은 칸은 인자에 따라 빠지므로 required 를 채운 것으로
+    치지 않는다. transform 단계는 게시된 input 이 이미 inputAdapter 뒤의 칸이다.
+    """
+    schemas = _schemas()
+    빠진_칸 = []
+    for recipe_id, entry in _published_steps():
+        always = {
+            field for field, expression in entry["input"].items()
+            if not (isinstance(expression, dict) and set(expression) & set(workflow_materializer._CONDITIONS))
+        }
+        missing = schemas[entry["tool"]][1] - always
+        if missing:
+            빠진_칸.append(f"{recipe_id} × {entry['node']} -> {entry['tool']} : {sorted(missing)}")
+
+    assert 빠진_칸 == [], "required 칸을 늘 보내지 않는 자리:\n  " + "\n  ".join(빠진_칸)
+
+
+def _recorded_results(tool):
+    """probe_out 에 남은 그 도구의 성공 응답 본문."""
+    results = []
+    for path in sorted(SCHEMA_PATH.parent.glob(f"{tool}.*.json")):
+        body = json.loads(path.read_text(encoding="utf-8"))
+        if isinstance(body, dict) and {"status", "body"} <= set(body):
+            body = body["body"] if body["status"] == 200 else None
+        if isinstance(body, dict) and "error" not in body:
+            results.append(body)
+    return results
+
+
+def _reaches(body, raw_path):
+    """점으로 이은 dict 키 · 목록 번호 경로가 그 응답 안에 있는가. KRRI 실행기가 푸는 것과 같은 길."""
+    current = body
+    for segment in raw_path.split("."):
+        if isinstance(current, dict) and segment in current:
+            current = current[segment]
+        elif isinstance(current, list) and segment.isdigit() and int(segment) < len(current):
+            current = current[int(segment)]
+        else:
+            return False
+    return True
+
+
+def test_every_output_path_a_later_step_reads_exists_in_a_recorded_response():
+    """outputs 의 경로가 실제 응답에 없으면 뒤 단계 참조가 null 로 풀린다. 오류가 아니라 빈 입력이 된다.
+
+    기록된 응답 중 하나에라도 있으면 된다. 0건 응답에는 items.0 이 없다.
+    """
+    없는_경로 = []
+    for recipe_id, entry in _published_steps():
+        for type_id, reading in (entry.get("outputs") or {}).items():
+            recorded = _recorded_results(entry["tool"])
+            raw_paths = [reading["value"]] if "value" in reading else list(reading["fields"].values())
+            없는_경로 += [
+                f"{recipe_id} × {entry['node']} -> {type_id}: {raw_path} ({len(recorded)}개 응답)"
+                for raw_path in raw_paths
+                if not any(_reaches(body, raw_path) for body in recorded)
+            ]
+
+    assert 없는_경로 == [], "기록된 응답에 없는 출력 경로:\n  " + "\n  ".join(없는_경로)
+
+
 def _published_inputs(node_id):
     """그 노드가 게시된 도구 단계로 나가는 input 전부."""
     return [entry["input"] for _recipe_id, entry in _published_steps() if entry["node"] == node_id]
