@@ -3,13 +3,14 @@
 평가는 dev/evaluation 이 한다. 이 탭은 정답표를 고르고, 「새로 실행」 · 「이어 실행」을 누르면
 dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝난 줄을 받아 그린다.
 
-    제목 · 테스트 세트 · 실행 기록
-    실행 개요 (테스트 세트 · 시작 시간 · 전체 추론시간 · 추론 지연시간 · 발화 · 모델 설정 · 실행 환경)
-    모델 설정 (접힘. 파일 · 실행 기록 id 까지)
+    제목(발화 해석 평가) · Test Suite · 실행 기록
+    실행 개요 (Test Suite · 평가 시작 시간 · 전체 추론시간 · 발화당 추론 시간 · 평가 결과 · 모델 · 실행 환경)
+    모델 설정 (자세히 보기) (접힘. provider · 역할 · Temperature 같은 요청 설정 · 파일 · 실행 기록 id)
     실행 상태 · GPU 팬 소음 억제 · 새로 실행 · 이어 실행 · 중지
-    전체 결과 (전체 · 성공 · 실패, 오류가 있을 때만 오류. 실패 원인 셋은 실패 카드 안에)
-    기능별 결과 (접힘. 기능마다 카드 하나 — 번호와 x/y 둘만)
-    보기 필터 · 기능 고르기 · 발화 검색 · 정렬
+    전체 결과 (낮은 카드 한 줄. 전체 · 성공 · 실패, 오류가 있을 때만 오류. 실패 원인 셋은 실패 카드 오른쪽에)
+    기능별 결과 (접힘. 기능마다 카드 단추 하나 — 번호와 x/y 둘만. 범위 밖 발화가 있으면 맨 뒤에 범위 밖. 누르면 표를 거름)
+    보기 필터 (전체 | 실패 묶음: 실패 · 기능 선택 · 인자 추출 · 범위 밖 처리)
+    테스트 결과 N건 · 발화 검색 · 정렬 | 선택한 발화 상세
     결과 목록 (한 발화 한 줄, 고정 높이) | 선택한 발화 상세 (고정 높이)
 
 **실행은 백그라운드 thread 하나가 한다(_Job).** 화면 script 는 그 상태를 읽기만 하고, 도는 동안
@@ -22,23 +23,23 @@ dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝�
                 조건(run_evaluation.resume_check)이 다르면 단추는 보이되 눌리지 않고, 다른 조건을 펼쳐 보인다
     중지        지금 부르고 있는 발화 하나는 끝까지 기다려 남기고, 다음 발화는 안 부른다.
                 기록은 run.json 없이 meta.json + cases.jsonl 로 남아 「중단됨」이 된다
-    그 밖의 조작(테스트 세트 · 기록 고르기 · 필터 · 정렬 · 행 고르기)은 폴더를 만들지 않는다
+    그 밖의 조작(Test Suite · 기록 고르기 · 기능 카드 · 필터 · 정렬 · 행 고르기)은 폴더를 만들지 않는다
 
 「GPU 팬 소음 억제」는 실행 박자일 뿐이라 누르는 순간의 화면 값을 쓴다. 새로 실행이면 meta.fan_quiet_mode,
 이어 실행이면 그 구간의 값이 meta.resumed_fan_quiet_mode 에 남는다. 이어 실행 조건이 아니다.
 도는 동안에는 눌리지 않고 그 실행의 값을 보인다.
 
-**테스트 세트는 고르는 것이다.** 고른 정답표가 발화 목록 · 발화 수 · 실행 · 저장한 실행 기록의
+**Test Suite 는 고르는 것이다.** 고른 정답표가 발화 목록 · 발화 수 · 실행 · 저장한 실행 기록의
 신원을 함께 정한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다.
 
-낱말은 dev/evaluation/engine/manage_benchmark 머리 주석과 같다 — 정답표 한 벌(Test Suite)은 「테스트 세트」,
+낱말은 dev/evaluation/engine/manage_benchmark 머리 주석과 같다 — 정답표 한 벌은 화면에서도 「Test Suite」,
 한 번 잰 것(Test Run)은 「실행 기록」, 발화 하나의 결과(Case Result)는 「발화 결과」다.
 
 **이 화면이 보는 것은 둘이다 — 기능을 옳게 골랐나, 그 기능이 읽는 인자를 옳게 뽑았나.**
 workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지만 여기서 보이지 않는다.
 실행 하드웨어는 재현을 위해 GPU 이름 · VRAM 만 보인다. 온도는 보이지 않는다.
 
-**결과 표는 고른 테스트 세트의 발화 목록 한 벌이다.** 테스트 세트를 고르면 그 정답표 YAML 의 발화가
+**결과 표는 고른 Test Suite 의 발화 목록 한 벌이다.** Test Suite 를 고르면 그 정답표 YAML 의 발화가
 전부 「대기」 줄로 바로 선다(suite_rows). LLM 은 안 부른다. 실행은 줄을 덧붙이지 않고, 발화 하나가
 끝날 때마다 같은 case_id 의 줄을 결과로 갈아 끼운다(table_rows). 실행 중에도 줄 수가 그대로다.
 
@@ -46,21 +47,28 @@ workflow 를 부를 수 있었나(materialize 판정)는 결과에 남아 있지
 실패 셋은 모델이 잘못한 것이고, 오류(failure_stage=error)는 예외로 Resolve 결과를 못 받은 것이라 실패에 안 센다.
 KRRI · MCP 실행 오류가 아니다. 대기는 아직 안 돈 것이다.
 
+**추론 시간은 소수 둘째 자리로 보인다(_seconds).** 실행 개요의 Median · P95 · Max 와 표 · 상세의 발화별 값이
+같은 자릿수다. 글자만 반올림하고 결과의 값은 그대로다.
+
 **정렬은 파이썬이 한다(sort_rows).** 정렬 칸 · 방향을 session_state 에 두고 표에 넘기기 전에 줄을 세운다.
 st.dataframe 의 머리글 정렬은 브라우저에만 있어 행을 누르는 rerun 에 처음 차례로 돌아갔다. 그래서 끈다 —
 칸 고르기(single-column)를 켜면 머리글 정렬이 꺼지고, 고른 칸은 _keep_row_selected 가 버린다.
 
 **새로 잰 결과와 불러온 실행 기록이 같은 길로 그려진다.** 실행 기록을 고르면 manage_benchmark.load_benchmark 가
-돌려준 결과 한 벌을 방금 잰 결과와 같은 자리(RESULT_KEY)에 두고, 테스트 세트 고르기를 그 기록의 정답표로
+돌려준 결과 한 벌을 방금 잰 결과와 같은 자리(RESULT_KEY)에 두고, Test Suite 고르기를 그 기록의 정답표로
 맞춘다. 표는 그 정답표의 대기 줄 위에 저장된 결과를 case_id 로 얹은 것이다. 그리는 함수가 따로 없다.
 실행 기록 목록은 manage_benchmark.list_benchmarks 하나가 official · local 을 합쳐 준다. 이 탭은 폴더를 안 뒤진다.
-테스트 세트를 바꾸면 지난 결과 · 고른 실행 기록을 지우고 새 세트의 대기 줄만 남긴다.
+Test Suite 를 바꾸면 지난 결과 · 고른 실행 기록 · 고른 기능 카드를 지우고 새 세트의 대기 줄만 남긴다.
+
+**표를 거르는 것은 셋이고 서로 따로 걸린다.** 보기 필터(실패 · 실패 단계) · 기능별 결과 카드(기능 하나 또는 범위 밖) ·
+발화 검색. 셋이 겹친 줄만 남는다. 카드는 하나만 고르고, 고른 카드를 다시 누르면 푼다. 고른 기능은 widget 값이 아니라
+session_state 값(GROUP_KEY)이다. 기능 고르기 목록(selectbox)은 두지 않는다 — 같은 거르기를 두 곳에서 하지 않는다.
 
 **여기서 채점하지 않는다.** 성공 · 실패 · 실패 단계(passed · failure_stage) · 기능이 맞았나
 (recipe_correct) · 정답표에 적은 값마다 맞았나(spoken_fields) 는 run_evaluation 결과에 이미 있다.
 이 탭은 그 칸을 읽어 글자와 색으로 바꾼다. 값끼리 맞대지 않는다.
 
-**LLM 은 「새로 실행」 · 「이어 실행」을 누를 때만 부른다.** 결과는 session_state 에 두고 필터 · 검색 ·
+**LLM 은 「새로 실행」 · 「이어 실행」을 누를 때만 부른다.** 결과는 session_state 에 두고 기능 카드 · 필터 · 검색 ·
 정렬 · 행 선택 · 탭 전환은 그것만 다시 그린다.
 
 **상세는 성공과 실패가 같은 틀이다.** 정답표와 AI 모델 출력을 좌우로 맞대고,
@@ -72,15 +80,15 @@ st.dataframe 의 머리글 정렬은 브라우저에만 있어 행을 누르는 
 그대로 나온다 — 새 인자가 들어와도 여기를 안 고친다.
 
 **기능 번호가 보이는 자리에는 그 기능이 무엇을 하는지가 마우스에 붙는다.** 번호를 그리는
-자리는 전부 `number_markup` 하나를 지난다 (기대 기능 · AI 가 고른 기능 · 되묻기 후보 기능 · 후보 기능 ·
-기능별 결과 · 모델 판단 문장 안의 번호). 설명의 원천은 run_evaluation 결과 meta.functions 하나고,
-화면에 {번호: 설명} 표를 따로 두지 않는다. 설명은 브라우저 title 이 아니라 data-tip 을 CSS 가
+자리는 `number_markup` 하나를 지난다 (기대 기능 · AI 가 고른 기능 · 되묻기 후보 기능 · 후보 기능 ·
+모델 판단 문장 안의 번호). 기능별 결과 카드는 단추라 HTML 을 못 받아 같은 tooltip 을 카드 key 의 CSS 로
+그린다(recipe_card_css). 설명의 원천은 run_evaluation 결과 meta.functions 하나고,
+화면에 {번호: 설명} 표를 따로 두지 않는다. 설명은 브라우저 title 이 아니라 CSS 가
 그리는 tooltip 이다 (panel_css 의 TIP_DELAY_MS) — title 은 뜨기까지의 지연을 바꿀 수 없다.
 
-    ★ 두 자리는 못 붙인다. 결과 목록 표의 「기능」 칸과 기능 고르기 목록이다.
-      st.dataframe 은 칸 값마다의 tooltip 을 받는 파이썬 API 가 없고(Streamlit 1.62 의
-      column_config 는 칸 머리의 help 만 받는다), st.selectbox 도 보기마다의 tooltip 이 없다.
-      둘 다 고르면 상세 칸에 그 기능의 설명이 그대로 나온다.
+    ★ 한 자리는 못 붙인다. 결과 목록 표의 「기능」 칸이다.
+      st.dataframe 은 칸 값마다의 tooltip 을 받는 파이썬 API 가 없다(Streamlit 1.62 의
+      column_config 는 칸 머리의 help 만 받는다). 줄을 고르면 상세 칸에 그 기능의 설명이 그대로 나온다.
 
       Result-grid per-cell feature tooltip: deferred until later UI/chart refinement
       because native Streamlit 1.62 st.dataframe has no per-cell tooltip API.
@@ -142,14 +150,15 @@ ERROR_FILTER = ERROR_TEXT
 # 결과 칸 글자의 차례. 결과로 정렬할 때 이 차례다. 대기는 값이 없는 줄이라 늘 뒤에 간다
 RESULT_ORDER = (SUCCESS_TEXT, *FAILURE_FILTERS, ERROR_TEXT)
 
-# 결과 표를 세울 수 있는 칸. 값이 없는 줄(대기 · 지연시간 없음)은 방향과 상관없이 뒤에 간다
-SORT_COLUMNS = ("번호", "기능", "발화", "결과", "추론 지연시간")
+# 결과 표를 세울 수 있는 칸. 값이 없는 줄(대기 · 추론 시간 없음)은 방향과 상관없이 뒤에 간다
+SORT_COLUMNS = ("번호", "기능", "발화", "결과", "추론 시간")
 ASCENDING, DESCENDING = "오름차순", "내림차순"
 SORT_ORDERS = (ASCENDING, DESCENDING)
 SORT_ORDER_LABELS = {ASCENDING: "↑ 오름차순", DESCENDING: "↓ 내림차순"}
 
-# 기능 고르기의 두 자리. 나머지는 기대 recipe id 다.
+# 기능 자리의 두 값. 나머지는 기대 recipe id 다. 범위 밖은 기능이 아니라 거르기 위한 자리일 뿐이다
 ALL_GROUPS, OUT_OF_SCOPE_GROUP = "__all__", "__out_of_scope__"
+OUT_OF_SCOPE_TEXT = "범위 밖"
 
 NONE_TEXT = "없음"
 # 아직 안 돈 발화. 성공도 실패도 아니다
@@ -173,14 +182,17 @@ FAN_QUIET_HELP = "GPU 팬 속도가 높아지면 다음 발화를 잠시 기다�
 # 도는 동안 팬 때문에 다음 발화를 기다릴 때 실행 상태 글자 끝에 붙는 말
 FAN_WAIT_TEXT = "GPU 팬 안정 대기 중"
 
-# 모델 설정 칸. 화면 글자 -> run_evaluation 결과 meta.conditions 의 칸. 파일 셋은 경로만 보임
+# 모델 설정 (자세히 보기) 칸. 화면 글자 -> run_evaluation 결과 meta.conditions 의 칸. 파일 · 폴더는 경로만 보임.
+# 모델 이름은 실행 개요에 있어 여기 되풀이하지 않는다
 CONDITION_ROWS = (
-    ("모델", "model"),
     ("provider", "provider"),
     ("프롬프트 파일", "prompt"),
     ("응답 형식 파일", "response_schema"),
     ("기능 정의 파일", "menu"),
+    ("게시 자산", "registry"),
 )
+# 실행 환경의 VRAM 줄 글자. 값은 GPU 한 장의 총량이다
+VRAM_LABEL = "VRAM (GPU 1개당)"
 
 # provider 요청 설정(meta.conditions.request)의 화면 이름. 여기 없는 칸은 그 이름 그대로 나온다.
 REQUEST_LABELS = {
@@ -198,9 +210,9 @@ SELECTED_KEY = "test_selected_id"
 LIST_VIEW_KEY = "test_list_view"     # 표를 마지막으로 그린 (보기, 검색어)
 LIST_ROUND_KEY = "test_list_round"   # (보기, 검색어)가 바뀐 횟수. 표 key 에 들어감
 SAVED_KEY = "test_saved_run"         # 실행 기록 고르기 widget. 값은 "<kind>:<run_id>"
-GROUP_KEY = "test_group"             # 기능 고르기 widget
+GROUP_KEY = "test_group"             # 기능별 결과 카드로 고른 기능 자리. widget 이 아니라 값
 SAVED_RESET_KEY = "test_saved_reset" # 다음 회차에 실행 기록 고르기를 「불러올 기록 고르기」로 되돌림
-DATASET_KEY = "test_set"             # 테스트 세트 고르기 widget
+DATASET_KEY = "test_set"             # Test Suite 고르기 widget
 LOAD_ERROR_KEY = "test_load_error"   # 실행 기록을 못 읽었을 때의 문장
 FILTER_KEY = "test_filter"           # 보기 필터 widget
 SORT_COLUMN_KEY = "test_sort_column" # 정렬 칸 widget. 값은 SORT_COLUMNS 중 하나
@@ -308,7 +320,7 @@ def _suite_rows(path: str, modified: int) -> list[dict]:
 
 
 def suite_rows(dataset_id: str) -> list[dict]:
-    """고른 테스트 세트의 결과 표 뼈대. 실행이 도는 발화마다 대기 줄 하나, 정답표 차례.
+    """고른 Test Suite 의 결과 표 뼈대. 실행이 도는 발화마다 대기 줄 하나, 정답표 차례.
 
     출력  결과 줄과 같은 앞머리(score.case_head)에 pending True · passed None. 못 찾으면 빈 목록
     규칙  실행(run_evaluation.run_dataset)이 도는 발화와 같은 것(enabled)만. 정답표 파일에서 셈
@@ -355,7 +367,7 @@ def row_group(row: dict) -> str:
 
 
 def filter_results(rows: list[dict], view: str, query: str = "", group: str = ALL_GROUPS) -> list[dict]:
-    """보기 필터 · 기능 고르기 · 발화 검색을 건 목록.
+    """보기 필터 · 고른 기능 · 발화 검색을 건 목록. 셋은 서로 따로 걸려 겹친 것만 남음.
 
     입력  run_evaluation 결과 cases. view 는 FILTERS 중 하나. 모르는 값이면 전체
           group 은 ALL_GROUPS · OUT_OF_SCOPE_GROUP · 기대 recipe id
@@ -386,21 +398,10 @@ def filter_results(rows: list[dict], view: str, query: str = "", group: str = AL
 
 
 def group_options(rows: list[dict]) -> list[str]:
-    """기능 고르기에 보일 자리. 전체 · 결과에 나온 기대 recipe (번호 차례) · 범위 밖(있을 때)."""
+    """표에 있는 기능 자리. 전체 · 결과에 나온 기대 recipe (번호 차례) · 범위 밖(있을 때). 고른 기능이 남았나 볼 때 씀."""
     groups = {row_group(r) for r in rows}
     recipes = sorted(g for g in groups if g and g != OUT_OF_SCOPE_GROUP)
     return [ALL_GROUPS, *recipes, *([OUT_OF_SCOPE_GROUP] if OUT_OF_SCOPE_GROUP in groups else [])]
-
-
-def group_label(group: str, rows: list[dict]) -> str:
-    """기능 고르기 글자. 「기능 015 · 5건 · 실패 1」 꼴. 오류가 있으면 「· 오류 N」을 더 붙임."""
-    if group == ALL_GROUPS:
-        return "모든 기능"
-    members = [r for r in rows if row_group(r) == group]
-    name = "범위 밖" if group == OUT_OF_SCOPE_GROUP else function_label(group)
-    lost = sum(1 for r in members if failed(r))
-    broken = sum(1 for r in members if errored(r))
-    return f"{name} · {len(members)}건" + (f" · 실패 {lost}" if lost else "") + (f" · {ERROR_TEXT} {broken}" if broken else "")
 
 
 def verdict_label(row: dict) -> str:
@@ -418,7 +419,7 @@ def verdict_label(row: dict) -> str:
 
 
 def _sort_key(row: dict, column: str):
-    """정렬 칸 하나의 값. 값이 없는 줄(대기 결과 · 지연시간 없음)은 None."""
+    """정렬 칸 하나의 값. 값이 없는 줄(대기 결과 · 추론 시간 없음)은 None."""
     if column == "기능":
         group = row_group(row)
         return (1, 0) if group == OUT_OF_SCOPE_GROUP else (0, _recipe_number(group or ""))
@@ -427,7 +428,7 @@ def _sort_key(row: dict, column: str):
     if column == "결과":
         label = verdict_label(row)
         return RESULT_ORDER.index(label) if label in RESULT_ORDER else None
-    if column == "추론 지연시간":
+    if column == "추론 시간":
         value = (row.get("timing") or {}).get("resolve_s")
         return value if isinstance(value, (int, float)) else None
     return row["case_id"], row.get("run", 1)
@@ -508,13 +509,14 @@ def field_rows(row: dict) -> list[dict]:
 
 
 def _seconds(value) -> str:
-    return f"{value:.1f}초" if isinstance(value, (int, float)) else ""
+    """초 단위 추론 시간 글자. 소수 둘째 자리 「1.62초」. 값이 없으면 빈 글자. 값은 그대로 두고 글자만 반올림."""
+    return f"{value:.2f}초" if isinstance(value, (int, float)) else ""
 
 
 def list_frame(rows: list[dict]) -> pd.DataFrame:
-    """결과 목록 표. 한 발화 한 줄, 칸 다섯. 추론 지연시간은 resolve 한 번에 걸린 시간.
+    """결과 목록 표. 한 발화 한 줄, 칸 다섯. 추론 시간은 그 발화의 resolve 한 번에 걸린 시간.
 
-    규칙  결과 칸은 verdict_label. 대기 줄은 결과 「대기」, 추론 지연시간 빈칸
+    규칙  결과 칸은 verdict_label. 대기 줄은 결과 「대기」, 추론 시간 빈칸
           판정 칸을 따로 두지 않음. 모델이 낸 판정 상태(SELECT · CLARIFY · NO_MATCH)는 상세에 있음
 
     제약  기능 칸에 설명을 붙이지 않는다. st.dataframe 은 칸 값마다의 tooltip 을 받는 API 가 없다.
@@ -523,10 +525,10 @@ def list_frame(rows: list[dict]) -> pd.DataFrame:
     return pd.DataFrame(
         {
             "번호": [f"{r['case_id']:03d}" for r in rows],
-            "기능": ["범위 밖" if row_group(r) == OUT_OF_SCOPE_GROUP else (function_label(row_group(r)) or "") for r in rows],
+            "기능": [OUT_OF_SCOPE_TEXT if row_group(r) == OUT_OF_SCOPE_GROUP else (function_label(row_group(r)) or "") for r in rows],
             "발화": [r["utterance"] for r in rows],
             "결과": [verdict_label(r) for r in rows],
-            "추론 지연시간": [_seconds((r.get("timing") or {}).get("resolve_s")) for r in rows],
+            "추론 시간": [_seconds((r.get("timing") or {}).get("resolve_s")) for r in rows],
         }
     )
 
@@ -552,26 +554,30 @@ def request_rows(conditions: dict) -> dict:
 
 
 def run_conditions(result: dict | None) -> dict | None:
-    """모델 설정 전부. {화면 글자: 값}. 결과가 없으면 None.
+    """모델 설정 (자세히 보기) 의 줄. {화면 글자: 값}. 결과가 없으면 None.
 
-    규칙  run_evaluation 결과 meta.conditions 에서 옮김. 모델 · provider · 요청 설정(Temperature 등) ·
-          호출 상한 · 파일 셋(경로만)
+    규칙  run_evaluation 결과 meta.conditions · meta.role 에서 옮김. provider · Resolve 역할 ·
+          요청 설정(Temperature 가 맨 앞) · 호출 상한 · 파일 셋과 게시 자산(경로만)
+          모델 이름은 실행 개요에 있어 안 넣음. 옛 결과에 게시 자산 칸이 없으면 그 줄을 뺌
           조건을 못 읽은 결과면 그 까닭 한 줄
+    제약  없는 칸을 지어내지 않는다
     """
     if not result:
         return None
     conditions = result["meta"].get("conditions") or {}
     if "error" in conditions:
         return {"모델 설정": conditions["error"]}
-    shown = {}
-    for label, key in CONDITION_ROWS[:2]:
-        shown[label] = conditions.get(key)
+    shown = {"provider": conditions.get("provider")}
+    if result["meta"].get("role"):
+        shown["Resolve 역할"] = result["meta"]["role"]
     shown.update(request_rows(conditions))
     timeout = (conditions.get("inference") or {}).get("timeout")
     if timeout is not None:
         shown["호출 상한"] = f"{timeout}초"
-    for label, key in CONDITION_ROWS[2:]:
+    for label, key in CONDITION_ROWS[1:]:
         value = conditions.get(key)
+        if key == "registry" and value is None:
+            continue
         shown[label] = value.get("path") if isinstance(value, dict) else value
     return {label: value if value is not None else NONE_TEXT for label, value in shown.items()}
 
@@ -584,25 +590,25 @@ def _duration(seconds) -> str:
 
 
 def environment_rows(result: dict) -> dict:
-    """실행 환경. {"GPU": …, "VRAM": …}. 기록이 없으면 두 칸 다 「기록 없음」.
+    """실행 환경. {"GPU": …, VRAM_LABEL: …}. 기록이 없으면 두 칸 다 「기록 없음」.
 
     규칙  run_evaluation 결과 meta.environment.gpus. 이름이 모두 같으면 「이름 × 장수」, 다르면 이름을 이음
-          VRAM 은 GPU 마다의 총량(GiB). 모두 같으면 「장당 N GiB」
+          VRAM 은 GPU 한 장의 총량(GiB). 모두 같으면 「95.6 GiB」 하나, 다르면 장마다 이음. 글자(VRAM_LABEL)가 한 장 값임을 말함
           온도 · 사용률은 안 보임 (옛 결과의 meta.gpu 도 안 읽음)
     """
     gpus = ((result["meta"].get("environment") or {}).get("gpus")) or []
     if not gpus:
-        return {"GPU": "기록 없음", "VRAM": "기록 없음"}
+        return {"GPU": "기록 없음", VRAM_LABEL: "기록 없음"}
     names = [gpu.get("name") or "?" for gpu in gpus]
     name = f"{names[0]} × {len(names)}" if len(set(names)) == 1 else " · ".join(names)
     sizes = [gpu.get("memory_total_mib") for gpu in gpus]
     if any(size is None for size in sizes):
         vram = "기록 없음"
     elif len(set(sizes)) == 1:
-        vram = f"장당 {sizes[0] / 1024:.1f} GiB"
+        vram = f"{sizes[0] / 1024:.1f} GiB"
     else:
         vram = " · ".join(f"{size / 1024:.1f} GiB" for size in sizes)
-    return {"GPU": name, "VRAM": vram}
+    return {"GPU": name, VRAM_LABEL: vram}
 
 
 def run_identity(result: dict) -> dict:
@@ -632,17 +638,17 @@ def suite_filename(suite: dict) -> str:
 
 
 def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
-    """실행 개요. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
+    """실행 개요. 기록을 열면 바로 볼 것만. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
-    칸  테스트 세트 · 시작 시간 · 전체 추론시간 · 추론 지연시간(Median · P95 · Max) ·
-        발화(전체 · 성공 · 실패 · 오류) · 모델 설정(모델 · Temperature …) · 실행 환경(GPU · VRAM)
+    칸  Test Suite · 평가 시작 시간 · 전체 추론시간 · 발화당 추론 시간(Median · P95 · Max) ·
+        평가 결과(전체 · 성공 · 실패 · 오류) · 모델 · 실행 환경(GPU · VRAM (GPU 1개당))
     규칙  run_evaluation 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
           평가 지표(기능 선택 · 인자 추출 등)는 여기 안 둠. 아래 전체 결과가 보임
           전체 추론시간은 summary.latency.total (발화마다 resolve 한 번에 걸린 timing.resolve_s 의 합).
           materialize · 팬 대기 · 화면 시간이 안 섞임. 잰 것이 없으면 줄표
           벽시계 소요 시간(meta.elapsed_s) · 팬 대기 합(meta.fan_wait_s)은 기록에만 있고 여기 안 보임
-          추론 지연시간은 resolve 한 번에 걸린 시간의 분포. 잰 것이 없으면 줄표
-          실행 기록 id 는 여기 안 보임 (정답표 이름이 들어 있어 개발 용어가 샘). 모델 설정 접힘 칸에 있음
+          발화당 추론 시간은 발화 하나의 resolve 한 번에 걸린 시간의 분포. 소수 둘째 자리. 잰 것이 없으면 줄표
+          Temperature 같은 요청 설정 · 파일 · 실행 기록 id 는 여기 안 보임. 모델 설정 (자세히 보기)에 있음
     """
     if not result:
         return None
@@ -653,25 +659,20 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     conditions = meta.get("conditions") or {}
 
     def seconds(key):
-        return f"{delay[key]:.2f}초" if isinstance(delay.get(key), (int, float)) else EMPTY_NUMBER
+        return _seconds(delay.get(key)) or EMPTY_NUMBER
 
-    model = [("모델", str(conditions.get("model") or EMPTY_NUMBER))]
-    request = request_rows(conditions)
-    model += [(label, value) for label, value in request.items() if label == REQUEST_LABELS["temperature"]]
-    if REQUEST_LABELS["temperature"] not in request:
-        model.append((REQUEST_LABELS["temperature"], "기록 없음"))
     return [
-        ("테스트 세트", [("", suite_filename(meta.get("suite") or {}))]),
-        ("시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
+        ("Test Suite", [("", suite_filename(meta.get("suite") or {}))]),
+        ("평가 시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
         ("전체 추론시간", [("", _duration(delay.get("total")))]),
-        ("추론 지연시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
-        ("발화", [
+        ("발화당 추론 시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
+        ("평가 결과", [
             ("전체", str(total["runs"])),
             ("성공", str(total["passed"])),
             ("실패", str(total["runs"] - total["passed"] - total["failure_stages"].get("error", 0))),
             ("오류", str(total["errors"])),
         ]),
-        ("모델 설정", model),
+        ("모델", [("", str(conditions.get("model") or EMPTY_NUMBER))]),
         ("실행 환경", list(environment_rows(result).items())),
     ]
 
@@ -683,10 +684,12 @@ def _recipe_number(recipe_id: str) -> int:
 
 
 def recipe_rows(result: dict | None) -> list[dict]:
-    """기능별 결과. [{group, label, runs, passed, failed}] 기능 번호의 숫자 차례.
+    """기능별 결과. [{group, label, runs, passed, failed}] 기능 번호의 숫자 차례, 범위 밖 발화가 있으면 맨 뒤에 범위 밖.
 
-    규칙  run_evaluation 결과 summary.recipes 를 옮김. 범위 안(지원하는 기능)만. 범위 밖은 기능이 아니라 안 넣음
-          차례는 번호를 숫자로 읽어 오름차순 (글자 차례가 아님)
+    규칙  run_evaluation 결과 summary.recipes 를 옮김. 차례는 번호를 숫자로 읽어 오름차순 (글자 차례가 아님)
+          범위 밖(OUT_OF_SCOPE_GROUP)은 기능이 아니라 표를 거르는 자리. summary.total 의 oos_runs · oos_passed 를 옮김.
+          범위 밖 발화가 없거나 옛 결과라 oos_passed 가 없으면 안 넣음
+    제약  여기서 세지 않는다. 범위 밖을 기능으로 채점하지 않는다
     """
     if not result:
         return []
@@ -694,7 +697,12 @@ def recipe_rows(result: dict | None) -> list[dict]:
         {"group": rid, "label": function_label(rid), "runs": v["runs"], "passed": v["passed"], "failed": v["runs"] - v["passed"]}
         for rid, v in (result["summary"].get("recipes") or {}).items()
     ]
-    return sorted(entries, key=lambda e: _recipe_number(e["group"]))
+    entries.sort(key=lambda e: _recipe_number(e["group"]))
+    total = result["summary"].get("total") or {}
+    if total.get("oos_runs") and total.get("oos_passed") is not None:
+        entries.append({"group": OUT_OF_SCOPE_GROUP, "label": OUT_OF_SCOPE_TEXT, "runs": total["oos_runs"],
+                        "passed": total["oos_passed"], "failed": total["oos_runs"] - total["oos_passed"]})
+    return entries
 
 
 def first_failure(rows: list[dict]) -> int | None:
@@ -745,7 +753,7 @@ def _case_count(path: str, modified: int) -> int | None:
 
 
 def dataset_label(entry: dict) -> str:
-    """테스트 세트 고르기에 보일 이름. 정답표 파일 이름이 먼저고, 발화 수를 셀 수 있으면 붙임.
+    """Test Suite 고르기에 보일 이름. 정답표 파일 이름이 먼저고, 발화 수를 셀 수 있으면 붙임.
 
     제약  사람용 별칭(entry["label"])을 앞에 두지 않는다 — 고른 것이 저장소의 어느 파일인지가
           바로 보여야 한다. 발화 수는 고른 파일에서 세고 화면에 숫자를 박지 않는다
@@ -785,12 +793,19 @@ CAUSE_NOTE = "최초 실패 원인 기준"
 NO_OOS_NOTE = "해당 발화 없음"
 
 
-def summary_markup(summary: dict | None) -> str:
-    """전체 결과. 머리 한 줄과 카드 셋. 결과가 없으면 숫자 자리에 줄표만.
+def share_of_failed(count, failed) -> str:
+    """실패를 가른 한 갈래의 건수 글자. 「11/15」 꼴. 실패가 없으면 건수만. 모르면 줄표."""
+    if not isinstance(count, int) or not isinstance(failed, int):
+        return EMPTY_NUMBER
+    return f"{count}/{failed}" if failed else str(count)
 
-    규칙  전체 · 성공 · 실패가 나란한 카드 셋. 성공 · 실패는 끝난 수에 대한 백분율을 닮
-          실패 원인 셋(기능 선택 · 인자 추출 · 범위 밖 처리)은 실패 카드 **안에** 들어감.
-          동등한 카드로 세우면 전체 · 성공 · 실패와 같은 층으로 읽힘
+
+def summary_markup(summary: dict | None) -> str:
+    """전체 결과. 머리 한 줄과 낮은 카드 한 줄. 결과가 없으면 숫자 자리에 줄표만.
+
+    규칙  전체 · 성공 · 실패가 나란한 카드. 숫자 옆에 작은 글자(발화 수 · 끝난 수에 대한 백분율)
+          실패 카드만 넓고 왼쪽에 실패 수 · 백분율, 오른쪽에 실패를 가른 셋(기능 선택 · 인자 추출 · 범위 밖 처리)을
+          「11/15」 꼴로 세로로 둠. 동등한 카드로 세우면 전체 · 성공 · 실패와 같은 층으로 읽힘
           원인은 발화마다 먼저 걸린 것 하나로 셈. 그 말(CAUSE_NOTE)은 묶음에 한 번만 붙음
           오류는 실패에 안 들어감. 하나라도 있으면 ERROR_CARD 를 뒤에 따로 세움. 없으면 안 세움
           범위 밖 발화가 없는 정답표면 범위 밖 처리 자리에 「해당 발화 없음」
@@ -805,18 +820,21 @@ def summary_markup(summary: dict | None) -> str:
         )
 
     def card(label, number, tone="", note="", causes=""):
-        note_html = f'<div class="tt-kpi-note">{_esc(note)}</div>' if note else ""
-        return (
-            f'<div class="tt-kpi {tone}"><div class="tt-kpi-label">{_esc(label)}</div>'
-            f'<div class="tt-kpi-num">{_esc(number)}</div>{note_html}{causes}</div>'
+        note_html = f'<span class="tt-kpi-note">{_esc(note)}</span>' if note else ""
+        main = (
+            f'<div class="tt-kpi-main"><div class="tt-kpi-label">{_esc(label)}</div>'
+            f'<div class="tt-kpi-line"><span class="tt-kpi-num">{_esc(number)}</span>{note_html}</div></div>'
         )
+        return f'<div class="tt-kpi {tone}{" tt-kpi-split" if causes else ""}">{main}{causes}</div>'
 
-    def causes_block(numbers, notes):
-        rows = "".join(cause(label, numbers[key], notes.get(key, "")) for label, key in FAILURE_CAUSES)
+    def causes_block(numbers, failed, notes):
+        rows = "".join(
+            cause(label, share_of_failed(numbers.get(key), failed), notes.get(key, "")) for label, key in FAILURE_CAUSES
+        )
         return f'<div class="tt-causes"><div class="tt-causes-head">{_esc(CAUSE_NOTE)}</div>{rows}</div>'
 
     if summary is None:
-        empty = causes_block({key: EMPTY_NUMBER for _label, key in FAILURE_CAUSES}, {})
+        empty = causes_block({}, None, {})
         cards = [
             card(label, EMPTY_NUMBER, tone, causes=empty if key == "failed" else "")
             for label, key, tone in RESULT_CARDS
@@ -836,7 +854,7 @@ def summary_markup(summary: dict | None) -> str:
         "error": "결과를 못 받음",
     }
     shown = RESULT_CARDS + ((ERROR_CARD,) if summary.get("error") else ())
-    causes = causes_block(summary, {} if summary.get("oos_runs") else {"scope": NO_OOS_NOTE})
+    causes = causes_block(summary, summary["failed"], {} if summary.get("oos_runs") else {"scope": NO_OOS_NOTE})
     return head + '<div class="tt-kpis">' + "".join(
         card(label, summary[key], tone, notes[key], causes if key == "failed" else "")
         for label, key, tone in shown
@@ -869,25 +887,37 @@ def overview_markup(info: list | None) -> str:
     return '<div class="tt-ovs">' + "".join(cell(title, rows) for title, rows in info) + "</div>"
 
 
-def recipe_summary_markup(entries: list[dict], functions: dict | None = None) -> str:
-    """기능별 결과 카드. 카드 하나에 기능 번호와 성공 수(x/y) 둘만. 기능 번호 차례.
+def recipe_card_key(entry: dict) -> str:
+    """기능별 결과 카드 단추의 key. 실패가 있으면 test_fn_ng_…, 다 맞았으면 test_fn_ok_… (panel_css 가 이 앞머리로 칠함)."""
+    tone = "ng" if entry["failed"] else "ok"
+    return f"test_fn_{tone}_{entry['group'].strip('_')}"
 
-    규칙  실패가 하나라도 있으면 붉은 카드, 다 맞았으면 차분한 카드(옆줄만 초록)
-          설명은 기능 번호의 tooltip 하나. 카드 어디에 마우스를 올려도 그것이 뜸 (panel_css 의 .tt-rs:hover).
-          원천은 결과 meta.functions 하나
-    제약  「모두 성공」 · 「실패 N」 같은 글자를 두지 않는다 — x/y 가 이미 같은 것을 말한다.
-          기능이 마흔 가까이 되므로 성공을 강한 초록으로 칠하지 않는다. 눈에 띄는 쪽은 실패다
+
+def recipe_card_label(entry: dict) -> str:
+    """기능별 결과 카드 글자. 「기능 015 **4/5**」 꼴 (번호와 성공 수 둘만). 범위 밖이면 「범위 밖 **7/8**」."""
+    return f"{entry['label']} **{entry['passed']}/{entry['runs']}**"
+
+
+def _css_text(text: str) -> str:
+    """CSS content 문자열 안에 넣을 글자. 따옴표 · 역슬래시 · 꺾쇠 · 줄바꿈을 escape."""
+    return (str(text).replace("\\", "\\\\").replace('"', '\\"').replace("<", "\\3C ").replace(">", "\\3E ")
+            .replace("\n", " "))
+
+
+def recipe_card_css(entries: list[dict], functions: dict | None = None) -> str:
+    """기능별 결과 카드의 tooltip. 카드마다 그 기능 설명을 CSS content 로 붙인 <style>.
+
+    규칙  단추 글자는 HTML 을 못 받아 number_markup 의 data-tip 을 못 씀. 같은 tooltip 을 카드 key(recipe_card_key)의
+          ::after 로 그림. 모양 · 뜨기까지의 지연(TIP_DELAY_MS)은 panel_css 의 기능 번호 tooltip 과 같음
+          설명의 원천은 run_evaluation 결과 meta.functions 하나. 설명이 없는 카드(범위 밖 등)는 tooltip 없음
+    제약  {번호: 설명} 표를 화면에 따로 두지 않는다
     """
-    if not entries:
-        return '<div class="tt-empty">결과가 없습니다.</div>'
     functions = functions or {}
-    cards = "".join(
-        f'<div class="tt-rs {"tt-rs-ng" if e["failed"] else "tt-rs-ok"}">'
-        f'<div class="tt-rs-fn">{number_markup(e["group"], functions)}</div>'
-        f'<div class="tt-rs-n">{e["passed"]}/{e["runs"]}</div></div>'
-        for e in entries
+    rules = "".join(
+        f'.st-key-test_tab .st-key-{recipe_card_key(e)} button::after {{ content: "{_css_text(functions[e["group"]])}"; }}\n'
+        for e in entries if functions.get(e["group"])
     )
-    return f'<div class="tt-rss">{cards}</div>'
+    return f"<style>{rules}</style>" if rules else ""
 
 
 def _value_markup(value) -> str:
@@ -1010,10 +1040,10 @@ def _pair_markup(key_html: str, answer_html: str, model_html: str, *, wrong: boo
 
 
 def _extra_markup(row: dict, functions: dict | None = None) -> str:
-    """AI 모델 출력의 부가 정보. 판정 상태 · 후보 기능 · 판단 · 추론 지연시간. 오류면 오류 문장.
+    """AI 모델 출력의 부가 정보. 판정 상태 · 후보 기능 · 판단 · 추론 시간. 오류면 오류 문장.
 
     규칙  후보 기능은 「기능 NNN」만 보이고, 마우스를 올리면 그 기능 설명(functions)이 뜸
-          추론 지연시간은 이 발화의 resolve 한 번에 걸린 시간
+          추론 시간은 이 발화의 resolve 한 번에 걸린 시간
     제약  workflow 를 부를 수 있었나(materialize 판정)는 보이지 않는다. 이 화면이 재는 것이 아님
     """
     functions = functions or {}
@@ -1039,7 +1069,7 @@ def _extra_markup(row: dict, functions: dict | None = None) -> str:
         f'<div class="tt-kv"><div class="tt-kv-k">후보 기능</div><div class="tt-kv-v">{chips}</div></div>'
         f'<div class="tt-kv"><div class="tt-kv-k">모델 판단</div>'
         f'<div class="tt-kv-v tt-reason">{reason}</div></div>'
-        f'<div class="tt-kv"><div class="tt-kv-k">추론 지연시간</div>'
+        f'<div class="tt-kv"><div class="tt-kv-k">추론 시간</div>'
         f'<div class="tt-kv-v">{_esc(_seconds(timing.get("resolve_s")) or NONE_TEXT)}</div></div>'
         "</div>"
     )
@@ -1059,7 +1089,7 @@ def detail_markup(row: dict, functions: dict) -> str:
           읽는데 값이 null 이면 「없음」, 값이 있으면 그 값
           범위 밖 발화는 기능 칸에 「범위 밖 · 선택할 기능 없음」과 모델이 고른 것을 맞댐. 인자 줄 없음.
           강조는 run_evaluation 의 passed
-          그 아래 AI 모델 출력의 판정 상태 · 후보 기능(설명은 마우스를 올리면) · 판단 · 추론 지연시간
+          그 아래 AI 모델 출력의 판정 상태 · 후보 기능(설명은 마우스를 올리면) · 판단 · 추론 시간
     """
     if pending(row):
         return pending_markup(row)
@@ -1186,6 +1216,8 @@ def resume_check(kind: str, run_id: str) -> dict:
 
 
 NEW, RESUME = "new", "resume"
+TITLE_TEXT = "발화 해석 평가"
+CONDITIONS_TITLE = "모델 설정 (자세히 보기)"
 _TOKENS = itertools.count(1)
 
 
@@ -1537,10 +1569,9 @@ def storage_notes() -> list[str]:
 
 
 def _reset_view() -> None:
-    """고른 발화 · 표 선택 · 기능 고르기를 처음으로. widget 콜백 안에서만 부름.
+    """고른 발화 · 표 선택 · 고른 기능 카드를 처음으로. widget 콜백 안에서만 부름.
 
-    규칙  기능 고르기는 값을 지우지 않고 ALL_GROUPS 로 적음. widget 값을 지우기만 하면 브라우저가 옛 값을
-          들고 있다가 다음 회차에 도로 보냄
+    규칙  고른 기능(GROUP_KEY)은 지우지 않고 ALL_GROUPS 로 적음
     """
     for key in (SELECTED_KEY, LIST_VIEW_KEY):
         st.session_state.pop(key, None)
@@ -1548,7 +1579,7 @@ def _reset_view() -> None:
 
 
 def _switch_suite() -> None:
-    """테스트 세트 고르기의 콜백. 다른 세트의 결과가 남지 않게 지난 결과 · 고른 실행 기록을 지움.
+    """Test Suite 고르기의 콜백. 다른 세트의 결과가 남지 않게 지난 결과 · 고른 실행 기록을 지움.
 
     규칙  RESULT_KEY · 실행 · 불러오기 오류 문장을 지움. 표는 새 세트의 대기 줄만 남음
           실행 기록 고르기는 지우지 않고 빈 값(「불러올 기록 고르기」)으로 적음. 지우기만 하면 브라우저가
@@ -1565,7 +1596,7 @@ def _load_saved() -> None:
     """실행 기록 고르기의 콜백. 고른 기록을 방금 잰 결과와 같은 자리에 둠.
 
     규칙  고른 값 "<kind>:<run_id>" 그대로 manage_benchmark.load_benchmark(kind, run_id) 를 부름.
-          돌려준 결과 한 벌을 RESULT_KEY 에 둠. 테스트 세트 고르기를 그 기록의 정답표로 맞춤.
+          돌려준 결과 한 벌을 RESULT_KEY 에 둠. Test Suite 고르기를 그 기록의 정답표로 맞춤.
           표는 그 정답표의 대기 줄 위에 저장된 결과를 얹은 것이 됨. 고른 발화 · 표 선택을 처음으로 돌림
           못 읽으면(없음 · 깨짐 · 두 자리에 같은 id) 문장을 LOAD_ERROR_KEY 에 두고 지난 결과는 안 지움
     제약  평가 · LLM 을 부르지 않는다. 어느 자리의 기록인지를 짐작하지 않는다
@@ -1595,11 +1626,12 @@ def _load_saved() -> None:
 
 
 def _render_header(stored: dict, busy: bool = False) -> tuple[str, dict | None]:
-    """제목 · 테스트 세트 · 실행 기록.
+    """제목 · Test Suite · 실행 기록.
 
     입력  session_state 의 마지막 실행 {"dataset_id", "result", "kind"}. busy 는 평가가 도는 중인가
     출력  (고른 정답표 id, 고른 정답표의 마지막 결과 또는 None)
-    규칙  테스트 세트를 바꾸면 _switch_suite 가 지난 결과 · 고른 실행 기록을 지움
+    규칙  제목은 「발화 해석 평가」 한 줄. 소제목을 두지 않음 (실행 시각은 실행 개요의 평가 시작 시간)
+          Test Suite 를 바꾸면 _switch_suite 가 지난 결과 · 고른 실행 기록을 지움
           실행 기록 고르기는 widget 을 그리기 전에 비울 것을 비움 (방금 끝난 실행 · 목록에서 사라진 기록)
           실행 기록은 official · local 을 합친 목록(saved_runs). 값은 "<kind>:<run_id>".
           고르면 _load_saved 가 그 결과를 지금 결과 자리에 둠
@@ -1614,7 +1646,7 @@ def _render_header(stored: dict, busy: bool = False) -> tuple[str, dict | None]:
     title, picker, history = st.columns([4, 2.6, 3.4], vertical_alignment="bottom")
     with picker:
         dataset_id = st.selectbox(
-            "테스트 세트", list(labels), format_func=labels.get, key=DATASET_KEY, persist_state="page",
+            "Test Suite", list(labels), format_func=labels.get, key=DATASET_KEY, persist_state="page",
             on_change=_switch_suite, disabled=busy,
         )
     with history:
@@ -1624,14 +1656,7 @@ def _render_header(stored: dict, busy: bool = False) -> tuple[str, dict | None]:
         )
     result = stored.get("result") if stored.get("dataset_id") == dataset_id else None
     with title:
-        sub = "발화별 기능 선택 및 인자 추출 결과"
-        if result:
-            started = datetime.datetime.fromisoformat(result["meta"]["started_at"])
-            sub += f" · {started:%m-%d %H:%M} 실행"
-        st.markdown(
-            f'<div class="tt-title">AI 기능 테스트</div><div class="tt-sub">{_esc(sub)}</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown(f'<div class="tt-title">{TITLE_TEXT}</div>', unsafe_allow_html=True)
     return dataset_id, result
 
 
@@ -1642,26 +1667,40 @@ def _render_overview(result: dict | None) -> None:
         st.markdown(overview_markup(info), unsafe_allow_html=True)
 
 
-def _render_recipe_summary(result: dict | None) -> None:
-    """기능별 결과 (접힘). 지원하는 기능만, 번호 차례. 실패가 있으면 펼침.
+def _pick_group(group: str) -> None:
+    """기능별 결과 카드의 콜백. 누른 기능으로 표를 거름. 이미 고른 카드를 다시 누르면 풂 (하나만 고름)."""
+    st.session_state[GROUP_KEY] = ALL_GROUPS if st.session_state.get(GROUP_KEY) == group else group
 
+
+def _render_recipe_summary(result: dict | None, group: str = ALL_GROUPS) -> None:
+    """기능별 결과 (접힘). 기능마다 카드 단추 하나, 번호 차례, 범위 밖 발화가 있으면 맨 뒤에 범위 밖. 실패가 있으면 펼침.
+
+    규칙  카드를 누르면 아래 결과 표가 그 기능(범위 밖이면 범위 밖 발화)만 보임. 다시 누르면 풂 (_pick_group).
+          보기 필터 · 발화 검색과 따로 걸려 겹친 것만 남음. 고른 카드는 primary 단추라 테두리 · 바탕이 다름
+          실패가 하나라도 있으면 붉은 카드, 다 맞았으면 차분한 카드(옆줄만 초록). 색은 key 앞머리(recipe_card_key)로 CSS 가 칠함
+          설명은 카드에 마우스를 올리면 뜨는 tooltip 하나. 그 <style>(recipe_card_css)은 _render_body 가 전체 결과와
+          한 markdown 에 실음 — 따로 그리면 빈 칸 하나가 펼친 칸 맨 위에 틈을 만듦
     제약  제목은 「기능별 결과」 하나다. 기능 수 · 실패한 기능 수를 제목에 달지 않는다 —
-          같은 숫자가 바로 아래 표에 있고, 제목이 길어지면 무엇을 여는 칸인지가 흐려진다
+          같은 숫자가 바로 아래 표에 있고, 제목이 길어지면 무엇을 여는 칸인지가 흐려진다.
+          「모두 성공」 · 「실패 N」 같은 글자를 두지 않는다 — x/y 가 이미 같은 것을 말한다.
+          기능이 마흔 가까이 되므로 성공을 강한 초록으로 칠하지 않는다. 눈에 띄는 쪽은 실패다
     """
     entries = recipe_rows(result)
     if not entries:
         return
     failed = sum(1 for e in entries if e["failed"])
     with st.expander("기능별 결과", expanded=bool(failed)):
-        st.markdown(
-            recipe_summary_markup(entries, (result or {}).get("meta", {}).get("functions") or {}),
-            unsafe_allow_html=True,
-        )
+        with st.container(key="test_fn_cards"):
+            for e in entries:
+                st.button(recipe_card_label(e), key=recipe_card_key(e), width="stretch",
+                          type="primary" if e["group"] == group else "secondary",
+                          on_click=_pick_group, args=(e["group"],))
 
 
 def _render_conditions(result: dict | None) -> None:
-    """모델 설정 (접힘). 모델 · 요청 설정 · 파일 · 실행 기록 id. 결과가 없으면 비어 있다고만."""
-    with st.expander("모델 설정", expanded=False):
+    """모델 설정 (자세히 보기) (접힘). 재현 · 확인에 쓰는 것. provider · 역할 · 요청 설정 · 파일 · 실행 기록 id.
+    결과가 없으면 비어 있다고만. 실행 개요에 이미 있는 모델 이름은 안 되풀이함."""
+    with st.expander(CONDITIONS_TITLE, expanded=False):
         conditions = run_conditions(result)
         if conditions is None:
             st.markdown('<div class="tt-empty">새로 실행하거나 기록을 불러오면 표시됩니다.</div>', unsafe_allow_html=True)
@@ -1669,18 +1708,28 @@ def _render_conditions(result: dict | None) -> None:
             st.markdown(conditions_markup({**conditions, **run_identity(result)}), unsafe_allow_html=True)
 
 
-def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tuple[str, str, str, tuple[str, str]]:
-    """보기 필터 · 기능 고르기 · 발화 검색 · 정렬.
+def filter_label(view: str, counts: dict) -> str:
+    """보기 필터 pill 글자. 전체 · 실패 · 오류는 「실패  15」, 실패를 가른 셋은 「기능 선택  11/15」.
 
-    출력  (보기, 검색어, 기능 자리, (정렬 칸, 정렬 방향))
-    규칙  결과가 있으면 필터 글자 옆에 그 보기의 건수를 붙임. 전체는 표의 줄 수
-          보기는 칸 하나다 — 전체 · 실패 다음에 실패를 가른 셋(실패 · 기능 선택 …)이 딸려 붙음.
-          글자는 결과 칸 글자(verdict_label)와 같음. 실패와 셋을 한 테두리로 묶어 실패가 머리로 보이게 하는
-          일은 CSS 가 하고(PARENT_FILTER · FIRST_FAILURE_FILTER), 고르는 뜻 · 건수는 안 바뀜
+    규칙  셋은 실패에 딸린 자리라 「실패 ·」를 되풀이하지 않고 단계 이름만. 건수는 실패 수에 대한 몫(share_of_failed)
+          건수를 모르면(결과가 없음) 글자만
+    """
+    stage = next((key for key, text in FAILURE_TEXT.items() if text == view), None)
+    name = STAGE_LABELS[stage] if stage else view
+    if view not in counts:
+        return name
+    return f"{name}  {share_of_failed(counts[view], counts[FAILED]) if stage else counts[view]}"
+
+
+def _render_view_filter(summary: dict | None, rows: list[dict] | None = None) -> str:
+    """보기 필터. 표 위에 한 줄. 고른 보기를 돌려줌.
+
+    규칙  결과가 있으면 필터 글자 옆에 그 보기의 건수를 붙임(filter_label). 전체는 표의 줄 수
+          보기는 칸 하나다 — 전체 · 실패 다음에 실패를 가른 셋(기능 선택 · 인자 추출 · 범위 밖 처리)이 딸려 붙음.
+          고르는 값은 결과 칸 글자(FAILURE_TEXT)와 같고 보이는 글자만 짧음. 실패와 셋을 한 테두리로 묶어
+          실패가 머리로 보이게 하는 일은 CSS 가 하고(PARENT_FILTER · FIRST_FAILURE_FILTER), 고르는 뜻 · 건수는 안 바뀜
           오류 줄이 있을 때만 맨 뒤에 오류 보기가 붙음. 실패에 딸리지 않음. 오류가 없어지면 전체로 돌림
-          기능 고르기는 표에 있는 기대 기능과 범위 밖. 대기 줄도 제 기능 자리에 들어감
           결과가 없으면(대기 줄뿐) 건수를 안 붙임. 대기 줄을 성공 · 실패로 세지 않음
-          정렬 칸 · 방향은 session_state(SORT_COLUMN_KEY · SORT_ORDER_KEY)에 남음. 기본은 번호 오름차순
     제약  보기 위해 채점 · 거르는 뜻을 바꾸지 않는다
     """
     rows = rows or []
@@ -1698,25 +1747,31 @@ def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tup
     options = FILTERS + ((ERROR_FILTER,) if errors else ())
     if st.session_state.get(FILTER_KEY) not in (None, *options):
         st.session_state[FILTER_KEY] = ALL
-    left, middle, right, order_by, order = st.columns([5.1, 1.3, 1.3, 1.1, 1.8], vertical_alignment="center")
-    with left:
+    with st.container(key="test_filters"):
         view = st.segmented_control(
             "보기",
             options,
             default=ALL,
             required=True,
-            format_func=lambda v: f"{v}  {counts[v]}" if v in counts else v,
+            format_func=lambda v: filter_label(v, counts),
             key=FILTER_KEY,
             label_visibility="collapsed",
             persist_state="page",
         )
-    with middle:
-        options = group_options(rows)
-        group = st.selectbox(
-            "기능", options, format_func=lambda g: group_label(g, rows), key=GROUP_KEY,
-            label_visibility="collapsed",
-        )
-    with right:
+    return view or ALL
+
+
+def _render_list_controls():
+    """결과 표 머리 한 줄. 왼쪽은 「테스트 결과 N건」 자리(비워 둔 칸), 오른쪽은 발화 검색 · 정렬 칸 · 정렬 방향.
+
+    출력  (제목 칸, 검색어, (정렬 칸, 정렬 방향)). 제목은 거른 뒤에 _render_result_list 가 그 칸에 그림
+    규칙  정렬 칸 · 방향은 session_state(SORT_COLUMN_KEY · SORT_ORDER_KEY)에 남음. 기본은 번호 오름차순.
+          남은 정렬 칸이 SORT_COLUMNS 에 없으면(칸 이름이 바뀐 옛 창) 번호로 돌림
+    """
+    if st.session_state.get(SORT_COLUMN_KEY) not in (None, *SORT_COLUMNS):
+        st.session_state[SORT_COLUMN_KEY] = SORT_COLUMNS[0]
+    title, search, order_by, order = st.columns([2.3, 2.1, 1.65, 2.0], vertical_alignment="center", gap="small")
+    with search:
         query = st.text_input(
             "발화 검색",
             key="test_query",
@@ -1735,7 +1790,7 @@ def _render_filters(summary: dict | None, rows: list[dict] | None = None) -> tup
             "정렬 방향", SORT_ORDERS, default=ASCENDING, required=True, format_func=SORT_ORDER_LABELS.get,
             key=SORT_ORDER_KEY, label_visibility="collapsed", persist_state="page",
         )
-    return view or ALL, query or "", group or ALL_GROUPS, (column or SORT_COLUMNS[0], direction or ASCENDING)
+    return title, query or "", (column or SORT_COLUMNS[0], direction or ASCENDING)
 
 
 def _result_tone(value: str) -> str:
@@ -1797,7 +1852,9 @@ def _styled_frame(rows: list[dict]):
 
 
 def _list_columns() -> dict:
-    """결과 목록 표의 칸 폭.
+    """결과 목록 표의 칸 폭. 넓은 창에서는 표 폭을 따라 늘어남.
+
+    규칙  칸 폭 합은 1280 창의 표 폭(약 750px)에 들어가게 둠. 넘치면 맨 오른쪽 추론 시간 칸이 잘림
 
     제약  칸 머리의 설정 메뉴에서 정렬 · 통계 · 자동 너비 · 칸 고정을 여기서 못 끈다.
           Streamlit 1.62 의 column_config 에 그 칸이 없다 — panel_css 가 감춘다
@@ -1805,17 +1862,17 @@ def _list_columns() -> dict:
     return {
         "번호": st.column_config.TextColumn("번호", width=56),
         "기능": st.column_config.TextColumn("기능", width=76),
-        "발화": st.column_config.TextColumn("발화", width="large"),
+        "발화": st.column_config.TextColumn("발화", width=340),
         "결과": st.column_config.TextColumn("결과", width=128),
-        "추론 지연시간": st.column_config.TextColumn("추론 지연시간", width=96),
+        "추론 시간": st.column_config.TextColumn("추론 시간", width=84),
     }
 
 
 def _render_result_list(shown: list[dict], view: str, query: str, height: int, *, group: str = ALL_GROUPS,
-                        sort: tuple = (SORT_COLUMNS[0], ASCENDING)) -> dict | None:
+                        sort: tuple = (SORT_COLUMNS[0], ASCENDING), title=None) -> dict | None:
     """결과 목록. 한 발화 한 줄, 고정 높이 안에서 스크롤.
 
-    입력  shown 은 거른 줄. 여기서 sort_rows 로 세워 그림
+    입력  shown 은 거른 줄. 여기서 sort_rows 로 세워 그림. title 은 「테스트 결과 N건」을 그릴 칸 (없으면 여기)
     출력  지금 고른 결과 줄. 목록이 비었으면 None
     규칙  행 고르기는 st.dataframe 의 행 선택. 발화 글자를 눌러도 골라지게 칸 선택을
           함께 켜고, 칸을 누르면 _keep_row_selected 가 그 줄 선택으로 바꿈
@@ -1828,10 +1885,15 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
     제약  single-row-required 를 쓰지 않는다.
           칸을 누르면 행 선택이 비었다고 보고 첫 줄로 되돌림. 발화를 눌렀는데 001 이 뜸
     """
-    st.markdown(
-        f'<div class="tt-pane-title">테스트 결과 <span>{len(shown)}건</span></div>',
-        unsafe_allow_html=True,
-    )
+    picked_group = ""
+    if group != ALL_GROUPS:
+        name = OUT_OF_SCOPE_TEXT if group == OUT_OF_SCOPE_GROUP else function_label(group)
+        picked_group = f'<span class="tt-pane-group">{_esc(name)}</span>'
+    with title if title is not None else st.container():
+        st.markdown(
+            f'<div class="tt-pane-title">테스트 결과 <span>{len(shown)}건</span>{picked_group}</div>',
+            unsafe_allow_html=True,
+        )
     if not shown:
         with st.container(height=height, border=True):
             st.markdown('<div class="tt-empty">조건에 맞는 발화가 없습니다.</div>', unsafe_allow_html=True)
@@ -1865,7 +1927,7 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
 
 def _render_result_detail(row: dict | None, functions: dict, height: int) -> None:
     """선택한 발화 상세. 고정 높이 안에서 스크롤."""
-    st.markdown('<div class="tt-pane-title">선택한 발화 상세</div>', unsafe_allow_html=True)
+    st.markdown('<div class="tt-pane-title tt-pane-detail">선택한 발화 상세</div>', unsafe_allow_html=True)
     with st.container(height=height, border=True, key="test_detail"):
         if row is None:
             st.markdown('<div class="tt-empty">결과에서 발화를 선택하면 상세가 표시됩니다.</div>', unsafe_allow_html=True)
@@ -1893,11 +1955,12 @@ def _render_status(stored: dict | None) -> None:
 
 
 def _render_body(ratios: dict, dataset_id: str, result: dict | None) -> None:
-    """실행 제어 · 알림 · 전체 결과 · 기능별 결과 · 필터 · 결과 목록 · 상세. 도는 동안 fragment 로 스스로 다시 그려짐.
+    """실행 제어 · 알림 · 전체 결과 · 기능별 결과 · 보기 필터 · 결과 목록(머리에 검색 · 정렬) · 상세. 도는 동안 fragment 로 스스로 다시 그려짐.
 
     입력  result 는 고른 정답표의 마지막 결과(불러온 기록 포함). 도는 동안에는 안 봄
     규칙  도는 job 이 있으면 표 · 요약은 job.rows() (끝난 줄만. 이어 실행이면 전에 잰 줄 포함) 를 대기 줄 위에 얹은 것
           job 이 끝난 것을 보면 화면 전체를 다시 그려 결과를 받아 옴(_absorb)
+          고른 기능(GROUP_KEY)은 기능별 결과 카드가 보일 때만 표에 걸림. 도는 동안 · 표에 없는 기능이면 전체
           이 fragment 안에서 실행을 시작했으면 화면 전체를 다시 그림 (머리의 고르기를 잠그려고)
     제약  여기서 평가를 기다리지 않는다. 한 번 그리고 끝남
     """
@@ -1921,17 +1984,22 @@ def _render_body(ratios: dict, dataset_id: str, result: dict | None) -> None:
         done_rows = result["cases"] if result else []
         summary = summarize(result)
         functions = (result or {}).get("meta", {}).get("functions") or {}
-    st.markdown(summary_markup(summary), unsafe_allow_html=True)
-    if not busy:
-        _render_recipe_summary(result)
+    card_css = "" if busy else recipe_card_css(recipe_rows(result), functions)
+    st.markdown(summary_markup(summary) + card_css, unsafe_allow_html=True)
     rows = table_rows(suite_rows(dataset_id), done_rows)
-    view, query, group, sort = _render_filters(summary, rows)
+    group = st.session_state.get(GROUP_KEY) or ALL_GROUPS
+    if busy or group not in group_options(rows):
+        group = ALL_GROUPS
+    if not busy:
+        _render_recipe_summary(result, group)
+    view = _render_view_filter(summary, rows)
 
     height = list_height(ratios)
     left, right = st.columns([63, 37], gap="medium")
-    shown = filter_results(rows, view, query, group)
     with left:
-        selected = _render_result_list(shown, view, query, height, group=group, sort=sort)
+        title, query, sort = _render_list_controls()
+        shown = filter_results(rows, view, query, group)
+        selected = _render_result_list(shown, view, query, height, group=group, sort=sort, title=title)
     with right:
         _render_result_detail(selected, functions, height)
 
@@ -1994,15 +2062,17 @@ def panel_css() -> str:
   --tt-softer: rgba(140, 150, 165, 0.045);
   gap: 0.7rem;
 }
-.st-key-test_tab .tt-title { font-size: 1.35rem; font-weight: 700; line-height: 1.3; }
-.st-key-test_tab .tt-sub { font-size: 0.82rem; opacity: 0.6; margin: 0.1rem 0 0.6rem; }
+.st-key-test_tab .tt-title { font-size: 1.35rem; font-weight: 700; line-height: 1.3; padding-bottom: 0.35rem; }
 
-/* ---------------------------------------------- 실행 개요 */
+/* ---------------------------------------------- 실행 개요
+   칸 일곱이 1280 창에서도 한 줄에 들게 flex 로 둔다. GPU 이름이 긴 실행 환경(마지막 칸)만 넓게 잡는다. */
 .st-key-test_tab .tt-ovs {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
-  gap: 0.6rem 1.2rem; font-size: 0.82rem; padding: 0.65rem 0.85rem;
+  display: flex; flex-wrap: wrap;
+  gap: 0.6rem 1rem; font-size: 0.82rem; padding: 0.65rem 0.85rem;
   border: 1px solid var(--tt-line); border-radius: 10px; background: var(--tt-softer);
 }
+.st-key-test_tab .tt-ov { flex: 1 1 8rem; min-width: 0; }
+.st-key-test_tab .tt-ov:last-child { flex: 1.8 1 14rem; }
 .st-key-test_tab .tt-ov-k { opacity: 0.6; font-size: 0.74rem; margin-bottom: 0.2rem; }
 .st-key-test_tab .tt-ov-row { display: flex; justify-content: space-between; gap: 0.8rem; line-height: 1.55; }
 .st-key-test_tab .tt-ov-sub { opacity: 0.65; }
@@ -2011,23 +2081,43 @@ def panel_css() -> str:
 .st-key-test_tab .tt-sum-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin: 0.2rem 0 0.45rem; }
 
 /* ---------------------------------------------- 기능별 결과
-   기능마다 카드 하나. 카드 사이 gap 으로 경계를 긋는다 (줄이 이어 붙으면 어디까지가 한
+   기능마다 카드 단추 하나(recipe_card_key). 카드 사이 gap 으로 경계를 긋는다 (줄이 이어 붙으면 어디까지가 한
    기능인지가 흐려진다). 기능이 마흔 가까이 되므로 성공은 옆줄만 초록으로 차분히 두고,
-   배경을 칠하는 것은 실패뿐이다 — 전부 초록이면 붉은 것이 안 보인다. */
-.st-key-test_tab .tt-rss { display: grid; grid-template-columns: repeat(auto-fill, minmax(10.5rem, 1fr)); gap: 0.55rem; }
-.st-key-test_tab .tt-rs {
-  display: flex; align-items: baseline; justify-content: space-between; gap: 0.6rem;
-  font-size: 0.8rem; padding: 0.42rem 0.7rem; border-radius: 8px;
-  border: 1px solid var(--tt-line); background: var(--tt-softer);
+   배경을 칠하는 것은 실패뿐이다 — 전부 초록이면 붉은 것이 안 보인다.
+   고른 카드는 primary 단추다. 테마의 채운 단추 대신 청록 테두리 두 겹과 옅은 바탕으로 칠해 실패 색이 그대로 보이게 한다. */
+.st-key-test_tab .st-key-test_fn_cards {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(8.6rem, 1fr)); gap: 0.45rem;
 }
-.st-key-test_tab .tt-rs-n { font-variant-numeric: tabular-nums; font-weight: 600; }
-.st-key-test_tab .tt-rs-ok { box-shadow: inset 3px 0 0 var(--tt-ok); }
-.st-key-test_tab .tt-rs-ok .tt-rs-n { color: var(--tt-ok); }
-.st-key-test_tab .tt-rs-ng {
-  background: rgba(229, 83, 75, 0.1); border-color: rgba(229, 83, 75, 0.45);
-  box-shadow: inset 3px 0 0 var(--tt-ng);
+.st-key-test_tab .st-key-test_fn_cards > div { width: auto; min-width: 0; }
+.st-key-test_tab .st-key-test_fn_cards button {
+  position: relative; min-height: 0; padding: 0.28rem 0.65rem; border-radius: 8px; justify-content: stretch;
+  color: inherit; border: 1px solid var(--tt-line); background: var(--tt-softer);
 }
-.st-key-test_tab .tt-rs-ng .tt-rs-n { color: var(--tt-ng); font-weight: 700; }
+.st-key-test_tab .st-key-test_fn_cards button > div,
+.st-key-test_tab .st-key-test_fn_cards button > div > span,
+.st-key-test_tab .st-key-test_fn_cards button [data-testid="stMarkdownContainer"] { width: 100%; }
+.st-key-test_tab .st-key-test_fn_cards button p {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem;
+  margin: 0; font-size: 0.8rem; white-space: nowrap;
+}
+.st-key-test_tab .st-key-test_fn_cards button strong { font-variant-numeric: tabular-nums; font-weight: 600; }
+.st-key-test_tab .st-key-test_fn_cards button:hover { border-color: rgba(20, 184, 166, 0.6); color: inherit; }
+.st-key-test_tab [class*="st-key-test_fn_ok_"] button { box-shadow: inset 3px 0 0 var(--tt-ok); }
+.st-key-test_tab [class*="st-key-test_fn_ok_"] button strong { color: var(--tt-ok); }
+.st-key-test_tab [class*="st-key-test_fn_ng_"] button {
+  background: rgba(229, 83, 75, 0.1); border-color: rgba(229, 83, 75, 0.45); box-shadow: inset 3px 0 0 var(--tt-ng);
+}
+.st-key-test_tab [class*="st-key-test_fn_ng_"] button strong { color: var(--tt-ng); font-weight: 700; }
+.st-key-test_tab .st-key-test_fn_cards button[data-testid="stBaseButton-primary"] {
+  border-color: var(--tt-ai); background: rgba(20, 184, 166, 0.16);
+}
+.st-key-test_tab [class*="st-key-test_fn_ok_"] button[data-testid="stBaseButton-primary"] {
+  box-shadow: inset 3px 0 0 var(--tt-ok), 0 0 0 1px var(--tt-ai);
+}
+.st-key-test_tab [class*="st-key-test_fn_ng_"] button[data-testid="stBaseButton-primary"] {
+  background: rgba(229, 83, 75, 0.2); box-shadow: inset 3px 0 0 var(--tt-ng), 0 0 0 1px var(--tt-ai);
+}
+.st-key-test_tab .st-key-test_fn_cards button[data-testid="stBaseButton-primary"] p { font-weight: 700; }
 
 /* ---------------------------------------------- 모델 설정 */
 .st-key-test_tab .tt-cond {
@@ -2040,49 +2130,48 @@ def panel_css() -> str:
   font-size: 0.78rem; overflow-wrap: anywhere;
 }
 
-/* ---------------------------------------------- 요약 카드 */
-.st-key-test_tab .tt-kpis { display: flex; gap: 0.7rem; margin-bottom: 0.8rem; }
+/* ---------------------------------------------- 요약 카드
+   낮은 카드 한 줄. 숫자 옆에 작은 글자를 붙여 세로 칸을 줄인다. 실패 카드만 넓고, 실패를 가른 셋은
+   실패 수 오른쪽에 세로선으로 매단다 — 전체 · 성공 · 실패와 같은 층으로 보이면 안 된다.
+   같은 설명을 셋에 되풀이하지 않고 묶음에 한 번만 적는다. 좁으면 카드가 다음 줄로 넘어간다. */
+.st-key-test_tab .tt-kpis { display: flex; flex-wrap: wrap; gap: 0.6rem; }
 .st-key-test_tab .tt-kpi {
-  flex: 1 1 0; min-width: 0;
-  border: 1px solid var(--tt-line); border-radius: 10px;
-  background: var(--tt-softer);
-  padding: 0.55rem 0.9rem 0.6rem;
-  display: grid; grid-template-columns: 1fr auto; align-items: end; row-gap: 0.1rem;
+  flex: 1 1 8rem; min-width: 0;
+  border: 1px solid var(--tt-line); border-radius: 10px; background: var(--tt-softer);
+  padding: 0.4rem 0.85rem; display: flex; align-items: center; gap: 1.1rem;
 }
-.st-key-test_tab .tt-kpi-label { grid-column: 1 / -1; font-size: 0.78rem; opacity: 0.7; }
-.st-key-test_tab .tt-kpi-num { font-size: 1.6rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; }
-.st-key-test_tab .tt-kpi-note { font-size: 0.75rem; opacity: 0.6; padding-bottom: 0.2rem; }
+.st-key-test_tab .tt-kpi-main { display: flex; flex-direction: column; flex: 0 0 auto; }
+.st-key-test_tab .tt-kpi-label { font-size: 0.76rem; opacity: 0.7; line-height: 1.3; }
+.st-key-test_tab .tt-kpi-line { display: flex; align-items: baseline; gap: 0.45rem; }
+.st-key-test_tab .tt-kpi-num { font-size: 1.45rem; font-weight: 700; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.st-key-test_tab .tt-kpi-note { font-size: 0.74rem; opacity: 0.6; white-space: nowrap; }
 .st-key-test_tab .tt-kpi.ok { box-shadow: inset 3px 0 0 var(--tt-ok); }
 .st-key-test_tab .tt-kpi.ok .tt-kpi-num { color: var(--tt-ok); }
 .st-key-test_tab .tt-kpi.ng { box-shadow: inset 3px 0 0 var(--tt-ng); }
 .st-key-test_tab .tt-kpi.ng .tt-kpi-num { color: var(--tt-ng); }
 .st-key-test_tab .tt-kpi.err { box-shadow: inset 3px 0 0 var(--tt-err); }
 .st-key-test_tab .tt-kpi.err .tt-kpi-num { color: var(--tt-err); }
-
-/* 실패 카드 안의 원인 셋. 전체 · 성공 · 실패와 같은 층으로 보이면 안 되므로
-   카드 **안에** 들여쓰고 선으로 매단다. 같은 설명을 셋에 되풀이하지 않고 묶음에 한 번만 적는다. */
-.st-key-test_tab .tt-kpi.ng { flex-grow: 1.9; }
+.st-key-test_tab .tt-kpi.tt-kpi-split { flex: 2.2 1 19rem; }
 .st-key-test_tab .tt-causes {
-  grid-column: 1 / -1; margin: 0.5rem 0 0 0.2rem; padding: 0.35rem 0 0.05rem 0.7rem;
-  border-left: 2px solid rgba(229, 83, 75, 0.35); border-top: 1px solid var(--tt-line);
+  flex: 1 1 auto; min-width: 0; padding: 0.05rem 0 0.05rem 0.85rem;
+  border-left: 2px solid rgba(229, 83, 75, 0.35);
 }
-.st-key-test_tab .tt-causes-head { font-size: 0.7rem; opacity: 0.5; margin-bottom: 0.2rem; }
-.st-key-test_tab .tt-cause {
-  display: flex; align-items: baseline; gap: 0.4rem; font-size: 0.78rem; line-height: 1.7;
-}
-.st-key-test_tab .tt-cause-k { opacity: 0.7; }
+.st-key-test_tab .tt-causes-head { font-size: 0.68rem; opacity: 0.5; line-height: 1.35; }
+.st-key-test_tab .tt-cause { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.78rem; line-height: 1.45; }
+.st-key-test_tab .tt-cause-k { opacity: 0.75; min-width: 5.6rem; }
 .st-key-test_tab .tt-cause-k::before {
   content: ""; display: inline-block; width: 0.3rem; height: 0.3rem; border-radius: 50%;
   background: var(--tt-ng); opacity: 0.7; margin-right: 0.35rem; vertical-align: 0.1rem;
 }
-.st-key-test_tab .tt-cause-v { font-weight: 700; font-variant-numeric: tabular-nums; }
+.st-key-test_tab .tt-cause-v { font-weight: 700; font-variant-numeric: tabular-nums; color: rgba(229, 83, 75, 0.95); }
 .st-key-test_tab .tt-cause-note { font-size: 0.72rem; opacity: 0.5; }
-.st-key-test_tab .tt-kpis-empty .tt-cause-v { opacity: 0.35; }
+.st-key-test_tab .tt-kpis-empty .tt-cause-v { opacity: 0.35; color: inherit; }
 
 /* 보기 필터. 붙은 막대(segmented)가 아니라 떨어진 pill 로 둔다.
    전체는 홀로 서고, 실패({parent_filter} 번째)와 실패를 가른 셋({first_failure_filter}~{last_failure_filter} 번째)은
    붉은 테두리 한 칸 안에 함께 든다 — 그 칸이 「실패 = 셋의 합」이라는 묶음이다. 실패는 칸 맨 앞에서
-   진한 바탕 · 굵은 글자로 서고 뒤에 가는 세로선, 셋은 바탕 없이 옅게 선다. 글자로 묶음 이름을 달지 않는다.
+   진한 테두리 · 바탕 · 굵은 글자로 서고 뒤에 세로선, 셋은 한 단계 작고 낮은 pill 로 바탕 없이 옅게 선다.
+   셋의 글자는 「기능 선택  11/15」 — 실패 수에 대한 몫이라 묶음 이름을 따로 달지 않는다.
    칸은 radiogroup 을 grid 로 두고 그 ::before 를 grid 칸 {parent_filter} ~ {last_failure_filter} 뒤에 깔아 그린다. pill 은 제 칸에 박는다
    (자동 배치면 ::before 가 첫 칸을 먹는다). 한 줄이라 높이가 안 는다.
    오류 보기(있을 때만 맨 뒤)는 실패에 딸리지 않으므로 칸 밖에 황색으로 둔다. 고르는 뜻은 그대로다. */
@@ -2100,15 +2189,19 @@ def panel_css() -> str:
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(1) { margin-right: 0.45rem; }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) {
-  margin-left: 0.3rem; margin-right: 0.55rem;
-  color: var(--tt-ng); border-color: rgba(229, 83, 75, 0.7); background: rgba(229, 83, 75, 0.12); font-weight: 700;
+  margin-left: 0.3rem; margin-right: 0.6rem;
+  color: var(--tt-ng); border: 1.5px solid rgba(229, 83, 75, 0.9); background: rgba(229, 83, 75, 0.16);
 }
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) p { font-weight: 800; }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter})::after {
   content: ""; position: absolute; right: -0.48rem; top: 18%; bottom: 18%; width: 1px; background: rgba(229, 83, 75, 0.45);
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{first_failure_filter}):nth-of-type(-n+{last_failure_filter}) {
-  color: rgba(229, 83, 75, 0.85); border-color: rgba(229, 83, 75, 0.24); background: transparent;
-  font-size: 0.82rem; padding-left: 0.65rem; padding-right: 0.65rem;
+  color: rgba(229, 83, 75, 0.8); border-color: rgba(229, 83, 75, 0.22); background: transparent;
+  min-height: 1.85rem; padding: 0 0.6rem;
+}
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{first_failure_filter}):nth-of-type(-n+{last_failure_filter}) p {
+  font-size: 0.78rem;
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({last_failure_filter}) { margin-right: 0.3rem; }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{parent_filter}):nth-of-type(-n+{last_failure_filter})[aria-checked="true"] {
@@ -2122,12 +2215,18 @@ def panel_css() -> str:
 }
 /* 필터 칸이 좁으면(창이 좁을 때) 한 줄 grid 가 옆 칸을 덮는다. 그때는 묶음 칸만 두 줄이 된다 —
    실패는 칸 왼쪽에 세로 가운데로 서고, 셋은 그 오른쪽에 두 줄로 든다. 오류는 첫 줄 맨 뒤다. */
-.st-key-test_tab [data-testid="stColumn"]:has(.st-key-test_filter) { container: tt-filter / inline-size; }
+.st-key-test_tab .st-key-test_filters { container: tt-filter / inline-size; }
 @container tt-filter (max-width: {narrow_filter}px) {
   .st-key-test_tab .st-key-test_filter [role="radiogroup"]::before { grid-row: 1 / 3; grid-column: {parent_filter} / {narrow_end}; }
   .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) { grid-row: 1 / 3; }
 {narrow_placements}
 }
+
+/* 결과 표 머리의 정렬 방향은 짧게 둔다. 표 오른쪽 위 한 칸에 든다. */
+.st-key-test_tab .st-key-test_sort_order { align-self: flex-end; }
+.st-key-test_tab .st-key-test_sort_order [role="radiogroup"] { flex-wrap: nowrap; }
+.st-key-test_tab .st-key-test_sort_order button[data-variant="segmented_control"] { padding: 0 0.5rem; }
+.st-key-test_tab .st-key-test_sort_order button[data-variant="segmented_control"] p { font-size: 0.78rem; white-space: nowrap; }
 
 /* 팬 소음 억제 체크박스는 단추 바로 옆에 붙인다. */
 .st-key-test_tab .st-key-test_fan_quiet { align-self: flex-end; }
@@ -2166,8 +2265,14 @@ def panel_css() -> str:
 .st-key-test_tab .tt-conds tr.tt-changed td { color: var(--tt-ng); font-weight: 600; }
 
 /* ---------------------------------------------- 두 칸 제목 */
-.st-key-test_tab .tt-pane-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; margin-top: 0.3rem; }
+.st-key-test_tab .tt-pane-title { font-size: 0.85rem; font-weight: 600; opacity: 0.85; white-space: nowrap; }
 .st-key-test_tab .tt-pane-title span { font-weight: 400; opacity: 0.65; margin-left: 0.3rem; }
+.st-key-test_tab .tt-pane-title .tt-pane-group {
+  font-size: 0.74rem; font-weight: 600; opacity: 1; color: var(--tt-ai);
+  padding: 0.05rem 0.5rem; border: 1px solid rgba(20, 184, 166, 0.55); border-radius: 999px; margin-left: 0.5rem;
+}
+/* 상세 제목은 옆 칸의 검색 · 정렬 줄과 높이를 맞춰 두 칸의 테두리가 같은 줄에서 시작하게 한다. */
+.st-key-test_tab .tt-pane-detail { min-height: 2.5rem; display: flex; align-items: center; margin-bottom: 1rem; }
 .st-key-test_tab .tt-empty { opacity: 0.6; font-size: 0.9rem; padding: 1.5rem 0.5rem; text-align: center; }
 .st-key-test_tab .tt-kpis-empty .tt-kpi-num { opacity: 0.35; color: inherit; }
 .st-key-test_tab .tt-note {
@@ -2264,13 +2369,15 @@ def panel_css() -> str:
 /* ---------------------------------------------- 기능 번호 tooltip
    브라우저 title 은 뜨기까지 지연을 못 바꿔서 data-tip 을 여기서 그린다. 올리면 {tip_delay}ms 뒤에
    뜨고, 내리면 바로 사라진다. tooltip 은 마우스를 안 받으므로 그 위로 지나가도 깜빡이지 않는다.
-   가로는 번호가 든 칸(.tt-c · .tt-kv-v · .tt-rs)의 폭에 맞추고, 세로는 번호가 놓인 줄 바로 아래다
+   가로는 번호가 든 칸(.tt-c · .tt-kv-v)의 폭에 맞추고, 세로는 번호가 놓인 줄 바로 아래다
    (top 을 비워 두면 제자리 다음 줄). 칸 밖으로 넘치면 상세의 스크롤 칸이 가로로 밀린다.
-   기능별 결과 카드는 카드 어디에 올려도 그 번호의 tooltip 이 뜬다. */
-.st-key-test_tab .tt-rs { position: relative; }
+   기능별 결과 카드는 단추라 data-tip 을 못 받는다. 같은 모양을 카드 단추의 ::after 로 그리고
+   글자(content)만 카드 key 마다 recipe_card_css 가 붙인다. 카드 어디에 올려도 뜨고, 카드 바로 아래다. */
 .st-key-test_tab [data-tip] { cursor: help; }
-.st-key-test_tab [data-tip]::after {
-  content: attr(data-tip);
+.st-key-test_tab [data-tip]::after { content: attr(data-tip); }
+.st-key-test_tab .st-key-test_fn_cards button::after { top: 100%; text-align: left; }
+.st-key-test_tab [data-tip]::after,
+.st-key-test_tab .st-key-test_fn_cards button::after {
   position: absolute; display: block; left: 0.4rem; right: 0.4rem; margin-top: 0.3rem; z-index: 30;
   padding: 0.4rem 0.6rem; border-radius: 6px;
   font-size: 0.78rem; font-weight: 400; line-height: 1.45; letter-spacing: normal;
@@ -2279,7 +2386,7 @@ def panel_css() -> str:
   opacity: 0; visibility: hidden; pointer-events: none; transition: none;
 }
 .st-key-test_tab [data-tip]:hover::after,
-.st-key-test_tab .tt-rs:hover [data-tip]::after {
+.st-key-test_tab .st-key-test_fn_cards button:hover::after {
   opacity: 1; visibility: visible;
   transition: opacity 80ms ease {tip_delay}ms, visibility 0s linear {tip_delay}ms;
 }

@@ -278,15 +278,21 @@ def test_an_error_row_shows_the_error_instead_of_a_model_output(result):
 
 
 def test_the_model_settings_come_from_the_result_metadata_with_the_llm_temperature(result):
+    """모델 설정 (자세히 보기)는 재현 · 확인용이다. 모델 이름은 실행 개요에 있어 되풀이하지 않고 Temperature 는 여기 있다."""
     conditions = panel.run_conditions(result)
     measured = result["meta"]["conditions"]
-    assert list(conditions)[:2] == ["모델", "provider"]
-    assert list(conditions)[-3:] == ["프롬프트 파일", "응답 형식 파일", "기능 정의 파일"]
-    assert conditions["모델"] == measured["model"]
+    assert list(conditions)[:2] == ["provider", "Resolve 역할"]
+    assert list(conditions)[-4:] == ["프롬프트 파일", "응답 형식 파일", "기능 정의 파일", "게시 자산"]
+    assert "모델" not in conditions
+    assert conditions["Resolve 역할"] == result["meta"]["role"]
     assert conditions["프롬프트 파일"] == measured["prompt"]["path"]
+    assert conditions["게시 자산"] == measured["registry"]["path"]
     if "temperature" in (measured.get("request") or {}):
         assert conditions["Temperature"] == panel.display_value(measured["request"]["temperature"])
         assert list(conditions)[2] == "Temperature"
+
+    old = {**result, "meta": {**result["meta"], "conditions": {k: v for k, v in measured.items() if k != "registry"}}}
+    assert "게시 자산" not in panel.run_conditions(old), "옛 기록에 없는 칸을 지어냈다"
 
     staged = {**result, "meta": {**result["meta"], "conditions": {**measured, "request": {"seed": 3, "temperature": 0.7}}}}
     shown = panel.run_conditions(staged)
@@ -425,6 +431,11 @@ def _start(at, key="test_run"):
     return panel.current_job()
 
 
+def _run_buttons(at):
+    """실행 제어 단추. 기능별 결과 카드(test_fn_…)도 단추라 뺀다."""
+    return [b for b in at.button if not str(b.key or "").startswith("test_fn_")]
+
+
 def _local_dirs(at):
     return sorted(p.name for p in at.local.iterdir()) if at.local.is_dir() else []
 
@@ -442,7 +453,7 @@ def test_opening_the_tab_shows_every_v1_case_as_pending_without_running(app):
     assert len(app.dataframe[0].value) == len(_enabled("test_suite_v1")) == 48
     assert set(_results(app)) == {panel.PENDING_TEXT}
     assert list(app.dataframe[0].value["발화"]) == [case["utterance"] for case in _enabled("test_suite_v1")]
-    assert [b.label for b in app.button] == ["새로 실행"]
+    assert [b.label for b in _run_buttons(app)] == ["새로 실행"]
     assert _local_dirs(app) == []
     [quiet] = app.checkbox
     assert (quiet.label, quiet.value, quiet.disabled) == ("GPU 팬 소음 억제", True, False)
@@ -621,7 +632,7 @@ def test_an_out_of_scope_row_compares_no_function_with_what_the_model_picked(oos
 def test_the_case_detail_keeps_only_status_candidates_reason_and_inference_latency(result):
     for row in result["cases"]:
         text = visible_text(panel.detail_markup(row, FUNCTIONS))
-        for label in ("모델 판정 상태", "후보 기능", "모델 판단", "추론 지연시간"):
+        for label in ("모델 판정 상태", "후보 기능", "모델 판단", "추론 시간"):
             assert label in text, (row["case_id"], label)
         assert not [w for w in RETIRED if w in text], (row["case_id"], [w for w in RETIRED if w in text])
 
@@ -650,7 +661,9 @@ def test_every_visible_function_number_carries_its_description_on_hover(result, 
     for row in [*result["cases"], *oos_result["cases"]]:
         seen += len(check(panel.detail_markup(row, FUNCTIONS), ("상세", row["case_id"]), at_least=0))
     assert seen, "상세에 기능 번호가 하나도 안 나왔다"
-    check(panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS), "기능별 결과")
+    cards = panel.recipe_card_css(panel.recipe_rows(result), FUNCTIONS)
+    for entry in panel.recipe_rows(result):
+        assert f'.st-key-{panel.recipe_card_key(entry)} button::after {{ content: "{FUNCTIONS[entry["group"]]}"; }}' in cards
     check(panel.reason_markup("recipe_045 가 맞고 recipe_061 은 아니다", FUNCTIONS), "모델 판단", at_least=2)
 
     tip = FUNCTIONS["recipe_045"]
@@ -710,14 +723,15 @@ def test_the_overview_shows_total_inference_time_from_latency_total_not_the_wall
 def test_the_top_summary_shows_run_facts_but_no_evaluation_metrics(oos_result):
     info = panel.overview(oos_result)
     titles = [title for title, _rows in info]
-    assert titles == ["테스트 세트", "시작 시간", "전체 추론시간", "추론 지연시간", "발화", "모델 설정", "실행 환경"]
+    assert titles == ["Test Suite", "평가 시작 시간", "전체 추론시간", "발화당 추론 시간", "평가 결과", "모델", "실행 환경"]
     rows = dict(info)
-    assert [label for label, _ in rows["추론 지연시간"]] == ["Median", "P95", "Max"]
+    assert [label for label, _ in rows["발화당 추론 시간"]] == ["Median", "P95", "Max"]
     total = oos_result["summary"]["total"]
-    assert dict(rows["발화"]) == {"전체": str(total["runs"]), "성공": str(total["passed"]),
-                                  "실패": str(total["runs"] - total["passed"]), "오류": str(total["errors"])}
-    assert [label for label, _ in rows["모델 설정"]][:2] == ["모델", "Temperature"]
-    assert dict(rows["실행 환경"]) == {"GPU": "기록 없음", "VRAM": "기록 없음"}
+    assert dict(rows["평가 결과"]) == {"전체": str(total["runs"]), "성공": str(total["passed"]),
+                                     "실패": str(total["runs"] - total["passed"]), "오류": str(total["errors"])}
+    assert rows["모델"] == [("", oos_result["meta"]["conditions"]["model"])]
+    assert dict(rows["실행 환경"]) == {"GPU": "기록 없음", "VRAM (GPU 1개당)": "기록 없음"}
+    assert "Temperature" not in visible_text(panel.overview_markup(info)), "Temperature 는 모델 설정 (자세히 보기)에 있다"
 
     text = visible_text(panel.overview_markup(info))
     for gone in ("기능 선택", "인자 추출", "발화 성공", "범위 밖 처리", "실행 준비"):
@@ -732,7 +746,7 @@ def test_the_execution_environment_shows_gpu_model_and_vram_but_no_temperature(o
         {"index": i, "name": "RTX PRO 6000", "memory_total_mib": 97887} for i in range(4)]},
         "gpu": {"available": True, "start_temp": 37, "max_temp": 70, "pauses": 14, "thermal_throttle": False}}
     rows = dict(dict(panel.overview({**oos_result, "meta": meta}))["실행 환경"])
-    assert rows == {"GPU": "RTX PRO 6000 × 4", "VRAM": "장당 95.6 GiB"}
+    assert rows == {"GPU": "RTX PRO 6000 × 4", "VRAM (GPU 1개당)": "95.6 GiB"}
     text = visible_text(panel.overview_markup(panel.overview({**oos_result, "meta": meta})))
     assert "°C" not in text and "70" not in text and "쉼" not in text
 
@@ -785,7 +799,11 @@ def test_the_function_results_list_only_supported_functions_in_numeric_order(res
     assert panel.group_options(mixed)[-1] == panel.OUT_OF_SCOPE_GROUP
     assert [r["case_id"] for r in panel.filter_results(mixed, "전체", "", panel.OUT_OF_SCOPE_GROUP)] == [2, 3]
     assert [r["case_id"] for r in panel.filter_results(mixed, "실패 · 범위 밖 처리")] == [2]
-    assert [e["label"] for e in panel.recipe_rows(oos_result)] == ["기능 010"]
+    assert [e["label"] for e in panel.recipe_rows(oos_result)] == ["기능 010", "범위 밖"]
+    outside = panel.recipe_rows(oos_result)[-1]
+    total = oos_result["summary"]["total"]
+    assert (outside["group"], outside["runs"], outside["passed"]) == (panel.OUT_OF_SCOPE_GROUP, total["oos_runs"], total["oos_passed"])
+    assert [e["label"] for e in panel.recipe_rows(result)][-1] != "범위 밖", "범위 밖 발화가 없는데 범위 밖 카드가 섰다"
 
     unordered = {"summary": {"recipes": {rid: {"runs": 1, "passed": 1, "hit": 1}
                                           for rid in ("recipe_100", "recipe_020", "recipe_003", "recipe_061")}}}
@@ -815,7 +833,7 @@ def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app
     assert panel.PENDING_TEXT not in _results(app)
     assert any(saved["meta"]["run_id"] in m.value for m in app.markdown)
     assert any('class="tt-ovs"' in m.value for m in app.markdown)
-    assert [e.label for e in app.expander] == ["모델 설정", "기능별 결과"]
+    assert [e.label for e in app.expander] == ["모델 설정 (자세히 보기)", "기능별 결과"]
     shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
     assert not [w for w in RETIRED if w in shown], [w for w in RETIRED if w in shown]
     assert app.session_state[panel.RESULT_KEY]["result"]["summary"] == manage_benchmark.load_benchmark(
@@ -1022,7 +1040,7 @@ def test_the_overview_names_the_suite_by_its_file(result):
     result = {**result, "meta": {**result["meta"],
                                  "suite": {"path": "dev/evaluation/inputs/test_suites/test_suite_v1.yaml",
                                            "label": "FULL48 회귀 테스트"}}}
-    shown = dict(panel.overview(result))["테스트 세트"]
+    shown = dict(panel.overview(result))["Test Suite"]
     assert shown == [("", "test_suite_v1.yaml")]
 
 
@@ -1030,31 +1048,31 @@ def test_a_function_card_shows_only_its_number_and_score(result):
     """「모두 성공」 · 「실패 N」 은 x/y 가 이미 말한 것을 되풀이한다. 서른아홉 장이면 글자만 는다."""
     entries = panel.recipe_rows(result)
     assert entries and any(e["failed"] for e in entries)
-    markup = panel.recipe_summary_markup(entries, FUNCTIONS)
-    text = visible_text(markup)
-    for gone in ("모두 성공", "실패 "):
-        assert gone not in text, gone
-    assert " ".join(text.split()) == " ".join(
-        f"{panel.function_label(e['group'])} {e['passed']}/{e['runs']}" for e in entries
-    )
+    for e in entries:
+        assert panel.recipe_card_label(e) == f"{panel.function_label(e['group'])} **{e['passed']}/{e['runs']}**"
+        assert panel.recipe_card_key(e) == f"test_fn_{'ng' if e['failed'] else 'ok'}_{e['group']}"
+    assert panel.recipe_card_key({"group": panel.OUT_OF_SCOPE_GROUP, "failed": 1}) == "test_fn_ng_out_of_scope"
 
     # 성공은 옆줄만, 실패는 배경까지. 카드 사이에는 틈이 있다
-    assert markup.count("tt-rs-ok") + markup.count("tt-rs-ng") == len(entries)
     css = panel.panel_css()
-    assert "rgba(229, 83, 75" in css.split(".tt-rs-ng", 1)[1][:200]
-    assert "background" not in css.split(".tt-rs-ok {", 1)[1].split("}", 1)[0]
-    assert re.search(r"\.tt-rss \{[^}]*gap:", css)
+    assert "rgba(229, 83, 75" in css.split('[class*="st-key-test_fn_ng_"] button {', 1)[1][:200]
+    assert "background" not in css.split('[class*="st-key-test_fn_ok_"] button {', 1)[1].split("}", 1)[0]
+    assert re.search(r"\.st-key-test_fn_cards \{[^}]*gap:", css)
 
 
 def test_a_function_card_carries_its_menu_description_without_a_second_table(result):
-    """카드 어디에 올려도 설명이 뜬다(.tt-rs:hover). tooltip 은 번호 하나에만 있어 두 개가 겹쳐 뜨지 않는다."""
-    markup = panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS)
-    for recipe_id, text in FUNCTIONS.items():
-        if recipe_id in {e["group"] for e in panel.recipe_rows(result)}:
-            assert f'class="tt-rs tt-rs' in markup
-            assert markup.count(f'data-tip="{text}"') == 1, recipe_id
-    assert "title=" not in markup
-    assert ".tt-rs:hover [data-tip]::after" in panel.panel_css()
+    """카드는 단추라 data-tip 을 못 받는다. 설명은 카드 key 의 ::after 한 줄이고, 뜨는 모양 · 지연은 기능 번호 tooltip 과 같다."""
+    entries = panel.recipe_rows(result)
+    css = panel.recipe_card_css(entries, FUNCTIONS)
+    for e in entries:
+        if e["group"] in FUNCTIONS:
+            assert css.count(f".st-key-{panel.recipe_card_key(e)} button::after") == 1, e["group"]
+    assert panel.recipe_card_css(entries, {}) == ""
+    tricky = panel.recipe_card_css([{"group": "recipe_001", "failed": 0}], {"recipe_001": 'a "b" \\ </style>\n'})
+    assert "</style>" not in tricky[:-len("</style>")] and '\\"b\\"' in tricky
+    base = panel.panel_css()
+    assert ".st-key-test_tab .st-key-test_fn_cards button:hover::after" in base
+    assert f"{panel.TIP_DELAY_MS}ms" in base.split(".st-key-test_fn_cards button:hover::after", 1)[1][:300]
 
 
 def test_the_two_suites_stay_separate_datasets():
@@ -1146,11 +1164,40 @@ def test_the_result_table_has_one_result_column_and_no_판정_column(result, oos
     """모델 품질 실패 셋 · 오류 · 대기가 한 칸에서 갈린다. 판정 칸이 또 있으면 같은 것을 두 번 읽는다."""
     rows = [*result["cases"], *oos_result["cases"], *panel.suite_rows("test_suite_v1")[:2]]
     frame = panel.list_frame(rows)
-    assert list(frame.columns) == ["번호", "기능", "발화", "결과", "추론 지연시간"]
+    assert list(frame.columns) == ["번호", "기능", "발화", "결과", "추론 시간"]
     assert set(frame["결과"]) == RESULT_VALUES
     assert "실패 · 실행 오류" not in set(frame["결과"])
     assert panel.RESULT_ORDER == ("성공", "실패 · 기능 선택", "실패 · 인자 추출", "실패 · 범위 밖 처리", "오류")
     assert "판정" not in panel._list_columns()
+
+
+def test_every_visible_inference_time_has_two_decimals_and_the_stored_value_is_untouched(result, oos_result):
+    """위 Median · P95 · Max 와 표의 발화별 추론 시간이 자릿수가 다르면 같은 것을 재는 숫자로 안 읽힌다.
+    글자만 반올림한다 — 결과(run.json)의 값은 그대로다."""
+    row = _latency(_row(result, 1), 1.4)
+    assert list(panel.list_frame([row])["추론 시간"]) == ["1.40초"]
+    assert list(panel.list_frame([_latency(_row(result, 1), 1.6234)])["추론 시간"]) == ["1.62초"]
+    assert row["timing"]["resolve_s"] == 1.4
+    assert "추론 시간  1.40초" in visible_text(panel.detail_markup(row, FUNCTIONS))
+
+    faked = json.loads(json.dumps(oos_result))
+    faked["summary"]["latency"].update(median=1.4, p95=1.8651, max=2.0)
+    assert dict(panel.overview(faked))["발화당 추론 시간"] == [("Median", "1.40초"), ("P95", "1.87초"), ("Max", "2.00초")]
+    assert faked["summary"]["latency"]["p95"] == 1.8651
+    faked["summary"]["latency"] = {}
+    assert dict(panel.overview(faked))["발화당 추론 시간"] == [("Median", "—"), ("P95", "—"), ("Max", "—")]
+
+
+def test_the_header_says_발화_해석_평가_with_no_subtitle_and_calls_the_suite_Test_Suite(app):
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
+    assert "발화 해석 평가" in shown
+    for gone in ("AI 기능 테스트", "발화별 기능 선택 및 인자 추출 결과", "테스트 세트", "추론 지연시간", "장당"):
+        assert gone not in shown, gone
+    assert not any('class="tt-sub"' in m.value for m in app.markdown)
+    assert app.selectbox(key=panel.DATASET_KEY).label == "Test Suite"
+    assert not [box.label for box in app.selectbox if "테스트 세트" in box.label]
 
 
 def test_the_detail_keeps_the_raw_model_status(result, oos_result):
@@ -1187,11 +1234,11 @@ def test_pending_rows_and_missing_latency_stay_last_in_both_directions(result):
     rows = [skeleton[1], done[0], skeleton[0], done[1], skeleton[2], done[2]]
     pending_ids = [r["case_id"] for r in skeleton]
 
-    up = [r["case_id"] for r in panel.sort_rows(rows, "추론 지연시간")]
-    down = [r["case_id"] for r in panel.sort_rows(rows, "추론 지연시간", panel.DESCENDING)]
+    up = [r["case_id"] for r in panel.sort_rows(rows, "추론 시간")]
+    down = [r["case_id"] for r in panel.sort_rows(rows, "추론 시간", panel.DESCENDING)]
     assert up == [2, 3, 1, *pending_ids]
     assert down == [1, 3, 2, *pending_ids]
-    for column in ("결과", "추론 지연시간"):
+    for column in ("결과", "추론 시간"):
         for order in panel.SORT_ORDERS:
             assert [r["case_id"] for r in panel.sort_rows(rows, column, order)][-3:] == pending_ids
 
@@ -1281,7 +1328,7 @@ def test_a_finished_run_shows_완료_and_only_새로_실행(app):
     _wait(app)
 
     assert "완료 · 48 / 48" in _run_text(app)
-    assert [b.label for b in app.button] == ["새로 실행"]
+    assert [b.label for b in _run_buttons(app)] == ["새로 실행"]
     assert not [e for e in app.expander if e.label == "변경된 조건 보기"]
     [folder] = _local_dirs(app)
     assert sorted(p.name for p in (app.local / folder).iterdir()) == [manage_benchmark.RUN_FILE]
@@ -1293,10 +1340,10 @@ def _stop_at(app, call):
     job = _start(app)
     assert app.hold.entered.wait(20)
     app.run()
-    assert [b.label for b in app.button] == ["중지"]
+    assert [b.label for b in _run_buttons(app)] == ["중지"]
     app.button(key="test_stop").click().run()
     assert job.stop_requested()
-    assert [(b.label, b.disabled) for b in app.button] == [("중지 요청됨", True)]
+    assert [(b.label, b.disabled) for b in _run_buttons(app)] == [("중지 요청됨", True)]
     assert "중지 요청됨 · 현재 발화를 마친 뒤 중지합니다." in _run_text(app)
     app.hold.release.set()
     _wait(app)
@@ -1316,7 +1363,7 @@ def test_중지_lets_the_call_in_flight_finish_saves_it_and_never_starts_the_nex
 
     assert "중단됨 · 2 / 48" in _run_text(app)
     assert _results(app).count(panel.PENDING_TEXT) == 46
-    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", False), ("새로 실행", False)]
+    assert [(b.label, b.disabled) for b in _run_buttons(app)] == [("이어 실행", False), ("새로 실행", False)]
     assert any("이어 실행 가능" in m.value for m in app.markdown)
     label = next(o for o in app.selectbox(key=panel.SAVED_KEY).options if o.startswith(folder))
     assert label == f"{folder} · 2/48 · 중단됨"
@@ -1331,12 +1378,12 @@ def test_while_running_the_pickers_are_locked_and_a_second_run_cannot_start(app)
     assert app.hold.entered.wait(20)
     app.run()
     assert app.selectbox(key=panel.DATASET_KEY).disabled and app.selectbox(key=panel.SAVED_KEY).disabled
-    assert [b.label for b in app.button] == ["중지"]
+    assert [b.label for b in _run_buttons(app)] == ["중지"]
     assert not panel.start_job(panel._Job(panel.NEW, "test_suite_v1", 48), lambda: None), "두 번째 평가가 시작됐다"
 
     other = AppTest.from_function(_tab_script, default_timeout=60)
     other.run()
-    assert [b.label for b in other.button] == ["중지"], "다른 창이 두 번째 실행을 할 수 있다"
+    assert [b.label for b in _run_buttons(other)] == ["중지"], "다른 창이 두 번째 실행을 할 수 있다"
 
     app.hold.release.set()
     _wait(app)
@@ -1402,7 +1449,7 @@ def test_loading_a_compatible_incomplete_record_offers_이어_실행_without_cre
     assert not app.exception
     assert "중단됨 · 5 / 48" in _run_text(app)
     assert any("이어 실행 가능" in m.value for m in app.markdown)
-    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", False), ("새로 실행", False)]
+    assert [(b.label, b.disabled) for b in _run_buttons(app)] == [("이어 실행", False), ("새로 실행", False)]
     assert _local_dirs(app) == [folder.name] and sorted(p.name for p in folder.iterdir()) == before
     assert app.calls == [] and app.resolved == []
 
@@ -1419,7 +1466,7 @@ def test_an_incompatible_record_keeps_이어_실행_visible_but_disabled_and_sho
     app.selectbox(key=panel.SAVED_KEY).set_value(f"local:{folder.name}").run()
 
     assert not app.exception
-    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", True), ("새로 실행", False)]
+    assert [(b.label, b.disabled) for b in _run_buttons(app)] == [("이어 실행", True), ("새로 실행", False)]
     shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
     assert "이어 실행 불가" in shown and "실행 조건이 변경되어 이어 실행할 수 없습니다." in shown
     assert [e.label for e in app.expander if e.label == "변경된 조건 보기"] == ["변경된 조건 보기"]
@@ -1446,7 +1493,7 @@ def test_an_old_record_without_resume_conditions_loads_but_cannot_be_resumed(app
 
     assert not app.exception
     assert _results(app).count(panel.PENDING_TEXT) == 45
-    assert [(b.label, b.disabled) for b in app.button] == [("이어 실행", True), ("새로 실행", False)]
+    assert [(b.label, b.disabled) for b in _run_buttons(app)] == [("이어 실행", True), ("새로 실행", False)]
     shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
     assert "저장된 실행 조건만으로 동일 실행을 재현할 수 없습니다." in shown
     table = next(m.value for m in app.markdown if "tt-conds" in m.value and "<style>" not in m.value)
@@ -1525,14 +1572,15 @@ def test_function_tooltips_are_drawn_by_css_after_a_short_delay_not_by_the_brows
     """title 은 뜨기까지 1초 가까이 걸리고 그 지연을 못 바꾼다. data-tip 을 CSS 가 TIP_DELAY_MS 뒤에 그린다."""
     assert 100 <= panel.TIP_DELAY_MS <= 150
     markups = [panel.detail_markup(row, FUNCTIONS) for row in [*result["cases"], *oos_result["cases"]]]
-    markups.append(panel.recipe_summary_markup(panel.recipe_rows(result), FUNCTIONS))
     assert not [m for m in markups if "title=" in m], "브라우저 title tooltip 이 남았다"
     assert all(tip for m in markups for tip, _n in _numbers(m))
 
     css = panel.panel_css()
-    hidden = css.split("[data-tip]::after {", 1)[1].split("}", 1)[0]
-    shown = css.split("[data-tip]:hover::after,", 1)[1].split("}", 1)[0]
-    assert "content: attr(data-tip)" in hidden and "visibility: hidden" in hidden
+    assert "content: attr(data-tip)" in css.split("[data-tip]::after {", 1)[1].split("}", 1)[0]
+    # 기능별 결과 카드(단추)의 tooltip 도 같은 한 벌을 쓴다. 글자만 카드마다 recipe_card_css 가 붙인다
+    hidden = css.split("[data-tip]::after,\n.st-key-test_tab .st-key-test_fn_cards button::after {", 1)[1].split("}", 1)[0]
+    shown = css.split("[data-tip]:hover::after,\n.st-key-test_tab .st-key-test_fn_cards button:hover::after {", 1)[1].split("}", 1)[0]
+    assert "visibility: hidden" in hidden
     assert "pointer-events: none" in hidden, "tooltip 이 마우스를 받으면 그 위에서 깜빡인다"
     assert "transition: none" in hidden, "내릴 때 바로 사라지지 않는다"
     assert f"{panel.TIP_DELAY_MS}ms" in shown and "visibility: visible" in shown
@@ -1551,7 +1599,7 @@ def test_the_filter_labels_match_the_result_column_and_keep_their_counts(app):
     app.run()
     app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
     labels = [" ".join(str(o).split()) for o in _filter_labels(app)]
-    assert labels == ["전체 203", "실패 15", "실패 · 기능 선택 11", "실패 · 인자 추출 3", "실패 · 범위 밖 처리 1"]
+    assert labels == ["전체 203", "실패 15", "기능 선택 11/15", "인자 추출 3/15", "범위 밖 처리 1/15"]
 
     for view, count in (("실패 · 기능 선택", 11), ("실패 · 인자 추출", 3), ("실패 · 범위 밖 처리", 1), ("실패", 15)):
         app.segmented_control(key=panel.FILTER_KEY).set_value(view).run()
@@ -1560,6 +1608,77 @@ def test_the_filter_labels_match_the_result_column_and_keep_their_counts(app):
             assert set(_results(app)) == {view}, "필터 글자와 결과 칸 글자가 다르다"
     assert 15 == 11 + 3 + 1, "실패 묶음의 머리가 세부 셋의 합이 아니다"
     assert app.calls == []
+
+
+def test_the_failure_children_are_labelled_as_shares_of_the_parent_without_repeating_실패():
+    counts = {panel.ALL: 203, panel.FAILED: 15, "실패 · 기능 선택": 11, "실패 · 인자 추출": 3, "실패 · 범위 밖 처리": 0}
+    assert [panel.filter_label(v, counts) for v in panel.FILTERS] == [
+        "전체  203", "실패  15", "기능 선택  11/15", "인자 추출  3/15", "범위 밖 처리  0/15"]
+    assert [panel.filter_label(v, {}) for v in panel.FILTERS] == ["전체", "실패", "기능 선택", "인자 추출", "범위 밖 처리"]
+    assert panel.filter_label("실패 · 기능 선택", {**counts, panel.FAILED: 0, "실패 · 기능 선택": 0}) == "기능 선택  0"
+
+
+# ── 기능별 결과 카드로 거르기 ─────────────────────────────────────────
+def _card(at, group):
+    return next(b for b in at.button if str(b.key or "").startswith("test_fn_") and b.key.endswith(group.strip("_")))
+
+
+def _groups_in_table(at):
+    return set(at.dataframe[0].value["기능"])
+
+
+def test_a_function_card_filters_the_table_and_a_second_click_clears_it(app):
+    """카드는 표시가 아니라 거르기다. 하나만 고르고, 고른 카드를 다시 누르면 푼다. 기능 고르기 목록은 없다."""
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    assert not [box for box in app.selectbox if box.key == panel.GROUP_KEY], "기능 고르기 목록이 남아 있다"
+    assert not any("모든 기능" in str(option) for box in app.selectbox for option in box.options)
+
+    _card(app, "recipe_015").click().run()
+    assert not app.exception
+    assert _groups_in_table(app) == {"기능 015"} and len(app.dataframe[0].value) == 5
+    assert _card(app, "recipe_015").proto.type == "primary" and _card(app, "recipe_001").proto.type == "secondary"
+    assert any('tt-pane-group">기능 015<' in m.value for m in app.markdown)
+
+    _card(app, "recipe_052").click().run()
+    assert _groups_in_table(app) == {"기능 052"}, "하나만 고르지 않았다"
+    _card(app, "recipe_052").click().run()
+    assert len(app.dataframe[0].value) == 203, "고른 카드를 다시 눌러도 안 풀렸다"
+    assert app.calls == [] and _local_dirs(app) == []
+
+
+def test_a_function_card_and_the_failure_filter_intersect(app):
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    _card(app, "recipe_015").click().run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
+    shown = app.dataframe[0].value
+    assert set(shown["기능"]) == {"기능 015"} and set(shown["결과"]) <= {"실패 · 기능 선택", "실패 · 인자 추출"}
+    assert len(shown) == 4
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.ALL).run()
+    assert len(app.dataframe[0].value) == 5, "보기 필터를 풀었는데 기능 거르기까지 풀렸다"
+
+
+def test_the_out_of_scope_card_counts_no_match_cases_and_filters_to_them(app):
+    """범위 밖은 기능이 아니라 거르기 자리다. 수는 채점된 summary.total 의 oos_runs · oos_passed 그대로다."""
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    total = manage_benchmark.load_benchmark("official", CANONICAL)["summary"]["total"]
+    assert (total["oos_runs"], total["oos_passed"]) == (8, 7)
+    card = _card(app, panel.OUT_OF_SCOPE_GROUP)
+    assert card.label == "범위 밖 **7/8**" and card.key == "test_fn_ng_out_of_scope"
+    card.click().run()
+    shown = app.dataframe[0].value
+    assert set(shown["기능"]) == {"범위 밖"} and len(shown) == 8
+    assert list(shown["결과"]).count("성공") == 7
+
+
+def test_switching_suite_or_loading_a_record_clears_the_picked_function(app):
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    _card(app, "recipe_015").click().run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL_V1}").run()
+    assert len(app.dataframe[0].value) == 48 and app.session_state[panel.GROUP_KEY] == panel.ALL_GROUPS
 
 
 def test_errors_get_their_own_filter_and_never_join_the_failure_count(app):
@@ -1645,6 +1764,72 @@ def test_resume_uses_the_checkbox_as_it_is_now_not_the_stored_fan_quiet_mode(app
     meta = manage_benchmark.load_benchmark("local", folder)["meta"]
     assert meta["fan_quiet_mode"] is first
     assert meta["resumed_fan_quiet_mode"] == [then] and len(meta["resumed_at"]) == 1
+
+
+# 화면이 부르는 진짜 자리. app fixture 가 바꿔 끼우기 전에 잡아 둔다
+REAL_RESUME_SELECTED = panel.resume_selected
+
+
+class RecordingMonitor:
+    """팬을 안 보고 발화마다 받은 팬 소음 억제 값만 적는 monitor. 기다리지 않는다."""
+
+    waiting = False
+    waited_s = 0.0
+
+    def __init__(self):
+        self.seen = []
+
+    def before_case(self, done, *, fan_quiet, should_stop=None):
+        self.seen.append(fan_quiet)
+        return 0.0
+
+
+@pytest.mark.parametrize("first, then", [(True, False), (False, True)])
+def test_resume_through_the_real_panel_and_evaluation_path_accepts_the_checkbox_value(app, monkeypatch, first, then):
+    """「이어 실행」이 TypeError(resume() got an unexpected keyword argument 'fan_quiet_mode')로 죽으면 안 된다.
+    가짜로 바꾼 것은 resolve 하나다 — 화면의 resume_selected 가 진짜 run_evaluation.resume 을 부르고, 넘긴 인자가
+    그 signature 에 안 맞으면 여기서 TypeError 가 난다. 팬 값이 달라도 이어 실행이 막히지 않고, 이어 실행 구간은
+    누른 순간의 체크박스 값으로 monitor 를 부르며, 첫 구간 값은 그대로 남는다."""
+    real_resume = run_evaluation.resume
+    monitors = []
+
+    def resume_with_fake_resolve(kind, run_id, **kwargs):
+        dataset_id = manage_benchmark.read_incomplete(manage_benchmark.run_dir(kind, run_id))["meta"]["suite"]["dataset_id"]
+        return real_resume(kind, run_id, resolve=_suite_resolve(dataset_id, app.resolved), **kwargs)
+
+    def new_monitor():
+        monitors.append(RecordingMonitor())
+        return monitors[-1]
+
+    monkeypatch.setattr(panel, "resume_selected", REAL_RESUME_SELECTED)
+    monkeypatch.setattr(run_evaluation, "resume", resume_with_fake_resolve)
+    monkeypatch.setattr(panel, "_new_monitor", new_monitor)
+    from dev.evaluation.engine import monitor_gpu
+    monkeypatch.setattr(monitor_gpu, "environment", lambda: {"available": False, "gpus": []})
+
+    app.run()
+    if not first:
+        app.checkbox(key=panel.FAN_QUIET_KEY).uncheck().run()
+    _stop_at(app, 2)
+    [folder] = _local_dirs(app)
+    box = app.checkbox(key=panel.FAN_QUIET_KEY)
+    (box.check() if then else box.uncheck()).run()
+    check = panel.resume_check("local", folder)
+    assert check["resumable"], check
+    assert not [f["label"] for f in check["fields"] if "팬" in f["label"] or "fan" in f["label"].lower()], "팬 값이 이어 실행 조건이 됐다"
+
+    job = _start(app, "test_resume")
+    assert job.fan_quiet is then
+    job.thread.join(30)
+    assert job.error is None, job.error
+    _wait(app)
+    assert not any("테스트를 실행하지 못했습니다" in m.value for m in app.markdown)
+
+    assert monitors[-1].seen and set(monitors[-1].seen) == {then}, "이어 실행 구간이 체크박스 값으로 안 돌았다"
+    meta = manage_benchmark.load_benchmark("local", folder)["meta"]
+    assert meta["fan_quiet_mode"] is first
+    assert meta["resumed_fan_quiet_mode"] == [then] and len(meta["resumed_at"]) == 1
+    assert len(manage_benchmark.load_benchmark("local", folder)["cases"]) == 48
 
 
 def test_the_run_status_says_when_it_is_waiting_for_the_fans():
