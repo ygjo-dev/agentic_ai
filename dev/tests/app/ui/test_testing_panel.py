@@ -281,22 +281,28 @@ def test_the_model_settings_come_from_the_result_metadata_with_the_llm_temperatu
     """모델 설정 (자세히 보기)는 재현 · 확인용이다. 모델 이름은 실행 개요에 있어 되풀이하지 않고 Temperature 는 여기 있다."""
     conditions = panel.run_conditions(result)
     measured = result["meta"]["conditions"]
-    assert list(conditions)[:2] == ["provider", "Resolve 역할"]
-    assert list(conditions)[-4:] == ["프롬프트 파일", "응답 형식 파일", "기능 정의 파일", "게시 자산"]
-    assert "모델" not in conditions
-    assert conditions["Resolve 역할"] == result["meta"]["role"]
+    assert list(conditions)[0] == "provider"
+    assert list(conditions)[-3:] == ["프롬프트 파일", "응답 형식 파일", "기능 정의 파일"]
     assert conditions["프롬프트 파일"] == measured["prompt"]["path"]
-    assert conditions["게시 자산"] == measured["registry"]["path"]
     if "temperature" in (measured.get("request") or {}):
         assert conditions["Temperature"] == panel.display_value(measured["request"]["temperature"])
-        assert list(conditions)[2] == "Temperature"
-
-    old = {**result, "meta": {**result["meta"], "conditions": {k: v for k, v in measured.items() if k != "registry"}}}
-    assert "게시 자산" not in panel.run_conditions(old), "옛 기록에 없는 칸을 지어냈다"
+        assert list(conditions)[1] == "Temperature"
 
     staged = {**result, "meta": {**result["meta"], "conditions": {**measured, "request": {"seed": 3, "temperature": 0.7}}}}
     shown = panel.run_conditions(staged)
     assert shown["Temperature"] == "0.7" and shown["Seed"] == "3"
+
+
+def test_the_model_settings_hide_role_registry_and_run_id_but_the_record_keeps_them(result):
+    """역할 · 게시 자산 · 실행 기록 id 는 재현용 기록이지 화면에서 읽을 설정이 아니다. 기록에는 그대로 남는다."""
+    assert result["meta"]["role"] and result["meta"]["conditions"]["registry"] and result["meta"]["run_id"]
+    shown = {**panel.run_conditions(result), **panel.run_identity(result)}
+    for gone in ("모델", "Resolve 역할", "게시 자산", "실행 기록 id"):
+        assert gone not in shown, gone
+    text = visible_text(panel.conditions_markup(shown))
+    assert result["meta"]["role"] not in text and result["meta"]["conditions"]["registry"]["path"] + " " not in text + " "
+    saved = {**result, "meta": {**result["meta"], "saved_to": "dev/evaluation/outputs/local_benchmark/x"}}
+    assert panel.run_identity(saved) == {"저장 위치": "dev/evaluation/outputs/local_benchmark/x"}
 
 
 # ── 무엇이 LLM 을 부르나 · 결과 표의 줄 ─────────────────────────────
@@ -457,7 +463,9 @@ def test_opening_the_tab_shows_every_v1_case_as_pending_without_running(app):
     assert _local_dirs(app) == []
     [quiet] = app.checkbox
     assert (quiet.label, quiet.value, quiet.disabled) == ("GPU 팬 소음 억제", True, False)
-    assert quiet.help == panel.FAN_QUIET_HELP
+    assert quiet.help == panel.FAN_QUIET_HELP == (
+        "팬 속도가 높아지면 다음 발화 실행을 잠시 대기해 소음을 줄이지만, "
+        "GPU 누적 대기시간이 늘어나 전체 평가시간이 길어질 수 있습니다.")
 
 
 def test_choosing_v2_shows_all_203_cases_as_pending_without_running(app):
@@ -708,22 +716,64 @@ def test_the_overview_shows_total_inference_time_from_latency_total_not_the_wall
     faked = json.loads(json.dumps(oos_result))
     faked["summary"]["latency"]["total"] = 325.4
     faked["meta"]["elapsed_s"] = 9999.0
-    rows = dict(panel.overview(faked))
-    assert rows["전체 추론시간"] == [("", "5분 25초")]
-    assert "전체 소요 시간" not in rows and "2시간" not in visible_text(panel.overview_markup(panel.overview(faked)))
+    assert _times(faked)["전체 추론시간"] == "5분 25초"
+    assert _times(faked)["전체 평가시간"] == "166분 39초"
     assert oos_result["meta"]["elapsed_s"] is not None, "벽시계 소요 시간이 기록에서 사라졌다"
     total = sum(r["timing"]["resolve_s"] for r in oos_result["cases"] if (r.get("timing") or {}).get("resolve_s") is not None)
     assert oos_result["summary"]["latency"]["total"] == round(total, 3)
-    assert dict(panel.overview(oos_result))["전체 추론시간"] == [("", panel._duration(round(total, 3)))]
+    assert _times(oos_result)["전체 추론시간"] == panel._duration(round(total, 3))
 
     faked["summary"]["latency"] = None
-    assert dict(panel.overview(faked))["전체 추론시간"] == [("", panel.EMPTY_NUMBER)]
+    assert _times(faked)["전체 추론시간"] == panel.EMPTY_NUMBER
+
+
+def _times(result):
+    return {label: value for label, value, _tip in dict(panel.overview(result))[panel.TIME_CELL]}
+
+
+def test_the_three_times_come_from_elapsed_latency_total_and_fan_wait_with_their_help(oos_result):
+    """전체 평가시간 = meta.elapsed_s (팬 대기 포함), 전체 추론시간 = summary.latency.total, GPU 누적 대기시간 = meta.fan_wait_s.
+    셋을 더해 맞추는 줄은 없다 — API 처리 같은 작은 시간이 따로 있다."""
+    faked = json.loads(json.dumps(oos_result))
+    faked["meta"].update(elapsed_s=400.0, fan_wait_s=65.0)
+    faked["summary"]["latency"]["total"] = 325.4
+    rows = dict(panel.overview(faked))[panel.TIME_CELL]
+    assert [(label, value) for label, value, _tip in rows] == [
+        ("전체 평가시간", "6분 40초"), ("전체 추론시간", "5분 25초"), ("GPU 누적 대기시간", "1분 5초")]
+    assert {label: tip for label, _value, tip in rows} == {
+        "전체 평가시간": "평가를 시작한 시점부터 완료될 때까지 실제로 걸린 전체 시간입니다. GPU 팬 소음 억제에 따른 대기시간도 포함됩니다.",
+        "전체 추론시간": "각 발화의 AI 추론에 실제로 소요된 시간을 모두 합한 값입니다. GPU 팬 소음 억제를 위한 대기시간은 포함하지 않습니다.",
+        "GPU 누적 대기시간": "GPU 팬 소음 억제 기능으로 인해 다음 발화 실행을 기다린 시간을 모두 합한 값입니다.",
+    }
+    markup = panel.overview_markup(panel.overview(faked))
+    for label, _value, tip in rows:
+        assert f'data-tip="{tip}"' in markup and f">{label}</span>" in markup
+    text = visible_text(markup)
+    for gone in ("GPU 유휴시간", "팬 대기 제외", "오버헤드"):
+        assert gone not in text, gone
+
+
+def test_missing_time_metadata_says_기록_없음_instead_of_a_false_zero(oos_result):
+    """옛 기록(official v1 · v2)에는 fan_wait_s 칸이 없다. 없는 칸을 0초로 보이면 기다린 적이 없다고 주장하는 것이다."""
+    old = json.loads(json.dumps(oos_result))
+    old["meta"].pop("fan_wait_s", None)
+    old["meta"].pop("elapsed_s", None)
+    assert _times(old)["GPU 누적 대기시간"] == "기록 없음" and _times(old)["전체 평가시간"] == "기록 없음"
+
+    zero = json.loads(json.dumps(oos_result))
+    zero["meta"]["fan_wait_s"] = 0.0
+    assert _times(zero)["GPU 누적 대기시간"] == "0초", "기록된 0 과 칸이 없는 것이 구분되지 않는다"
+
+    canonical = manage_benchmark.load_benchmark("official", CANONICAL)
+    assert "fan_wait_s" not in canonical["meta"]
+    assert _times(canonical)["GPU 누적 대기시간"] == "기록 없음"
+    assert _times(canonical)["전체 평가시간"] == panel._duration(canonical["meta"]["elapsed_s"])
 
 
 def test_the_top_summary_shows_run_facts_but_no_evaluation_metrics(oos_result):
     info = panel.overview(oos_result)
     titles = [title for title, _rows in info]
-    assert titles == ["Test Suite", "평가 시작 시간", "전체 추론시간", "발화당 추론 시간", "평가 결과", "모델", "실행 환경"]
+    assert titles == ["Test Suite", "평가 시작 시간", "소요 시간", "발화당 추론 시간", "평가 결과", "모델", "실행 환경"]
     rows = dict(info)
     assert [label for label, _ in rows["발화당 추론 시간"]] == ["Median", "P95", "Max"]
     total = oos_result["summary"]["total"]
@@ -831,7 +881,8 @@ def test_a_saved_run_is_listed_and_loaded_into_the_same_view_without_running(app
     assert app.calls == [] and app.resolved == []
     assert len(app.dataframe) == 1 and len(app.dataframe[0].value) == 48
     assert panel.PENDING_TEXT not in _results(app)
-    assert any(saved["meta"]["run_id"] in m.value for m in app.markdown)
+    assert app.selectbox(key=panel.SAVED_KEY).value == f"local:{saved['meta']['run_id']}"
+    assert not any("실행 기록 id" in m.value for m in app.markdown)
     assert any('class="tt-ovs"' in m.value for m in app.markdown)
     assert [e.label for e in app.expander] == ["모델 설정 (자세히 보기)", "기능별 결과"]
     shown = " ".join(visible_text(m.value) for m in app.markdown if "<style>" not in m.value)
@@ -1576,7 +1627,7 @@ def test_function_tooltips_are_drawn_by_css_after_a_short_delay_not_by_the_brows
     assert all(tip for m in markups for tip, _n in _numbers(m))
 
     css = panel.panel_css()
-    assert "content: attr(data-tip)" in css.split("[data-tip]::after {", 1)[1].split("}", 1)[0]
+    assert "content: attr(data-tip)" in css.split(".st-key-test_tab [data-tip]::after {", 1)[1].split("}", 1)[0]
     # 기능별 결과 카드(단추)의 tooltip 도 같은 한 벌을 쓴다. 글자만 카드마다 recipe_card_css 가 붙인다
     hidden = css.split("[data-tip]::after,\n.st-key-test_tab .st-key-test_fn_cards button::after {", 1)[1].split("}", 1)[0]
     shown = css.split("[data-tip]:hover::after,\n.st-key-test_tab .st-key-test_fn_cards button:hover::after {", 1)[1].split("}", 1)[0]

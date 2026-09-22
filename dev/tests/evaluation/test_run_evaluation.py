@@ -177,42 +177,42 @@ def _kinds(events):
 
 
 def test_quiet_fans_never_make_the_run_wait():
-    """팬 소음 억제가 켜져 있어도 46% 아래면 발화마다 한 번 보고 바로 부른다."""
-    result, fake = _fan_run([[30, 45, 40, 30]])
+    """팬 소음 억제가 켜져 있어도 44% 아래면 발화마다 한 번 보고 바로 부른다."""
+    result, fake = _fan_run([[30, 43, 40, 30]])
 
     assert _kinds(fake.events) == ["sample", "resolve"] * 5
     assert result["meta"]["fan_quiet_mode"] is True and result["meta"]["fan_wait_s"] == 0.0
     assert len(result["cases"]) == 5 and result["meta"]["stopped"] is None
 
 
-def test_a_loud_fan_waits_before_the_next_case_until_every_fan_is_at_most_42():
-    """46% 부터 기다리고, 43% 로 내려와도 계속 기다리며, 모두 42% 이하가 되는 샘플 바로 뒤에 부른다."""
-    result, fake = _fan_run([[30], [46], [44], [43], [42], [30]])
+def test_a_loud_fan_waits_before_the_next_case_until_every_fan_is_at_most_40():
+    """44% 부터 기다리고, 41% 로 내려와도 계속 기다리며, 모두 40% 이하가 되는 샘플 바로 뒤에 부른다."""
+    result, fake = _fan_run([[30], [44], [42], [41], [40], [30]])
 
     kinds = _kinds(fake.events)
     assert kinds[:9] == ["sample", "resolve", "sample", "sleep", "sample", "sleep", "sample", "sleep", "sample"]
-    assert kinds[9] == "resolve", "모두 42% 이하가 됐는데 바로 안 불렀다"
+    assert kinds[9] == "resolve", "모두 40% 이하가 됐는데 바로 안 불렀다"
     assert {value for kind, value in fake.events if kind == "sleep"} == {monitor_gpu.FAN_POLL_S}
-    assert monitor_gpu.FAN_POLL_S <= 1.0, "기다리는 동안 너무 드물게 본다"
+    assert monitor_gpu.FAN_POLL_S == 1.0, "기다리는 동안 팬을 1초마다 보지 않는다"
     assert result["meta"]["fan_wait_s"] == 3 * monitor_gpu.FAN_POLL_S
     assert len(result["cases"]) == 5
 
 
 def test_one_loud_gpu_out_of_four_is_enough_to_wait():
-    _result, fake = _fan_run([[30, 30, 30, 30], [30, 30, 46, 30], [42, 30, 43, 30], [30, 30, 42, 30]])
+    _result, fake = _fan_run([[30, 30, 30, 30], [30, 30, 44, 30], [40, 30, 41, 30], [30, 30, 40, 30]])
 
     kinds = _kinds(fake.events)
     assert kinds[:7] == ["sample", "resolve", "sample", "sleep", "sample", "sleep", "sample"]
-    assert kinds[7] == "resolve", "모든 GPU 가 42% 이하가 됐는데 바로 안 불렀다"
+    assert kinds[7] == "resolve", "모든 GPU 가 40% 이하가 됐는데 바로 안 불렀다"
 
 
-def test_between_42_and_46_the_next_case_starts_without_waiting():
-    """hysteresis. 기다리기 시작하는 문턱은 46 이고, 42 초과 46 미만에서 새로 기다리지 않는다.
-    사람이 잰 값이다. 42~44% 는 작은 소음이라 괜찮고 46% 부터 팬 소리가 신경 쓰인다."""
-    _result, fake = _fan_run([[45, 43]])
+def test_between_40_and_44_the_next_case_starts_without_waiting():
+    """hysteresis. 기다리기 시작하는 문턱은 44 이고, 40 초과 44 미만에서 새로 기다리지 않는다.
+    사람이 귀로 정한 값이다 (44 부터 기다리고 40 이하에서 다시 부름)."""
+    _result, fake = _fan_run([[43, 41]])
 
     assert "sleep" not in _kinds(fake.events)
-    assert (monitor_gpu.FAN_PAUSE_AT, monitor_gpu.FAN_RESUME_AT) == (46, 42)
+    assert (monitor_gpu.FAN_PAUSE_AT, monitor_gpu.FAN_RESUME_AT, monitor_gpu.FAN_POLL_S) == (44, 40, 1.0)
 
 
 def test_with_fan_quiet_off_the_fans_are_never_read_and_the_run_never_waits():
@@ -1137,7 +1137,7 @@ def test_fan_wait_adds_up_across_a_stop_and_a_resume(tmp_path, monkeypatch):
     folder = Path(first["meta"]["saved_to"])
     assert first["meta"]["fan_wait_s"] == monitor_gpu.FAN_POLL_S
 
-    second = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=_Fans([[70], [41]]).monitor(),
+    second = run_evaluation.resume("local", folder.name, resolve=_v1_resolve([]), monitor=_Fans([[70], [40]]).monitor(),
                                    fan_quiet_mode=True)
     assert second["meta"]["fan_wait_s"] == 2 * monitor_gpu.FAN_POLL_S
     assert second["meta"]["elapsed_s"] >= first["meta"]["elapsed_s"]

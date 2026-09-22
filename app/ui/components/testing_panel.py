@@ -4,8 +4,9 @@
 dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝난 줄을 받아 그린다.
 
     제목(발화 해석 평가) · Test Suite · 실행 기록
-    실행 개요 (Test Suite · 평가 시작 시간 · 전체 추론시간 · 발화당 추론 시간 · 평가 결과 · 모델 · 실행 환경)
-    모델 설정 (자세히 보기) (접힘. provider · 역할 · Temperature 같은 요청 설정 · 파일 · 실행 기록 id)
+    실행 개요 (Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간) ·
+               발화당 추론 시간 · 평가 결과 · 모델 · 실행 환경)
+    모델 설정 (자세히 보기) (접힘. provider · Temperature 같은 요청 설정 · 호출 상한 · 파일 · 저장 위치)
     실행 상태 · GPU 팬 소음 억제 · 새로 실행 · 이어 실행 · 중지
     전체 결과 (낮은 카드 한 줄. 전체 · 성공 · 실패, 오류가 있을 때만 오류. 실패 원인 셋은 실패 카드 오른쪽에)
     기능별 결과 (접힘. 기능마다 카드 단추 하나 — 번호와 x/y 둘만. 범위 밖 발화가 있으면 맨 뒤에 범위 밖. 누르면 표를 거름)
@@ -178,7 +179,8 @@ UNUSED_TEXT = "사용 안 함"
 RUN_OPTIONS = {"materialize": True, "context_label": "both"}
 
 FAN_QUIET_LABEL = "GPU 팬 소음 억제"
-FAN_QUIET_HELP = "GPU 팬 속도가 높아지면 다음 발화를 잠시 기다렸다가 팬이 안정되면 자동으로 계속합니다."
+FAN_QUIET_HELP = ("팬 속도가 높아지면 다음 발화 실행을 잠시 대기해 소음을 줄이지만, "
+                  "GPU 누적 대기시간이 늘어나 전체 평가시간이 길어질 수 있습니다.")
 # 도는 동안 팬 때문에 다음 발화를 기다릴 때 실행 상태 글자 끝에 붙는 말
 FAN_WAIT_TEXT = "GPU 팬 안정 대기 중"
 
@@ -189,10 +191,19 @@ CONDITION_ROWS = (
     ("프롬프트 파일", "prompt"),
     ("응답 형식 파일", "response_schema"),
     ("기능 정의 파일", "menu"),
-    ("게시 자산", "registry"),
 )
 # 실행 환경의 VRAM 줄 글자. 값은 GPU 한 장의 총량이다
 VRAM_LABEL = "VRAM (GPU 1개당)"
+
+# 실행 개요의 시간 칸. 세 줄은 서로 더해 맞추는 값이 아니다 (API 처리 · 발화 사이 같은 작은 시간은 따로 안 보임)
+TIME_CELL = "소요 시간"
+TIME_HELP = {
+    "전체 평가시간": "평가를 시작한 시점부터 완료될 때까지 실제로 걸린 전체 시간입니다. GPU 팬 소음 억제에 따른 대기시간도 포함됩니다.",
+    "전체 추론시간": "각 발화의 AI 추론에 실제로 소요된 시간을 모두 합한 값입니다. GPU 팬 소음 억제를 위한 대기시간은 포함하지 않습니다.",
+    "GPU 누적 대기시간": "GPU 팬 소음 억제 기능으로 인해 다음 발화 실행을 기다린 시간을 모두 합한 값입니다.",
+}
+# 옛 기록이라 그 칸이 저장되지 않은 값. 0 으로 채우지 않는다
+MISSING_TEXT = "기록 없음"
 
 # provider 요청 설정(meta.conditions.request)의 화면 이름. 여기 없는 칸은 그 이름 그대로 나온다.
 REQUEST_LABELS = {
@@ -556,9 +567,10 @@ def request_rows(conditions: dict) -> dict:
 def run_conditions(result: dict | None) -> dict | None:
     """모델 설정 (자세히 보기) 의 줄. {화면 글자: 값}. 결과가 없으면 None.
 
-    규칙  run_evaluation 결과 meta.conditions · meta.role 에서 옮김. provider · Resolve 역할 ·
-          요청 설정(Temperature 가 맨 앞) · 호출 상한 · 파일 셋과 게시 자산(경로만)
-          모델 이름은 실행 개요에 있어 안 넣음. 옛 결과에 게시 자산 칸이 없으면 그 줄을 뺌
+    규칙  run_evaluation 결과 meta.conditions 에서 옮김. provider ·
+          요청 설정(Temperature 가 맨 앞) · 호출 상한 · 파일 셋(경로만)
+          모델 이름은 실행 개요에 있어 안 넣음. 역할(meta.role) · 게시 자산(conditions.registry) · 실행 기록 id 는
+          기록에만 두고 화면에 안 보임
           조건을 못 읽은 결과면 그 까닭 한 줄
     제약  없는 칸을 지어내지 않는다
     """
@@ -568,16 +580,12 @@ def run_conditions(result: dict | None) -> dict | None:
     if "error" in conditions:
         return {"모델 설정": conditions["error"]}
     shown = {"provider": conditions.get("provider")}
-    if result["meta"].get("role"):
-        shown["Resolve 역할"] = result["meta"]["role"]
     shown.update(request_rows(conditions))
     timeout = (conditions.get("inference") or {}).get("timeout")
     if timeout is not None:
         shown["호출 상한"] = f"{timeout}초"
     for label, key in CONDITION_ROWS[1:]:
         value = conditions.get(key)
-        if key == "registry" and value is None:
-            continue
         shown[label] = value.get("path") if isinstance(value, dict) else value
     return {label: value if value is not None else NONE_TEXT for label, value in shown.items()}
 
@@ -612,11 +620,9 @@ def environment_rows(result: dict) -> dict:
 
 
 def run_identity(result: dict) -> dict:
-    """실행 기록 id 와 저장 자리. 모델 설정 아래 두 줄. 없으면 그 줄을 뺌."""
+    """저장 자리. 모델 설정 아래 한 줄. 없으면 뺌. 실행 기록 id 는 실행 기록 고르기 글자에 있어 안 되풀이함."""
     meta = result["meta"]
     shown = {}
-    if meta.get("run_id"):
-        shown["실행 기록 id"] = meta["run_id"]
     if meta.get("saved_to"):
         shown["저장 위치"] = meta["saved_to"]
     return shown
@@ -640,15 +646,20 @@ def suite_filename(suite: dict) -> str:
 def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
     """실행 개요. 기록을 열면 바로 볼 것만. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
-    칸  Test Suite · 평가 시작 시간 · 전체 추론시간 · 발화당 추론 시간(Median · P95 · Max) ·
-        평가 결과(전체 · 성공 · 실패 · 오류) · 모델 · 실행 환경(GPU · VRAM (GPU 1개당))
+    칸  Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간) ·
+        발화당 추론 시간(Median · P95 · Max) · 평가 결과(전체 · 성공 · 실패 · 오류) · 모델 ·
+        실행 환경(GPU · VRAM (GPU 1개당))
+        소요 시간 줄은 (글자, 값, 도움말) 셋. 도움말은 TIME_HELP
     규칙  run_evaluation 결과 meta · summary 를 옮겨 적음. 여기서 세지 않음
           평가 지표(기능 선택 · 인자 추출 등)는 여기 안 둠. 아래 전체 결과가 보임
+          전체 평가시간은 meta.elapsed_s (잰 동안의 벽시계. 팬 대기 포함, 멈춰 있던 시간 제외)
           전체 추론시간은 summary.latency.total (발화마다 resolve 한 번에 걸린 timing.resolve_s 의 합).
           materialize · 팬 대기 · 화면 시간이 안 섞임. 잰 것이 없으면 줄표
-          벽시계 소요 시간(meta.elapsed_s) · 팬 대기 합(meta.fan_wait_s)은 기록에만 있고 여기 안 보임
+          GPU 누적 대기시간은 meta.fan_wait_s (팬 소음 억제로 다음 발화를 기다린 합)
+          elapsed_s · fan_wait_s 칸이 없는 옛 기록은 「기록 없음」. 0 으로 채우지 않음. 칸이 있고 0 이면 0초
+          세 값을 더하거나 빼서 다른 시간을 만들지 않음
           발화당 추론 시간은 발화 하나의 resolve 한 번에 걸린 시간의 분포. 소수 둘째 자리. 잰 것이 없으면 줄표
-          Temperature 같은 요청 설정 · 파일 · 실행 기록 id 는 여기 안 보임. 모델 설정 (자세히 보기)에 있음
+          Temperature 같은 요청 설정 · 파일은 여기 안 보임. 모델 설정 (자세히 보기)에 있음
     """
     if not result:
         return None
@@ -661,10 +672,19 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     def seconds(key):
         return _seconds(delay.get(key)) or EMPTY_NUMBER
 
+    def stored(key):
+        return _duration(meta[key]) if isinstance(meta.get(key), (int, float)) else MISSING_TEXT
+
+    times = [
+        ("전체 평가시간", stored("elapsed_s")),
+        ("전체 추론시간", _duration(delay.get("total"))),
+        ("GPU 누적 대기시간", stored("fan_wait_s")),
+    ]
+
     return [
         ("Test Suite", [("", suite_filename(meta.get("suite") or {}))]),
         ("평가 시작 시간", [("", f"{datetime.datetime.fromisoformat(started):%Y-%m-%d %H:%M:%S}" if started else EMPTY_NUMBER)]),
-        ("전체 추론시간", [("", _duration(delay.get("total")))]),
+        (TIME_CELL, [(label, value, TIME_HELP[label]) for label, value in times]),
         ("발화당 추론 시간", [("Median", seconds("median")), ("P95", seconds("p95")), ("Max", seconds("max"))]),
         ("평가 결과", [
             ("전체", str(total["runs"])),
@@ -871,18 +891,27 @@ def conditions_markup(conditions: dict) -> str:
 
 
 def overview_markup(info: list | None) -> str:
-    """실행 개요. 칸마다 제목 아래 (글자 · 값) 줄을 세로로. 결과가 없으면 빈 글자."""
+    """실행 개요. 칸마다 제목 아래 (글자 · 값) 줄을 세로로. 결과가 없으면 빈 글자.
+
+    규칙  줄에 도움말(셋째 값)이 있으면 글자에 data-tip 을 걸어 기능 번호와 같은 tooltip 으로 뜸
+          시간 칸(TIME_CELL)은 글자가 길어 조금 넓게 (tt-ov-time)
+    """
     if info is None:
         return ""
 
-    def cell(title, rows):
-        lines = "".join(
-            f'<div class="tt-ov-row"><span class="tt-ov-sub">{_esc(label)}</span>'
+    def line(row):
+        label, value, tip = (*row, None)[:3]
+        if not label:
+            return f'<div class="tt-ov-row"><span class="tt-ov-v">{_esc(value)}</span></div>'
+        tip_attr = f' data-tip="{_esc(tip)}" aria-description="{_esc(tip)}"' if tip else ""
+        return (
+            f'<div class="tt-ov-row"><span class="tt-ov-sub"{tip_attr}>{_esc(label)}</span>'
             f'<span class="tt-ov-v">{_esc(value)}</span></div>'
-            if label else f'<div class="tt-ov-row"><span class="tt-ov-v">{_esc(value)}</span></div>'
-            for label, value in rows
         )
-        return f'<div class="tt-ov"><div class="tt-ov-k">{_esc(title)}</div>{lines}</div>'
+
+    def cell(title, rows):
+        css = "tt-ov tt-ov-time" if title == TIME_CELL else "tt-ov"
+        return f'<div class="{css}"><div class="tt-ov-k">{_esc(title)}</div>{"".join(line(row) for row in rows)}</div>'
 
     return '<div class="tt-ovs">' + "".join(cell(title, rows) for title, rows in info) + "</div>"
 
@@ -1698,7 +1727,7 @@ def _render_recipe_summary(result: dict | None, group: str = ALL_GROUPS) -> None
 
 
 def _render_conditions(result: dict | None) -> None:
-    """모델 설정 (자세히 보기) (접힘). 재현 · 확인에 쓰는 것. provider · 역할 · 요청 설정 · 파일 · 실행 기록 id.
+    """모델 설정 (자세히 보기) (접힘). 재현 · 확인에 쓰는 것. provider · 요청 설정 · 호출 상한 · 파일 · 저장 위치.
     결과가 없으면 비어 있다고만. 실행 개요에 이미 있는 모델 이름은 안 되풀이함."""
     with st.expander(CONDITIONS_TITLE, expanded=False):
         conditions = run_conditions(result)
@@ -2073,6 +2102,12 @@ def panel_css() -> str:
 }
 .st-key-test_tab .tt-ov { flex: 1 1 8rem; min-width: 0; }
 .st-key-test_tab .tt-ov:last-child { flex: 1.8 1 14rem; }
+.st-key-test_tab .tt-ov.tt-ov-time { flex: 1.5 1 12rem; }
+/* 도움말이 붙은 줄 글자. 점선 밑줄로 올려 볼 수 있다는 것만 보이고, 설명은 기능 번호와 같은 tooltip 으로 뜬다.
+   칸이 좁아 tooltip 은 칸 폭이 아니라 글자 아래 고정 폭이다. */
+.st-key-test_tab .tt-ov-row { position: relative; }
+.st-key-test_tab .tt-ov-sub[data-tip] { text-decoration: underline dotted; text-underline-offset: 3px; }
+.st-key-test_tab .tt-ov-sub[data-tip]::after { left: 0; right: auto; top: 100%; width: 18rem; }
 .st-key-test_tab .tt-ov-k { opacity: 0.6; font-size: 0.74rem; margin-bottom: 0.2rem; }
 .st-key-test_tab .tt-ov-row { display: flex; justify-content: space-between; gap: 0.8rem; line-height: 1.55; }
 .st-key-test_tab .tt-ov-sub { opacity: 0.65; }
