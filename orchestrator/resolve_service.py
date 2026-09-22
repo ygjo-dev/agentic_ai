@@ -20,7 +20,7 @@ execution/workflow_materializer 가 실행 직전에 본다. 여기서 미리 �
 읽을 수 없다.
 
 고른 recipe 가 없는 답(되묻기 · 영역 밖)에 적을 온톨로지 이름은 answer_names 가
-모은다. paths 를 붙이는 것과 같은 자리의 읽기다. 문장은 workflow_answer 가 만든다.
+모은다. paths 를 붙이는 것과 같은 자리의 읽기다. 문장은 execution.local_presentation 이 만든다.
 """
 
 import json

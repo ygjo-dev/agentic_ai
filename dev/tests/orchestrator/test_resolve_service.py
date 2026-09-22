@@ -276,7 +276,7 @@ def test_the_no_match_guidance_names_come_from_the_ontology():
     """안내를 코드에 박지 않음. 온톨로지에 노드가 늘면 안내도 함께 늘어야 함.
 
     대상 이름과 시작 데이터 이름을 그대로 낸다. 화면에서 오는 둘(지점 좌표 ·
-    지도 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다. 문장은 workflow_answer 가 만든다.
+    지도 범위)은 뺀다 — 사람이 더 말해 줄 것이 없다. 문장은 local_presentation 이 만든다.
     화면에서 오는 시작 노드는 게시된 execution 의 context_needs 가 말한다.
     """
     from execution import workflow_materializer

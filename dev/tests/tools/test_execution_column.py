@@ -1,94 +1,61 @@
-"""실행 칸이 「답이 나왔는가」를 제대로 가르는가.
+"""실행 칸이 「KRRI 까지 실행됐는가」를 제대로 가르는가.
 
-서버도 Gateway 도 안 부른다. 답 문구를 **vendor 가 만들게 해서** 그것을
-`check_resolve._execution_of` 에 먹인다 — 문구를 시험에 베껴 적으면
-`vendor_to_be_deleted/asap/workflow_answer.py` 가 문구를 갱신했을 때 이 시험만 혼자 통과하고
-표는 조용히 거짓말을 한다. 실제로 「쉰다섯째」에 그 머리말이 한 줄에서 두 줄이
-됐다.
+서버도 KRRI 도 안 부른다. KRRI 를 안 부른 자리의 답은 **local_presentation 이 만든
+문구 그대로** `check_resolve._execution_of` 에 먹인다 — 문구를 시험에 베껴 적으면
+문구가 바뀌었을 때 이 시험만 혼자 통과하고 표는 조용히 거짓말을 한다.
 
-실행 칸이 무엇이고 왜 관문이 아닌지는 `tools/check_resolve.py` 의 「실행」 절에
+실제로 실행한 답은 KRRI 가 만들고 그 판정도 KRRI 것이다. 실행 칸은 그것을 다시 가르지
+않는다. 실행 칸이 무엇이고 왜 관문이 아닌지는 `tools/check_resolve.py` 의 「실행」 절에
 있다.
 """
 
 from dev.tools import check_resolve
-from vendor_to_be_deleted.asap.workflow_answer import compose_workflow_answer, step_line
+from execution.local_presentation import EXECUTOR_UNREACHABLE, NO_ARGUMENT_ANSWER, UNWIRED_ANSWER
 
-# vendor 에 넘긴 intent. 답 문구는 이것을 읽지 않는다.
-INTENT = {}
-
-
-def turn_of(trace, *, failed=False):
-    """trace 한 벌을 /recent 회차 모양으로.
-
-    답도 단계 줄도 vendor 가 만든 것을 쓴다. recent_service 가 화면에 내보내는
-    것이 바로 그 둘이라 여기서 흉내내면 시험이 실물과 갈린다.
-    """
-    return {
-        "answer": compose_workflow_answer(INTENT, trace, failed=failed),
-        "steps": [
-            {"node": "n", "line": f"{i}. {step_line(item)}"}
-            for i, item in enumerate(trace, start=1)
-        ],
-    }
+# KRRI 가 만든 답이라는 표시. 우리 문구에 없는 문장이다.
+KRRI_ANSWER = "오송역 주변에서 CCTV 3대를 찾았습니다.\n\n첫째는 오송역 앞입니다."
 
 
-def test_a_result_arriving_means_an_answer_came_out():
-    """건수가 있는 마지막 단계가 성공 판정이다."""
-    turn = turn_of([{"tool": "adminBoundary.searchBoundaries", "result": {"count": 4}}])
-
-    mark, _why = check_resolve._execution_of(turn)
+def test_a_krri_answer_counts_as_executed_and_is_shown_verbatim():
+    """KRRI 가 돌았다. 결과가 무엇이었는지는 KRRI 답의 첫 줄을 사람이 읽는다."""
+    mark, why = check_resolve._execution_of({"answer": KRRI_ANSWER, "steps": []})
 
     assert mark == check_resolve.RAN
+    assert why == "오송역 주변에서 CCTV 3대를 찾았습니다."
 
 
-def test_zero_hits_means_no_answer_came_out():
-    """적중 3/3 인데 화면이 "찾지 못했습니다" 이던 자리가 이것이다."""
-    turn = turn_of([{"tool": "election.searchDistricts", "result": {"count": 0}}])
+def test_a_krri_failure_answer_is_not_rejudged_here():
+    """KRRI 의 실패 답도 KRRI 가 돈 결과다. 이 도구가 문장을 읽어 성공 · 실패를 다시 가르지 않는다."""
+    mark, why = check_resolve._execution_of({"answer": "조회하지 못했습니다.", "steps": []})
 
-    mark, why = check_resolve._execution_of(turn)
-
-    assert mark == check_resolve.EMPTY
-    assert why.startswith(check_resolve.WHY_EMPTY)
-
-
-def test_not_found_is_recorded_apart_from_zero_hits():
-    """사람이 할 일이 다르다 — 낱말을 바꿀 일이 아니라 있는 이름을 대야 한다."""
-    turn = turn_of([{"tool": "election.getDistrict", "result": {"status": "not_found"}}])
-
-    mark, why = check_resolve._execution_of(turn)
-
-    assert mark == check_resolve.EMPTY
-    assert why.startswith("not_found")
-
-
-def test_a_missing_permission_is_recorded_apart_from_a_crash():
-    """Gateway 쪽에 도구를 열어 달라고 할 일이지 우리가 고칠 일이 아니다."""
-    turn = turn_of(
-        [
-            {
-                "tool": "web-search/web.search",
-                "error": "실패",
-                "error_detail": "MCP tool 'web-search/web.search' is not applied for this user.",
-            }
-        ]
-    )
-
-    mark, why = check_resolve._execution_of(turn)
-
-    assert mark == check_resolve.EMPTY
-    assert why.startswith(check_resolve.WHY_PERMISSION)
+    assert (mark, why) == (check_resolve.RAN, "조회하지 못했습니다.")
 
 
 def test_failing_to_extract_an_argument_means_no_tool_was_called():
     """단계가 하나도 없다. Gateway 쪽 데이터 탓이 아니라 우리 해석 탓이다."""
-    from vendor_to_be_deleted.asap.workflow_answer import NO_ARGUMENT_ANSWER
-
     turn = {"answer": NO_ARGUMENT_ANSWER["place_name"], "steps": []}
 
     mark, why = check_resolve._execution_of(turn)
 
     assert mark == check_resolve.EMPTY
     assert why.startswith(check_resolve.WHY_ARGUMENT)
+
+
+def test_an_unwired_node_means_no_tool_was_called():
+    turn = {"answer": UNWIRED_ANSWER.format(names="CCTV 조회"), "steps": []}
+
+    mark, why = check_resolve._execution_of(turn)
+
+    assert mark == check_resolve.EMPTY
+    assert why == f"{check_resolve.WHY_UNWIRED} · CCTV 조회"
+
+
+def test_an_unreachable_executor_is_recorded_apart_from_a_krri_answer():
+    """KRRI 창구를 못 불렀으면 실행이 된 것이 아니다."""
+    mark, why = check_resolve._execution_of({"answer": EXECUTOR_UNREACHABLE, "steps": []})
+
+    assert mark == check_resolve.EMPTY
+    assert why.startswith(check_resolve.WHY_UNREACHABLE)
 
 
 # ── 정답표가 온톨로지와 안 어긋났는가 ───────────────────────────────

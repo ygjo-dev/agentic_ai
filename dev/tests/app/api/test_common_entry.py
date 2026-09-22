@@ -14,7 +14,7 @@
   역할 설정은 요청마다 한 번 읽고, 그 한 벌이 LLM 클라이언트와 해석에 함께 간다
   요청이 물리 모델을 갈아 끼우는 인자가 없다
 
-LLM 도 Gateway 도 부르지 않는다. resolve · vendor 실행기 · 역할 설정을 대역으로 바꾼다.
+LLM 도 KRRI 도 부르지 않는다. resolve · 실행(workflow_execution) · 역할 설정을 대역으로 바꾼다.
 """
 
 import asyncio
@@ -25,10 +25,9 @@ from fastapi.testclient import TestClient
 
 from app.api import main
 from app.api.services.bridge import recent_service
-from execution import krri_executor_client, workflow_materializer
+from execution import krri_executor_client, local_presentation, workflow_materializer
 from llm_engine.role_config import RESOLVE
 from ontology import ONTOLOGY, Ontology
-from vendor_to_be_deleted.asap import workflow_answer
 
 UTTERANCE = "오송역 CCTV 보여줘"
 
@@ -133,7 +132,7 @@ def counted(monkeypatch):
         yield {"type": "result", "answer": "끝", "commands": []}
 
     monkeypatch.setattr(main.resolve_service, "resolve", fake_resolve)
-    monkeypatch.setattr(main.legacy_vendor, "run", fake_run)
+    monkeypatch.setattr(main.workflow_execution, "run", fake_run)
     return seen
 
 
@@ -237,7 +236,7 @@ def test_a_status_that_is_not_select_calls_no_tool(counted, status):
 
     assert counted["run"] == [], "SELECT 가 아닌데 도구를 불렀다"
     assert events[-1]["type"] == "result"
-    assert events[-1]["answer"].startswith(workflow_answer.NO_MATCH_HEADLINE)
+    assert events[-1]["answer"].startswith(local_presentation.NO_MATCH_HEADLINE)
 
 
 @pytest.mark.parametrize(
@@ -299,7 +298,7 @@ def test_an_id_that_is_not_an_accepted_recipe_calls_nothing(counted):
     events = stream()
 
     assert counted["run"] == []
-    assert events[-1] == {"type": "result", "answer": workflow_answer.NO_TOOL_ANSWER, "commands": []}
+    assert events[-1] == {"type": "result", "answer": local_presentation.NO_TOOL_ANSWER, "commands": []}
 
 
 # ================================================================ 게시된 계획만

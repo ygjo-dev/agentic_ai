@@ -17,7 +17,7 @@ dev/tools/check_resolve.py 와 같은 성격이라 그 파일의 짜임새를 �
 200 + {"error": ...} 는 실패고 200 + [] 는 0건일 뿐이다.
 
 **user_context 를 반드시 싣는다.** 빠뜨리면 요청마다 새 guest 가 만들어지고
-adminBoundary 셋 말고는 전부 거부된다(실측). execution/legacy_vendor
+adminBoundary 셋 말고는 전부 거부된다(실측). execution/workflow_execution
 의 USER_CONTEXT 를 그대로 쓴다 — 두 곳에 적으면 갈린다.
 
 표에는 건수만 찍힌다. 배선을 적을 때는 필드 이름을 봐야 하므로 응답 전문을
@@ -39,7 +39,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from execution.legacy_vendor import USER_CONTEXT  # noqa: E402
+from execution.workflow_execution import USER_CONTEXT  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -51,8 +51,8 @@ DEFAULT_TOOLS_PATH = REPO_ROOT.parent / "KRRI_ASAP" / "tools.json"
 def gateway_url() -> str:
     """Gateway 주소(ASAP_GATEWAY_URL).
 
-    규칙  화면(vendor_to_be_deleted/asap/mcp_client)이 부르는 주소와 같아야
-          표를 믿을 수 있으므로 같은 환경변수를 봄
+    규칙  KRRI_ASAP 실행기가 부르는 Gateway 와 같아야 표를 믿을 수 있음.
+          이 기계의 .env 가 적은 같은 주소를 봄
           부를 때마다 읽음. import 시점에 굳히면 이 모듈을 빌려 쓰는 자
           (probe_shapes)까지 주소를 요구하게 됨
     """
@@ -295,7 +295,7 @@ def _probe(tool: dict, timeout: int = TIMEOUT) -> dict:
             "payload": None,
         }
 
-    # vendor_to_be_deleted/asap/mcp_client.execute_tool 이 만드는 본문과 같은 모양임.
+    # KRRI_ASAP ASAP-orchestrator/app/core/mcp_client.execute_tool 이 만드는 본문과 같은 모양임.
     # 도구 이름은 tool, 인자는 input 이고 user_context 와 server_id 는 그 옆에
     # 따로 얹음. toolName/arguments 로 보내면 42개가 전부
     # "Tool name is required" 로 실패함(실측).

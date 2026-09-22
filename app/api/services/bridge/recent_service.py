@@ -7,8 +7,8 @@ KRRI_ASAP 은 `POST /chat/stream` 으로 발화를 넣고 Streamlit 은 `GET /re
 
     원본을 안 바꾼다     훔쳐보는 자리 둘 다 받은 것을 그대로 다시 낸다.
                         기록 때문에 이벤트가 한 건이라도 달라지면 시연이 깨진다
-    raw JSON 을 안 담는다 회차의 문자열은 전부 workflow_answer 가 이미 만들어
-                        화면으로 나간 것이다. 여기서 다시 요약하지 않는다 —
+    raw JSON 을 안 담는다 회차의 문자열은 전부 이미 화면으로 나간 답이다 (실행한
+                        답은 KRRI_ASAP, 안 간 자리는 local_presentation). 여기서 다시 요약하지 않는다 —
                         요약하는 코드가 둘이 되는 순간 한쪽이 geojson 을 흘린다.
                         `commands` 는 아예 안 읽는다. 좌표 배열이 거기 있다
     회차가 안 섞인다     `ContextVar` 로 가른다. 요청마다 asyncio Task 가 따로라
@@ -39,8 +39,8 @@ MAX_TURNS = 20
 # since 를 안 줬을 때 돌려줄 회차 수.
 TAIL = 5
 
-# 답에서 단계 줄이 시작되는 꼴. compose_workflow_answer 가 "1. tool  인자  결과"
-# 로 적고 줄머리에 공백이 없다.
+# 답에서 단계 줄이 시작되는 꼴. 번호 뒤에 마침표를 찍은 "1. …" 이고 줄머리에
+# 공백이 없다. 답에 그런 줄이 없으면 steps 는 빈 목록이다.
 #
 # 되묻기 답의 후보 줄("  1  전기차 충전소 검색")과 갈라야 한다 — 그쪽은 앞에
 # 공백이 있고 번호 뒤에 마침표가 없다.
@@ -199,7 +199,7 @@ def _steps(answer: str, nodes: list[str]) -> list[dict]:
           모자라면 빈 문자열. 짝을 못 지어도 덩이는 남김
     제약  단계 줄을 다시 만들지 않는다.
           요약하는 코드가 둘이 되면 한쪽이 raw JSON 을 흘림.
-          workflow_answer 가 만든 문자열만 담음
+          화면으로 나간 답의 문자열만 담음
     """
     blocks: list[list[str]] = []
     for line in answer.splitlines():

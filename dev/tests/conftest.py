@@ -26,8 +26,7 @@ TEST_ENDPOINTS = {
 }
 
 
-# **모으는 때에 이미 두어야 한다.** vendor 의 mcp_client 가 import 시점에
-# 전역 인스턴스를 만들며 주소를 읽으므로(KRRI_ASAP 원본이라 안 고친다),
+# **모으는 때에 이미 두어야 한다.** import 시점에 주소를 읽는 모듈이 있으면
 # fixture 만으로는 시험 파일을 읽는 순간 이미 늦는다.
 os.environ.update(TEST_ENDPOINTS)
 

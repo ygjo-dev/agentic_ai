@@ -1,4 +1,4 @@
-"""KRRI native workflow 를 KRRI_ASAP 의 실행 창구로 넘기고 그 결과를 이벤트로 낸다. **임시 다리다.**
+"""완성된 KRRI native workflow 를 KRRI_ASAP 의 실행 창구에 맡기고 그 결과를 SSE 이벤트로 낸다.
 
     workflow_materializer.materialize     agentic_ai 가 만든 완성된 call_mcp_workflow
       -> run                               그대로 넘김
@@ -6,17 +6,17 @@
       -> KRRI generic_mcp_executor         실행 · Gateway · 답
       -> 이벤트 · 답
 
-이름에 vendor 가 남아 있지만 이제 vendoring 한 실행기를 부르지 않는다. 이름과 자리는
-다음 정리 때 바꾼다. **vendor_to_be_deleted 를 import 하는 제품 코드는 여기 하나다** —
-남은 것은 KRRI 가 안 도는 자리의 문구(workflow_answer)뿐이다.
+**실행은 KRRI_ASAP 이 한다.** agentic_ai 안에 실행기가 없고, KRRI 를 못 불렀을 때 돌아갈
+다른 실행기도 없다.
 
 **여기서 판단하지 않는다.** 기호를 풀거나 · 참조 경로를 적거나 · transform 을 고르는 일은
 workflow_materializer 가 끝냈다. 받은 steps 를 바꾸지 않고 넘기고, 돌아온 trace 로
 단계 이벤트와 마지막 result 를 낸다.
 
 **실제로 실행한 답은 KRRI 가 만든다.** 성공이든 실패든 KRRI 가 돌려준 answer 를 그대로
-result 에 싣는다. 우리 workflow_answer 로 다시 쓰지 않는다. workflow_answer 가 답을
-만드는 자리는 KRRI 가 아예 안 도는 자리뿐이다 — 지도 명령만 있는 실행과 KRRI 창구를
+result 에 싣는다. 단계가 실패했는지도 KRRI 가 trace 항목에 적은 error 칸으로만 안다 —
+도구 결과를 다시 읽어 성공 · 실패를 가르지 않는다. agentic 문구(local_presentation)가 답이
+되는 자리는 KRRI 가 아예 안 도는 자리뿐이다 — 지도 명령만 있는 실행과 KRRI 창구를
 못 부른 실행.
 
 **step_start / step_end 는 실행이 끝난 뒤에 나간다.** KRRI 창구는 steps 전부를 한 번에
@@ -26,10 +26,7 @@ result 에 싣는다. 우리 workflow_answer 로 다시 쓰지 않는다. workfl
 
 import logging
 
-from execution import krri_executor_client
-from vendor_to_be_deleted.asap import workflow_answer
-
-__all__ = ["USER_CONTEXT", "run", "workflow_answer"]
+from execution import krri_executor_client, local_presentation
 
 logger = logging.getLogger(__name__)
 
@@ -62,13 +59,17 @@ async def run(materialized: dict, text: str):
           부를 도구가 없고 지도 명령만 있으면 KRRI 를 안 부름. 빈 steps 를
           넘기면 KRRI 가 실패로 봄. 답은 NOTHING_RAN
           KRRI 가 돌았으면 답은 KRRI 의 answer 그대로. 성공 · 실패 모두
+          단계의 실패 표시는 KRRI 가 trace 항목에 error 칸을 적었는가 하나로 정함.
+          KRRI 는 필수 입력이 비었거나 · 호출이 터졌거나 · 200 오류 envelope 가
+          돌아온 단계에 그 칸을 적고 거기서 멈춤
           지도 명령이 도구 단계와 함께 있으면 KRRI 가 돌려준 명령 뒤에
           붙임. 순서가 곧 경로 순서임
           한 단계가 실패하면 KRRI 가 거기서 멈춤. trace 에 그 단계까지만
           담기므로 이벤트도 거기까지만 나감
           KRRI 창구를 못 부르면 단계 이벤트 없이 EXECUTOR_UNREACHABLE
     제약  KRRI 의 answer 를 다시 쓰지 않는다. 실제 실행의 답은 KRRI 가 주인이다
-          KRRI 를 못 불렀을 때 vendoring 한 실행기로 돌아가지 않는다
+          도구 결과를 읽어 성공 · 실패를 다시 가르지 않는다
+          KRRI 를 못 불렀을 때 다른 실행기로 돌아가지 않는다
           기호를 풀거나 참조 · inputAdapter 를 여기서 정하지 않는다
     """
     intent = materialized["workflow"]
@@ -76,9 +77,9 @@ async def run(materialized: dict, text: str):
 
     if not intent["steps"]:
         for node_id, command in zip(materialized["command_nodes"], commands):
-            yield {"type": "step_start", "node": node_id, "message": workflow_answer.command_start(command["op"])}
-            yield {"type": "step_end", "node": node_id, "message": workflow_answer.step_end(command["op"])}
-        yield _result(workflow_answer.NOTHING_RAN, commands)
+            yield {"type": "step_start", "node": node_id, "message": local_presentation.command_start(command["op"])}
+            yield {"type": "step_end", "node": node_id, "message": local_presentation.step_end(command["op"])}
+        yield _result(local_presentation.NOTHING_RAN, commands)
         return
 
     try:
@@ -90,13 +91,12 @@ async def run(materialized: dict, text: str):
         )
     except krri_executor_client.KrriExecutorError as exc:
         logger.error("KRRI 실행 창구를 부르지 못했다: %s", exc)
-        yield _result(workflow_answer.EXECUTOR_UNREACHABLE, commands)
+        yield _result(local_presentation.EXECUTOR_UNREACHABLE, commands)
         return
 
     for node_id, item in zip(materialized["nodes"], executed["trace"]):
         tool = item.get("tool") or ""
-        yield {"type": "step_start", "node": node_id, "message": workflow_answer.step_start(tool)}
-        failed = workflow_answer.step_failed(item)
-        yield {"type": "step_end", "node": node_id, "message": workflow_answer.step_end(tool, failed=failed)}
+        yield {"type": "step_start", "node": node_id, "message": local_presentation.step_start(tool)}
+        yield {"type": "step_end", "node": node_id, "message": local_presentation.step_end(tool, failed="error" in item)}
 
     yield _result(executed["answer"], executed["commands"] + commands)

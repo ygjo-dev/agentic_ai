@@ -20,8 +20,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 → 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
   (agentic_ai 밖의 등록 저장소가 compile 해 게시한다 = Recipe.execution)
 → 요청 중에는 Recipe.execution 에 이번 요청의 값을 채워 KRRI native call_mcp_workflow 로 만든다
-  (legacy 다리가 KRRI_ASAP Orchestrator POST /workflow/execute 로 넘겨 실행)
-→ 답 · API · 화면
+→ KRRI_ASAP Orchestrator POST /workflow/execute 가 실행하고 답한다 (execution/workflow_execution 이 넘김)
+→ agentic_ai 가 KRRI 답을 그대로 SSE 로 낸다 · API · 화면
 ```
 
 이 길의 이음매가 계약이다. **깨면 안 된다.**
@@ -65,17 +65,21 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
   `$context.…`, 명시한 inputAdapter, 채운 조건 · 시각. KRRI 실행기의 편의 추론(짧은 도구 이름
   정규화 · 자동 bbox · 참조 이름 특례 · web.search 보수)에 기대는 workflow 를 만들지 않는다.
   부를 수 없으면 문장이 아니라 status · missing 을 돌려준다
-- **KRRI_ASAP 에 agentic_ai 의 기호 해석기를 넣지 않는다.** `execution/legacy_vendor.py` 가
-  완성된 workflow 를 `execution/krri_executor_client.py` 로 KRRI_ASAP Orchestrator 의
-  `POST /workflow/execute` 에 그대로 넘긴다. KRRI 를 못 부르면 vendoring 한 실행기로
-  돌아가지 않고 실행 서비스 연결 실패로 답한다. vendor_to_be_deleted 를 import 하는 제품 코드는
-  legacy_vendor 하나고, 남은 것은 workflow_answer 뿐이다
+- **실행은 KRRI_ASAP 이 한다.** `execution/workflow_execution.py` 가 완성된 workflow 를
+  `execution/krri_executor_client.py`(얇은 HTTP client)로 KRRI_ASAP Orchestrator 의
+  `POST /workflow/execute` 에 그대로 넘긴다. agentic_ai 안에 KRRI 실행기 사본이 없다.
+  KRRI 를 못 부르면 다른 실행기로 돌아가지 않고 실행 서비스 연결 실패로 답한다.
+  KRRI_ASAP 에 agentic_ai 의 기호 해석기를 넣지 않고, KRRI Python 모듈을 import 하지 않는다
 - **실제로 실행한 답은 KRRI_ASAP 이 주인이다.** 성공이든 실패든 KRRI 가 돌려준 answer 를
-  그대로 낸다. 우리 workflow_answer 로 다시 쓰지 않는다
-- **KRRI 가 안 도는 자리의 문장은 workflow_answer 가 만든다** (해석 실패 · UNREADY · 지도
-  명령만 있는 실행 · KRRI 연결 실패 · 단계 진행 표시). 창구(`app/api/main.py`) · materializer ·
-  다리는 문장을 만들지 않는다. 노드 · recipe 마다 문장을 두지 않는다 — 실행 계획에 화면
-  문구를 섞지 않는다
+  그대로 낸다. 단계의 성공 · 실패도 KRRI 가 trace 에 적은 error 칸으로만 안다 — 도구 결과를
+  다시 읽어 판정하거나 답을 다시 쓰지 않는다
+- **step_start / step_end 는 KRRI 가 끝난 뒤 trace 로 낸다.** 창구가 스트리밍이 아니라
+  한 번에 돌려주므로 단계 한 쌍이 recipe 순서대로 나가지만 시각은 실제 호출 시각이 아니다.
+  지도 명령은 KRRI 가 돌려준 것 뒤에 materializer 의 지도 명령을 붙인다
+- **KRRI 까지 안 간 자리의 문장은 `execution/local_presentation.py` 가 만든다** (해석 실패 ·
+  UNREADY · 지도 명령만 있는 실행 · KRRI 연결 실패 · 단계 진행 표시). 창구(`app/api/main.py`) ·
+  materializer · workflow_execution 은 문장을 만들지 않는다. 노드 · recipe 마다 문장을 두지
+  않는다 — 실행 계획에 화면 문구를 섞지 않는다
 
 ---
 
@@ -83,7 +87,7 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
 
 ```
 agentic_ai 가 갖는 것        온톨로지 · runtime 자산 읽기 · resolve · workflow materialize ·
-                             실행 다리 · 답 · 화면(runtime 관찰)
+                             KRRI 실행 창구 호출 · SSE 전달 · 실행 전 문구 · 화면(runtime 관찰)
 agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받아들인 recipe 게시 ·
                              Recipe.execution compile
 ```
@@ -116,8 +120,9 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
                      읽기만 한다 — 등록 · 게시는 밖의 저장소 일이라 쓰는 API 가 없다
   orchestrator/      발화 해석
   execution/         요청 중의 실행. workflow_materializer 가 게시된 execution 을 KRRI native
-                     workflow 로 만들고, legacy_vendor 는 그것을 KRRI_ASAP 실행 창구로
-                     넘기는 임시 다리다 (krri_executor_client 가 HTTP 를 나른다)
+                     workflow 로 만들고, workflow_execution 이 그것을 KRRI_ASAP 실행 창구에
+                     맡겨 이벤트로 낸다 (krri_executor_client 가 HTTP 를 나른다).
+                     local_presentation 은 KRRI 까지 안 간 자리의 문구다
   llm_engine/        LLM 역할(logical model 판 · prompt · response schema) · provider
   workflows/static/  menu 를 프롬프트로 읽는 자리(menu/load.py). 자산은 없다
 
@@ -134,9 +139,6 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
   app/ui/components/network.py
                      화면 그래프. interactive graph library
                      (pyvis · vis-network)가 그린다. 좌표는 위에서 온다
-
-빌려온 것
-  vendor_to_be_deleted/  아래 「저장소 경계」를 본다
 
 재는 것     배포에 안 들어간다
   dev/tools/         계기판
@@ -155,24 +157,8 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
 옆 저장소(`KRRI_ASAP`)는 조대표님 것이다. **이 저장소에서 작업할 때 건드리지
 않는다.** 고쳐야 하면 그쪽에서 새 브랜치를 판다.
 
-### vendor_to_be_deleted/
-
-`vendor_to_be_deleted/asap/` 은 **한 폴더에 두 주인이 있다.**
-
-```
-KRRI_ASAP 원본 다섯   generic_mcp_executor · command_renderer ·
-                      mcp_result_inspector · mcp_client · isochrone_geometry
-agentic_ai 것 넷      config · schemas_chat · workflow_answer · __init__
-```
-
-- 원본 다섯을 **리팩터링하지 않는다.** 원본이 갱신될 때 무엇을 다시 가져와야
-  하는지 알 수 있어야 한다. 고친 곳은 `asap/README.md` 에 전부 적혀 있다
-- 우리 넷이 여기 있는 까닭은 vendor 가 그것을 import 하기 때문이다.
-  `workflow_answer.py` 를 밖으로 옮기는 것은 아직 정해지지 않았다
-- 어느 것이 누구 것인지 헷갈리면 `asap/README.md` 의 두 표를 본다
-- **원본 다섯과 config · schemas_chat 은 제품 길에서 죽은 코드다.** 실행은 KRRI_ASAP
-  `/workflow/execute` 가 한다. 제품이 아직 읽는 것은 workflow_answer 하나이고, 나머지는
-  시험 · 계기판 참조를 걷는 다음 정리 때 지운다
+KRRI 실행기 코드를 이 저장소에 복사해 오지 않는다. 두 저장소 사이의 실행 계약은
+`POST /workflow/execute` 하나다(`execution/krri_executor_client.py`).
 
 ### git push
 
@@ -211,7 +197,7 @@ tool     id          "<server_id>/<도구>" 논리 식별. 예약 namespace buil
 
 - **가운데 공통 모양을 만들지 않는다.** 지점 좌표를 늘 `{lon, lat}` 로 바꿔 건네지 않는다
 - **적힌 경로가 없는 칸을 이름으로 짐작하지 않는다.** 그 자리는 unwired 다.
-  `point.lon` 을 응답의 `lon` 으로 읽으면 vendor 의 이름 특례가 풀어 줄 때만 맞는다
+  `point.lon` 을 응답의 `lon` 으로 읽으면 KRRI 실행기의 이름 특례가 풀어 줄 때만 맞는다
 - 뒤 노드가 읽는 타입만 적는다. 아무도 안 받는 hasOutput 까지 적지 않는다
 
 관계는 넷뿐이다. edge 필드는 `from` · `to` · `predicate` (RDF 삼항).

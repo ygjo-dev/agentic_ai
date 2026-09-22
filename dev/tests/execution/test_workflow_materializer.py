@@ -4,11 +4,11 @@
 게시 오류로 터지고, 온톨로지로 계획을 다시 만들지 않는다.
 
 부를 수 없는 요청은 문장이 아니라 판정(status)과 모자란 것(missing)으로 돌아온다.
-사람에게 보일 문장은 workflow_answer 가 만든다.
+사람에게 보일 문장은 local_presentation 이 만든다.
 
 여기 블록은 손으로 쓴 작은 것이다. 실제 recipe 에 게시된 블록은
 test_published_execution.py 가, 만든 workflow 를 실행기에 넘기는 흐름은
-test_legacy_vendor.py 가 본다.
+test_workflow_execution.py 가 본다.
 
 LLM 도 Gateway 도 부르지 않는다.
 """
@@ -21,8 +21,7 @@ import pytest
 import yaml
 
 import paths
-from execution import workflow_materializer
-from vendor_to_be_deleted.asap import workflow_answer
+from execution import local_presentation, workflow_materializer
 
 POINT_FIELDS = {"lon": "location.0", "lat": "location.1"}
 
@@ -306,7 +305,7 @@ def test_a_block_with_nothing_to_call_is_not_materialized(monkeypatch, tmp_path)
 def test_the_statuses_the_answer_words_are_named_as_the_materializer_names_them():
     """이름이 갈리면 판정은 맞는데 답이 「부를 도구가 없습니다」 로 떨어진다."""
     for name in ("MISSING_ARGUMENT", "UNWIRED", "MISSING_CONTEXT"):
-        assert getattr(workflow_answer, name) == getattr(workflow_materializer, name)
+        assert getattr(local_presentation, name) == getattr(workflow_materializer, name)
 
 
 def test_a_missing_screen_value_is_named_in_the_published_order():

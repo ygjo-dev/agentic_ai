@@ -553,7 +553,7 @@ def _measure(
 # 실행 칸이 그 자리를 잰다. **두 칸의 뜻이 다르다.**
 #
 #   정답(기대값)  "이 발화는 이 recipe 로 가야 한다"   사람이 정한 것. 안 바뀜
-#   실행 칸       "그 recipe 가 답을 내놓는다"          관찰한 사실. 날짜와 함께
+#   실행 칸       "그 recipe 가 KRRI 까지 실행된다"      관찰한 사실. 날짜와 함께. 답은 KRRI 것
 #
 # **실행 칸을 관문으로 삼지 않는다.** Gateway 쪽 데이터가 늘면 건수가 바뀌고
 # Gateway 가 꺼지면 전부 실패한다. 적중 판정은 이 칸을 안 본다 — 네 칸과
@@ -585,23 +585,23 @@ def _measure(
 #
 # ## 값 셋
 #
-#   ✓  기대 recipe 가 돌았고 결과가 왔다
-#   ✗  기대 recipe 가 돌았는데 답이 안 나왔다. 0건 · not_found · 권한 · 인자 · 배선
+#   ✓  기대 recipe 가 KRRI_ASAP 까지 실행됐다. 무엇이 돌아왔는지는 KRRI 답을 읽는다
+#   ✗  기대 recipe 를 골랐는데 KRRI 까지 못 갔다. 인자 · 배선 · 실행 창구
 #   ?  기대 recipe 를 아예 안 지났다. 해석이 다른 데로 갔다
 #
-# **왜 그런지를 한 줄로 함께 적는다.** ✗ 만 있으면 Gateway 쪽 데이터가 없는 것인지
-# 우리 인자가 틀린 것인지 권한이 없는 것인지를 못 가른다. 그 셋은 할 일이
-# 전혀 다르다.
+# **실행한 결과가 성공인지 0건인지 오류인지는 이 도구가 가르지 않는다.** 실제로 실행한
+# 답은 KRRI_ASAP 이 만들고 그 판정도 KRRI 가 한다(execution.workflow_execution). 여기서
+# KRRI 답 문장을 읽어 다시 가르면 판정 주인이 둘이 된다. 그래서 ✓ 줄의 「왜」 칸에는
+# 마지막 단계 줄이나 KRRI 답의 첫 줄을 그대로 적어 사람이 읽게 한다.
+#
+# **✗ 는 agentic_ai 가 KRRI 를 안 부른 자리만이다.** 그 답은 우리 문구
+# (execution.local_presentation)라 문장이 곧 사유다.
 
-# 판정 문구는 vendor 와 demo 에서 그대로 가져온다. 여기서 다시 적으면 그쪽
-# 문구가 바뀔 때 이 표가 조용히 거짓말을 한다 — 화면은 "찾지 못했습니다" 인데
-# 표는 ✓ 로 찍히는 식이다.
-from vendor_to_be_deleted.asap.workflow_answer import (  # noqa: E402
-    EMPTY_HEADLINE,
-    ERROR_HEADLINE,
-    MISSING_STATUS,
+# 판정 문구는 local_presentation 에서 그대로 가져온다. 여기서 다시 적으면 그쪽
+# 문구가 바뀔 때 이 표가 조용히 거짓말을 한다.
+from execution.local_presentation import (  # noqa: E402
+    EXECUTOR_UNREACHABLE,
     NO_ARGUMENT_ANSWER,
-    NO_PERMISSION_REASON,
     UNWIRED_ANSWER,
 )
 
@@ -612,32 +612,9 @@ RAN, EMPTY, UNMEASURED = "✓", "✗", "?"
 UNWIRED_TAIL = UNWIRED_ANSWER.split("{names}")[-1]
 
 # 왜 ✗ 인지를 가르는 말. 표의 「왜」 칸 맨 앞에 온다.
-#
-# **응답이 status 로 "없다" 고 말한 것은 그 status 이름을 그대로 쓴다**
-# (not_found · empty). 셋의 뜻이 다르고 할 일도 다르다 — 0건은 낱말을 바꾸면
-# 되고, not_found 는 데이터에 있는 이름을 그대로 대야 하고, empty 는 Gateway 에
-# 데이터가 아예 안 실린 것이라 우리가 할 일이 없다. 이름은 MISSING_STATUS 에서
-# 온다. 여기서 다시 적지 않는다.
-WHY_EMPTY = "0건"
-WHY_PERMISSION = "권한"
-WHY_CALL_FAILED = "호출 실패"
 WHY_ARGUMENT = "인자"
 WHY_UNWIRED = "배선"
-
-
-def _empty_why(detail: str) -> str:
-    """빈 결과를 0건과 status 로 가름.
-
-    입력  마지막 단계 줄
-    출력  status 이름(not_found · empty) 또는 WHY_EMPTY
-    규칙  단계 줄에 MISSING_STATUS 의 문구가 있으면 그 status 임.
-          답의 둘째 줄로 안 가름 — 그 줄은 글자로 부른 단계에만 붙어서
-          (workflow_answer._retry_line) 좌표로 부른 not_found 를 놓침
-    """
-    for status, text in MISSING_STATUS.items():
-        if text in detail:
-            return status
-    return WHY_EMPTY
+WHY_UNREACHABLE = "실행 창구"
 
 # 되묻기를 지나 고른 자리에 붙이는 표시.
 PICKED_MARK = "되묻기→고름"
@@ -702,30 +679,18 @@ def _last_step(turn: dict) -> str:
 
 
 def _execution_of(turn: dict) -> tuple:
-    """이 회차가 답을 내놓았는가.
+    """이 회차가 KRRI 까지 실행됐는가.
 
-    입력  기대 recipe 가 실제로 돈 회차
+    입력  기대 recipe 가 고른 recipe 였던 회차
     출력  (RAN 또는 EMPTY, 왜인지 한 줄)
-    규칙  판정 근거는 답의 첫 줄임. vendor 의 _verdict 가 거기에 결과를
-          적었음 — 성공이면 recipe 가 아는 문장, 빈 결과·오류면 우리 문구
-          0건과 not_found 는 마지막 단계 줄로 갈림 (_empty_why)
-          권한과 그냥 터진 것은 단계 줄의 사유로 갈림
-          도구를 하나도 안 부른 자리(인자 없음 · 배선 없음)도 여기서 가름.
-          그때는 단계 줄이 아예 없음
-    제약  건수를 여기서 다시 세지 않는다.
-          결과 모양을 아는 것은 vendor_to_be_deleted/asap/workflow_answer 이고, 여기가
-          또 세면 두 곳이 다른 기준을 갖게 된다
+    규칙  답이 우리 문구면 KRRI 를 안 부른 것. 인자 없음 · 배선 없음 · 실행
+          창구 못 부름. 그때는 단계 줄이 아예 없음
+          그 밖은 KRRI 가 실행한 것. 「왜」 칸은 마지막 단계 줄, 없으면 KRRI
+          답의 첫 줄
+    제약  KRRI 답을 읽어 성공 · 0건 · 오류를 다시 가르지 않는다.
+          실제로 실행한 결과의 판정은 KRRI_ASAP 이 주인이다
     """
     answer = turn.get("answer") or ""
-    detail = _last_step(turn)
-
-    if answer.startswith(EMPTY_HEADLINE):
-        why = _empty_why(detail)
-        return EMPTY, f"{why} · {detail}" if detail else why
-
-    if answer.startswith(ERROR_HEADLINE):
-        why = WHY_PERMISSION if NO_PERMISSION_REASON in answer else WHY_CALL_FAILED
-        return EMPTY, f"{why} · {detail}" if detail else why
 
     if answer in set(NO_ARGUMENT_ANSWER.values()):
         return EMPTY, f"{WHY_ARGUMENT} · 뽑은 것이 없다"
@@ -733,7 +698,11 @@ def _execution_of(turn: dict) -> tuple:
     if answer.rstrip().endswith(UNWIRED_TAIL.rstrip()):
         return EMPTY, f"{WHY_UNWIRED} · {answer.removesuffix(UNWIRED_TAIL)}".rstrip()
 
-    return RAN, detail
+    if answer == EXECUTOR_UNREACHABLE:
+        return EMPTY, f"{WHY_UNREACHABLE} · 연결하지 못했다"
+
+    first = next((line.strip() for line in answer.splitlines() if line.strip()), "")
+    return RAN, _last_step(turn) or first
 
 
 def _execute(entries, executions: dict) -> None:

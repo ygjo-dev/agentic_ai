@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 import paths
-from execution import legacy_vendor, workflow_materializer
+from execution import workflow_execution, workflow_materializer
 from ontology import ONTOLOGY
 
 SCHEMA_PATH = Path(__file__).resolve().parents[2] / "tools" / "probe_out" / "tools.json"
@@ -148,7 +148,7 @@ def _permitted_servers():
     """refs 가 열어 준 서버. 「무엇을 왜 열었나」의 원천이다."""
     return {
         ref.split("/", 1)[0]
-        for ref in legacy_vendor.USER_CONTEXT["selected_mcp_tool_refs"]
+        for ref in workflow_execution.USER_CONTEXT["selected_mcp_tool_refs"]
     }
 
 

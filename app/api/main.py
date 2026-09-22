@@ -2,8 +2,8 @@
 
 **라우팅과 요청 한 건의 얇은 흐름만 둔다.** 발화 한 건은 _process 에서
 해석(orchestrator.resolve_service) -> workflow(execution.workflow_materializer) ->
-실행(execution.legacy_vendor -> KRRI_ASAP /workflow/execute) 차례로 지난다. 실제로 실행한
-답은 KRRI_ASAP 이 만들고, 실행 전에 멈춘 자리의 답은 workflow_answer 가 만든다.
+실행(execution.workflow_execution -> KRRI_ASAP /workflow/execute) 차례로 지난다. 실제로 실행한
+답은 KRRI_ASAP 이 만들고, KRRI 까지 안 간 자리의 답은 execution.local_presentation 이 만든다.
 도메인 로직은 각 모듈과 app/api/services/ 가, 오류 매핑은 아래 미들웨어가 맡는다.
 엔드포인트마다 같은 try/except 를 반복하면 한 곳을 고칠 때 나머지를 빠뜨리게 된다.
 """
@@ -22,8 +22,8 @@ REPO_ROOT = str(Path(__file__).resolve().parent.parent.parent)
 if REPO_ROOT not in sys.path:
     sys.path.append(REPO_ROOT)
 
-# 프로젝트 모듈보다 먼저 읽는다. vendor 가 import 시점에 ASAP_GATEWAY_URL 을
-# 읽으므로, 뒤에 읽으면 .env 가 안 먹는다.
+# 프로젝트 모듈보다 먼저 읽는다. import 시점에 주소를 읽는 모듈이 있으면 뒤에
+# 읽을 때 .env 가 안 먹는다.
 #
 # **여기에 서버가 귀를 열 주소는 없다.** 어느 인터페이스의 몇 번 포트에 뜨는가는
 # 띄우는 명령이 정한다 (uvicorn app.api.main:app --host … --port …). 앱이 제
@@ -36,8 +36,7 @@ from app.api.services.streamlit import screen_service
 from app.api.services.streamlit.screen_service import UnknownRenderMode
 from llm_engine.llm_selector import get_llm_for
 from llm_engine.role_config import RESOLVE, get_role_config
-from execution import legacy_vendor, workflow_materializer
-from execution.legacy_vendor import workflow_answer
+from execution import local_presentation, workflow_execution, workflow_materializer
 from orchestrator import resolve_service
 from orchestrator.resolve_service import RouteResolutionError
 
@@ -74,9 +73,9 @@ DOMAIN_ERRORS = (
 
 # 예상 못 한 오류에서 client 로 나가는 문구. 원인은 서버 로그에만 남는다.
 #
-# **원문을 실어 보내지 않는다.** vendor 예외에는 Gateway 응답 본문 · 내부 URL
-# (ASAP_GATEWAY_URL 의 /api/tools/execute) · 저장소 경로가 그대로 들어 있고,
-# 이 응답은 KRRI_ASAP 시스템까지 나간다.
+# **원문을 실어 보내지 않는다.** 예외에는 내부 URL(KRRI 실행 창구 · Gateway) ·
+# 응답 본문 · 저장소 경로가 그대로 들어 있을 수 있고, 이 응답은 KRRI_ASAP
+# 시스템까지 나간다.
 INTERNAL_ERROR_DETAIL = "서버 내부 오류입니다. 서버 로그를 확인하세요."
 
 
@@ -87,7 +86,7 @@ async def errors_to_json(request: Request, call_next):
     출력  DOMAIN_ERRORS 는 422, 나머지는 500
     규칙  500 의 detail 은 고정 문구임. 실제 예외와 traceback 은 서버 로그로 감
     제약  예상 못 한 예외의 원문을 응답에 담지 않는다.
-          내부 URL · vendor HTTP 원문 · 저장소 경로가 그대로 실려 나감
+          내부 URL · HTTP 응답 원문 · 저장소 경로가 그대로 실려 나감
           @app.exception_handler 로 옮기지 않는다.
           잡히지 않은 예외를 핸들러로 다루면 Starlette 의
           ServerErrorMiddleware 가 응답을 낸 뒤 예외를 다시 올림.
@@ -198,35 +197,35 @@ async def _stream(text: str, llm_client, role, context: dict | None):
           정해지지 않았고 NO_MATCH 는 부를 것이 없음
           고른 recipe 의 게시된 execution 과 해석 결과 · 화면 문맥으로
           workflow_materializer 가 workflow 를 만듦. READY 가 아니면 부르지 않음
-          READY 면 legacy_vendor 가 KRRI 실행 창구로 부름. 그 답은 KRRI 것
-          실행 전에 멈춘 자리의 답 문구는 workflow_answer 가 만듦
+          READY 면 workflow_execution 이 KRRI 실행 창구로 부름. 그 답은 KRRI 것
+          실행 전에 멈춘 자리의 답 문구는 local_presentation 이 만듦
     제약  여기서 문장을 만들지 않는다
           고른 recipe 를 문맥으로 다시 고르지 않는다
           상태를 두지 않는다.
           발화 한 건이 한 건으로 끝남. 앞 발화를 안 기억하므로 「1번」도 다른
           말과 똑같이 새 발화로 해석됨
     """
-    yield {"type": "step_start", "node": RESOLVE_NODE, "message": workflow_answer.RESOLVE_START}
+    yield {"type": "step_start", "node": RESOLVE_NODE, "message": local_presentation.RESOLVE_START}
     resolved = _resolve(text, llm_client, role)
     recipe_id = resolved.get("recipe_id")
     yield {
         "type": "step_end",
         "node": RESOLVE_NODE,
-        "message": workflow_answer.resolve_end(resolved.get("status"), recipe_id),
+        "message": local_presentation.resolve_end(resolved.get("status"), recipe_id),
     }
 
     if resolved.get("status") != SELECT or not recipe_id:
-        answer = workflow_answer.unresolved_answer(resolved, resolve_service.answer_names(resolved))
+        answer = local_presentation.unresolved_answer(resolved, resolve_service.answer_names(resolved))
         yield {"type": "result", "answer": answer, "commands": []}
         return
 
     materialized = workflow_materializer.materialize(recipe_id, resolved, context)
     if materialized["status"] != workflow_materializer.READY:
-        answer = workflow_answer.unready_answer(materialized, resolved.get("paths"))
+        answer = local_presentation.unready_answer(materialized, resolved.get("paths"))
         yield {"type": "result", "answer": answer, "commands": []}
         return
 
-    async for payload in legacy_vendor.run(materialized, text):
+    async for payload in workflow_execution.run(materialized, text):
         yield payload
 
 
