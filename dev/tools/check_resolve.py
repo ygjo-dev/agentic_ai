@@ -592,7 +592,11 @@ def _measure(
 # **실행한 결과가 성공인지 0건인지 오류인지는 이 도구가 가르지 않는다.** 실제로 실행한
 # 답은 KRRI_ASAP 이 만들고 그 판정도 KRRI 가 한다(execution.workflow_execution). 여기서
 # KRRI 답 문장을 읽어 다시 가르면 판정 주인이 둘이 된다. 그래서 ✓ 줄의 「왜」 칸에는
-# 마지막 단계 줄이나 KRRI 답의 첫 줄을 그대로 적어 사람이 읽게 한다.
+# 회차에 옮겨 적힌 KRRI status(success · failed)를 그대로 앞에 두고, 마지막 단계 줄이나
+# KRRI 답의 첫 줄을 붙여 사람이 읽게 한다.
+#
+# **0건은 따로 못 가른다.** KRRI 의 status 는 success · failed 둘이고, 0건 조회는
+# success 다. 그 이상을 가르려면 KRRI 가 그 판정을 응답에 실어야 한다.
 #
 # **✗ 는 agentic_ai 가 KRRI 를 안 부른 자리만이다.** 그 답은 우리 문구
 # (execution.local_presentation)라 문장이 곧 사유다.
@@ -664,15 +668,16 @@ def _chat_turn(text: str, since: int) -> tuple:
 
 
 def _last_step(turn: dict) -> str:
-    """마지막 단계 줄 한 줄. 단계가 없으면 "".
+    """마지막 단계 한 줄. 단계가 없으면 "".
 
-    규칙  앞의 "N. " 을 떼고 이어진 줄을 한 줄로 붙임. 문서 검색처럼 조각을
-          여러 줄로 내놓는 단계가 있어 그대로 두면 표가 무너짐
+    규칙  단계 이벤트의 끝 message 를 씀. 예전 회차(답에서 잘라 둔 line)는
+          앞의 "N. " 을 떼고 이어진 줄을 한 줄로 붙임
     """
     steps = turn.get("steps") or []
     if not steps:
         return ""
-    line = (steps[-1].get("line") or "").strip()
+    last = steps[-1]
+    line = (last.get("end_message") or last.get("start_message") or last.get("line") or "").strip()
     if ". " in line[:4]:
         line = line.split(". ", 1)[1]
     return " ".join(line.split())
@@ -683,14 +688,21 @@ def _execution_of(turn: dict) -> tuple:
 
     입력  기대 recipe 가 고른 recipe 였던 회차
     출력  (RAN 또는 EMPTY, 왜인지 한 줄)
-    규칙  답이 우리 문구면 KRRI 를 안 부른 것. 인자 없음 · 배선 없음 · 실행
+    규칙  회차에 execution_status 가 있으면 KRRI 가 실행한 것. 「왜」 칸 앞에
+          그 status 를 그대로 둠
+          답이 우리 문구면 KRRI 를 안 부른 것. 인자 없음 · 배선 없음 · 실행
           창구 못 부름. 그때는 단계 줄이 아예 없음
-          그 밖은 KRRI 가 실행한 것. 「왜」 칸은 마지막 단계 줄, 없으면 KRRI
-          답의 첫 줄
+          그 밖(지도 명령만 낸 실행 · status 칸이 없던 예전 회차)은 실행한 것.
+          「왜」 칸은 마지막 단계 줄, 없으면 답의 첫 줄
     제약  KRRI 답을 읽어 성공 · 0건 · 오류를 다시 가르지 않는다.
           실제로 실행한 결과의 판정은 KRRI_ASAP 이 주인이다
     """
     answer = turn.get("answer") or ""
+    first = next((line.strip() for line in answer.splitlines() if line.strip()), "")
+
+    status = turn.get("execution_status")
+    if status:
+        return RAN, f"KRRI {status} · {_last_step(turn) or first}"
 
     if answer in set(NO_ARGUMENT_ANSWER.values()):
         return EMPTY, f"{WHY_ARGUMENT} · 뽑은 것이 없다"
@@ -701,7 +713,6 @@ def _execution_of(turn: dict) -> tuple:
     if answer == EXECUTOR_UNREACHABLE:
         return EMPTY, f"{WHY_UNREACHABLE} · 연결하지 못했다"
 
-    first = next((line.strip() for line in answer.splitlines() if line.strip()), "")
     return RAN, _last_step(turn) or first
 
 

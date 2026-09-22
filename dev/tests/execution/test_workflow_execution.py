@@ -190,6 +190,45 @@ def test_the_krri_failure_answer_goes_out_as_it_is(monkeypatch):
     assert events[-1]["answer"] == KRRI_FAILURE
 
 
+@pytest.mark.parametrize("status", ["success", "failed"])
+def test_the_krri_status_rides_on_the_result_as_it_came(monkeypatch, status):
+    """KRRI 가 판정한 status 를 그대로 싣는다. 우리가 다시 계산하지 않는다."""
+
+    def judged(workflow):
+        return {**krri_success(workflow), "status": status}
+
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], judged))
+
+    result = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))[-1]
+
+    assert result["status"] == status
+    assert result["answer"] == KRRI_ANSWER
+
+
+def test_a_step_end_carries_failed_exactly_where_krri_wrote_an_error(monkeypatch):
+    """failed 칸은 KRRI trace 항목의 error 칸 그대로다. message 를 읽지 않아도 된다."""
+
+    def failed(workflow):
+        first, second = workflow["steps"]
+        return {
+            "status": "failed",
+            "answer": KRRI_FAILURE,
+            "commands": [],
+            "trace": [
+                {"id": first["id"], "tool": first["tool"], "result": {"error": "도메인 결과 안의 칸"}},
+                {"id": second["id"], "tool": second["tool"], "error": KRRI_FAILURE},
+            ],
+            "errors": [KRRI_FAILURE],
+        }
+
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], failed))
+
+    events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    assert [event["failed"] for event in events if event["type"] == "step_end"] == [False, True]
+    assert events[-1]["status"] == "failed"
+
+
 def test_krri_commands_come_first_and_materialized_commands_follow(monkeypatch):
     """지도 명령은 KRRI 가 도구 응답에서 만든 것 뒤에 우리 지도 명령이 붙는다. 순서가 경로 순서다."""
     monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
@@ -216,6 +255,7 @@ def test_an_unreachable_krri_gets_a_local_answer_and_no_fallback(monkeypatch, re
     assert [event["type"] for event in events] == ["result"]
     assert events[-1]["answer"] == local_presentation.EXECUTOR_UNREACHABLE
     assert reason not in events[-1]["answer"]
+    assert "status" not in events[-1], "KRRI 가 안 돌았다. 판정을 지어내지 않는다"
 
 
 def test_a_map_command_only_run_never_reaches_krri(monkeypatch):
@@ -232,6 +272,8 @@ def test_a_map_command_only_run_never_reaches_krri(monkeypatch):
     assert events[-1]["type"] == "result"
     assert events[-1]["commands"][0] == {"op": "digitalTwin.showFacility", "args": {"facilityName": "오송 테스트트랙"}}
     assert events[-1]["answer"] == local_presentation.NOTHING_RAN
+    assert "status" not in events[-1]
+    assert [event["failed"] for event in events if event["type"] == "step_end"] == [False]
 
 
 def test_the_step_pair_goes_out_in_the_same_shape_as_a_tool_step():

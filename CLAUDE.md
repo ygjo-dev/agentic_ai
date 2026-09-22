@@ -76,6 +76,9 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
 - **step_start / step_end 는 KRRI 가 끝난 뒤 trace 로 낸다.** 창구가 스트리밍이 아니라
   한 번에 돌려주므로 단계 한 쌍이 recipe 순서대로 나가지만 시각은 실제 호출 시각이 아니다.
   지도 명령은 KRRI 가 돌려준 것 뒤에 materializer 의 지도 명령을 붙인다
+- **실행 기록은 이벤트 칸이다. 답 문장이 아니다.** step_end 의 `failed` 는 KRRI trace 의
+  error 칸, result 의 `status` 는 KRRI 응답의 status 그대로다(KRRI 가 돈 때만 있다).
+  `/recent` 는 단계 · 판정을 이 칸에서 옮겨 적는다. 답의 "1. " 줄을 단계로 되살리지 않는다
 - **KRRI 까지 안 간 자리의 문장은 `execution/local_presentation.py` 가 만든다** (해석 실패 ·
   UNREADY · 지도 명령만 있는 실행 · KRRI 연결 실패 · 단계 진행 표시). 창구(`app/api/main.py`) ·
   materializer · workflow_execution 은 문장을 만들지 않는다. 노드 · recipe 마다 문장을 두지

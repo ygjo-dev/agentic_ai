@@ -19,6 +19,11 @@ result 에 싣는다. 단계가 실패했는지도 KRRI 가 trace 항목에 적�
 되는 자리는 KRRI 가 아예 안 도는 자리뿐이다 — 지도 명령만 있는 실행과 KRRI 창구를
 못 부른 실행.
 
+**실행 기록은 이벤트 칸에 구조로 싣는다.** 답 문장은 사람에게 보일 표현이지 기록의
+원천이 아니다. 단계가 실패했는지는 step_end 의 failed, KRRI 가 실행을 어떻게 판정했는지는
+result 의 status 다. 둘 다 KRRI 가 적은 것(trace 항목의 error 칸 · 응답의 status)을 옮길
+뿐이고, 받는 화면이 모르는 칸이라 버려도 answer · commands 의 뜻은 그대로다.
+
 **step_start / step_end 는 실행이 끝난 뒤에 나간다.** KRRI 창구는 steps 전부를 한 번에
 돌리고 trace 를 돌려주므로 중간에 끼어들 자리가 없다. 단계마다 한 쌍이 recipe 순서대로
 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
@@ -45,9 +50,16 @@ USER_CONTEXT = {
 }
 
 
-def _result(answer: str, commands: list) -> dict:
-    """마지막 이벤트. 부르는 화면이 읽는 두 칸."""
-    return {"type": "result", "answer": answer, "commands": commands}
+def _result(answer: str, commands: list, status: str | None = None) -> dict:
+    """마지막 이벤트. 부르는 화면이 읽는 두 칸.
+
+    규칙  KRRI 가 실행했으면 그 응답의 status 를 그대로 덧붙임(success · failed).
+          KRRI 가 안 돈 자리에는 status 칸이 없음. 우리가 대신 판정을 지어내지 않음
+    """
+    result = {"type": "result", "answer": answer, "commands": commands}
+    if status is not None:
+        result["status"] = status
+    return result
 
 
 async def run(materialized: dict, text: str):
@@ -55,6 +67,8 @@ async def run(materialized: dict, text: str):
 
     입력  workflow_materializer.materialize 가 READY 로 낸 것 · 발화 원문
     출력  step_start / step_end 를 불린 단계마다 한 쌍, 마지막은 type=result
+          step_end 의 failed 는 그 단계가 실패했는가. result 의 status 는 KRRI 가
+          돌았을 때만 있고 KRRI 응답의 status 그대로
     규칙  workflow 를 고치지 않고 그대로 넘김
           부를 도구가 없고 지도 명령만 있으면 KRRI 를 안 부름. 빈 steps 를
           넘기면 KRRI 가 실패로 봄. 답은 NOTHING_RAN
@@ -78,7 +92,7 @@ async def run(materialized: dict, text: str):
     if not intent["steps"]:
         for node_id, command in zip(materialized["command_nodes"], commands):
             yield {"type": "step_start", "node": node_id, "message": local_presentation.command_start(command["op"])}
-            yield {"type": "step_end", "node": node_id, "message": local_presentation.step_end(command["op"])}
+            yield {"type": "step_end", "node": node_id, "message": local_presentation.step_end(command["op"]), "failed": False}
         yield _result(local_presentation.NOTHING_RAN, commands)
         return
 
@@ -96,7 +110,8 @@ async def run(materialized: dict, text: str):
 
     for node_id, item in zip(materialized["nodes"], executed["trace"]):
         tool = item.get("tool") or ""
+        failed = "error" in item
         yield {"type": "step_start", "node": node_id, "message": local_presentation.step_start(tool)}
-        yield {"type": "step_end", "node": node_id, "message": local_presentation.step_end(tool, failed="error" in item)}
+        yield {"type": "step_end", "node": node_id, "message": local_presentation.step_end(tool, failed=failed), "failed": failed}
 
-    yield _result(executed["answer"], executed["commands"] + commands)
+    yield _result(executed["answer"], executed["commands"] + commands, executed["status"])

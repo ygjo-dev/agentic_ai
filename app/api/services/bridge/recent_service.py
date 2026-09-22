@@ -7,9 +7,10 @@ KRRI_ASAP 은 `POST /chat/stream` 으로 발화를 넣고 Streamlit 은 `GET /re
 
     원본을 안 바꾼다     훔쳐보는 자리 둘 다 받은 것을 그대로 다시 낸다.
                         기록 때문에 이벤트가 한 건이라도 달라지면 시연이 깨진다
-    raw JSON 을 안 담는다 회차의 문자열은 전부 이미 화면으로 나간 답이다 (실행한
-                        답은 KRRI_ASAP, 안 간 자리는 local_presentation). 여기서 다시 요약하지 않는다 —
-                        요약하는 코드가 둘이 되는 순간 한쪽이 geojson 을 흘린다.
+    raw JSON 을 안 담는다 회차의 문자열은 전부 이미 화면으로 나간 것이다 — 답(실행한
+                        답은 KRRI_ASAP, 안 간 자리는 local_presentation)과 단계 이벤트의
+                        message. 여기서 다시 요약하지 않는다 — 요약하는 코드가 둘이
+                        되는 순간 한쪽이 geojson 을 흘린다.
                         `commands` 는 아예 안 읽는다. 좌표 배열이 거기 있다
     회차가 안 섞인다     `ContextVar` 로 가른다. 요청마다 asyncio Task 가 따로라
                         두 발화가 겹쳐 들어와도 서로의 칸에 안 쓴다
@@ -25,9 +26,16 @@ KRRI_ASAP 은 `POST /chat/stream` 으로 발화를 넣고 Streamlit 은 `GET /re
 훔쳐보는 자리는 `resolve_service.resolve` 하나다(인자 · 고른 recipe · 후보들).
 `app/api/main.py` 가 한 번 씌운다. 발화 한 건은 늘 해석을 거치고 그 결과 그대로
 실행되므로 실제로 부른 recipe 와 인자도 거기서 보인다.
+
+**단계와 실행 판정은 이벤트에서 옮겨 적는다.** 답 문장에서 되살리지 않는다 — 답은
+사람에게 보일 표현이고, KRRI 답은 단계 줄 꼴을 약속하지 않는다.
+
+    steps              step_start · step_end 를 받은 차례대로. {node, start_message,
+                       end_message, failed}. 해석 단계(node="resolve")도 한 단계다
+    execution_status   result 의 status. KRRI 가 실행한 회차에만 있고(success · failed)
+                       KRRI 까지 안 간 회차는 None
 """
 
-import re
 import time
 from collections import deque
 from contextvars import ContextVar
@@ -38,17 +46,6 @@ MAX_TURNS = 20
 
 # since 를 안 줬을 때 돌려줄 회차 수.
 TAIL = 5
-
-# 답에서 단계 줄이 시작되는 꼴. 번호 뒤에 마침표를 찍은 "1. …" 이고 줄머리에
-# 공백이 없다. 답에 그런 줄이 없으면 steps 는 빈 목록이다.
-#
-# 되묻기 답의 후보 줄("  1  전기차 충전소 검색")과 갈라야 한다 — 그쪽은 앞에
-# 공백이 있고 번호 뒤에 마침표가 없다.
-#
-# **한 단계가 여러 줄일 수 있다.** 건수 줄 아래에 문서 조각을 들여 쓴 줄로
-# 늘어놓는 도구가 있다. 그 줄들은 이 꼴에 안 걸리므로 바로 앞 단계에 붙인다 —
-# 떼어 내면 화면에서 조각이 사라진다.
-_STEP_HEAD = re.compile(r"^\d+\. ")
 
 # 이 회차가 지나가며 모으는 칸. /chat/stream 흐름 안에서만 채워진다.
 #
@@ -99,8 +96,9 @@ def _new_slot(text: str) -> dict:
         "argument": "",
         "recipe_id": None,
         "candidate_recipe_ids": [],
-        "nodes": [],
+        "steps": [],
         "answer": "",
+        "execution_status": None,
         "done": False,
     }
 
@@ -122,18 +120,30 @@ def _release(token) -> None:
 def _note_event(slot: dict, payload) -> None:
     """이벤트 하나에서 남길 것만 뽑음.
 
-    규칙  step_end 의 node 만 모음. 단계 줄은 답에서 가져오므로 여기서 안 만듦
-          result 를 보면 답 문구를 담고 이 회차를 완결로 표시함
+    규칙  step_start 가 단계 하나를 열고 같은 node 의 step_end 가 그것을 닫음.
+          짝이 없는 step_end 는 단계 하나로 따로 남김
+          failed 는 step_end 의 칸 그대로. 칸이 없으면 실패가 아님
+          result 를 보면 답 문구와 status 를 담고 이 회차를 완결로 표시함
     제약  commands 를 안 읽는다.
           지도 명령이 geojson 과 좌표 배열을 통째로 들고 있음. 이 파일이
           raw JSON 을 안 담기로 한 자리가 그것이다
+          message 를 읽어 실패를 가르지 않는다. 실패는 이벤트의 failed 칸이 말함
     """
     try:
         kind = payload.get("type")
-        if kind == "step_end":
-            slot["nodes"].append(payload.get("node") or "")
+        node = payload.get("node") or ""
+        steps = slot["steps"]
+        if kind == "step_start":
+            steps.append({"node": node, "start_message": payload.get("message") or "", "end_message": "", "failed": False})
+        elif kind == "step_end":
+            if not steps or steps[-1]["node"] != node or steps[-1]["end_message"]:
+                steps.append({"node": node, "start_message": "", "end_message": "", "failed": False})
+            steps[-1]["end_message"] = payload.get("message") or ""
+            steps[-1]["failed"] = payload.get("failed") is True
         elif kind == "result":
             slot["answer"] = payload.get("answer") or ""
+            status = payload.get("status")
+            slot["execution_status"] = status if isinstance(status, str) else None
             slot["done"] = True
     except Exception:  # noqa: BLE001 — 기록 때문에 이벤트를 막지 않는다.
         pass
@@ -162,58 +172,13 @@ def _keep(slot: dict) -> None:
                 "argument": slot["argument"],
                 "recipe_id": slot["recipe_id"],
                 "candidate_recipe_ids": list(slot["candidate_recipe_ids"]),
-                "head": _head(slot["answer"]),
-                "steps": _steps(slot["answer"], slot["nodes"]),
+                "steps": [dict(step) for step in slot["steps"]],
+                "execution_status": slot["execution_status"],
                 "answer": slot["answer"],
             }
         )
     except Exception:  # noqa: BLE001 — 답이 먼저다.
         pass
-
-
-def _head(answer: str) -> str:
-    """답에서 단계 줄을 뺀 머리말.
-
-    출력  첫 단계 줄 앞까지. 단계가 없으면 답 그대로
-    규칙  되묻기 회차면 번호 붙은 후보 목록이 통째로 여기 들어옴. 그 줄은
-          단계 줄 꼴이 아님
-    제약  문구를 다시 만들지 않는다. 자를 뿐임
-    """
-    lines = answer.splitlines()
-    for index, line in enumerate(lines):
-        if _STEP_HEAD.match(line):
-            return "\n".join(lines[:index]).strip()
-    return answer.strip()
-
-
-def _steps(answer: str, nodes: list[str]) -> list[dict]:
-    """답에 이미 적힌 단계 덩이에 노드 id 를 짝지음.
-
-    출력  [{"node": ..., "line": ...}]. 단계가 없으면 빈 목록
-    규칙  덩이는 답에서 그대로 가져옴. 도구 이름 · 보낸 인자 · 결과 요약이
-          이미 그 안에 있음
-          단계 줄 꼴이 아닌 줄은 바로 앞 단계에 붙임. 문서 조각이 그 줄임
-          노드 id 는 뒤에서부터 짝지음. 앞머리에 도구가 아닌 단계
-          (해석 node="resolve")가 붙고, 도구 단계는 늘 그 뒤에 답의 덩이와
-          같은 수만큼 나옴
-          모자라면 빈 문자열. 짝을 못 지어도 덩이는 남김
-    제약  단계 줄을 다시 만들지 않는다.
-          요약하는 코드가 둘이 되면 한쪽이 raw JSON 을 흘림.
-          화면으로 나간 답의 문자열만 담음
-    """
-    blocks: list[list[str]] = []
-    for line in answer.splitlines():
-        if _STEP_HEAD.match(line):
-            blocks.append([line])
-        elif blocks:
-            blocks[-1].append(line)
-
-    lines = ["\n".join(block).rstrip() for block in blocks]
-    tail = nodes[-len(lines):] if lines and len(nodes) >= len(lines) else []
-    return [
-        {"node": tail[index] if index < len(tail) else "", "line": line}
-        for index, line in enumerate(lines)
-    ]
 
 
 # ================================================================ 훔쳐보기

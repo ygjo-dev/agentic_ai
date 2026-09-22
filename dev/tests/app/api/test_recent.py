@@ -8,18 +8,19 @@ LLM 도 온톨로지도 안 부른다. `/chat/stream` 이 내는 이벤트를 �
   개수를 막는다
   since 가 새 것만 준다
   raw JSON 이 안 샌다
-  단계 줄을 다시 만들지 않는다
+  단계와 실행 판정은 이벤트에서 옮겨 적는다 — 답 문장을 가르지 않는다
 """
 
 import asyncio
 import json
+from collections import deque
 
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.services.bridge import recent_service
 
-# 머리말 · 빈 줄 · 번호 단계 줄로 된 답의 모양. recent_service 는 답을 만들지 않고 이 꼴로 자르기만 한다.
+# 머리말 · 빈 줄 · 번호 줄로 된 답. **번호 줄이 있어도 단계가 아니다** — 단계는 이벤트로 온다.
 ANSWER = "\n".join(
     [
         "오송역 CCTV 를 조회했습니다.",
@@ -29,16 +30,8 @@ ANSWER = "\n".join(
     ]
 )
 
-# 문서 검색 답. 한 단계가 여러 줄이다 — 건수 줄 아래에 문서 조각이 붙는다.
-RAG_ANSWER = "\n".join(
-    [
-        "철도안전법 문서를 조회했습니다.",
-        "",
-        "1. knowledge.query   6건",
-        "   「철도안전법(법률)(제21188호)(20260303).pdf」 1쪽 · \"법제처 1 국가법령정보센터…\"",
-        "   「철도안전법(법률)(제21188호)(20260303).pdf」 2쪽 · \"법제처 2 국가법령정보센터…\"",
-    ]
-)
+# KRRI Gemini 가 쓴 답. 번호 줄이 없다 — KRRI 답은 단계 줄 꼴을 약속하지 않는다.
+KRRI_ANSWER = "오송역 주변 15km 안에서 CCTV 3대를 찾았습니다."
 
 # 되묻기 답. 번호가 앞에 공백을 두고 붙고 마침표가 없다. 단계 줄이 아니다.
 CLARIFY_ANSWER = "\n".join(
@@ -91,16 +84,17 @@ def stream(*payloads):
     return events()
 
 
-def executed(answer=ANSWER, commands=None):
-    """단계 둘을 부르고 끝난 회차 하나의 이벤트."""
+def executed(answer=ANSWER, commands=None, status="success", failed_last=False):
+    """단계 둘을 부르고 끝난 회차 하나의 이벤트. KRRI 가 실행한 회차의 모양."""
+    last_end = "road.getCctv 실패" if failed_last else "road.getCctv 완료"
     return [
         {"type": "step_start", "node": "resolve", "message": "발화를 해석하고 있습니다..."},
         {"type": "step_end", "node": "resolve", "message": "SELECT recipe_002"},
         {"type": "step_start", "node": "n_geocode", "message": "geo.geocode 호출 중입니다..."},
-        {"type": "step_end", "node": "n_geocode", "message": "geo.geocode 완료"},
+        {"type": "step_end", "node": "n_geocode", "message": "geo.geocode 완료", "failed": False},
         {"type": "step_start", "node": "n_cctv", "message": "road.getCctv 호출 중입니다..."},
-        {"type": "step_end", "node": "n_cctv", "message": "road.getCctv 완료"},
-        {"type": "result", "answer": answer, "commands": commands or []},
+        {"type": "step_end", "node": "n_cctv", "message": last_end, "failed": failed_last},
+        {"type": "result", "answer": answer, "commands": commands or [], "status": status},
     ]
 
 
@@ -143,10 +137,11 @@ def empty():
 def test_no_event_is_lost_even_when_recording_blows_up(monkeypatch):
     """답이 먼저다. 기록은 이벤트가 다 나간 뒤에 도는 일이고 터져도 삼킨다."""
 
-    def broken(answer, nodes):
-        raise RuntimeError("기록이 터졌다")
+    class Broken(deque):
+        def append(self, item):
+            raise RuntimeError("기록이 터졌다")
 
-    monkeypatch.setattr(recent_service, "_steps", broken)
+    monkeypatch.setattr(recent_service, "_TURNS", Broken())
 
     payloads = executed()
     assert turn_of("오송역 CCTV 보여줘", payloads, resolve=resolved()) == payloads
@@ -243,59 +238,38 @@ def test_a_resolve_called_outside_a_turn_keeps_nothing():
     assert recent_service.since() == {"seq": 0, "turns": []}
 
 
-# ================================================================ 단계 줄
-def test_step_lines_are_held_verbatim_as_written_in_the_answer():
-    """요약하는 코드가 둘이 되면 한쪽이 raw JSON 을 흘린다."""
+# ================================================================ 단계 · 실행 판정
+def test_the_steps_are_the_events_in_the_order_they_came():
+    """단계는 step_start · step_end 에서 옮겨 적는다. 차례 · node · 두 message 가 그대로다."""
     turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
 
-    lines = [step["line"] for step in recent_service.since()["turns"][-1]["steps"]]
+    steps = recent_service.since()["turns"][-1]["steps"]
 
-    assert lines == ANSWER.splitlines()[2:]
-
-
-def test_the_node_attached_to_a_step_line_is_a_tool_step():
-    """앞머리의 해석 단계(node="resolve")가 첫 줄에 붙으면 안 된다."""
-    turn_of("오송역 CCTV 보여줘", executed(), resolve=resolved())
-
-    nodes = [step["node"] for step in recent_service.since()["turns"][-1]["steps"]]
-
-    assert nodes == ["n_geocode", "n_cctv"]
+    assert steps == [
+        {"node": "resolve", "start_message": "발화를 해석하고 있습니다...", "end_message": "SELECT recipe_002", "failed": False},
+        {"node": "n_geocode", "start_message": "geo.geocode 호출 중입니다...", "end_message": "geo.geocode 완료", "failed": False},
+        {"node": "n_cctv", "start_message": "road.getCctv 호출 중입니다...", "end_message": "road.getCctv 완료", "failed": False},
+    ]
 
 
-def test_a_step_of_several_lines_stays_one_block_entirely():
-    """문서 조각을 떼어 내면 화면에서 「문서에서 찾아온다」가 안 보인다."""
-    turn_of(
-        "문서에서 철도안전법 관련 내용 찾아줘",
-        [
-            {"type": "step_end", "node": "resolve", "message": "SELECT recipe_013"},
-            {"type": "step_end", "node": "search_documents", "message": "knowledge.query 완료"},
-            {"type": "result", "answer": RAG_ANSWER, "commands": []},
-        ],
-        resolve=resolved(recipe_id="recipe_013"),
-    )
+def test_a_failed_step_is_marked_from_the_event_not_from_its_message():
+    """실패는 step_end 의 failed 칸이 말한다. KRRI 가 trace 에 error 를 적은 단계다."""
+    turn_of("오송역 CCTV 보여줘", executed(status="failed", failed_last=True), resolve=resolved())
 
-    turn = recent_service.since()["turns"][-1]
+    steps = recent_service.since()["turns"][-1]["steps"]
 
-    assert len(turn["steps"]) == 1
-    assert turn["steps"][0]["node"] == "search_documents"
-    assert turn["steps"][0]["line"] == "\n".join(RAG_ANSWER.splitlines()[2:])
+    assert [step["failed"] for step in steps] == [False, False, True]
 
 
-def test_the_preamble_runs_up_to_the_first_step_line():
-    turn_of(
-        "문서에서 철도안전법 관련 내용 찾아줘",
-        [{"type": "result", "answer": RAG_ANSWER, "commands": []}],
-        resolve=resolved(recipe_id="recipe_013"),
-    )
+def test_the_krri_status_is_kept_as_it_came():
+    for status in ("success", "failed"):
+        turn_of("오송역 CCTV 보여줘", executed(status=status), resolve=resolved())
 
-    assert recent_service.since()["turns"][-1]["head"] == "철도안전법 문서를 조회했습니다."
+        assert recent_service.since()["turns"][-1]["execution_status"] == status
 
 
-def test_a_clarify_answer_has_no_step_lines_so_it_is_all_preamble():
-    """번호가 붙어 있어도 도구를 부른 것이 아니다.
-
-    후보 줄을 단계로 읽으면 머리말이 첫 줄에서 잘려 무엇을 고를지가 안 보인다.
-    """
+def test_a_turn_krri_never_ran_has_no_execution_status():
+    """되묻기 · 실행 전에 멈춘 자리 · 창구를 못 부른 자리. result 에 status 칸이 없다."""
     turn_of(
         "오송역 인구 구성 알려줘",
         [{"type": "result", "answer": CLARIFY_ANSWER, "commands": []}],
@@ -304,8 +278,40 @@ def test_a_clarify_answer_has_no_step_lines_so_it_is_all_preamble():
 
     turn = recent_service.since()["turns"][-1]
 
+    assert turn["execution_status"] is None
     assert turn["steps"] == []
-    assert turn["head"] == CLARIFY_ANSWER
+
+
+def test_an_answer_without_numbered_lines_still_keeps_its_steps():
+    """KRRI Gemini 답에는 "1. " 줄이 없을 수 있다. 단계가 비면 안 된다."""
+    turn_of("오송역 CCTV 보여줘", executed(answer=KRRI_ANSWER), resolve=resolved())
+
+    turn = recent_service.since()["turns"][-1]
+
+    assert [step["node"] for step in turn["steps"]] == ["resolve", "n_geocode", "n_cctv"]
+    assert turn["answer"] == KRRI_ANSWER
+
+
+def test_numbered_lines_in_the_answer_are_not_taken_for_steps():
+    """답의 "1. " 줄은 답의 일부다. 단계 수 · 내용이 답에서 오지 않는다."""
+    turn_of("오송역 CCTV 보여줘", executed(answer=ANSWER), resolve=resolved())
+
+    turn = recent_service.since()["turns"][-1]
+
+    assert len(turn["steps"]) == 3
+    assert all(not step["end_message"].startswith(("1. ", "2. ")) for step in turn["steps"])
+    assert turn["answer"] == ANSWER
+
+
+def test_a_clarify_answer_is_kept_whole():
+    """번호가 붙어 있어도 도구를 부른 것이 아니다. 후보 목록이 답 그대로 남는다."""
+    turn_of(
+        "오송역 인구 구성 알려줘",
+        [{"type": "result", "answer": CLARIFY_ANSWER, "commands": []}],
+        resolve=resolved(status="CLARIFY", recipe_id=None),
+    )
+
+    assert recent_service.since()["turns"][-1]["answer"] == CLARIFY_ANSWER
 
 
 # ================================================================ raw JSON

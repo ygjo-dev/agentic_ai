@@ -31,6 +31,16 @@ def test_a_krri_failure_answer_is_not_rejudged_here():
     assert (mark, why) == (check_resolve.RAN, "조회하지 못했습니다.")
 
 
+def test_the_krri_status_carried_in_the_turn_is_shown_as_it_came():
+    """KRRI 가 실행한 회차에는 status 가 옮겨 적혀 있다. 그 값만 쓰고 답 문장은 안 가른다."""
+    steps = [{"node": "find_cctv", "start_message": "road.getCctv 호출 중입니다...", "end_message": "road.getCctv 실패", "failed": True}]
+
+    for status in ("success", "failed"):
+        mark, why = check_resolve._execution_of({"answer": KRRI_ANSWER, "steps": steps, "execution_status": status})
+
+        assert (mark, why) == (check_resolve.RAN, f"KRRI {status} · road.getCctv 실패")
+
+
 def test_failing_to_extract_an_argument_means_no_tool_was_called():
     """단계가 하나도 없다. Gateway 쪽 데이터 탓이 아니라 우리 해석 탓이다."""
     turn = {"answer": NO_ARGUMENT_ANSWER["place_name"], "steps": []}

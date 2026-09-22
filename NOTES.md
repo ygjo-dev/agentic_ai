@@ -3229,6 +3229,32 @@ vworld.getAdministrativeBoundaries  처음부터 GeoJSON 이다
 
 ## 측정 기록
 
+### 2026-09-22 (밤, 이어서) · 실행 단계 · KRRI status 를 이벤트 칸으로 · live 는 KRRI 창구가 내려가 반쪽
+
+`/recent` 가 답의 "1. " 줄을 잘라 단계를 되살리던 것을 걷었다. KRRI Gemini 답은 그 꼴을
+약속하지 않아 단계가 비던 자리다. 단계는 step_start · step_end 를 받은 차례대로, 실패는
+step_end 의 `failed`(KRRI trace 의 error 칸), 판정은 result 의 `status`(KRRI 응답 그대로)다.
+
+```
+SSE         result.status      KRRI 가 돈 때만. 없으면 KRRI 까지 안 간 것
+            step_end.failed    실행 단계에만. 해석 단계 step_end 에는 없다(없으면 실패 아님)
+/recent     steps              {node, start_message, end_message, failed}. 해석 단계도 한 단계
+            execution_status   result.status. 없으면 None
+            head · line        새 회차에 없다. 화면은 예전 회차의 둘을 그대로 그린다
+```
+
+- KRRI Web(ASAP-web chat/api.ts)은 result 의 answer · commands 만 읽고 step 이벤트를 onStep 에
+  넘긴다. Gateway 는 http-proxy-middleware 로 흘려보낸다. 더한 칸은 버려진다
+- check_resolve --execute 의 「왜」 칸은 `KRRI <status> · <마지막 단계>` 다. 0건은 KRRI status 가
+  success · failed 둘뿐이라 못 가른다
+- live `오송역 근처 CCTV 보여줘` 한 번 — resolve SELECT recipe_036 · 해석 단계 한 쌍 · 답은
+  EXECUTOR_UNREACHABLE · result 에 status 칸 없음 · /recent 에 steps 1 · execution_status None ·
+  내부 주소 0. KRRI orchestrator 컨테이너가 20:30:45 KST 에 exit 0 으로 멈춰 있었다(이 작업이 멈춘 것
+  아님, restart unless-stopped 라 다시 안 뜸). 실행 단계 두 쌍 · status success 는 live 로 못 봤다
+- 8501 Streamlit 은 모듈 수정을 안 읽어 옛 follow_panel(step["line"])이 새 회차에서 KeyError 가 날 자리라
+  다시 띄웠다. tmux ui 는 streamlit 을 세션 명령으로 돌리고 있어 C-c 에 세션째 닫힌다 — 같은 명령으로
+  세션을 다시 만들었다
+
 ### 2026-09-22 (밤) · Accepted Recipe 39 개 실행 배선 전수 대조 · 결함 0 · 고친 것 없음
 
 재기만 했다. 게시된 Recipe.execution 을 다섯 원천과 맞댔다.

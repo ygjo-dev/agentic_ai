@@ -8,8 +8,27 @@ import json
 
 from app.ui.components import follow_panel
 
-# GET /recent 가 주는 회차 한 건. 실행까지 간 것.
+# GET /recent 가 주는 회차 한 건. 실행까지 간 것. 단계는 이벤트에서 옮겨 적은 것이고
+# 답(KRRI Gemini)에는 번호 줄이 없다.
 TURN = {
+    "seq": 10,
+    "at": 1_756_000_300.0,
+    "utterance": "오송역 CCTV 보여줘",
+    "status": "SELECT",
+    "argument": "오송역",
+    "recipe_id": "recipe_036",
+    "candidate_recipe_ids": ["recipe_036"],
+    "steps": [
+        {"node": "resolve", "start_message": "발화를 해석하고 있습니다...", "end_message": "SELECT recipe_036", "failed": False},
+        {"node": "geocode_place", "start_message": "geo.geocode 호출 중입니다...", "end_message": "geo.geocode 완료", "failed": False},
+        {"node": "find_cctv", "start_message": "road.getCctv 호출 중입니다...", "end_message": "road.getCctv 완료", "failed": False},
+    ],
+    "execution_status": "success",
+    "answer": "오송역 주변 15km 안에서 CCTV 3대를 찾았습니다.",
+}
+
+# /recent 가 답에서 단계 줄을 잘라 두던 때의 회차 모양. 화면이 여전히 그릴 수 있어야 한다.
+LEGACY_TURN = {
     "seq": 7,
     "at": 1_756_000_000.0,
     "utterance": "오송역 CCTV 보여줘",
@@ -43,8 +62,10 @@ CLARIFY_TURN = {
     "status": "CLARIFY",
     "recipe_id": None,
     "candidate_recipe_ids": ["recipe_011", "recipe_045"],
-    "head": "어느 것을 보시겠습니까?\n  1  인구 통계 조회\n  2  장소 좌표 변환 -> 인구 통계 조회",
-    "steps": [],
+    "steps": [
+        {"node": "resolve", "start_message": "발화를 해석하고 있습니다...", "end_message": "CLARIFY", "failed": False},
+    ],
+    "execution_status": None,
     "answer": "어느 것을 보시겠습니까?\n  1  인구 통계 조회\n  2  장소 좌표 변환 -> 인구 통계 조회",
 }
 
@@ -80,7 +101,7 @@ def test_a_followed_view_is_highlighted_by_the_same_path_as_a_resolve_view():
     view = follow_panel.follow_view(TURN)
 
     assert render_mode(view) == "resolve"
-    assert recipe_ids_to_show(view) == ["recipe_002"]
+    assert recipe_ids_to_show(view) == ["recipe_036"]
 
 
 def test_a_clarify_highlights_its_candidate_paths_too():
@@ -95,19 +116,36 @@ def test_the_utterance_is_carried_verbatim_into_the_view():
     assert follow_panel.follow_view(TURN)["utterance"] == "오송역 CCTV 보여줘"
 
 
-def test_the_preamble_is_the_answer_minus_the_step_lines():
-    assert follow_panel.head_of(TURN) == "오송역 CCTV 를 조회했습니다."
+def test_the_steps_are_drawn_from_the_recorded_events_in_order():
+    """답에 번호 줄이 없어도 단계가 그려진다. 끝 message 가 한 줄이다."""
+    assert follow_panel.step_lines(TURN) == ["1. SELECT recipe_036", "2. geo.geocode 완료", "3. road.getCctv 완료"]
 
 
-def test_with_no_steps_the_whole_answer_is_the_preamble():
+def test_numbered_lines_in_the_answer_are_drawn_as_the_answer_not_as_steps():
+    """답의 "1. " 줄은 답 문구 안에 그대로 남는다. 단계 목록은 이벤트에서만 온다."""
+    turn = {**TURN, "answer": "CCTV 3대입니다.\n\n1. 오송역 앞\n2. 오송역 뒤"}
+
+    assert follow_panel.head_of(turn) == turn["answer"]
+    assert follow_panel.step_lines(turn) == follow_panel.step_lines(TURN)
+
+
+def test_a_step_that_never_ended_shows_its_start_message():
+    turn = {"steps": [{"node": "n", "start_message": "geo.geocode 호출 중입니다...", "end_message": "", "failed": False}]}
+
+    assert follow_panel.step_lines(turn) == ["1. geo.geocode 호출 중입니다..."]
+
+
+def test_the_whole_answer_is_drawn_above_the_steps():
     """되묻기 회차의 후보 목록이 잘려 나가면 무엇을 고를지가 안 보인다."""
     assert follow_panel.head_of(CLARIFY_TURN) == CLARIFY_TURN["answer"]
+    assert follow_panel.head_of(TURN) == TURN["answer"]
 
 
-def test_a_multi_line_step_is_drawn_entirely():
-    """문서 조각이 잘려 나가면 「문서에서 찾아온다」가 화면에서 안 보인다."""
-    assert follow_panel.head_of(RAG_TURN) == "철도안전법 문서를 조회했습니다."
-    assert RAG_TURN["steps"][0]["line"].count("\n") == 2
+def test_a_legacy_turn_is_still_drawn_from_its_cut_lines():
+    """예전 회차의 head · line 은 서버가 이미 잘라 둔 것이라 그대로 그린다."""
+    assert follow_panel.head_of(LEGACY_TURN) == "오송역 CCTV 를 조회했습니다."
+    assert follow_panel.step_lines(LEGACY_TURN) == [step["line"] for step in LEGACY_TURN["steps"]]
+    assert follow_panel.step_lines(RAG_TURN)[0].count("\n") == 2
 
 
 def test_the_string_to_be_drawn_on_screen_has_no_coordinate_arrays():
@@ -117,7 +155,7 @@ def test_the_string_to_be_drawn_on_screen_has_no_coordinate_arrays():
         [
             json.dumps(view, ensure_ascii=False),
             follow_panel.head_of(TURN),
-            *(step["line"] for step in TURN["steps"]),
+            *follow_panel.step_lines(TURN),
         ]
     )
 

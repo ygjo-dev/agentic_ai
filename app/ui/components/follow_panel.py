@@ -70,16 +70,32 @@ def follow_view(turn: dict) -> dict:
 
 
 def head_of(turn: dict) -> str:
-    """답에서 단계 줄을 뺀 머리말.
+    """단계 목록 위에 그릴 답 문구.
 
     입력  회차 한 건
-    출력  머리말. 되묻기 회차면 번호 붙은 후보 목록이 여기 들어옴
-    규칙  서버가 이미 갈라 놓은 head 를 씀. 없으면 답 전체
-    제약  여기서 다시 가르지 않는다.
-          가르는 규칙이 둘이 되면 단계가 여러 줄인 회차(문서 조각)에서
-          한쪽만 어긋난다
+    출력  답 문구 그대로. 되묻기 회차면 번호 붙은 후보 목록이 여기 들어옴
+    규칙  예전 회차에 서버가 답에서 잘라 둔 head 가 있으면 그것을 씀
+    제약  여기서 답을 가르지 않는다.
+          단계는 이벤트로 따로 온다. 답에 "1. " 줄이 있어도 답의 일부다
     """
     return turn.get("head") or (turn.get("answer") or "").strip()
+
+
+def step_lines(turn: dict) -> list[str]:
+    """회차의 단계를 한 줄씩. 받은 차례 그대로 번호를 붙임.
+
+    입력  회차 한 건. steps 는 이벤트에서 옮겨 적은 {node, start_message, end_message, failed}
+    출력  "N. <끝 message>" 목록. 끝이 없으면 시작 message
+    규칙  예전 회차(답에서 잘라 둔 {node, line})는 line 을 그대로 씀
+    제약  message 를 다시 쓰지 않는다. 실패 표시는 message 에 이미 있음
+    """
+    lines = []
+    for number, step in enumerate(turn.get("steps") or [], start=1):
+        if "line" in step:
+            lines.append(step["line"])
+        else:
+            lines.append(f"{number}. {step.get('end_message') or step.get('start_message') or ''}")
+    return lines
 
 
 def at_text(turn: dict) -> str:
@@ -97,8 +113,8 @@ def render_follow_panel(view) -> None:
     규칙  따라 보기가 꺼져 있으면 아무것도 안 그림
           전체 rerun 때만 돎. 주기 갱신은 이 함수를 안 부름
     제약  결과 값을 여기서 요약하지 않는다.
-          단계 줄은 KRRI_ASAP 화면에 이미 나간 문자열 그대로임. 다시 만들면
-          거기서 걸러진 geojson 이 이쪽으로 샌다
+          단계 줄은 KRRI_ASAP 화면에 이미 나간 단계 message 그대로임. 도구 결과로
+          다시 만들면 거기서 걸러진 geojson 이 이쪽으로 샌다
     """
     if not st.session_state.get(FOLLOW_KEY):
         return
@@ -115,9 +131,9 @@ def render_follow_panel(view) -> None:
         # 마크다운으로 내면 연속 공백이 접힌다.
         st.code(head, language=None)
 
-    steps = turn.get("steps") or []
-    if steps:
-        st.code("\n".join(step["line"] for step in steps), language=None)
+    lines = step_lines(turn)
+    if lines:
+        st.code("\n".join(lines), language=None)
 
 
 def render_follow_switch() -> None:

@@ -267,7 +267,8 @@ async def recent_endpoint(since: int | None = None) -> dict:
 
     입력  since  마지막으로 본 회차 번호. 없으면 마지막 몇 회차
     출력  seq(지금 번호) · turns(그 번호보다 큰 회차들). 회차 한 건에 언제 ·
-          발화 · status · 인자 · 고른 recipe 와 후보들 · 단계 줄 · 답 문구
+          발화 · status · 인자 · 고른 recipe 와 후보들 · 단계(이벤트 차례) ·
+          execution_status(KRRI 가 실행했을 때 그 status) · 답 문구
     규칙  번호가 그대로면 turns 가 빈 목록임. 화면은 그때 아무것도 다시 안 그림
     제약  아무것도 바꾸지 않는다. 읽기 전용임
           raw JSON 을 담지 않는다.
