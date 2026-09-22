@@ -546,7 +546,7 @@ def test_filters_search_sort_and_redraws_after_the_run_do_not_rerun_it(app):
     folders = _local_dirs(app)
 
     app.text_input(key="test_query").input("청주").run()
-    app.selectbox(key=panel.SORT_COLUMN_KEY).set_value("발화").run()
+    _click_header(app, "발화")
     app.run()
 
     assert not app.exception
@@ -731,26 +731,57 @@ def _times(result):
     return {label: value for label, value, _tip in dict(panel.overview(result))[panel.TIME_CELL]}
 
 
-def test_the_three_times_come_from_elapsed_latency_total_and_fan_wait_with_their_help(oos_result):
-    """전체 평가시간 = meta.elapsed_s (팬 대기 포함), 전체 추론시간 = summary.latency.total, GPU 누적 대기시간 = meta.fan_wait_s.
-    셋을 더해 맞추는 줄은 없다 — API 처리 같은 작은 시간이 따로 있다."""
+def test_the_four_times_come_from_elapsed_latency_total_fan_wait_and_their_residual(oos_result):
+    """전체 평가시간 = meta.elapsed_s, 전체 추론시간 = summary.latency.total, GPU 누적 대기시간 = meta.fan_wait_s,
+    기타 진행 시간 = 앞의 셋에서 계산한 나머지 (따로 잰 timer 가 아니다)."""
     faked = json.loads(json.dumps(oos_result))
-    faked["meta"].update(elapsed_s=400.0, fan_wait_s=65.0)
-    faked["summary"]["latency"]["total"] = 325.4
+    faked["meta"].update(elapsed_s=586.0, fan_wait_s=254.0)
+    faked["summary"]["latency"]["total"] = 325.0
     rows = dict(panel.overview(faked))[panel.TIME_CELL]
     assert [(label, value) for label, value, _tip in rows] == [
-        ("전체 평가시간", "6분 40초"), ("전체 추론시간", "5분 25초"), ("GPU 누적 대기시간", "1분 5초")]
+        ("전체 평가시간", "9분 46초"), ("전체 추론시간", "5분 25초"), ("GPU 누적 대기시간", "4분 14초"), ("기타 진행 시간", "7초")]
     assert {label: tip for label, _value, tip in rows} == {
-        "전체 평가시간": "평가를 시작한 시점부터 완료될 때까지 실제로 걸린 전체 시간입니다. GPU 팬 소음 억제에 따른 대기시간도 포함됩니다.",
-        "전체 추론시간": "각 발화의 AI 추론에 실제로 소요된 시간을 모두 합한 값입니다. GPU 팬 소음 억제를 위한 대기시간은 포함하지 않습니다.",
+        "전체 평가시간": "평가를 시작한 시점부터 완료될 때까지 실제로 걸린 전체 시간입니다. 전체 추론시간, GPU 누적 대기시간, "
+                         "그리고 발화 간 전환·결과 집계·저장·평가 제어 등 기타 진행 시간이 포함됩니다.",
+        "전체 추론시간": "각 발화의 AI 추론에 실제로 소요된 시간을 모두 합한 값입니다. GPU 팬 소음 억제를 위한 대기시간과 "
+                         "기타 진행 시간은 포함하지 않습니다.",
         "GPU 누적 대기시간": "GPU 팬 소음 억제 기능으로 인해 다음 발화 실행을 기다린 시간을 모두 합한 값입니다.",
+        "기타 진행 시간": "전체 평가시간에서 전체 추론시간과 GPU 누적 대기시간을 제외한 나머지 시간입니다. 발화 간 전환, "
+                          "결과 집계·저장, 평가 제어 등 AI 추론이나 GPU 팬 대기에 포함되지 않는 진행 시간이 포함됩니다.",
     }
-    markup = panel.overview_markup(panel.overview(faked))
-    for label, _value, tip in rows:
-        assert f'data-tip="{tip}"' in markup and f">{label}</span>" in markup
-    text = visible_text(markup)
+    text = visible_text(panel.overview_markup(panel.overview(faked)))
     for gone in ("GPU 유휴시간", "팬 대기 제외", "오버헤드"):
         assert gone not in text, gone
+
+
+def test_the_residual_is_computed_only_from_three_stored_numbers():
+    assert panel.other_seconds(586, 325, 254) == 7
+    assert panel.other_seconds(586.0, 325.0, 0.0) == 261.0, "기록된 팬 대기 0 은 0 으로 셈한다"
+    for missing in ((None, 325, 254), (586, None, 254), (586, 325, None)):
+        assert panel.other_seconds(*missing) is None, missing
+    assert panel.other_seconds(579.0, 325.004, 254.0) == 0.0, "반올림 오차의 작은 음수를 음수 시간으로 보였다"
+    assert panel.other_seconds(500.0, 325.0, 254.0) is None, "서로 안 맞는 기록으로 값을 지어냈다"
+
+
+def test_each_time_row_has_a_question_mark_help_icon_and_no_dotted_label(oos_result):
+    """설명은 줄 글자가 아니라 글자 뒤 「?」 아이콘에만 붙는다. tooltip 은 값을 덮어도 되고 칸을 넓히지 않는다."""
+    markup = panel.overview_markup(panel.overview(oos_result))
+    for label, tip in panel.TIME_HELP.items():
+        assert f'{label}</span><span class="tt-help" data-tip="{tip}"' in markup, label
+        assert '<span class="tt-ov-sub" data-tip' not in markup
+    assert markup.count('class="tt-help"') == 4
+    css = panel.panel_css()
+    assert "underline dotted" not in css
+    assert "width: 18rem" in css.split(".tt-help[data-tip]::after {", 1)[1].split("}", 1)[0]
+
+
+def test_the_overview_blocks_take_their_content_width_and_wrap_instead_of_stretching():
+    css = panel.panel_css()
+    boxes = css.split(".st-key-test_tab .tt-ovs {", 1)[1].split("}", 1)[0]
+    assert "flex-wrap: wrap" in boxes and "width: fit-content" in boxes
+    block = css.split(".st-key-test_tab .tt-ov {", 1)[1].split("}", 1)[0]
+    assert "flex: 0 1 auto" in block
+    assert ".tt-ov:last-child { flex" not in css and "tt-ov-time" not in css, "남는 폭을 나눠 갖는 규칙이 남았다"
 
 
 def test_missing_time_metadata_says_기록_없음_instead_of_a_false_zero(oos_result):
@@ -760,14 +791,18 @@ def test_missing_time_metadata_says_기록_없음_instead_of_a_false_zero(oos_re
     old["meta"].pop("elapsed_s", None)
     assert _times(old)["GPU 누적 대기시간"] == "기록 없음" and _times(old)["전체 평가시간"] == "기록 없음"
 
+    assert _times(old)["기타 진행 시간"] == "기록 없음"
+
     zero = json.loads(json.dumps(oos_result))
     zero["meta"]["fan_wait_s"] = 0.0
     assert _times(zero)["GPU 누적 대기시간"] == "0초", "기록된 0 과 칸이 없는 것이 구분되지 않는다"
+    assert _times(zero)["기타 진행 시간"] != "기록 없음"
 
     canonical = manage_benchmark.load_benchmark("official", CANONICAL)
     assert "fan_wait_s" not in canonical["meta"]
     assert _times(canonical)["GPU 누적 대기시간"] == "기록 없음"
     assert _times(canonical)["전체 평가시간"] == panel._duration(canonical["meta"]["elapsed_s"])
+    assert _times(canonical)["기타 진행 시간"] == "기록 없음"
 
 
 def test_the_top_summary_shows_run_facts_but_no_evaluation_metrics(oos_result):
@@ -1298,14 +1333,74 @@ def _table_ids(at):
     return [int(n) for n in at.dataframe[0].value["번호"]]
 
 
-def test_the_sort_choice_survives_row_selection_search_filters_and_loading_a_record(app):
-    """정렬은 session_state 에 있다. 행을 누르거나 검색 · 필터 · 기록 불러오기로 다시 그려도 그대로다."""
-    app.run()
-    assert (app.session_state[panel.SORT_COLUMN_KEY], app.session_state[panel.SORT_ORDER_KEY]) == ("번호", panel.ASCENDING)
-    assert _table_ids(app) == sorted(_table_ids(app))
+def _click_header(at, column):
+    """결과 표 머리글 한 번 누르기. 브라우저가 보내는 칸 고르기 이벤트를 on_select 콜백에 그대로 넣는다."""
+    from unittest import mock
 
-    app.selectbox(key=panel.SORT_COLUMN_KEY).set_value("발화").run()
-    app.segmented_control(key=panel.SORT_ORDER_KEY).set_value(panel.DESCENDING).run()
+    state = at.session_state
+    ids = _table_ids(at)
+    selected = state[panel.SELECTED_KEY] if panel.SELECTED_KEY in state else None
+    fake = {"표": {"selection": {"rows": [], "columns": [column], "cells": []}}, panel.SELECTED_KEY: selected,
+            panel.SORT_KEY: state[panel.SORT_KEY] if panel.SORT_KEY in state else None}
+    with mock.patch.object(panel.st, "session_state", fake):
+        panel._keep_row_selected("표", ids)
+    assert fake["표"]["selection"]["columns"] == [], "머리글을 눌러 고른 칸이 남았다"
+    at.session_state[panel.SORT_KEY] = fake[panel.SORT_KEY]
+    at.run()
+    assert not at.exception, at.exception
+
+
+def test_a_header_click_cycles_ascending_descending_and_back_to_the_suite_order(app):
+    """정렬 고르기 widget 은 없다. 머리글을 누를 때마다 오름차순 -> 내림차순 -> 기본 차례(번호)."""
+    app.run()
+    app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
+    assert not [box for box in app.selectbox if box.key in ("test_sort_column",)]
+    assert not [c for c in app.segmented_control if c.key == "test_sort_order"]
+    default = _table_ids(app)
+    assert default == sorted(default)
+
+    loaded = manage_benchmark.load_benchmark("official", CANONICAL)
+    latency = {r["case_id"]: r["timing"]["resolve_s"] for r in loaded["cases"]}
+
+    _click_header(app, "추론 시간")
+    assert app.session_state[panel.SORT_KEY] == ("추론 시간", panel.ASCENDING)
+    up = _table_ids(app)
+    assert [latency[i] for i in up] == sorted(latency[i] for i in up), "숫자가 아니라 글자로 정렬했다"
+    _click_header(app, "추론 시간")
+    assert app.session_state[panel.SORT_KEY] == ("추론 시간", panel.DESCENDING)
+    assert [latency[i] for i in _table_ids(app)] == sorted((latency[i] for i in up), reverse=True)
+    _click_header(app, "추론 시간")
+    assert app.session_state[panel.SORT_KEY] is None
+    assert _table_ids(app) == default
+
+    _click_header(app, "발화")
+    _click_header(app, "결과")
+    assert app.session_state[panel.SORT_KEY] == ("결과", panel.ASCENDING), "다른 칸을 누르면 그 칸 오름차순부터"
+    assert app.calls == [] and _local_dirs(app) == []
+
+
+def test_next_sort_is_a_three_state_cycle_per_column():
+    assert panel.next_sort(None, "발화") == ("발화", panel.ASCENDING)
+    assert panel.next_sort(("발화", panel.ASCENDING), "발화") == ("발화", panel.DESCENDING)
+    assert panel.next_sort(("발화", panel.DESCENDING), "발화") is None
+    assert panel.next_sort(("발화", panel.DESCENDING), "번호") == ("번호", panel.ASCENDING)
+    assert panel.next_sort(("발화", panel.ASCENDING), "없는 칸") == ("발화", panel.ASCENDING)
+    assert set(panel.SORT_COLUMNS) == {"번호", "기능", "발화", "결과", "추론 시간"}
+
+
+def test_only_the_sorted_column_header_carries_an_arrow():
+    labels = {name: config["label"] for name, config in panel._list_columns(("추론 시간", panel.DESCENDING)).items()}
+    assert labels == {"번호": "번호", "기능": "기능", "발화": "발화", "결과": "결과", "추론 시간": "추론 시간 ▼"}
+    assert {c["label"] for c in panel._list_columns(None).values()} == set(panel.SORT_COLUMNS)
+    assert panel._list_columns(("번호", panel.ASCENDING))["번호"]["label"] == "번호 ▲"
+
+
+def test_the_header_sort_survives_row_selection_search_filters_and_loading_a_record(app):
+    """정렬은 session_state 에 있다. 행을 누르거나 검색 · 필터 · 기록 불러오기로 다시 그려도 그대로이고,
+    거른 줄(보기 필터 · 기능 카드 · 검색)에 걸린다."""
+    app.run()
+    _click_header(app, "발화")
+    _click_header(app, "발화")
     utterances = list(app.dataframe[0].value["발화"])
     assert utterances == sorted(utterances, reverse=True)
     order = _table_ids(app)
@@ -1318,37 +1413,41 @@ def test_the_sort_choice_survives_row_selection_search_filters_and_loading_a_rec
 
     app.text_input(key="test_query").input("역").run()
     shown = list(app.dataframe[0].value["발화"])
-    assert shown == sorted(shown, reverse=True)
+    assert shown == sorted(shown, reverse=True) and all("역" in u for u in shown)
     app.text_input(key="test_query").input("").run()
     app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
     app.segmented_control(key=panel.FILTER_KEY).set_value(panel.ALL).run()
     assert _table_ids(app) == order
 
     app.selectbox(key=panel.SAVED_KEY).set_value(f"official:{CANONICAL}").run()
-    shown = list(app.dataframe[0].value["발화"])
-    assert len(shown) == 203 and shown == sorted(shown, reverse=True)
-    assert (app.session_state[panel.SORT_COLUMN_KEY], app.session_state[panel.SORT_ORDER_KEY]) == ("발화", panel.DESCENDING)
+    _card(app, "recipe_015").click().run()
+    app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
+    shown = app.dataframe[0].value
+    assert set(shown["기능"]) == {"기능 015"} and len(shown) == 4
+    assert list(shown["발화"]) == sorted(shown["발화"], reverse=True)
+    assert app.session_state[panel.SORT_KEY] == ("발화", panel.DESCENDING)
     assert app.calls == [] and _local_dirs(app) == []
 
 
 def test_the_grid_header_sort_is_switched_off_so_only_the_python_sort_exists(app):
-    """칸 고르기를 켜면 st.dataframe 의 머리글 정렬이 꺼진다 (Streamlit 1.62). 두 정렬이 서로 다르게 보이지 않게."""
+    """칸 고르기를 켜면 st.dataframe 자체의 머리글 정렬이 꺼진다 (Streamlit 1.62). 머리글 클릭은 칸 고르기 이벤트로 와서
+    파이썬 정렬을 돌린다. 고른 칸은 남지 않고 고른 발화도 그대로다."""
     from streamlit.proto.Dataframe_pb2 import Dataframe
+    from unittest import mock
 
     app.run()
     modes = set(app.dataframe[0].proto.selection_mode)
     assert Dataframe.SelectionMode.SINGLE_COLUMN in modes
     assert {Dataframe.SelectionMode.SINGLE_ROW, Dataframe.SelectionMode.SINGLE_CELL} <= modes
 
-    from unittest import mock
-
     ids = [r["case_id"] for r in panel.suite_rows("test_suite_v1")]
     for clicked in ({"rows": [], "columns": ["발화"], "cells": []}, {"rows": [3], "columns": ["결과"], "cells": []}):
-        state = {"표": {"selection": clicked}, panel.SELECTED_KEY: ids[7]}
+        state = {"표": {"selection": clicked}, panel.SELECTED_KEY: ids[7], panel.SORT_KEY: None}
         with mock.patch.object(panel.st, "session_state", state):
             panel._keep_row_selected("표", ids)
         assert state["표"]["selection"]["columns"] == [], "머리글을 눌러 고른 칸이 남았다"
-        assert state["표"]["selection"]["rows"] == [clicked["rows"][0] if clicked["rows"] else 7]
+        assert state["표"]["selection"]["rows"] == [7], "머리글을 눌렀는데 고른 발화가 바뀌었다"
+        assert state[panel.SORT_KEY] == (clicked["columns"][0], panel.ASCENDING)
 
 
 # ── 새로 실행 · 중지 · 이어 실행 ───────────────────────────────────────
@@ -1356,7 +1455,7 @@ def test_only_새로_실행_creates_a_benchmark_folder(app, monkeypatch, tmp_pat
     """테스트 세트 · 정렬 · 필터 · 행 · 기록 고르기는 폴더를 만들지 않는다. 새로 실행 한 번이 폴더 하나다."""
     app.run()
     app.selectbox(key=panel.DATASET_KEY).set_value("test_suite_v2").run()
-    app.selectbox(key=panel.SORT_COLUMN_KEY).set_value("결과").run()
+    _click_header(app, "결과")
     app.segmented_control(key=panel.FILTER_KEY).set_value(panel.FAILED).run()
     app.segmented_control(key=panel.FILTER_KEY).set_value(panel.ALL).run()
     app.session_state[panel.SELECTED_KEY] = 12
@@ -1667,6 +1766,23 @@ def test_the_failure_children_are_labelled_as_shares_of_the_parent_without_repea
         "전체  203", "실패  15", "기능 선택  11/15", "인자 추출  3/15", "범위 밖 처리  0/15"]
     assert [panel.filter_label(v, {}) for v in panel.FILTERS] == ["전체", "실패", "기능 선택", "인자 추출", "범위 밖 처리"]
     assert panel.filter_label("실패 · 기능 선택", {**counts, panel.FAILED: 0, "실패 · 기능 선택": 0}) == "기능 선택  0"
+
+
+def test_the_failure_pills_look_important_but_only_the_picked_one_is_filled():
+    """처음 화면의 「실패 15」가 이미 고른 것처럼 보이면 안 된다. 고르지 않은 실패 pill 은 붉은 글자 · 테두리뿐이고
+    바탕을 칠하지 않는다. 고른 pill(aria-checked)만 붉은 바탕 · 흰 글자로 꽉 찬다. 셋 · 오류도 같은 규칙이다."""
+    css = panel.panel_css()
+    button = '.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]'
+    parent = next(block.split("}", 1)[0] for block in css.split(f"{button}:nth-of-type({panel.PARENT_FILTER}) {{")[1:]
+                  if "color:" in block.split("}", 1)[0])
+    assert "background: transparent" in parent and "var(--tt-ng)" in parent
+    children = css.split(f"{button}:nth-of-type(n+{panel.FIRST_FAILURE_FILTER}):nth-of-type(-n+{len(panel.FILTERS)}) {{", 1)[1]
+    assert "background: transparent" in children.split("}", 1)[0]
+    picked = css.split(f"{button}:nth-of-type(n+{panel.PARENT_FILTER}):nth-of-type(-n+{len(panel.FILTERS)})"
+                       '[aria-checked="true"] {', 1)[1].split("}", 1)[0]
+    assert "background: var(--tt-ng)" in picked and "color: #FFFFFF" in picked
+    error = css.split(f'{button}:nth-of-type({len(panel.FILTERS) + 1})[aria-checked="true"] {{', 1)[1].split("}", 1)[0]
+    assert "background: var(--tt-err)" in error and "color: #FFFFFF" in error
 
 
 # ── 기능별 결과 카드로 거르기 ─────────────────────────────────────────

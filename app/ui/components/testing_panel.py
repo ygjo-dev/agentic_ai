@@ -4,15 +4,15 @@
 dev/evaluation/run_evaluation 을 백그라운드 thread 에서 부르고, 끝난 줄을 받아 그린다.
 
     제목(발화 해석 평가) · Test Suite · 실행 기록
-    실행 개요 (Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간) ·
-               발화당 추론 시간 · 평가 결과 · 모델 · 실행 환경)
+    실행 개요 (내용 폭만. Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간 ·
+               기타 진행 시간, 줄마다 ? 도움말) · 발화당 추론 시간 · 평가 결과 · 모델 · 실행 환경)
     모델 설정 (자세히 보기) (접힘. provider · Temperature 같은 요청 설정 · 호출 상한 · 파일 · 저장 위치)
     실행 상태 · GPU 팬 소음 억제 · 새로 실행 · 이어 실행 · 중지
     전체 결과 (낮은 카드 한 줄. 전체 · 성공 · 실패, 오류가 있을 때만 오류. 실패 원인 셋은 실패 카드 오른쪽에)
     기능별 결과 (접힘. 기능마다 카드 단추 하나 — 번호와 x/y 둘만. 범위 밖 발화가 있으면 맨 뒤에 범위 밖. 누르면 표를 거름)
     보기 필터 (전체 | 실패 묶음: 실패 · 기능 선택 · 인자 추출 · 범위 밖 처리)
-    테스트 결과 N건 · 발화 검색 · 정렬 | 선택한 발화 상세
-    결과 목록 (한 발화 한 줄, 고정 높이) | 선택한 발화 상세 (고정 높이)
+    테스트 결과 N건 · 발화 검색 | 선택한 발화 상세
+    결과 목록 (한 발화 한 줄, 고정 높이. 머리글을 눌러 정렬) | 선택한 발화 상세 (고정 높이)
 
 **실행은 백그라운드 thread 하나가 한다(_Job).** 화면 script 는 그 상태를 읽기만 하고, 도는 동안
 아래 몸통(_render_body)이 st.fragment(run_every=POLL_SECONDS)로 스스로 다시 그려진다. 그래서 도는 중에도
@@ -51,9 +51,11 @@ KRRI · MCP 실행 오류가 아니다. 대기는 아직 안 돈 것이다.
 **추론 시간은 소수 둘째 자리로 보인다(_seconds).** 실행 개요의 Median · P95 · Max 와 표 · 상세의 발화별 값이
 같은 자릿수다. 글자만 반올림하고 결과의 값은 그대로다.
 
-**정렬은 파이썬이 한다(sort_rows).** 정렬 칸 · 방향을 session_state 에 두고 표에 넘기기 전에 줄을 세운다.
-st.dataframe 의 머리글 정렬은 브라우저에만 있어 행을 누르는 rerun 에 처음 차례로 돌아갔다. 그래서 끈다 —
-칸 고르기(single-column)를 켜면 머리글 정렬이 꺼지고, 고른 칸은 _keep_row_selected 가 버린다.
+**정렬은 결과 표의 머리글을 눌러 하고, 줄을 세우는 것은 파이썬이다(sort_rows).** st.dataframe 자체의 머리글
+정렬은 브라우저에만 있어 행을 누르는 rerun 에 처음 차례로 돌아갔다. 그래서 그것은 끄고(칸 고르기
+single-column 을 켜면 꺼진다), 머리글을 눌러 칸이 골라지는 이벤트를 _keep_row_selected 가 받아 정렬 상태
+(SORT_KEY)를 기본 -> 오름차순 -> 내림차순 -> 기본 으로 돌린다(next_sort). 고른 칸은 버린다.
+정렬은 보기 필터 · 기능 카드 · 검색으로 거른 줄에 걸린다. 따로 정렬 고르기 widget 은 두지 않는다.
 
 **새로 잰 결과와 불러온 실행 기록이 같은 길로 그려진다.** 실행 기록을 고르면 manage_benchmark.load_benchmark 가
 돌려준 결과 한 벌을 방금 잰 결과와 같은 자리(RESULT_KEY)에 두고, Test Suite 고르기를 그 기록의 정답표로
@@ -155,7 +157,9 @@ RESULT_ORDER = (SUCCESS_TEXT, *FAILURE_FILTERS, ERROR_TEXT)
 SORT_COLUMNS = ("번호", "기능", "발화", "결과", "추론 시간")
 ASCENDING, DESCENDING = "오름차순", "내림차순"
 SORT_ORDERS = (ASCENDING, DESCENDING)
-SORT_ORDER_LABELS = {ASCENDING: "↑ 오름차순", DESCENDING: "↓ 내림차순"}
+# 정렬 중인 칸 머리 글자 뒤에 붙는 표시. 기본 차례(정렬 없음)에는 안 붙는다
+SORT_MARKS = {ASCENDING: "▲", DESCENDING: "▼"}
+SORT_HELP = "머리글을 누르면 오름차순 → 내림차순 → 기본 차례로 바뀝니다."
 
 # 기능 자리의 두 값. 나머지는 기대 recipe id 다. 범위 밖은 기능이 아니라 거르기 위한 자리일 뿐이다
 ALL_GROUPS, OUT_OF_SCOPE_GROUP = "__all__", "__out_of_scope__"
@@ -195,13 +199,20 @@ CONDITION_ROWS = (
 # 실행 환경의 VRAM 줄 글자. 값은 GPU 한 장의 총량이다
 VRAM_LABEL = "VRAM (GPU 1개당)"
 
-# 실행 개요의 시간 칸. 세 줄은 서로 더해 맞추는 값이 아니다 (API 처리 · 발화 사이 같은 작은 시간은 따로 안 보임)
+# 실행 개요의 시간 칸. 앞 셋은 잰 값이고, 기타 진행 시간은 그 셋에서 계산한 나머지다 (따로 잰 timer 가 아님)
 TIME_CELL = "소요 시간"
 TIME_HELP = {
-    "전체 평가시간": "평가를 시작한 시점부터 완료될 때까지 실제로 걸린 전체 시간입니다. GPU 팬 소음 억제에 따른 대기시간도 포함됩니다.",
-    "전체 추론시간": "각 발화의 AI 추론에 실제로 소요된 시간을 모두 합한 값입니다. GPU 팬 소음 억제를 위한 대기시간은 포함하지 않습니다.",
+    "전체 평가시간": "평가를 시작한 시점부터 완료될 때까지 실제로 걸린 전체 시간입니다. 전체 추론시간, GPU 누적 대기시간, "
+                     "그리고 발화 간 전환·결과 집계·저장·평가 제어 등 기타 진행 시간이 포함됩니다.",
+    "전체 추론시간": "각 발화의 AI 추론에 실제로 소요된 시간을 모두 합한 값입니다. GPU 팬 소음 억제를 위한 대기시간과 "
+                     "기타 진행 시간은 포함하지 않습니다.",
     "GPU 누적 대기시간": "GPU 팬 소음 억제 기능으로 인해 다음 발화 실행을 기다린 시간을 모두 합한 값입니다.",
+    "기타 진행 시간": "전체 평가시간에서 전체 추론시간과 GPU 누적 대기시간을 제외한 나머지 시간입니다. 발화 간 전환, "
+                      "결과 집계·저장, 평가 제어 등 AI 추론이나 GPU 팬 대기에 포함되지 않는 진행 시간이 포함됩니다.",
 }
+# 기타 진행 시간(나머지)이 이만큼(초)까지 음수면 반올림 오차로 보고 0 으로 둔다. elapsed_s 는 0.1초, latency.total 은
+# 0.001초로 반올림해 저장되므로 그 차이보다 넉넉한 값이다. 이보다 더 음수면 기록이 서로 안 맞는 것이라 값을 안 보인다
+RESIDUAL_TOLERANCE_S = 1.0
 # 옛 기록이라 그 칸이 저장되지 않은 값. 0 으로 채우지 않는다
 MISSING_TEXT = "기록 없음"
 
@@ -226,8 +237,7 @@ SAVED_RESET_KEY = "test_saved_reset" # 다음 회차에 실행 기록 고르기�
 DATASET_KEY = "test_set"             # Test Suite 고르기 widget
 LOAD_ERROR_KEY = "test_load_error"   # 실행 기록을 못 읽었을 때의 문장
 FILTER_KEY = "test_filter"           # 보기 필터 widget
-SORT_COLUMN_KEY = "test_sort_column" # 정렬 칸 widget. 값은 SORT_COLUMNS 중 하나
-SORT_ORDER_KEY = "test_sort_order"   # 정렬 방향 widget. 값은 SORT_ORDERS 중 하나
+SORT_KEY = "test_sort"               # 머리글로 고른 정렬 (칸, 방향). 없으면(None) 기본 차례(번호 오름차순)
 JOB_KEY = "test_job"                 # 이 창이 지켜보는 _Job 의 token. 끝나면 결과를 받아 옴
 RESUME_KEY = "test_resume_check"     # {"key", "check"} 불러온 기록의 이어 실행 판정 (run_evaluation.resume_check)
 STARTED_KEY = "test_started"         # 몸통 fragment 안에서 실행을 시작했다. 화면 전체를 한 번 다시 그림
@@ -643,10 +653,26 @@ def suite_filename(suite: dict) -> str:
     return "정답표"
 
 
+def other_seconds(elapsed, inference, fan_wait) -> float | None:
+    """기타 진행 시간(초). 전체 평가시간 - 전체 추론시간 - GPU 누적 대기시간. 계산할 수 없으면 None.
+
+    입력  meta.elapsed_s · summary.latency.total · meta.fan_wait_s
+    규칙  셋이 모두 숫자일 때만 셈. 하나라도 없으면(옛 기록) None. 0 으로 채우지 않음
+          RESIDUAL_TOLERANCE_S 안의 음수는 반올림 오차라 0. 그보다 큰 음수는 None (기록이 서로 안 맞음)
+    제약  따로 잰 값이 아니다. 기록에 새로 적지 않는다
+    """
+    if not all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in (elapsed, inference, fan_wait)):
+        return None
+    rest = elapsed - inference - fan_wait
+    if rest < -RESIDUAL_TOLERANCE_S:
+        return None
+    return max(rest, 0.0)
+
+
 def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | None:
     """실행 개요. 기록을 열면 바로 볼 것만. [(칸 이름, [(글자, 값)])]. 결과가 없으면 None.
 
-    칸  Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간) ·
+    칸  Test Suite · 평가 시작 시간 · 소요 시간(전체 평가시간 · 전체 추론시간 · GPU 누적 대기시간 · 기타 진행 시간) ·
         발화당 추론 시간(Median · P95 · Max) · 평가 결과(전체 · 성공 · 실패 · 오류) · 모델 ·
         실행 환경(GPU · VRAM (GPU 1개당))
         소요 시간 줄은 (글자, 값, 도움말) 셋. 도움말은 TIME_HELP
@@ -657,7 +683,7 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
           materialize · 팬 대기 · 화면 시간이 안 섞임. 잰 것이 없으면 줄표
           GPU 누적 대기시간은 meta.fan_wait_s (팬 소음 억제로 다음 발화를 기다린 합)
           elapsed_s · fan_wait_s 칸이 없는 옛 기록은 「기록 없음」. 0 으로 채우지 않음. 칸이 있고 0 이면 0초
-          세 값을 더하거나 빼서 다른 시간을 만들지 않음
+          기타 진행 시간은 세 값에서 계산한 나머지(other_seconds). 하나라도 없으면 「기록 없음」
           발화당 추론 시간은 발화 하나의 resolve 한 번에 걸린 시간의 분포. 소수 둘째 자리. 잰 것이 없으면 줄표
           Temperature 같은 요청 설정 · 파일은 여기 안 보임. 모델 설정 (자세히 보기)에 있음
     """
@@ -675,10 +701,12 @@ def overview(result: dict | None) -> list[tuple[str, list[tuple[str, str]]]] | N
     def stored(key):
         return _duration(meta[key]) if isinstance(meta.get(key), (int, float)) else MISSING_TEXT
 
+    other = other_seconds(meta.get("elapsed_s"), delay.get("total"), meta.get("fan_wait_s"))
     times = [
         ("전체 평가시간", stored("elapsed_s")),
         ("전체 추론시간", _duration(delay.get("total"))),
         ("GPU 누적 대기시간", stored("fan_wait_s")),
+        ("기타 진행 시간", _duration(other) if other is not None else MISSING_TEXT),
     ]
 
     return [
@@ -893,8 +921,9 @@ def conditions_markup(conditions: dict) -> str:
 def overview_markup(info: list | None) -> str:
     """실행 개요. 칸마다 제목 아래 (글자 · 값) 줄을 세로로. 결과가 없으면 빈 글자.
 
-    규칙  줄에 도움말(셋째 값)이 있으면 글자에 data-tip 을 걸어 기능 번호와 같은 tooltip 으로 뜸
-          시간 칸(TIME_CELL)은 글자가 길어 조금 넓게 (tt-ov-time)
+    규칙  줄에 도움말(셋째 값)이 있으면 글자 뒤에 작은 「?」 아이콘(tt-help)을 두고, 그 아이콘에 data-tip 을 걸어
+          기능 번호와 같은 tooltip 으로 뜸. 글자 자체에는 밑줄 · tooltip 이 없음
+          칸은 내용 폭만 차지함 (panel_css). 남는 폭을 나눠 갖지 않음
     """
     if info is None:
         return ""
@@ -903,15 +932,15 @@ def overview_markup(info: list | None) -> str:
         label, value, tip = (*row, None)[:3]
         if not label:
             return f'<div class="tt-ov-row"><span class="tt-ov-v">{_esc(value)}</span></div>'
-        tip_attr = f' data-tip="{_esc(tip)}" aria-description="{_esc(tip)}"' if tip else ""
+        help_icon = (f'<span class="tt-help" data-tip="{_esc(tip)}" aria-label="도움말" '
+                     f'aria-description="{_esc(tip)}">?</span>') if tip else ""
         return (
-            f'<div class="tt-ov-row"><span class="tt-ov-sub"{tip_attr}>{_esc(label)}</span>'
+            f'<div class="tt-ov-row"><span class="tt-ov-label"><span class="tt-ov-sub">{_esc(label)}</span>{help_icon}</span>'
             f'<span class="tt-ov-v">{_esc(value)}</span></div>'
         )
 
     def cell(title, rows):
-        css = "tt-ov tt-ov-time" if title == TIME_CELL else "tt-ov"
-        return f'<div class="{css}"><div class="tt-ov-k">{_esc(title)}</div>{"".join(line(row) for row in rows)}</div>'
+        return f'<div class="tt-ov"><div class="tt-ov-k">{_esc(title)}</div>{"".join(line(row) for row in rows)}</div>'
 
     return '<div class="tt-ovs">' + "".join(cell(title, rows) for title, rows in info) + "</div>"
 
@@ -1791,15 +1820,12 @@ def _render_view_filter(summary: dict | None, rows: list[dict] | None = None) ->
 
 
 def _render_list_controls():
-    """결과 표 머리 한 줄. 왼쪽은 「테스트 결과 N건」 자리(비워 둔 칸), 오른쪽은 발화 검색 · 정렬 칸 · 정렬 방향.
+    """결과 표 머리 한 줄. 왼쪽은 「테스트 결과 N건」 자리(비워 둔 칸), 오른쪽은 발화 검색.
 
-    출력  (제목 칸, 검색어, (정렬 칸, 정렬 방향)). 제목은 거른 뒤에 _render_result_list 가 그 칸에 그림
-    규칙  정렬 칸 · 방향은 session_state(SORT_COLUMN_KEY · SORT_ORDER_KEY)에 남음. 기본은 번호 오름차순.
-          남은 정렬 칸이 SORT_COLUMNS 에 없으면(칸 이름이 바뀐 옛 창) 번호로 돌림
+    출력  (제목 칸, 검색어). 제목은 거른 뒤에 _render_result_list 가 그 칸에 그림
+    규칙  정렬은 여기 없다. 결과 표의 머리글을 눌러 함 (next_sort)
     """
-    if st.session_state.get(SORT_COLUMN_KEY) not in (None, *SORT_COLUMNS):
-        st.session_state[SORT_COLUMN_KEY] = SORT_COLUMNS[0]
-    title, search, order_by, order = st.columns([2.3, 2.1, 1.65, 2.0], vertical_alignment="center", gap="small")
+    title, search = st.columns([3.0, 2.0], vertical_alignment="center", gap="small")
     with search:
         query = st.text_input(
             "발화 검색",
@@ -1809,17 +1835,28 @@ def _render_list_controls():
             label_visibility="collapsed",
             persist_state="page",
         )
-    with order_by:
-        column = st.selectbox(
-            "정렬", SORT_COLUMNS, format_func=lambda c: f"정렬 · {c}", key=SORT_COLUMN_KEY,
-            label_visibility="collapsed", persist_state="page",
-        )
-    with order:
-        direction = st.segmented_control(
-            "정렬 방향", SORT_ORDERS, default=ASCENDING, required=True, format_func=SORT_ORDER_LABELS.get,
-            key=SORT_ORDER_KEY, label_visibility="collapsed", persist_state="page",
-        )
-    return title, query or "", (column or SORT_COLUMNS[0], direction or ASCENDING)
+    return title, query or ""
+
+
+def next_sort(current, column: str):
+    """머리글 column 을 한 번 눌렀을 때의 다음 정렬. (칸, 방향) 또는 None(기본 차례).
+
+    규칙  다른 칸(또는 정렬 없음)에서 누르면 그 칸 오름차순 -> 다시 누르면 내림차순 -> 다시 누르면 None
+          정렬할 수 없는 칸이면 지금 그대로
+    """
+    if column not in SORT_COLUMNS:
+        return current
+    if not current or current[0] != column:
+        return column, ASCENDING
+    return (column, DESCENDING) if current[1] == ASCENDING else None
+
+
+def current_sort():
+    """지금 정렬 상태 (칸, 방향) 또는 None. 모르는 값(옛 창 상태)이면 None."""
+    value = st.session_state.get(SORT_KEY)
+    if isinstance(value, (tuple, list)) and len(value) == 2 and value[0] in SORT_COLUMNS and value[1] in SORT_ORDERS:
+        return tuple(value)
+    return None
 
 
 def _result_tone(value: str) -> str:
@@ -1840,12 +1877,16 @@ def _keep_row_selected(key: str, ids: list[int]) -> None:
     규칙  칸을 눌렀으면 그 칸의 줄을 고름
           고른 줄을 다시 눌러 선택이 비었으면 지금 상세의 줄을 다시 고름. 상세가 늘
           표의 강조 줄과 같게 둠
-          머리글을 눌러 칸이 골라지면(single-column) 그 칸을 버리고 지금 상세의 줄을 다시 고름.
-          칸 고르기는 머리글 정렬을 끄려고만 켠 것임
+          머리글을 눌러 칸이 골라지면(single-column) 그 칸으로 정렬을 한 단계 돌리고(next_sort → SORT_KEY)
+          칸은 버림. 고른 발화는 그대로. 정렬이 바뀌면 표 key 가 바뀌어 새 차례로 다시 붙음
     """
     selection = (st.session_state.get(key) or {}).get("selection") or {}
     cells = selection.get("cells") or []
-    if cells:
+    columns = selection.get("columns") or []
+    if columns and not cells:
+        st.session_state[SORT_KEY] = next_sort(current_sort(), columns[0])
+        row = ids.index(st.session_state[SELECTED_KEY]) if st.session_state.get(SELECTED_KEY) in ids else 0
+    elif cells:
         row = cells[0][0]
     elif selection.get("rows"):
         if not selection.get("columns"):
@@ -1858,7 +1899,7 @@ def _keep_row_selected(key: str, ids: list[int]) -> None:
     st.session_state[key] = {"selection": {"rows": [row], "columns": [], "cells": []}}
 
 
-def _list_key(view: str, query: str, group: str = ALL_GROUPS, sort: tuple = (SORT_COLUMNS[0], ASCENDING)) -> str:
+def _list_key(view: str, query: str, group: str = ALL_GROUPS, sort: tuple | None = None) -> str:
     """결과 표의 key. 보기 · 검색어 · 기능 · 정렬이 바뀔 때만 새로 붙음.
 
     규칙  같은 보기 안에서는 key 가 그대로라 표가 안 새로 붙고 스크롤 자리가 남음
@@ -1880,25 +1921,25 @@ def _styled_frame(rows: list[dict]):
     return list_frame(rows).style.map(_result_tone, subset=["결과"])
 
 
-def _list_columns() -> dict:
-    """결과 목록 표의 칸 폭. 넓은 창에서는 표 폭을 따라 늘어남.
+def _list_columns(sort: tuple | None = None) -> dict:
+    """결과 목록 표의 칸 폭 · 머리 글자. 넓은 창에서는 표 폭을 따라 늘어남.
 
     규칙  칸 폭 합은 1280 창의 표 폭(약 750px)에 들어가게 둠. 넘치면 맨 오른쪽 추론 시간 칸이 잘림
+          정렬 중인 칸 머리에만 ▲ · ▼ (SORT_MARKS). 칸 머리 도움말은 누르면 정렬된다는 것 (SORT_HELP)
 
     제약  칸 머리의 설정 메뉴에서 정렬 · 통계 · 자동 너비 · 칸 고정을 여기서 못 끈다.
           Streamlit 1.62 의 column_config 에 그 칸이 없다 — panel_css 가 감춘다
     """
-    return {
-        "번호": st.column_config.TextColumn("번호", width=56),
-        "기능": st.column_config.TextColumn("기능", width=76),
-        "발화": st.column_config.TextColumn("발화", width=340),
-        "결과": st.column_config.TextColumn("결과", width=128),
-        "추론 시간": st.column_config.TextColumn("추론 시간", width=84),
-    }
+    widths = {"번호": 64, "기능": 80, "발화": 320, "결과": 128, "추론 시간": 96}
+
+    def label(name):
+        return f"{name} {SORT_MARKS[sort[1]]}" if sort and sort[0] == name else name
+
+    return {name: st.column_config.TextColumn(label(name), width=width, help=SORT_HELP) for name, width in widths.items()}
 
 
 def _render_result_list(shown: list[dict], view: str, query: str, height: int, *, group: str = ALL_GROUPS,
-                        sort: tuple = (SORT_COLUMNS[0], ASCENDING), title=None) -> dict | None:
+                        sort: tuple | None = None, title=None) -> dict | None:
     """결과 목록. 한 발화 한 줄, 고정 높이 안에서 스크롤.
 
     입력  shown 은 거른 줄. 여기서 sort_rows 로 세워 그림. title 은 「테스트 결과 N건」을 그릴 칸 (없으면 여기)
@@ -1906,7 +1947,8 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
     규칙  행 고르기는 st.dataframe 의 행 선택. 발화 글자를 눌러도 골라지게 칸 선택을
           함께 켜고, 칸을 누르면 _keep_row_selected 가 그 줄 선택으로 바꿈
           칸 고르기(single-column)도 켬. 켜면 st.dataframe 의 머리글 정렬이 꺼짐 (Streamlit 1.62).
-          정렬은 파이썬 한 곳(sort_rows)만 함
+          머리글을 눌러 칸이 골라지면 _keep_row_selected 가 정렬(SORT_KEY)을 돌림. 줄은 파이썬 한 곳(sort_rows)만 세움
+          sort 가 None 이면 기본 차례(번호 오름차순)
           표 key 는 _list_key 가 정함. 같은 보기 안에서 행을 눌러도 표가 새로 안 붙으므로
           스크롤 자리가 그대로임
           보기를 바꾸면 고른 발화가 새 목록에 있으면 그 줄, 없으면 첫 실패 줄, 실패가 없으면 첫 줄을 고름
@@ -1928,7 +1970,7 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
             st.markdown('<div class="tt-empty">조건에 맞는 발화가 없습니다.</div>', unsafe_allow_html=True)
         return None
 
-    shown = sort_rows(shown, *sort)
+    shown = sort_rows(shown, *sort) if sort else sort_rows(shown)
     remembered = st.session_state.get(SELECTED_KEY)
     default = next((i for i, r in enumerate(shown) if r["case_id"] == remembered), None)
     if default is None:
@@ -1945,7 +1987,7 @@ def _render_result_list(shown: list[dict], view: str, query: str, height: int, *
         height=height,
         row_height=32,
         width="stretch",
-        column_config=_list_columns(),
+        column_config=_list_columns(sort),
     )
 
     rows = event.selection.rows if event is not None else []
@@ -2026,7 +2068,8 @@ def _render_body(ratios: dict, dataset_id: str, result: dict | None) -> None:
     height = list_height(ratios)
     left, right = st.columns([63, 37], gap="medium")
     with left:
-        title, query, sort = _render_list_controls()
+        title, query = _render_list_controls()
+        sort = current_sort()
         shown = filter_results(rows, view, query, group)
         selected = _render_result_list(shown, view, query, height, group=group, sort=sort, title=title)
     with right:
@@ -2094,20 +2137,26 @@ def panel_css() -> str:
 .st-key-test_tab .tt-title { font-size: 1.35rem; font-weight: 700; line-height: 1.3; padding-bottom: 0.35rem; }
 
 /* ---------------------------------------------- 실행 개요
-   칸 일곱이 1280 창에서도 한 줄에 들게 flex 로 둔다. GPU 이름이 긴 실행 환경(마지막 칸)만 넓게 잡는다. */
+   칸은 내용 폭만 차지하고 사이에 같은 틈만 둔다. 남는 폭을 나눠 갖지 않고(flex-grow 없음), 모자라면 다음 줄로 넘어간다.
+   테두리 상자도 내용 폭까지만. GPU 이름처럼 실제로 긴 글자만 칸을 넓히고, 그것도 상한에서 줄을 바꾼다. */
 .st-key-test_tab .tt-ovs {
-  display: flex; flex-wrap: wrap;
-  gap: 0.6rem 1rem; font-size: 0.82rem; padding: 0.65rem 0.85rem;
+  display: flex; flex-wrap: wrap; width: fit-content; max-width: 100%;
+  gap: 0.6rem 2.2rem; font-size: 0.82rem; padding: 0.65rem 0.95rem;
   border: 1px solid var(--tt-line); border-radius: 10px; background: var(--tt-softer);
 }
-.st-key-test_tab .tt-ov { flex: 1 1 8rem; min-width: 0; }
-.st-key-test_tab .tt-ov:last-child { flex: 1.8 1 14rem; }
-.st-key-test_tab .tt-ov.tt-ov-time { flex: 1.5 1 12rem; }
-/* 도움말이 붙은 줄 글자. 점선 밑줄로 올려 볼 수 있다는 것만 보이고, 설명은 기능 번호와 같은 tooltip 으로 뜬다.
-   칸이 좁아 tooltip 은 칸 폭이 아니라 글자 아래 고정 폭이다. */
+.st-key-test_tab .tt-ov { flex: 0 1 auto; min-width: 0; max-width: 27rem; }
+/* 도움말이 있는 줄은 글자 뒤 작은 「?」 아이콘(GPU 팬 소음 억제 옆 아이콘과 같은 모양)에만 tooltip 이 붙는다.
+   tooltip 은 줄 아래 고정 폭으로 떠서 오른쪽 값을 덮어도 되고, 칸 폭을 넓히지 않는다. */
 .st-key-test_tab .tt-ov-row { position: relative; }
-.st-key-test_tab .tt-ov-sub[data-tip] { text-decoration: underline dotted; text-underline-offset: 3px; }
-.st-key-test_tab .tt-ov-sub[data-tip]::after { left: 0; right: auto; top: 100%; width: 18rem; }
+.st-key-test_tab .tt-help {
+  display: inline-flex; align-items: center; justify-content: center; vertical-align: 0.05rem;
+  width: 0.85rem; height: 0.85rem; margin-left: 0.3rem; border: 1px solid currentColor; border-radius: 50%;
+  font-size: 0.6rem; font-weight: 700; line-height: 1; color: rgba(140, 150, 165, 0.95);
+}
+/* 흐리게 하는 데 opacity 를 쓰지 않는다 — opacity 는 쌓임 맥락을 만들어 tooltip 까지 비치고 아래 줄 뒤로 깔린다.
+   그래서 아이콘은 흐린 줄 글자(.tt-ov-sub) 밖에 둔다 */
+.st-key-test_tab .tt-help:hover { color: inherit; }
+.st-key-test_tab .tt-help[data-tip]::after { left: 0; right: auto; top: 100%; width: 18rem; }
 .st-key-test_tab .tt-ov-k { opacity: 0.6; font-size: 0.74rem; margin-bottom: 0.2rem; }
 .st-key-test_tab .tt-ov-row { display: flex; justify-content: space-between; gap: 0.8rem; line-height: 1.55; }
 .st-key-test_tab .tt-ov-sub { opacity: 0.65; }
@@ -2205,7 +2254,9 @@ def panel_css() -> str:
 /* 보기 필터. 붙은 막대(segmented)가 아니라 떨어진 pill 로 둔다.
    전체는 홀로 서고, 실패({parent_filter} 번째)와 실패를 가른 셋({first_failure_filter}~{last_failure_filter} 번째)은
    붉은 테두리 한 칸 안에 함께 든다 — 그 칸이 「실패 = 셋의 합」이라는 묶음이다. 실패는 칸 맨 앞에서
-   진한 테두리 · 바탕 · 굵은 글자로 서고 뒤에 세로선, 셋은 한 단계 작고 낮은 pill 로 바탕 없이 옅게 선다.
+   붉은 글자 · 테두리 · 굵은 글자로 서고 뒤에 세로선, 셋은 한 단계 작고 낮은 pill 로 바탕 없이 옅게 선다.
+   고르지 않은 상태에서는 바탕을 칠하지 않는다 — 칠하면 이미 고른 것처럼 보인다. 고른 pill(aria-checked)만
+   붉은 바탕 · 흰 글자로 꽉 채운다. 실패 · 셋 · 오류 모두 같은 규칙이다.
    셋의 글자는 「기능 선택  11/15」 — 실패 수에 대한 몫이라 묶음 이름을 따로 달지 않는다.
    칸은 radiogroup 을 grid 로 두고 그 ::before 를 grid 칸 {parent_filter} ~ {last_failure_filter} 뒤에 깔아 그린다. pill 은 제 칸에 박는다
    (자동 배치면 ::before 가 첫 칸을 먹는다). 한 줄이라 높이가 안 는다.
@@ -2225,9 +2276,9 @@ def panel_css() -> str:
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(1) { margin-right: 0.45rem; }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) {
   margin-left: 0.3rem; margin-right: 0.6rem;
-  color: var(--tt-ng); border: 1.5px solid rgba(229, 83, 75, 0.9); background: rgba(229, 83, 75, 0.16);
+  color: var(--tt-ng); border: 1px solid rgba(229, 83, 75, 0.65); background: transparent;
 }
-.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) p { font-weight: 800; }
+.st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter}) p { font-weight: 700; }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({parent_filter})::after {
   content: ""; position: absolute; right: -0.48rem; top: 18%; bottom: 18%; width: 1px; background: rgba(229, 83, 75, 0.45);
 }
@@ -2240,13 +2291,13 @@ def panel_css() -> str:
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({last_failure_filter}) { margin-right: 0.3rem; }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type(n+{parent_filter}):nth-of-type(-n+{last_failure_filter})[aria-checked="true"] {
-  color: var(--tt-ng); border-color: var(--tt-ng); background: rgba(229, 83, 75, 0.2);
+  color: #FFFFFF; border-color: var(--tt-ng); background: var(--tt-ng);
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter}) {
   margin-left: 0.45rem; color: var(--tt-err); border-color: rgba(210, 153, 34, 0.45); font-size: 0.84rem;
 }
 .st-key-test_tab .st-key-test_filter button[data-variant="segmented_control"]:nth-of-type({error_filter})[aria-checked="true"] {
-  border-color: var(--tt-err); background: rgba(210, 153, 34, 0.16);
+  color: #FFFFFF; border-color: var(--tt-err); background: var(--tt-err);
 }
 /* 필터 칸이 좁으면(창이 좁을 때) 한 줄 grid 가 옆 칸을 덮는다. 그때는 묶음 칸만 두 줄이 된다 —
    실패는 칸 왼쪽에 세로 가운데로 서고, 셋은 그 오른쪽에 두 줄로 든다. 오류는 첫 줄 맨 뒤다. */
@@ -2257,17 +2308,12 @@ def panel_css() -> str:
 {narrow_placements}
 }
 
-/* 결과 표 머리의 정렬 방향은 짧게 둔다. 표 오른쪽 위 한 칸에 든다. */
-.st-key-test_tab .st-key-test_sort_order { align-self: flex-end; }
-.st-key-test_tab .st-key-test_sort_order [role="radiogroup"] { flex-wrap: nowrap; }
-.st-key-test_tab .st-key-test_sort_order button[data-variant="segmented_control"] { padding: 0 0.5rem; }
-.st-key-test_tab .st-key-test_sort_order button[data-variant="segmented_control"] p { font-size: 0.78rem; white-space: nowrap; }
-
 /* 팬 소음 억제 체크박스는 단추 바로 옆에 붙인다. */
 .st-key-test_tab .st-key-test_fan_quiet { align-self: flex-end; }
 
 /* 결과 표 칸 머리의 「설정」 메뉴. 정렬 · 통계 · 자동 너비 · 칸 고정 명령을 감춘다.
-   머리글을 눌러 정렬하는 것은 칸 고르기(single-column)를 켜서 꺼 두었다 — 정렬은 파이썬(sort_rows)만 한다.
+   st.dataframe 자체의 머리글 정렬은 칸 고르기(single-column)를 켜서 꺼 두었다 — 머리글을 누르면 칸이 골라지고
+   그것을 _keep_row_selected 가 파이썬 정렬(sort_rows)로 바꾼다.
    칸 폭 조정은 그대로다.
    Streamlit 1.62 의 st.dataframe 에는 이 메뉴를 고르는 파이썬 설정이 없어 CSS 로만 가려진다
    (column_config 에 sortable · statistics · pinnable 같은 칸이 없다).
