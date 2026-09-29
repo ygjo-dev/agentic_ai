@@ -10,8 +10,8 @@
                             직접 그리지 않는다
     손으로 움직인다         노드 끌기 · 화면 끌기 · 휠 확대가 켜져 있다
     지도가 안 흔들린다      물리 시뮬레이션이 꺼져 있고 서버 좌표를 그대로 쓴다
-    두 패널의 역할이 다르다  상단은 중립 overview · 하단만 해석 결과를 보여준다
-    좌표는 하나 화면은 둘    끌린 좌표는 나눠 갖고 카메라는 따로 논다
+    그래프는 하나다         실행 전에는 전체 지도, 해석이 오면 같은 그래프에 강조
+    미니맵이 자리를 말한다   전체 좌표와 지금 보는 자리를 같은 문서 안에서 그린다
     파이썬이 칠한다         JS 가 색 · 굵기 규칙을 하나도 모른다
 
 브라우저를 안 띄운다. 만들어진 문서와 파이썬이 만든 스타일 표만 본다 —
@@ -20,6 +20,7 @@
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -51,7 +52,7 @@ def _two_step_recipe():
 
 def test_the_document_ships_the_graph_library_itself(model, colors):
     """정지 그림이 아니라 라이브러리가 그린다. 그 증거가 문서 안에 있음."""
-    html = network.network_html(model, colors, top=True, height=400)
+    html = network.main_html(model, colors, height=400)
 
     assert "vis-network" in html
     assert "DataSet" in html
@@ -63,7 +64,7 @@ def test_the_library_comes_from_the_package_not_the_internet(model, colors):
     pyvis 는 제 패키지 안에 vis-network 를 들고 있고 cdn_resources="in_line"
     이 그것을 문서에 넣는다. 우리가 번들을 베껴 오지 않는다.
     """
-    html = network.network_html(model, colors, top=True, height=400)
+    html = network.main_html(model, colors, height=400)
     바깥 = re.findall(r"https?://[^\"\'\s)]+", html)
 
     assert not [u for u in 바깥 if "jsdelivr" in u or "cdnjs" in u or "unpkg" in u]
@@ -88,7 +89,7 @@ def test_hovering_a_node_tells_what_it_is(model, colors):
     그래서 원문이 아니라 이스케이프한 꼴로 찾는다 — 원문으로 찾으면 실려
     있는데도 못 찾는다.
     """
-    html = network.network_html(model, colors, top=True, height=400)
+    html = network.main_html(model, colors, height=400)
     설명 = model["nodes"]["geocode_place"]["title"]
 
     assert 설명
@@ -109,7 +110,7 @@ def test_the_library_never_lays_the_map_out_again():
 
 def test_every_node_is_pinned_at_the_coordinate_the_server_gave(model, colors):
     """좌표를 라이브러리가 다시 잡지 않음. 서버의 layout.json 그대로임."""
-    net = network.build_network(model, colors, top=True, height=400)
+    net = network.build_network(model, colors, height=400)
     놓인_것 = {node["id"]: (node["x"], node["y"]) for node in net.nodes}
 
     for node_id, (x, y) in model["positions"].items():
@@ -122,39 +123,44 @@ def test_every_node_is_pinned_at_the_coordinate_the_server_gave(model, colors):
 
 def test_the_node_count_matches_the_source(model, colors):
     """한 노드도 안 빠지고 안 늘어남."""
-    net = network.build_network(model, colors, top=False, height=400)
+    net = network.build_network(model, colors, height=400)
 
     assert len(net.nodes) == len(model["nodes"])
 
 
 def test_the_edge_count_matches_the_source(model, colors):
-    """상단은 점선만, 하단은 점선과 실선을 함께 그림. SVG 때의 규칙 그대로임."""
-    top = network.build_network(model, colors, top=True, height=400)
-    bottom = network.build_network(model, colors, top=False, height=400)
+    """점선과 실선을 함께 그림. 강조는 있는 실선의 색 · 굵기만 바꾸므로 실행 전에도 실선이 있어야 함."""
+    net = network.build_network(model, colors, height=400)
 
-    assert len(top.edges) == len(model["dotted"])
-    assert len(bottom.edges) == len(model["dotted"]) + len(model["solid"])
+    assert len(net.edges) == len(model["dotted"]) + len(model["solid"])
 
 
-def test_only_the_bottom_shows_what_the_utterance_chose(model, colors):
-    """★ 상단은 중립 overview 임. 하단만 해석 결과를 보여줌.
+def test_before_any_utterance_the_graph_lights_nothing_up(colors):
+    """실행 전(plain)에는 온톨로지 전체만 그리고 아무것도 강조하지 않음."""
+    plain = screen_service.render("plain")["network"]
+    patches = network.variant_patches(plain, colors)
 
-    둘 다 강조를 받으면 같은 그림이 두 번 뜨고 두 패널이 각각 무엇을
-    말하는지 구분되지 않음. 옛 top_svg / variant_svgs 가 나누던 역할임.
-    """
+    assert set(patches) == {""}
+    assert patches[""]["flow"] == [] and patches[""]["focus"] == []
+    assert not any(s["borderWidth"] == network.NODE_BORDER_WIDTH_MARKED
+                   for s in patches[""]["nodes"])
+    assert not any(s["color"] == colors["highlight"] for s in patches[""]["edges"])
+    assert set(plain["positions"]) == set(plain["nodes"])
+
+
+def test_the_chosen_recipe_is_lit_on_the_same_graph(model, colors):
+    """★ 해석 결과는 그래프 하나에 강조됨. 강조를 받는 그래프와 전체 지도가 같은 것임."""
     강조_노드 = set(model["variants"][""]["nodes"])
     assert 강조_노드, "이 시험은 경로가 있는 모형이라야 뜻이 있다"
 
-    def 굵은_것(top):
-        return {s["id"] for s in network.node_styles(model, colors, "", top=top)
-                if s["borderWidth"] == network.NODE_BORDER_WIDTH_MARKED}
+    굵은_것 = {s["id"] for s in network.node_styles(model, colors, "")
+             if s["borderWidth"] == network.NODE_BORDER_WIDTH_MARKED}
 
-    assert 굵은_것(top=False) == 강조_노드
-    assert 굵은_것(top=True) == set()
-    assert colors["highlight"] not in network.top_html(model, colors, height=400)
+    assert 굵은_것 == 강조_노드
+    assert len(network.build_network(model, colors, height=400).nodes) == len(model["nodes"])
 
 
-def test_the_chosen_path_is_the_only_thing_the_bottom_lights_up(model, colors):
+def test_the_chosen_path_is_the_only_thing_the_graph_lights_up(model, colors):
     """강조가 유실되지도, 엉뚱한 데 묻지도 않음. 흐르는 표시도 같은 것을 씀.
 
     색이나 굵기로 고르지 않음 — 서버가 갈라 보낸 highlight 를 그대로 씀.
@@ -173,23 +179,23 @@ def test_the_chosen_path_is_the_only_thing_the_bottom_lights_up(model, colors):
     assert 흐르는_것 == 강조   # ★ 화살촉은 마지막에만 있어도 흐름은 모든 구간에
 
 
-def test_the_subject_nodes_keep_their_own_border_on_both_panels(model, colors):
+def test_the_subject_nodes_keep_their_own_border(model, colors):
     """★ 대상(교통 · 선거 · 인구 · 전기차 충전) 노드가 기능 노드와 갈려야 함.
 
     실행할 수 있는 것과 개념은 다른 것임. 옛 dot.GROUP_ATTRS 그대로 —
-    타원 · 굵기 2 · 테두리와 글자가 같은 금색. 상단은 한 단계 낮은 금색임.
+    타원 · 굵기 2 · 테두리와 글자가 같은 금색.
     """
     대상 = {nid for nid, node in model["nodes"].items() if node["kind"] == "group"}
+    대상 -= set(model["variants"][""]["nodes"])
     assert 대상, "온톨로지에 대상 노드가 있어야 이 시험이 뜻이 있다"
 
-    for top, 금색 in ((False, colors["group"]), (True, colors["group_top"])):
-        표 = {s["id"]: s for s in network.node_styles(model, colors, "", top=top)}
-        for node_id in 대상:
-            style = 표[node_id]
-            assert style["shape"] == network.GROUP_SHAPE
-            assert style["borderWidth"] == network.GROUP_BORDER_WIDTH
-            assert style["color"]["border"] == 금색
-            assert style["font"]["color"] == 금색
+    표 = {s["id"]: s for s in network.node_styles(model, colors, "")}
+    for node_id in 대상:
+        style = 표[node_id]
+        assert style["shape"] == network.GROUP_SHAPE
+        assert style["borderWidth"] == network.GROUP_BORDER_WIDTH
+        assert style["color"]["border"] == colors["group"]
+        assert style["font"]["color"] == colors["group"]
 
 
 def test_the_graph_carries_no_sequence_numbers(model, colors):
@@ -233,62 +239,71 @@ def test_the_script_knows_no_colour_at_all(model, colors):
     assert "CFG.arrowScale" in script and "CFG.edgeWidth" in script
 
 
-def test_the_bottom_document_carries_the_graph_and_the_chips_together(model, colors):
-    """나누면 클릭마다 Streamlit 재실행이라 반응이 굼뜸.
+def test_one_document_carries_the_graph_the_minimap_and_the_inspector(model, colors):
+    """★ 그래프 · 미니맵 · 살펴보기 칸이 한 문서에 있음.
 
-    칩 칸은 pyvis 의 .card 옆에 나란히 섬 — 그 안에 끼워 넣으면 pyvis 판이
-    바뀔 때 조용히 깨짐.
+    나누면 클릭마다 Streamlit 재실행이라 반응이 굼뜨고, iframe 끼리는 같은
+    network 객체를 못 봄. 살펴보기 칸은 pyvis 의 .card 옆에 나란히 섬 — 그 안에
+    끼워 넣으면 pyvis 판이 바뀔 때 조용히 깨짐.
     """
-    html = network.bottom_html(
-        model, colors, "<div id=chip>칩</div>", left_ratio=0.62, height=500,
-    )
+    html = network.main_html(model, colors, "<div class=recipe>칩</div>", height=500)
 
-    assert 'id="list"' in html
-    assert "mynetwork" in html
+    assert html.count('id="mynetwork"') == 1
+    assert 'id="side"' in html and 'id="recipes"' in html and 'id="node"' in html
+    assert '"minimap"' in html
+    # 두 iframe 이 좌표를 나눠 갖던 통로는 없다
+    assert "BroadcastChannel" not in html and "__graphPositions" not in html
 
 
-def test_the_bottom_flows_and_zooms_but_the_top_does_neither(model, colors):
-    """★ 하얀 흐름 표시와 좁혀 들어가기는 하단만의 일임.
+def test_the_graph_flows_and_zooms_into_the_resolved_recipe(model, colors):
+    """★ 흐르는 표시와 좁혀 들어가기가 전체 지도와 같은 그래프에서 돎."""
+    html = network.main_html(model, colors, height=500)
 
-    좌표를 나눠 갖는 통로는 둘 다 엶 — 어느 쪽에서 끌든 상대가 따라와야 함.
-    """
-    상단 = network.top_html(model, colors, height=400)
-    하단 = network.bottom_html(model, colors, "", left_ratio=0.6, height=500)
-
-    assert '"flow": true' in 하단 and network.FLOW_SHEEN in 하단
-    assert "afterDrawing" in 하단 and "network.fit(" in 하단
-    assert '"flow": false' in 상단
-    assert '"split": true' in 하단 and '"split": false' in 상단
-
-    # 좌표는 나눠 갖고 카메라는 따로 논다
-    for 문서 in (상단, 하단):
-        assert network.POSITION_CHANNEL in 문서
-        assert "moveNode" in 문서
-        assert '"dragging"' in 문서 and '"dragEnd"' in 문서
+    assert network.FLOW_SHEEN in html
+    assert "flowlayer" in html and "network.fit(" in html
+    patches = network.variant_patches(model, colors)
+    assert patches[""]["flow"] and patches[""]["focus"]
 
 
 def test_the_same_answer_is_only_zoomed_into_once(model, colors):
     """★ 같은 해석 결과로는 좁혀 들어가기가 한 번만 돈다.
 
     「이미 보여줬다」를 문서 안 변수로 두면 안 된다 — Streamlit 은 무엇을
-    누르든 스크립트를 다시 돌리고 그때 iframe 이 통째로 새로 만들어져 그
-    변수가 사라진다. 창 저장소에 맡기고, 막히면 부모 창으로 떨어진다.
+    누르든 스크립트를 다시 돌리고 그때 iframe 이 새로 만들어지면 그 변수가
+    사라진다. 창 저장소에 맡기고, 막히면 부모 창으로 떨어진다.
     """
-    하단 = network.bottom_html(model, colors, "", left_ratio=0.6, height=500,
-                              signature="sig-a")
+    html = network.main_html(model, colors, height=500, signature="sig-a")
 
-    assert "sessionStorage.getItem(CFG.memory)" in 하단
-    assert "__graphFocus" in 하단
-    assert '"sig": "sig-a"' in 하단
-    # 상단과 하단이 서로의 기억을 덮지 않는다
-    assert '"memory": "recipe_graph_focus_bottom"' in 하단
-    assert '"memory": "recipe_graph_focus_top"' in network.top_html(
-        model, colors, height=400)
+    assert "sessionStorage.getItem(key)" in html
+    assert "__graphFocus" in html
+    assert '"sig": "sig-a"' in html
+    assert f'"memory": "{network.FOCUS_MEMORY}"' in html
+    assert "recall(CFG.memory)" in 함수_of("focusOnce")
+
+
+def test_the_same_answer_redrawn_keeps_its_last_camera():
+    """★ 같은 해석을 다시 그리면 마지막 카메라로 돌아감. 화면이 rerun 마다 튀지 않음.
+
+    카메라는 해석 서명과 함께 적으므로 다른 해석에는 안 쓰임. 새 해석이면
+    좁혀 들어가기가 먼저고, 되살리기는 그것을 안 할 때만 돎.
+    """
+    함수 = _functions(network.GRAPH_SCRIPT)
+
+    assert 'CFG.memory + "_view"' in 함수["remember"]
+    assert "saved.sig !== CFG.sig" in 함수["restoreView"]
+    assert "network.moveTo(" in 함수["settle"]
+    assert "focusOnce(patch.focus))) restoreView()" in 함수["start"]
+    for 사건 in ('"zoom"', '"dragEnd"', '"animationFinished"'):
+        assert 사건 in 함수["track"]
+
+
+def 함수_of(name):
+    return _functions(network.GRAPH_SCRIPT)[name]
 
 
 # ── ★ 카메라를 누가 움직이나 ────────────────────────────────────────
 #
-# 사람이 아무것도 안 하는 동안 하단 화면이 전체와 고른 자리를 오갔다.
+# 사람이 아무것도 안 하는 동안 그래프 화면이 전체와 고른 자리를 오갔다.
 # 아래 둘이 그 자리를 구조로 막는다 — 문자열 하나하나가 아니라
 # 「카메라를 부르는 함수가 무엇인가」를 본다.
 
@@ -303,20 +318,21 @@ def _functions(script):
     return out
 
 
-# 카메라를 움직이는 말들. 이 셋 말고는 화면이 안 움직인다.
-CAMERA_CALLS = ("network.fit(", "glide(", "focusOnce(")
+# 카메라를 움직이는 말들. 이것 말고는 화면이 안 움직인다.
+CAMERA_CALLS = ("network.fit(", "network.moveTo(", "glide(", "focusOnce(",
+                "jump(", "settle(")
 
 # 사람이 아무것도 안 해도 도는 것들. **하나도 카메라를 부르면 안 된다.**
-# poll(좌표 폴링)은 listen 안에 있어 listen 을 보면 함께 걸린다.
-IDLE = ("animate", "paint", "sizeLayer", "receive", "makeLayer",
-        "share", "listen", "border", "mark", "repaint")
+IDLE = ("animate", "paint", "sizeLayer", "makeLayer", "border", "mark",
+        "repaint", "watchMini", "drawMini", "sizeMini", "bounds", "remember",
+        "track", "inspect", "recall", "keep")
 
 
 def test_nothing_that_runs_by_itself_can_move_the_camera():
     """★ 사람이 아무것도 안 하는 동안 카메라를 부르는 자리가 0 이어야 한다.
 
-    좌표 나누기 폴링 · 흐름 애니메이션 · 칸 크기 맞추기 · 좌표 받기가 전부
-    끊임없이 돈다. 그중 하나라도 화면을 움직이면 사람이 손을 놓고 있어도
+    흐름 애니메이션 · 미니맵 다시 그리기 · 칸 크기 맞추기 · 카메라 적어 두기가
+    전부 끊임없이 돈다. 그중 하나라도 화면을 움직이면 사람이 손을 놓고 있어도
     화면이 왔다 갔다 한다. 실제로 그렇게 됐었다.
     """
     함수 = _functions(network.GRAPH_SCRIPT)
@@ -326,31 +342,51 @@ def test_nothing_that_runs_by_itself_can_move_the_camera():
         부르는_것 = [w for w in CAMERA_CALLS if w in 함수[name]]
         assert not 부르는_것, f"{name} 이 카메라를 부른다: {부르는_것}"
 
-    # 끊임없이 도는 rAF 고리가 셋이다. 셋 다 카메라와 무관해야 한다
-    assert "requestAnimationFrame(poll)" in 함수["listen"]
+    # 끊임없이 도는 rAF 고리가 둘이다. 둘 다 카메라와 무관해야 한다
+    assert "requestAnimationFrame(watchMini)" in 함수["watchMini"]
     assert "requestAnimationFrame(animate)" in network.GRAPH_SCRIPT
 
 
-def test_only_three_events_own_the_bottom_camera():
-    """★ 하단 카메라를 움직이는 자리는 셋뿐이다 — 새 해석 · 후보 누르기 · 배경 누르기.
+def test_only_known_events_own_the_camera():
+    """★ 카메라를 움직이는 자리가 정해져 있음.
 
-    셋 다 glide 하나를 지난다. 그리고 도는 중에 다시 들어오면 앞의 것을 버리고
-    새 것 하나만 돈다 — 겹쳐 돌면 vis-network 가 앞 애니메이션을 도착점으로
+    처음 맞추기 · 되살리기 · 새 해석 · 후보 누르기 · 배경 누르기 · 미니맵 누르기.
+    좁혀 들어가기는 glide 하나를 지난다. 그리고 도는 중에 다시 들어오면 앞의 것을
+    버리고 새 것 하나만 돈다 — 겹쳐 돌면 vis-network 가 앞 애니메이션을 도착점으로
     튕겨 화면이 전체와 고른 자리를 오간다.
     """
     함수 = _functions(network.GRAPH_SCRIPT)
 
-    # 카메라를 실제로 부르는 함수는 이 넷뿐이다
     부르는_함수 = {n for n, body in 함수.items()
                 if any(w in body for w in CAMERA_CALLS)}
-    assert 부르는_함수 == {"glide", "focusOnce", "clicked", "overview", "start"}
+    assert 부르는_함수 == {"glide", "focusOnce", "clicked", "settle",
+                      "overview", "makeMini", "jump", "start"}
 
-    # 화면을 실제로 움직이는 것(network.fit)은 glide 와 상단 전용 overview 뿐
-    옮기는_함수 = {n for n, body in 함수.items() if "network.fit(" in body}
-    assert 옮기는_함수 == {"glide", "overview"}
+    # 화면을 실제로 움직이는 것
+    옮기는_함수 = {n for n, body in 함수.items()
+               if "network.fit(" in body or "network.moveTo(" in body}
+    assert 옮기는_함수 == {"glide", "settle", "jump"}
 
-    # 겹쳐 돌지 않는다
+    # 겹쳐 돌지 않는다. 미니맵을 누르면 걸려 있던 좁혀 들어가기를 버린다
     assert "camera.token" in 함수["glide"] and "mine !== camera.token" in 함수["glide"]
+    assert "halt()" in 함수["jump"]
+
+
+def test_settling_stops_once_someone_takes_the_camera(model, colors):
+    """★ 자리 잡기(전체 맞추기 · 마지막 카메라)는 사람이나 좁혀 들어가기가 카메라를 잡기 전까지만.
+
+    칸 크기가 바뀔 때마다 전체로 되돌아가면 확대해 둔 자리나 좁혀 들어간 자리가
+    사라진다. 덮은 캔버스의 ResizeObserver 는 크기만 맞춘다.
+    되살린 카메라는 칸 크기를 따라 다시 건다 — vis-network 가 폭 비율로 배율을
+    다시 잡아 한 번만 옮기면 어긋났다(실측 1.55 가 1.14 로).
+    """
+    함수 = _functions(network.GRAPH_SCRIPT)
+
+    assert "if (touched)" in 함수["settle"]
+    assert "pinned" in 함수["settle"] and "pinned = saved" in 함수["restoreView"]
+    assert "touched = true" in 함수["glide"] and "touched = true" in 함수["jump"]
+    assert "ResizeObserver" in 함수["overview"]
+    assert "network.fit(" not in 함수["sizeLayer"]
 
 
 def test_the_flow_layer_is_cleared_in_real_pixels_not_scaled_ones():
@@ -400,28 +436,13 @@ def test_the_flow_animation_no_longer_drives_the_engine():
     assert "flowlayer" in 코드 and "canvasToDOM" in 코드
 
 
-def test_only_the_top_fits_itself_when_the_panel_resizes(model, colors):
-    """★ 칸 크기가 바뀌어도 하단 화면은 안 움직인다.
-
-    하단에도 ResizeObserver 가 있지만 그것은 덮은 캔버스 크기만 맞춘다.
-    화면을 맞추는 것은 상단 전용 overview 안에만 있다.
-    """
-    함수 = _functions(network.GRAPH_SCRIPT)
-
-    assert "network.fit(" in 함수["overview"]
-    assert "network.fit(" not in 함수["sizeLayer"]
-    assert '"overview": true' in network.top_html(model, colors, height=400)
-    assert '"overview": false' in network.bottom_html(
-        model, colors, "", left_ratio=0.6, height=500)
-
-
 def test_the_first_zoom_is_once_per_resolve_not_per_recipe_set(model, colors):
     """★ 「다시 보여줄까」의 기준이 해석 한 번이지 recipe 묶음이 아님.
 
     서로 다른 발화가 우연히 같은 후보를 골라도 그때는 새 해석이라 다시
     한 번 보여줘야 한다. 반대로 화면만 다시 그린 것은 같은 해석이다.
     """
-    from app.ui.components import focus_panel as fp
+    from app.ui.components import graph_section as fp
 
     둘 = screen_service.render("resolve", ["recipe_012", "recipe_045"])
     하나 = screen_service.render("resolve", ["recipe_061"])
@@ -462,45 +483,159 @@ def test_the_recipe_panel_numbers_candidates_not_nodes(model, colors):
     """★ 번호가 후보 하나에 하나임. 노드마다가 아님.
 
     사람이 읽고 싶은 것은 「몇 번째 후보인가」이고 후보 안의 차례는 화살표가
-    말한다. 번호는 이 패널 안에서만 산다 — 그래프 위에는 안 올린다.
+    말한다. 번호는 이 칸 안에서만 산다 — 그래프 위에는 안 올린다.
 
-        [1] 말한 키워드 → 인구 통계 조회
-        [2] 말한 장소 → 장소 좌표 변환 → 인구 통계 조회
+        [1] recipe_012 후보   말한 키워드 → 인구 통계 조회
+        [2] recipe_045 후보   말한 장소 → 장소 좌표 변환 → 인구 통계 조회
     """
-    하단 = network.bottom_html(model, colors, "", left_ratio=0.6, height=500)
+    html = network.main_html(model, colors, height=500)
 
-    assert "counter-increment: candidate" in 하단
-    assert ".chain::before" in 하단
-    assert ".arrow-line::after" in 하단          # 후보 안의 차례는 화살표가 말한다
-    assert "counter(step)" not in 하단           # 노드마다 번호를 안 붙인다
-    assert "counter(candidate)" not in network.top_html(model, colors, height=400)
+    assert "counter-increment: candidate" in html
+    assert ".rhead::before" in html
+    assert ".arrow-line::after" in html          # 후보 안의 차례는 화살표가 말한다
+    assert "counter(step)" not in html           # 노드마다 번호를 안 붙인다
 
 
-def test_the_top_fills_the_panel_it_is_given(model, colors):
-    """★ 상단이 칸을 다 씀.
+def test_each_candidate_row_names_its_recipe_and_real_node_chain():
+    """★ SELECT 는 고른 recipe 에 「선택」, CLARIFY 는 후보마다 「후보」 한 줄씩.
+
+    사슬은 서버가 낸 실제 노드 이름 그대로임. recipe 설명은 게시 자산에 없어서
+    지어내지 않음.
+    """
+    from app.ui.components import path_panel
+
+    둘 = screen_service.render("resolve", ["recipe_012", "recipe_045"])
+    order = ["recipe_012", "recipe_045"]
+
+    되묻기 = path_panel.recipe_rows_markup(둘["chips"], order, None, "#14B8A6")
+    assert 되묻기.count('class="recipe"') == 2
+    assert 되묻기.count(f">{path_panel.CANDIDATE_TAG}<") == 2
+    assert path_panel.CHOSEN_TAG not in 되묻기
+    for 사슬 in 둘["chips"]:
+        for 이름 in 사슬:
+            assert f">{이름}<" in 되묻기
+
+    고름 = path_panel.recipe_rows_markup(둘["chips"][:1], order[:1], "recipe_012", "#14B8A6")
+    assert "recipe_012" in 고름 and f">{path_panel.CHOSEN_TAG}<" in 고름
+
+    clarify = {"kind": "resolve", "result": {"status": "CLARIFY"}}
+    select = {"kind": "resolve", "result": {"status": "SELECT", "recipe_id": "recipe_012"}}
+    assert path_panel.recipe_status(clarify, 2) == "후보 2개 · 되묻기"
+    assert path_panel.recipe_status(select, 1) == "선택"
+    assert path_panel.recipe_status(None, 0) == ""
+
+
+def test_clicking_a_node_tells_its_name_kind_and_description(model, colors):
+    """★ 노드를 누르면 살펴보기 칸에 이름 · 종류 · 설명. 설명은 온톨로지 description 그대로.
+
+    누르기가 후보 좁히기를 대신하지 않음 — 설명은 늘 바뀌고, 좁히기는 그 노드를
+    가진 후보가 하나일 때만 돎.
+    """
+    details = network.node_details(model)
+
+    assert set(details) == set(model["nodes"])
+    for node_id, node in model["nodes"].items():
+        assert details[node_id]["text"] == node["title"]
+        assert "\n" not in details[node_id]["name"]
+    assert details["geocode_place"]["kind"] == network.KIND_LABELS["function"]
+    assert any(d["group"] and d["kind"] == network.KIND_LABELS["group"]
+               for d in details.values())
+
+    click = _functions(network.GRAPH_SCRIPT)["start"]
+    assert click.index("inspect(id)") < click.index("DATA.picks[id]")
+    assert "textContent" in _functions(network.GRAPH_SCRIPT)["inspect"]
+    assert "innerHTML" not in _functions(network.GRAPH_SCRIPT)["inspect"]
+
+
+def test_the_minimap_draws_every_node_and_the_current_viewport(model, colors):
+    """★ 미니맵이 전체 좌표와 본 그래프가 보는 자리를 그림. 카메라가 움직이면 따라 그림.
+
+    그래프를 하나 더 띄우지 않는다 — 좌표는 본 그래프에서 읽고, 보는 자리는
+    칸의 두 모서리를 그래프 좌표로 옮겨 얻는다.
+    """
+    함수 = _functions(network.GRAPH_SCRIPT)
+
+    links = {tuple(e) for e in network.minimap_links(model)}
+    assert links == ({tuple(e) for e in model["solid"]}
+                     | {tuple(e["edge"]) for e in model["dotted"]})
+    assert "network.getPositions()" in 함수["drawMini"]
+    assert "network.getPositions()" in 함수["bounds"]
+    assert "DOMtoCanvas" in 함수["drawMini"]
+    # 카메라 · 칸 크기가 바뀐 프레임에 다시 그리고, 노드를 옮기면 범위를 다시 잰다
+    assert "getScale()" in 함수["watchMini"] and "getViewPosition()" in 함수["watchMini"]
+    assert "miniDirty = true" in 함수["track"]
+    # 누르면 그 자리로
+    assert "network.moveTo(" in 함수["jump"]
+    assert '"pointerdown"' in 함수["makeMini"]
+
+
+def test_the_graph_fills_the_panel_it_is_given(model, colors):
+    """★ 그래프가 칸을 다 씀.
 
     pyvis 는 #mynetwork 에 픽셀 높이를 박고 우리가 그것을 100% 로 덮는데,
     부모인 .card 에 높이가 없으면 백분율이 풀릴 기준이 없어 캔버스가 작아진다.
     그리고 pyvis 는 fit 을 한 번도 안 부른다 — 카메라가 기본값에 머문다.
     둘 다 고쳐야 칸이 넓어져도 그래프가 따라 커진다.
     """
-    상단 = network.top_html(model, colors, height=400)
+    html = network.main_html(model, colors, height=400)
 
-    assert "body > .card { height: 100%" in 상단
-    assert '"overview": true' in 상단
-    assert "ResizeObserver" in 상단
-    # 하단은 고른 경로로 좁혀 들어가는 쪽이라 전체 맞추기를 안 켠다
-    assert '"overview": false' in network.bottom_html(
-        model, colors, "", left_ratio=0.6, height=500)
+    assert "body > .card { height: 100%" in html
+    assert "ResizeObserver" in html
+    assert "overview();" in _functions(network.GRAPH_SCRIPT)["start"]
 
 
 def test_a_chip_markup_with_a_closing_script_tag_cannot_break_the_document(model, colors):
     """값 안의 "</" 를 그대로 두면 문서가 거기서 끊김."""
-    html = network.bottom_html(
-        model, colors, "</script><b>깨짐</b>", left_ratio=0.6, height=400,
-    )
+    html = network.main_html(model, colors, "</script><b>깨짐</b>", height=400)
 
     assert "</script><b>" not in html
+
+
+# ── 서비스 화면 ─────────────────────────────────────────────────────
+
+
+MAIN_SCRIPT = str(Path(__file__).resolve().parents[4] / "app" / "ui" / "main.py")
+
+
+def _service_screen(monkeypatch, view=None):
+    """서비스 화면을 AppTest 로 한 번 그림. 창구 대신 screen_service 를 곧장 부름."""
+    from streamlit.testing.v1 import AppTest
+
+    from app.ui import api_client
+
+    monkeypatch.setattr(api_client, "get_screen", lambda: (screen_service.screen_payload(), False))
+    monkeypatch.setattr(api_client, "render",
+                        lambda mode="plain", ids=None: screen_service.render(mode, list(ids or [])))
+    at = AppTest.from_file(MAIN_SCRIPT, default_timeout=60)
+    if view is not None:
+        at.session_state["view"] = view
+    at.run()
+    assert not at.exception
+    return at
+
+
+def test_the_service_screen_draws_exactly_one_graph(monkeypatch):
+    """★ 서비스 화면의 온톨로지 그래프는 iframe 하나임. 전체 지도와 해석 강조를 한 그래프가 맡음."""
+    at = _service_screen(monkeypatch)
+    frames = at.get("iframe")
+
+    assert len(frames) == 1
+    assert frames[0].proto.srcdoc.count('id="mynetwork"') == 1
+
+
+def test_a_clarify_on_the_service_screen_lists_every_candidate(monkeypatch):
+    """★ CLARIFY 면 후보가 여럿 실리고 각 후보로 좁힐 변형이 함께 옴. 그래프는 여전히 하나임."""
+    view = {"kind": "resolve", "utterance": "서울 인구 알려줘", "elapsed": 1.0,
+            "result": {"status": "CLARIFY", "recipe_id": None,
+                       "candidate_recipe_ids": ["recipe_012", "recipe_045"]}}
+    at = _service_screen(monkeypatch, view)
+    frames = at.get("iframe")
+
+    assert len(frames) == 1
+    문서 = frames[0].proto.srcdoc
+    assert "recipe_012" in 문서 and "recipe_045" in 문서
+    assert "후보 2개 · 되묻기" in 문서
+    assert '"order": ["recipe_012", "recipe_045"]' in 문서
 
 
 # ── 창구 계약 ───────────────────────────────────────────────────────

@@ -1,14 +1,14 @@
-"""하단 패널. 발화가 어떤 실행 경로가 됐는지 보여준다.
+"""후보 recipe 목록과 발화 띠.
 
-상단 그래프는 온톨로지 전체(지식)를, 여기는 거기서 뽑아낸 답(결과)을 맡는다.
-
-Graphviz 를 쓰지 않는다 — 1/3 높이에 9노드 그래프를 또 그리면 글씨가 안 보인다.
-경로는 본질적으로 선형 사슬이라 칩+화살표가 훨씬 잘 읽히고, dot 왕복이 없어
-즉각적이며 애니메이션을 붙이기 쉽다.
+그래프 문서 오른쪽 살펴보기 칸의 후보 목록 마크업을 만들고(그래프 문서가 싣는다),
+그래프 위 얇은 띠에 발화 · 오류 · 기다리는 표시를 그린다.
 
 경로를 무엇으로 채울지는 백엔드가 정한다(그리기 패키지의 focus.py). 여기는 이름
 사슬을 받아 칩으로 그리기만 한다 — 순서 계산이 두 곳에 있으면 그래프와 목록이
 서로 다른 순서를 말하게 된다.
+
+recipe 를 설명하는 글은 게시 자산에 없다. 목록은 recipe id 와 실제 노드 이름
+사슬만 보여준다 — 지어낸 설명을 덧붙이지 않는다.
 
 마크업 생성은 Streamlit 없이 부를 수 있는 순수 함수다(테스트 때문).
 """
@@ -19,9 +19,13 @@ import streamlit as st
 
 from app.ui import config, styles
 
-# 안내 문구를 두지 않는다. 실행 전에는 하단 지도가 그대로 떠 있고, NO_MATCH 면
+# 안내 문구를 두지 않는다. 실행 전에는 지도가 그대로 떠 있고, NO_MATCH 면
 # 지도는 있는데 켜지는 길이 없다 — 문구 없이 그림으로 읽힌다.
 # 발표자가 말로 설명하므로 화면에 글이 필요 없고, 글이 없으면 오류가 났을 때 티가 난다.
+
+# 후보 줄의 꼬리표. 해석이 고른 것과 되묻는 후보를 가른다.
+CHOSEN_TAG = "선택"
+CANDIDATE_TAG = "후보"
 
 
 def chip(name: str, index: int, color: str) -> str:
@@ -30,8 +34,7 @@ def chip(name: str, index: int, color: str) -> str:
     입력  이름 · 순서(등장 애니메이션용) · 테두리 색
     출력  .chip span 마크업
     제약  여기서는 이름을 두 줄로 접지 않는다.
-          상단 그래프의 노드는 접혀 있지만 여기는 가로 공간이 넉넉하고,
-          접으면 사슬의 흐름이 끊겨 읽힘
+          그래프의 노드는 접혀 있지만 접으면 사슬의 흐름이 끊겨 읽힘
     """
     return (
         f'<span class="chip" style="--i:{index}; border-color:{color}">'
@@ -60,8 +63,6 @@ def path_chain(names: list[str], color: str) -> str:
 
     입력  이름 목록 · 칩 테두리 색
     출력  .chain div 마크업. 비면 빈 .chain
-    제약  recipe id 를 적지 않는다.
-          줄끼리는 노드 내용으로 구분되고, id 는 사람이 읽을 정보가 아님
     """
     if not names:
         return '<div class="chain"></div>'
@@ -75,14 +76,64 @@ def path_chain(names: list[str], color: str) -> str:
     return f'<div class="chain">{"".join(parts)}</div>'
 
 
-def chips_markup(chains: list[list[str]], color: str) -> str:
-    """이름 사슬 목록 전체를 칩으로. iframe 안에 들어감.
+def recipe_row(recipe_id: str, names: list[str], chosen: bool, color: str) -> str:
+    """후보 recipe 한 줄. id · 꼬리표 · 노드 이름 사슬.
 
-    입력  이름 사슬 목록 · 칩 테두리 색
-    출력  .chain div 여러 개. 비면 빈 문자열
-    제약  안내 문구를 넣지 않는다. 옆 그래프가 이미 상태를 말함
+    출력  .recipe div 마크업
+    규칙  해석이 고른 recipe 면 「선택」, 그 밖은 「후보」
+          id 는 정답표 · 평가 화면 · KRRI 되묻기 목록과 맞춰 볼 수 있게 적음
     """
-    return "".join(path_chain(names, color) for names in chains or [])
+    tag = (f'<span class="tag chosen">{CHOSEN_TAG}</span>' if chosen
+           else f'<span class="tag">{CANDIDATE_TAG}</span>')
+    return (
+        f'<div class="recipe"><div class="rhead">'
+        f'<span class="rid">{html.escape(recipe_id)}</span>{tag}</div>'
+        f"{path_chain(names, color)}</div>"
+    )
+
+
+def recipe_rows_markup(chains: list[list[str]], order: list[str],
+                       chosen: str | None, color: str) -> str:
+    """후보 recipe 목록 전체. 그래프 문서의 살펴보기 칸에 들어감.
+
+    입력  이름 사슬 목록 · 줄 차례에 맞춘 recipe id · 해석이 고른 recipe · 칩 색
+    출력  .recipe div 여러 개. 후보가 없으면 빈 문자열
+    제약  줄 차례를 다시 매기지 않는다.
+          서버가 낸 chips 차례가 곧 그래프 변형 차례임
+    """
+    return "".join(
+        recipe_row(recipe_id, names, recipe_id == chosen, color)
+        for recipe_id, names in zip(order, chains or [])
+    )
+
+
+def chosen_recipe(view) -> str | None:
+    """해석이 고른 recipe. 되묻기라 고른 것이 없으면 None."""
+    if not isinstance(view, dict) or "error" in view:
+        return None
+    return (view.get("result") or {}).get("recipe_id") or None
+
+
+def recipe_status(view, count: int) -> str:
+    """후보 목록 머리에 적을 판정 한 마디.
+
+    입력  지금 장면 · 후보 수
+    출력  실행 전 · 오류면 빈 문자열
+    규칙  resolve 의 status 를 그대로 옮김. SELECT 「선택」 · CLARIFY 「후보 N개 · 되묻기」 ·
+          NO_MATCH 「맞는 Recipe 없음」
+          status 가 없는 옛 회차는 고른 recipe 가 있으면 「선택」, 없으면 「후보 N개」
+    """
+    if not isinstance(view, dict) or "error" in view or view.get("kind") != "resolve":
+        return ""
+    result = view.get("result") or {}
+    status = result.get("status")
+    if status == "NO_MATCH" or not count:
+        return "맞는 Recipe 없음"
+    if status == "CLARIFY":
+        return f"후보 {count}개 · 되묻기"
+    if status == "SELECT" or result.get("recipe_id"):
+        return "선택"
+    return f"후보 {count}개"
 
 
 def utterance_markup(utterance: str | None) -> str:
@@ -92,19 +143,24 @@ def utterance_markup(utterance: str | None) -> str:
     return f'<div class="utterance">“{html.escape(utterance)}”</div>'
 
 
+
+
+
 def skeleton_markup() -> str:
-    """응답을 기다리는 동안. LLM 지연이 길어 스피너만으로는 멈춘 것처럼 보임."""
-    bars = "".join(f'<div class="skel-row" style="--i:{i}"></div>' for i in range(3))
-    return f'<div class="skeleton">{bars}</div>'
+    """응답을 기다리는 동안 띠에 한 줄. LLM 지연이 길어 스피너만으로는 멈춘 것처럼 보임.
+
+    제약  그래프를 가리지 않는다. 기다리는 동안에도 지도는 그대로 보임
+    """
+    return '<div class="skeleton"><div class="skel-row" style="--i:0"></div></div>'
 
 
 def band_markup(view: dict | None) -> str:
-    """하단 위쪽 얇은 띠. 발화뿐.
+    """그래프 위 얇은 띠. 발화뿐.
 
     입력  지금 장면
     출력  마크업. 장면이 없으면 빈 문자열
     제약  범례를 두지 않는다. 색이 무엇인지는 발표자가 말함
-          경로 사슬을 여기 두지 않는다. 아래 iframe 이 그래프와 함께 그림
+          경로 사슬을 여기 두지 않는다. 그래프 문서의 살펴보기 칸이 그림
     """
     if not isinstance(view, dict):
         return ""

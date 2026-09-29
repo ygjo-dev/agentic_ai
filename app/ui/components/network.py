@@ -2,22 +2,17 @@
 
     pyvis (vis-network 9.1.2) 를 쓴다.
 
-## 두 그래프의 역할이 다르다
+## 서비스 화면의 그래프는 하나다
 
-    상단   전체 온톨로지 overview. **중립이다** — 발화를 풀어도 아무것도 강조 안 함
-    하단   고른 recipe 의 실행 흐름. 강조 · 흐르는 표시 · 좁혀 들어가기가 여기만 있음
+    본 그래프     온톨로지 전체. 발화 해석 결과(후보 recipe)를 그 위에 강조하고
+                  흐르는 표시 · 좁혀 들어가기 · 후보 고르기가 전부 여기서 돈다
+    미니맵        본 그래프 안 오른쪽 아래의 캔버스 한 장. 온톨로지 전체를 줄여
+                  그리고 본 그래프가 지금 보는 자리를 상자로 얹는다
+    살펴보기 칸   같은 문서의 오른쪽 칸. 후보 recipe 목록과 누른 노드의 설명
 
-옛 SVG 판의 top_svg / variant_svgs 가 나누던 역할 그대로다. 상단이 강조를
-받으면 두 패널이 같은 그림이 되어 각각 무엇을 말하는지 구분되지 않는다.
-
-## 좌표는 하나, 화면은 둘
-
-    layout(노드 좌표)   ★ 두 그래프가 나눠 가진다. 한쪽에서 끌면 다른 쪽도 따라감
-    viewport(카메라)    ★ 따로 논다. 하단은 고른 경로로 좁혀 들어가고
-                        상단은 전체 overview 로 남아야 함
-
-노드를 끄는 것은 사람이 지도를 고쳐 놓는 일이라 두 화면이 같아야 하고,
-어디를 보고 있는가는 두 패널이 하는 일이 달라 같으면 안 된다.
+셋을 한 문서(iframe 하나)에 둔다. 나누면 클릭마다 Streamlit 재실행이라 반응이
+굼뜨고, iframe 끼리는 같은 network 객체를 못 본다. 전체 그림은 미니맵이 맡으므로
+본 그래프는 마음대로 확대 · 이동해도 된다.
 
 ## 무엇이 그대로인가
 
@@ -55,13 +50,12 @@ NODE_BORDER_WIDTH_MARKED = 6
 
 # 대상(group) 노드. **기능 노드와 한눈에 갈려야 한다** — 실행할 수 있는 것과
 # 개념은 다른 것이다. 옛 dot.GROUP_ATTRS 그대로다 : 타원 · 굵기 2 ·
-# 테두리와 글자가 같은 금색. 색은 /screen 의 colors 에서 온다(group · group_top).
+# 테두리와 글자가 같은 금색. 색은 /screen 의 colors 에서 온다(group).
 GROUP_SHAPE = "ellipse"
 GROUP_BORDER_WIDTH = 2
 
 # 엣지 굵기. 옛 dot 의 값 그대로다 — 배경 실선 1.6 · 고른 경로 8.
 EDGE_WIDTH = 1.6
-EDGE_WIDTH_TOP = 4.5
 EDGE_WIDTH_HIGHLIGHT = 8
 
 # 배경 실선을 얼마나 물러나게 둘까. 강조가 그 위에 떠 보여야 한다.
@@ -143,13 +137,27 @@ FLOW_SAMPLE_MS = 1500
 # 끌기 · 좌표 받기처럼 잦은 것도 같은 간격으로 줄인다. 시작과 끝은 늘 찍는다.
 BUSY_SAMPLE_MS = 1000
 
-# 좌표를 나눠 갖는 통로 이름. 상단 · 하단이 같은 이름을 쓴다.
-POSITION_CHANNEL = "recipe_graph_positions"
-
-# 「이 결과는 이미 보여줬다」를 적어 두는 자리. **iframe 밖에 있어야 한다** —
-# Streamlit 은 무엇을 누르든 스크립트를 다시 돌리고 그때 iframe 이 새로 만들어져
-# 문서 안의 변수가 사라진다. 옛 zoom.py 가 배율을 맡기던 자리와 같다.
+# 「이 결과는 이미 보여줬다」와 마지막 카메라를 적어 두는 자리. **iframe 밖에
+# 있어야 한다** — Streamlit 은 무엇을 누르든 스크립트를 다시 돌리고 그때 iframe 이
+# 새로 만들어지면 문서 안의 변수가 사라진다. 카메라는 뒤에 "_view" 를 붙인 칸이다.
 FOCUS_MEMORY = "recipe_graph_focus"
+
+# ------------------------------------------------------------ 미니맵
+#   MARGIN   본 그래프 오른쪽 · 아래 모서리에서 띄우는 거리(px)
+#   SHARE    본 그래프 폭 가운데 미니맵이 차지하는 몫. 아래 최소 · 최대 폭 안에서
+#   PAD      미니맵 안쪽 여백(px). 가장자리 노드가 테두리에 붙지 않게
+#   DOT      노드 점 한 변의 절반(px). 강조된 노드는 LIT_DOT
+MINIMAP_MARGIN = 10
+MINIMAP_SHARE = 0.2
+MINIMAP_MIN_WIDTH = 150
+MINIMAP_MAX_WIDTH = 240
+MINIMAP_MAX_HEIGHT = 170
+MINIMAP_PAD = 7
+MINIMAP_DOT = 1.8
+MINIMAP_LIT_DOT = 2.8
+
+# 살펴보기 칸이 노드 종류를 적는 말. network 모형의 kind 값 그대로를 옮긴다.
+KIND_LABELS = {"group": "대상", "function": "기능"}
 
 
 def _label(name: str) -> str:
@@ -203,22 +211,20 @@ def edge_id(a: str, b: str) -> str:
     return f"{a}>{b}"
 
 
-def node_styles(model: dict, colors: dict, variant: str, *, top: bool) -> list[dict]:
+def node_styles(model: dict, colors: dict, variant: str) -> list[dict]:
     """한 변형에서 노드가 어떻게 보여야 하는가.
 
-    입력  network 모형 · 색 · 변형 키 · 상단인가
+    입력  network 모형 · 색 · 변형 키
     출력  vis-network 노드 dict 목록. id · shape · color · borderWidth · font
-    규칙  대상(group) 노드는 타원에 금색. 상단은 한 단계 낮은 금색을 씀
-    제약  상단에 강조를 칠하지 않는다.
-          상단은 「무엇이 무엇과 관련되는가」를 말하는 중립 지도임.
-          발화 해석 결과는 하단이 보여줌
+    규칙  대상(group) 노드는 타원에 금색
+          고른 경로의 노드는 청록 굵은 테두리. 실행 전(plain)에는 변형이 비어 아무것도 안 굵어짐
     """
     칸 = (model.get("variants") or {}).get(variant) or {}
-    강조_노드 = set() if top else set(칸.get("nodes") or ())
+    강조_노드 = set(칸.get("nodes") or ())
     배경 = colors.get("node_fill", "#171B26")
-    테두리 = colors.get("node_border_top" if top else "node_border", "#A9B1C0")
+    테두리 = colors.get("node_border", "#A9B1C0")
     글자 = colors.get("plain", "#8C93A1")
-    금색 = colors.get("group_top" if top else "group", "#D9A441")
+    금색 = colors.get("group", "#D9A441")
 
     out = []
     for node_id, node in (model.get("nodes") or {}).items():
@@ -256,7 +262,7 @@ def node_styles(model: dict, colors: dict, variant: str, *, top: bool) -> list[d
 
 
 def solid_styles(model: dict, colors: dict, variant: str) -> list[dict]:
-    """한 변형에서 배경 실선이 어떻게 보여야 하는가. **하단만 쓴다.**
+    """한 변형에서 배경 실선이 어떻게 보여야 하는가.
 
     출력  vis-network 엣지 dict 목록. id · from · to · color · width
     규칙  teal(해석 경로) > 물러난 배경 차례로 걸림
@@ -315,7 +321,7 @@ def variant_patches(model: dict, colors: dict) -> dict:
     return {
         key: {
             "edges": solid_styles(model, colors, key),
-            "nodes": node_styles(model, colors, key, top=False),
+            "nodes": node_styles(model, colors, key),
             "flow": flowing_edges(model, key),
             # 좁혀 들어갈 대상. 고른 경로의 노드다
             "focus": sorted((model.get("variants") or {}).get(key, {}).get("nodes") or ()),
@@ -324,17 +330,17 @@ def variant_patches(model: dict, colors: dict) -> dict:
     }
 
 
-def build_network(model, colors, *, top, variant="", height=480):
+def build_network(model, colors, *, variant="", height=480):
     """/render 의 network 모형을 vis-network 그래프로.
 
     입력  model    render 응답의 "network"
           colors   /screen 의 colors. 팔레트의 주인은 서버임
-          top      상단 그래프인가. 상단은 점선만 그리고 강조를 안 받음
-          variant  하단에서 보여줄 변형 키
+          variant  처음 보여줄 변형 키. 빈 키가 후보 전부
           height   픽셀 높이
     출력  pyvis Network
-    규칙  상단은 점선(about)만. 하단은 배경 실선 위에 강조를 얹음.
-          옛 top_svg / variant_svgs 의 규칙 그대로임
+    규칙  점선(about) 위에 배경 실선을 깔고, 변형의 강조를 그 실선에 얹음.
+          실행 전에도 실선을 그림. 강조는 있는 엣지의 색 · 굵기만 바꾸므로
+          엣지가 처음부터 있어야 함
     제약  색을 여기서 새로 정하지 않는다.
           출처가 둘이면 칩과 그래프가 조용히 어긋남
     """
@@ -348,7 +354,7 @@ def build_network(model, colors, *, top, variant="", height=480):
         notebook=False,
     )
 
-    for style in node_styles(model, colors, variant, top=top):
+    for style in node_styles(model, colors, variant):
         node_id = style.pop("id")
         node = model["nodes"][node_id]
         x, y = model["positions"][node_id]
@@ -363,23 +369,65 @@ def build_network(model, colors, *, top, variant="", height=480):
             **style,
         )
 
-    점선색 = colors.get("dotted_top" if top else "dotted_bottom", "#8B84E8")
     for entry in model.get("dotted") or ():
         a, b = entry["edge"]
         net.add_edge(
             a, b,
-            color=점선색,
-            width=EDGE_WIDTH_TOP if top else EDGE_WIDTH,
+            color=colors.get("dotted_bottom", "#8B84E8"),
+            width=EDGE_WIDTH,
             dashes=True,
             arrows="",
         )
 
-    if not top:
-        for style in solid_styles(model, colors, variant):
-            net.add_edge(style.pop("from"), style.pop("to"), **style)
+    for style in solid_styles(model, colors, variant):
+        net.add_edge(style.pop("from"), style.pop("to"), **style)
 
     net.set_options(options())
     return net
+
+
+def node_details(model: dict) -> dict:
+    """살펴보기 칸이 노드를 누르면 적을 것.
+
+    출력  {node_id: {"name", "kind", "group", "text"}}
+    규칙  이름은 두 줄로 접힌 라벨을 한 줄로 폄. 칩 이름과 같은 꼴임
+          text 는 network 모형의 title(온톨로지 description) 그대로
+    제약  모형에 없는 설명을 지어내지 않는다.
+          도구 · 서버 이름은 화면 모형에 없어서 안 적음
+    """
+    return {
+        node_id: {
+            "name": _label(node.get("label") or node_id).replace("\n", " "),
+            "kind": KIND_LABELS.get(node.get("kind", ""), ""),
+            "group": node.get("kind") == "group",
+            "text": node.get("title") or "",
+        }
+        for node_id, node in (model.get("nodes") or {}).items()
+    }
+
+
+def minimap_links(model: dict) -> list[list[str]]:
+    """미니맵에 그릴 엣지 전부. 실선과 점선을 가리지 않음."""
+    return ([list(e) for e in model.get("solid") or ()]
+            + [list(entry["edge"]) for entry in model.get("dotted") or ()])
+
+
+def minimap_colors(colors: dict) -> dict:
+    """미니맵 색. 전부 /screen 팔레트에서 옴.
+
+    규칙  배경 · 테두리 · 보는 자리 상자는 색상이 없는 흰색 · 검정의 투명도만 씀.
+          뜻 있는 색(청록 · 금색)은 그래프와 같은 것을 씀
+    """
+    return {
+        "bg": "rgba(14,17,23,0.82)",
+        "frame": "rgba(255,255,255,0.14)",
+        "edge": _rgba(colors.get("edge", "#4A5262"), 0.9),
+        "node": colors.get("plain", "#8C93A1"),
+        "group": colors.get("group", "#D9A441"),
+        "lit": colors.get("highlight", "#14B8A6"),
+        "view": "rgba(255,255,255,0.85)",
+        "viewFill": "rgba(255,255,255,0.07)",
+    }
 
 
 # ── 문서 조립 ────────────────────────────────────────────────────────
@@ -407,7 +455,6 @@ def _without_cdn(html: str) -> str:
 # 픽셀을 박아 두는데 우리가 그것을 `height: 100%` 로 덮는다. 그런데 그 부모인
 # pyvis 의 `.card` 에는 높이가 없어서(인라인 `width: 100%` 뿐) 백분율이 풀릴
 # 기준이 없고, 캔버스가 칸을 다 못 쓴 채 작게 그려졌다.
-# 상단이 넓은 자리를 두고 조그맣게 모여 있던 까닭이 이것이다.
 BASE_CSS = """
 html, body { background: transparent !important; margin: 0; padding: 0;
   height: 100%; overflow: hidden;
@@ -420,45 +467,63 @@ body > .card { height: 100%; min-width: 0; }
   width: 100% !important; height: 100% !important; }
 """
 
-# 하단만 가로로 눕힌다. 왼쪽이 pyvis 의 .card(그래프), 오른쪽이 칩 칸이다.
+# 가로로 눕힌다. 왼쪽이 pyvis 의 .card(본 그래프), 오른쪽이 살펴보기 칸이다.
 # **pyvis 마크업을 안 건드리고 flex 로만 나눈다.**
+# pyvis 는 빈 제목(<center><h1>)을 head 에 두고 브라우저가 그것을 body 로 옮긴다.
+# flex 칸이 되어 gap 만큼 그래프를 오른쪽으로 민다 — 감춘다.
 SPLIT_CSS = """
-body {{ display: flex; flex-direction: row; gap: 10px; }}
-body > .card {{ flex: 0 0 {left}%; }}
-#list {{ flex: 1 1 auto; height: 100%; overflow-y: auto; padding: 0.2rem 4px 0 0;
-  min-width: 0; }}
+body {{ display: flex; flex-direction: row; gap: 14px; }}
+body > center {{ display: none; }}
+body > .card {{ flex: 1 1 auto; }}
+#side {{ flex: 0 0 {side}%; height: 100%; overflow-y: auto; min-width: 0;
+  box-sizing: border-box; padding: 0.1rem 6px 0 14px;
+  border-left: 1px solid rgba(255,255,255,0.08);
+  display: flex; flex-direction: column; gap: 1.1rem; }}
 """
 
-# 고른 recipe 목록. 옛 focus_panel.focus_css 의 칩 규칙을 그대로 가져왔다 —
-# 그 파일을 지우면서 함께 사라져 칩이 맨 글자로 보였다.
+# 살펴보기 칸. 위가 후보 recipe 목록, 아래가 누른 노드의 설명이다.
 #
 # ★ **번호는 후보 하나에 하나다.** 노드마다 붙이면 「몇 번째 노드인가」가 되는데
 #   사람이 읽고 싶은 것은 「몇 번째 후보인가」다. 후보 안의 차례는 화살표가 말한다.
-#   **그래프 위에는 여전히 숫자를 안 올린다** — 번호는 이 패널 안에서만 산다.
+#   **그래프 위에는 여전히 숫자를 안 올린다** — 번호는 이 칸 안에서만 산다.
 # ★ 좁혀도 줄을 빼지 않는다. 고르지 않은 후보는 흐려질 뿐이다 —
 #   후보가 몇이었는지는 좁힌 뒤에도 보여야 한다.
-CHIP_CSS = """
-#list {{ counter-reset: candidate; }}
-.chain {{ display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem;
-  padding: 0.22rem 0; transition: opacity 0.18s ease-out; }}
-.chain + .chain {{ margin-top: 0.8rem; }}
-.chain::before {{
+SIDE_CSS = """
+.head {{ display: flex; align-items: baseline; gap: 0.5rem;
+  font-size: 0.78rem; letter-spacing: 0.04em; color: {plain};
+  text-transform: uppercase; margin-bottom: 0.45rem; }}
+.head .state {{ text-transform: none; letter-spacing: 0; color: #E6E8EB;
+  font-size: 0.85rem; }}
+.blank {{ color: {plain}; font-size: 0.9rem; }}
+#recipes .list:not(:empty) + .blank {{ display: none; }}
+#recipes .list {{ counter-reset: candidate; }}
+.recipe {{ padding: 0.45rem 0.55rem; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent; transition: opacity 0.18s ease-out; }}
+.recipe:hover {{ border-color: rgba(255,255,255,0.10); }}
+.recipe + .recipe {{ margin-top: 0.35rem; }}
+.recipe.off {{ opacity: 0.38; }}
+.rhead {{ display: flex; align-items: center; gap: 0.45rem; margin-bottom: 0.3rem; }}
+.rhead::before {{
   counter-increment: candidate; content: "[" counter(candidate) "]";
   color: {plain}; font-variant-numeric: tabular-nums;
-  margin-right: 0.35rem; flex: 0 0 auto;
 }}
-.chain.off {{ opacity: 0.38; }}
+.rid {{ font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
+  font-size: 0.86rem; color: #E6E8EB; }}
+.tag {{ font-size: 0.72rem; padding: 0.05rem 0.45rem; border-radius: 999px;
+  border: 1px solid {plain}; color: {plain}; }}
+.tag.chosen {{ border-color: {lit}; color: {lit}; }}
+.chain {{ display: flex; align-items: center; flex-wrap: wrap; gap: 0.1rem; }}
 .chip {{
-  display: inline-block; padding: 0.2rem 0.6rem;
+  display: inline-block; padding: 0.16rem 0.55rem;
   border: 1px solid {plain}; border-radius: 999px;
   background: rgba(255,255,255,0.04); color: #E6E8EB;
-  font-size: 0.9rem; white-space: nowrap;
+  font-size: 0.84rem; white-space: nowrap;
   opacity: 0; animation: chip-in 0.22s ease-out forwards;
   animation-delay: calc(var(--i) * 55ms);
 }}
 .link {{
   display: inline-flex; align-items: center;
-  min-width: 2.6rem; padding: 0 0.12rem;
+  min-width: 1.6rem; padding: 0 0.12rem;
   opacity: 0; animation: chip-in 0.22s ease-out forwards;
   animation-delay: calc(var(--i) * 55ms + 28ms);
 }}
@@ -473,13 +538,37 @@ CHIP_CSS = """
   border-left: 5px solid {plain};
   border-top: 3px solid transparent; border-bottom: 3px solid transparent;
 }}
+#node .body {{ display: none; }}
+#node.filled .body {{ display: block; }}
+#node.filled .blank {{ display: none; }}
+.nname {{ font-size: 1.05rem; font-weight: 600; color: #E6E8EB; }}
+.nkind {{ display: inline-block; margin-top: 0.3rem; font-size: 0.72rem;
+  padding: 0.05rem 0.45rem; border-radius: 999px; border: 1px solid {plain};
+  color: {plain}; }}
+.nkind.group {{ border-color: {group}; color: {group}; }}
+.ntext {{ margin: 0.55rem 0 0 0; font-size: 0.9rem; line-height: 1.5; color: #C9CED6; }}
+.nown {{ margin-top: 0.55rem; font-size: 0.8rem; color: {plain}; }}
+.nown:empty {{ display: none; }}
+@media (prefers-reduced-motion: reduce) {{
+  .chip, .link, .link .arrow-line {{ animation: none; opacity: 1; transform: none; }}
+}}
 @keyframes chip-in {{ from {{ opacity: 0; transform: translateX(-6px); }}
   to {{ opacity: 1; transform: none; }} }}
 @keyframes line-grow {{ from {{ transform: scaleX(0); }} to {{ transform: scaleX(1); }} }}
 """
 
-# 오른쪽 칩 칸. body 의 자식이라 pyvis 의 .card 와 나란히 선다.
-CHIP_BOX = '<div id="list"></div>'
+# 오른쪽 살펴보기 칸. body 의 자식이라 pyvis 의 .card 와 나란히 선다.
+# 후보 목록과 노드 설명은 JS 가 채운다 — 값이 JSON 으로 실려 와야 "</script>" 가
+# 섞여도 문서가 안 끊긴다.
+SIDE_BOX = (
+    '<aside id="side">'
+    '<section id="recipes"><div class="head">Recipe <span class="state"></span></div>'
+    '<div class="list"></div><div class="blank">—</div></section>'
+    '<section id="node"><div class="head">Node</div><div class="blank">—</div>'
+    '<div class="body"><div class="nname"></div><span class="nkind"></span>'
+    '<p class="ntext"></p><div class="nown"></div></div></section>'
+    '</aside>'
+)
 
 
 def embed_json(payload) -> str:
@@ -495,11 +584,12 @@ def embed_json(payload) -> str:
 
 # ── 브라우저에서 도는 것 ─────────────────────────────────────────────
 #
-# 셋뿐이다. **셋 다 vis-network 의 공식 손잡이만 쓴다.**
+# **vis-network 의 공식 손잡이만 쓴다.**
 #
-#   좌표 나눠 갖기   dragging/dragEnd -> 통로 -> 상대편의 moveNode
-#   흐르는 표시      afterDrawing 캔버스에 흰 대시를 얹고 offset 만 움직임
+#   흐르는 표시      덮은 캔버스에 흰 대시를 얹고 offset 만 움직임
+#   미니맵           또 한 장의 캔버스. 전체 좌표와 지금 보는 자리를 줄여 그림
 #   좁혀 들어가기    fit({nodes, animation})
+#   고르기 · 살펴보기 click -> DataSet.update · 살펴보기 칸 글자
 #
 # JS 는 색도 굵기도 모른다. 파이썬이 만든 표에서 고를 뿐이다.
 
@@ -539,7 +629,7 @@ GRAPH_SCRIPT = """
     if (!CFG.trace) return;
     try {
       let line = "[graph-" + kind + "] time=" + stamp() +
-                 " inst=" + INSTANCE + " side=" + CFG.side + " event=" + event;
+                 " inst=" + INSTANCE + " event=" + event;
       if (extra) line += " " + extra;
       console.log(line);
     } catch (e) {}
@@ -564,9 +654,7 @@ GRAPH_SCRIPT = """
   }
 
   if (TRACE) trace("debug", "INSTANCE_CREATE",
-        "sig=" + JSON.stringify(CFG.sig || "") +
-        " split=" + !!CFG.split + " flow=" + !!CFG.flow +
-        " overview=" + !!CFG.overview + " memkey=" + CFG.memory);
+        "sig=" + JSON.stringify(CFG.sig || "") + " memkey=" + CFG.memory);
 
   if (TRACE) {
     try {
@@ -576,90 +664,7 @@ GRAPH_SCRIPT = """
     } catch (e) {}
   }
 
-  // ══════════════════════════════════════════════════ 1. 좌표 나눠 갖기
-  //
-  // 상단과 하단은 서로 다른 iframe 이라 같은 network 객체를 못 본다.
-  // BroadcastChannel 이 같은 출처의 창끼리 곧장 주고받는 통로다. 막히면
-  // 부모 창의 객체를 함께 쓰고 화면 갱신마다 훑는다.
-  //
-  // ★ **여기서 카메라를 건드리지 않는다.** 노드가 옮겨지는 것은 지도를 고치는
-  // 일이지 어디를 보는가가 아니다. 끌 때마다 화면이 따라 움직이면 손이 떨린다.
-  let channel = null;
-  let mine = false;          // 지금 내가 끄는 중인가. 되돌아온 내 값을 무시한다
-  let seen = 0;
-
-  function bag() {
-    try {
-      const top = window.parent;
-      if (!top.__graphPositions) top.__graphPositions = {seq: 0, who: "", at: {}};
-      return top.__graphPositions;
-    } catch (e) { return null; }
-  }
-
-  function publish(moved) {
-    const message = {who: CFG.side, at: moved};
-    try { if (channel) channel.postMessage(message); } catch (e) {}
-    const shared = bag();
-    if (shared) {
-      shared.seq += 1;
-      shared.who = CFG.side;
-      Object.assign(shared.at, moved);
-    }
-  }
-
-  function receive(message) {
-    if (!message || message.who === CFG.side || mine) return;
-    if (TRACE && due("sync", CFG.busyMs)) {
-      if (TRACE) trace("debug", "SYNC_RECEIVE",
-            "from=" + message.who + " nodes=" + Object.keys(message.at || {}).length +
-            " " + where());
-    }
-    try {
-      for (const id in message.at) {
-        const p = message.at[id];
-        if (network.body.nodes[id]) network.moveNode(id, p.x, p.y);
-      }
-    } catch (e) {}
-  }
-
-  function listen() {
-    try {
-      channel = new BroadcastChannel(CFG.channel);
-      channel.onmessage = (ev) => receive(ev.data);
-    } catch (e) { channel = null; }
-
-    // 통로가 막힌 브라우저를 위한 뒷길. 부모 객체의 순번만 훑는다.
-    (function poll() {
-      const shared = bag();
-      if (shared && shared.seq !== seen && shared.who !== CFG.side) {
-        seen = shared.seq;
-        receive({who: shared.who, at: shared.at});
-      }
-      window.requestAnimationFrame(poll);
-    })();
-  }
-
-  function share() {
-    function send(params) {
-      const ids = (params && params.nodes) || [];
-      if (!ids.length) return;
-      try { publish(network.getPositions(ids)); } catch (e) {}
-    }
-    network.on("dragStart", () => {
-      mine = true;
-      if (TRACE) trace("debug", "NODE_DRAG_START", where());
-    });
-    network.on("dragging", (params) => {
-      if (TRACE && due("drag", CFG.busyMs)) trace("debug", "NODE_DRAG", where());
-      send(params);                    // 끄는 동안 상대가 따라온다
-    });
-    network.on("dragEnd", (params) => {
-      if (TRACE) trace("debug", "NODE_DRAG_END", where());
-      send(params); mine = false;
-    });
-  }
-
-  // ══════════════════════════════════════════════════ 2. 흐르는 표시
+  // ══════════════════════════════════════════════════ 1. 흐르는 표시
   //
   // 고른 경로 위로 흰 대시가 시작 노드에서 끝 노드 쪽으로 흐른다.
   //
@@ -841,19 +846,193 @@ GRAPH_SCRIPT = """
     window.requestAnimationFrame(animate);
   }
 
+  // ══════════════════════════════════════════════════ 2. 미니맵
+  //
+  // 온톨로지 전체를 줄여 그리고, 본 그래프가 지금 보는 자리를 상자로 얹는다.
+  // ★ **같은 문서 안의 캔버스 한 장이다.** 그래프를 하나 더 띄우지 않는다 —
+  // 좌표는 본 그래프의 getPositions, 보는 자리는 DOMtoCanvas 로 읽는다.
+  // ★ **그리기만 한다.** 카메라를 움직이는 것은 사람이 미니맵을 누르거나
+  // 끌 때(jump) 하나뿐이다.
+  let mini = null, miniPen = null;
+  let miniKey = "";          // 지난번에 그린 카메라. 같으면 다시 안 그린다
+  let miniSize = "";         // 지난번에 잰 칸 크기
+  let miniDirty = true;      // 노드가 옮겨졌다. 전체 범위를 다시 잰다
+  let miniFit = null;        // 그래프 좌표 -> 미니맵 좌표 {k, ox, oy, w, h, dpr}
+  let lit = {};              // 지금 강조된 노드. repaint 가 채운다
+
+  function makeMini() {
+    const box = document.getElementById("mynetwork");
+    if (!box) return;
+    const M = CFG.mini;
+    mini = document.createElement("canvas");
+    mini.id = "minimap";
+    mini.style.cssText =
+      "position:absolute;z-index:3;cursor:crosshair;border-radius:6px;" +
+      "right:" + M.margin + "px;bottom:" + M.margin + "px;" +
+      "background:" + M.colors.bg + ";border:1px solid " + M.colors.frame + ";";
+    box.style.position = "relative";
+    box.appendChild(mini);
+    miniPen = mini.getContext("2d");
+
+    // 누르거나 끌면 그 자리를 본 그래프 한가운데로. 배율은 그대로 둔다.
+    let pressed = false;
+    mini.addEventListener("pointerdown", function (ev) {
+      pressed = true;
+      try { mini.setPointerCapture(ev.pointerId); } catch (e) {}
+      ev.preventDefault();
+      jump(ev);
+    });
+    mini.addEventListener("pointermove", function (ev) { if (pressed) jump(ev); });
+    function release() {
+      if (!pressed) return;
+      pressed = false;
+      remember();
+    }
+    mini.addEventListener("pointerup", release);
+    mini.addEventListener("pointercancel", release);
+  }
+
+  // 전체 범위. 노드 상자 크기까지 넣어야 가장자리 노드가 잘리지 않는다.
+  function bounds() {
+    let at;
+    try { at = network.getPositions(); } catch (e) { return null; }
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const id in at) {
+      const p = at[id];
+      const node = (network.body.nodes || {})[id];
+      const shape = (node && node.shape) || {};
+      const hw = (shape.width || 0) / 2, hh = (shape.height || 0) / 2;
+      x0 = Math.min(x0, p.x - hw); x1 = Math.max(x1, p.x + hw);
+      y0 = Math.min(y0, p.y - hh); y1 = Math.max(y1, p.y + hh);
+    }
+    if (!isFinite(x0) || x1 - x0 < 1 || y1 - y0 < 1) return null;
+    return {x0: x0, y0: y0, x1: x1, y1: y1};
+  }
+
+  // 미니맵 크기와 줄이는 비율. 전체 범위의 가로세로 비를 따른다.
+  function sizeMini() {
+    const box = document.getElementById("mynetwork");
+    const B = bounds();
+    if (!box || !mini || !B) { miniFit = null; return; }
+    const M = CFG.mini;
+    const gw = B.x1 - B.x0, gh = B.y1 - B.y0;
+    let w = Math.max(M.minWidth, Math.min(M.maxWidth, box.clientWidth * M.share));
+    let h = w * gh / gw;
+    if (h > M.maxHeight) { h = M.maxHeight; w = Math.max(M.minWidth, h * gw / gh); }
+    const k = Math.min((w - 2 * M.pad) / gw, (h - 2 * M.pad) / gh);
+    miniFit = {
+      k: k, w: w, h: h, dpr: window.devicePixelRatio || 1,
+      ox: (w - gw * k) / 2 - B.x0 * k,
+      oy: (h - gh * k) / 2 - B.y0 * k,
+    };
+    mini.style.width = Math.round(w) + "px";
+    mini.style.height = Math.round(h) + "px";
+  }
+
+  function drawMini() {
+    if (!mini || !miniPen) return;
+    if (miniDirty) { sizeMini(); miniDirty = false; }
+    const f = miniFit;
+    if (!f) return;
+    // 폭을 다시 넣으면 캔버스가 비워지고 변형도 풀린다. 그 뒤에 변형을 건다.
+    mini.width = Math.max(1, Math.round(f.w * f.dpr));
+    mini.height = Math.max(1, Math.round(f.h * f.dpr));
+    miniPen.setTransform(f.dpr, 0, 0, f.dpr, 0, 0);
+
+    let at;
+    try { at = network.getPositions(); } catch (e) { return; }
+    const C = CFG.mini.colors;
+    const X = (x) => f.ox + x * f.k;
+    const Y = (y) => f.oy + y * f.k;
+
+    miniPen.lineWidth = 1;
+    miniPen.strokeStyle = C.edge;
+    miniPen.beginPath();
+    for (const e of DATA.links) {
+      const a = at[e[0]], b = at[e[1]];
+      if (!a || !b) continue;
+      miniPen.moveTo(X(a.x), Y(a.y));
+      miniPen.lineTo(X(b.x), Y(b.y));
+    }
+    miniPen.stroke();
+
+    for (const id in at) {
+      const on = !!lit[id];
+      const info = DATA.nodes[id] || {};
+      const r = on ? CFG.mini.litDot : CFG.mini.dot;
+      miniPen.fillStyle = on ? C.lit : (info.group ? C.group : C.node);
+      miniPen.fillRect(X(at[id].x) - r, Y(at[id].y) - r, 2 * r, 2 * r);
+    }
+
+    // 본 그래프가 지금 보는 자리. 칸의 두 모서리를 그래프 좌표로 옮긴다.
+    const box = document.getElementById("mynetwork");
+    if (!box) return;
+    let a, b;
+    try {
+      a = network.DOMtoCanvas({x: 0, y: 0});
+      b = network.DOMtoCanvas({x: box.clientWidth, y: box.clientHeight});
+    } catch (e) { return; }
+    miniPen.fillStyle = C.viewFill;
+    miniPen.strokeStyle = C.view;
+    miniPen.lineWidth = 1.5;
+    miniPen.beginPath();
+    miniPen.rect(X(a.x), Y(a.y), (b.x - a.x) * f.k, (b.y - a.y) * f.k);
+    miniPen.fill();
+    miniPen.stroke();
+  }
+
+  // 카메라 · 칸 크기 · 좌표가 바뀐 프레임에만 다시 그린다. 읽기뿐이다.
+  function watchMini() {
+    const box = document.getElementById("mynetwork");
+    let key = "", size = "";
+    try {
+      const p = network.getViewPosition();
+      key = network.getScale().toFixed(5) + "," + p.x.toFixed(1) + "," + p.y.toFixed(1);
+      size = box ? box.clientWidth + "x" + box.clientHeight : "";
+    } catch (e) {}
+    if (size !== miniSize) { miniSize = size; miniDirty = true; }
+    if (key !== miniKey || miniDirty) {
+      miniKey = key;
+      drawMini();
+    }
+    window.requestAnimationFrame(watchMini);
+  }
+
+  // 미니맵에서 누른 자리를 본 그래프 한가운데로. 사람이 손으로 하는 일이다.
+  function jump(ev) {
+    const f = miniFit;
+    if (!f || !mini) return;
+    const r = mini.getBoundingClientRect();
+    const x = (ev.clientX - r.left - f.ox) / f.k;
+    const y = (ev.clientY - r.top - f.oy) / f.k;
+    halt();
+    touched = true;
+    if (TRACE && due("jump", CFG.busyMs)) trace("camera", "MINIMAP_JUMP", where());
+    try { network.moveTo({position: {x: x, y: y}, animation: false}); } catch (e) {}
+  }
+
   // ══════════════════════════════════════════════════ 3. 카메라
   //
-  // ★ **하단 카메라를 움직이는 자리는 여기 하나뿐이다.** 아래 셋 말고는
-  // 어떤 것도 카메라를 못 부른다 — 화면 다시 그리기 · iframe 새로 만들기 ·
-  // 칸 크기 바뀜 · rAF · 흐름 · 좌표 나누기 · 끌기 · 마우스 올리기 전부.
+  // ★ **카메라를 움직이는 자리는 여기 모인 것뿐이다.** 화면 다시 그리기 ·
+  // 칸 크기 바뀜 · rAF · 흐름 · 미니맵 그리기 · 끌기 · 마우스 올리기는 카메라를
+  // 못 부른다.
   //
-  //   새 해석      발화 하나에 한 번. 전체를 잠깐 보여준 뒤 고른 자리로
-  //   후보 누르기  누를 때마다 한 번
-  //   배경 누르기  후보 전부로 되돌아갈 때 한 번
+  //   자리 잡기      전체를 칸에 맞춤. 같은 해석의 iframe 이 새로 만들어졌으면
+  //                  마지막 카메라로. 사람이나 좁혀 들어가기가 잡기 전까지만
+  //   새 해석       발화 하나에 한 번. 전체를 잠깐 보여준 뒤 고른 자리로
+  //   후보 누르기    누를 때마다 한 번
+  //   배경 누르기    후보 전부로 되돌아갈 때 한 번
+  //   미니맵 누르기  누른 자리로 (jump)
   //
-  // 표는 그 셋뿐이고, 도는 동안 다시 들어오면 앞의 것을 버리고 새 것 하나만
+  // 좁혀 들어가기는 도는 동안 다시 들어오면 앞의 것을 버리고 새 것 하나만
   // 돈다(token). 겹쳐 돌면 앞 애니메이션이 제 도착점으로 튀어 화면이 왕복한다.
   const camera = {token: 0, timers: []};
+
+  // 사람이 만졌거나 좁혀 들어가기가 카메라를 잡았다. 그 뒤로는 자리 잡기를 안 한다.
+  let touched = false;
+
+  // 되살릴 카메라. 있으면 자리 잡기가 전체 대신 이것으로 간다.
+  let pinned = null;
 
   function halt() {
     if (TRACE && camera.timers.length) {
@@ -880,6 +1059,7 @@ GRAPH_SCRIPT = """
           "why=" + why + " token=" + camera.token +
           " nodes=" + ids.join(",") + " " + where());
     const mine = halt();
+    touched = true;
     if (TRACE) trace("camera", "WHOLE_FIT_START",
           "why=" + why + " token=" + mine + " dur=" + CFG.hold + " " + where());
     try {
@@ -913,79 +1093,153 @@ GRAPH_SCRIPT = """
     if (TRACE) trace("camera", "GLIDE_EXIT", "why=" + why + " token=" + mine);
   }
 
-  // ── 새 해석 : 발화 하나에 한 번 ────────────────────────────────────
+  // ── iframe 밖에 적어 두는 것 ────────────────────────────────────────
   //
-  // 「이미 보여줬다」를 이 문서 안에 두면 안 된다 — Streamlit 은 무엇을 누르든
-  // 스크립트를 다시 돌리고 그때 iframe 이 통째로 새로 만들어져 문서 안의
-  // 변수가 사라진다. 창 저장소에 맡기고, 막히면 부모 창으로 떨어진다.
-  let remembered = "";
+  // 「이미 보여줬다」와 마지막 카메라를 이 문서 안에 두면 안 된다 — Streamlit 은
+  // 무엇을 누르든 스크립트를 다시 돌리고, 그때 iframe 이 새로 만들어지면 문서
+  // 안의 변수가 사라진다. 창 저장소에 맡기고, 막히면 부모 창으로 떨어진다.
+  const remembered = {};
 
-  function loadSig() {
+  function recall(key) {
     try {
-      const raw = window.sessionStorage.getItem(CFG.memory);
+      const raw = window.sessionStorage.getItem(key);
       if (raw !== null) {
-        if (TRACE) trace("debug", "FOCUS_MEMORY_READ",
-              "tier=session key=" + CFG.memory + " value=" + JSON.stringify(raw));
+        if (TRACE) trace("debug", "MEMORY_READ",
+              "tier=session key=" + key + " value=" + JSON.stringify(raw));
         return raw;
       }
     } catch (e) {
-      if (TRACE) trace("debug", "FOCUS_MEMORY_READ", "tier=session key=" + CFG.memory + " error=1");
+      if (TRACE) trace("debug", "MEMORY_READ", "tier=session key=" + key + " error=1");
     }
     try {
       const bagged = window.parent.__graphFocus;
-      if (bagged && bagged[CFG.memory] !== undefined) {
-        if (TRACE) trace("debug", "FOCUS_MEMORY_READ",
-              "tier=parent key=" + CFG.memory +
-              " value=" + JSON.stringify(bagged[CFG.memory]));
-        return bagged[CFG.memory];
+      if (bagged && bagged[key] !== undefined) {
+        if (TRACE) trace("debug", "MEMORY_READ",
+              "tier=parent key=" + key + " value=" + JSON.stringify(bagged[key]));
+        return bagged[key];
       }
     } catch (e) {
-      if (TRACE) trace("debug", "FOCUS_MEMORY_READ", "tier=parent key=" + CFG.memory + " error=1");
+      if (TRACE) trace("debug", "MEMORY_READ", "tier=parent key=" + key + " error=1");
     }
-    if (TRACE) trace("debug", "FOCUS_MEMORY_READ",
-          "tier=document key=" + CFG.memory + " value=" + JSON.stringify(remembered));
-    return remembered;
+    return remembered[key] === undefined ? null : remembered[key];
   }
 
-  function saveSig(sig) {
-    remembered = sig;
+  function keep(key, value) {
+    remembered[key] = value;
     let ok = "document";
-    try { window.sessionStorage.setItem(CFG.memory, sig); ok = "session"; } catch (e) {}
+    try { window.sessionStorage.setItem(key, value); ok = "session"; } catch (e) {}
     try {
       const top = window.parent;
       if (!top.__graphFocus) top.__graphFocus = {};
-      top.__graphFocus[CFG.memory] = sig;
+      top.__graphFocus[key] = value;
       if (ok === "document") ok = "parent";
     } catch (e) {}
-    if (TRACE) trace("debug", "FOCUS_MEMORY_WRITE",
-          "tier=" + ok + " key=" + CFG.memory + " value=" + JSON.stringify(sig));
+    if (TRACE) trace("debug", "MEMORY_WRITE",
+          "tier=" + ok + " key=" + key + " value=" + JSON.stringify(value));
   }
 
+  // ── 새 해석 : 발화 하나에 한 번 ────────────────────────────────────
+  //
+  // 출력  좁혀 들어가기를 걸었는가
   function focusOnce(ids) {
     // ★ 조건과 차례를 안 바꾼다. 읽은 값을 적어 두고 그대로 판단한다.
-    const seenSig = CFG.sig ? loadSig() : null;
+    const seenSig = CFG.sig ? recall(CFG.memory) : null;
     if (TRACE) trace("camera", "FOCUS_ONCE_ENTER",
           "sig=" + JSON.stringify(CFG.sig || "") +
           " seen=" + JSON.stringify(seenSig) +
           " same=" + (CFG.sig === seenSig) + " nodes=" + (ids || []).length);
     if (!CFG.sig || CFG.sig === seenSig) {
       if (TRACE) trace("camera", "FOCUS_ONCE_SKIP", "reason=" + (CFG.sig ? "already-shown" : "no-sig"));
-      return;
+      return false;
     }
-    saveSig(CFG.sig);
+    keep(CFG.memory, CFG.sig);
+    if (!ids || !ids.length) return false;   // 실행 전 · NO_MATCH 는 전체 맞추기로
     glide(ids, "resolve");
+    return true;
   }
 
-  // ══════════════════════════════════════════════════ 4. 고르기
+  // ── 마지막 카메라 : 같은 해석을 다시 그릴 때 ──────────────────────
+  //
+  // 사람이 옮긴 화면이나 좁혀 들어간 화면을, iframe 이 새로 만들어져도 그대로
+  // 둔다. 이 해석의 서명과 함께 적으므로 다른 해석에는 안 쓰인다.
+  function remember() {
+    if (!CFG.sig) return;
+    try {
+      const p = network.getViewPosition();
+      keep(CFG.memory + "_view", JSON.stringify(
+        {sig: CFG.sig, scale: network.getScale(), x: p.x, y: p.y}));
+    } catch (e) {}
+  }
+
+  // ★ 한 번 옮기고 끝내지 않는다. 칸 크기가 늦게 정해지면 vis-network 가 폭 비율로
+  // 배율을 다시 잡아 되살린 자리가 어긋난다. 자리 잡기가 칸 크기를 따라 다시 건다.
+  function restoreView() {
+    let saved = null;
+    try { saved = JSON.parse(recall(CFG.memory + "_view") || "null"); } catch (e) {}
+    if (!saved || saved.sig !== CFG.sig) return false;
+    if (TRACE) trace("camera", "VIEW_RESTORE", "scale=" + saved.scale);
+    pinned = saved;
+    return true;
+  }
+
+  // 사람이 카메라를 움직이면 적는다. 좁혀 들어가기가 끝나도 적는다. 읽기뿐이다.
+  function track() {
+    network.on("dragStart", () => { touched = true; });
+    network.on("zoom", () => { touched = true; remember(); });
+    network.on("dragEnd", () => { remember(); });
+    network.on("animationFinished", () => { remember(); });
+    // 노드를 옮기면 미니맵 범위를 다시 잰다
+    network.on("dragging", (params) => {
+      if ((params.nodes || []).length) miniDirty = true;
+      if (TRACE && due("drag", CFG.busyMs)) trace("debug", "NODE_DRAG", where());
+    });
+  }
+
+  // ── 자리 잡기 : 전체를 칸에, 또는 마지막 카메라로 ──────────────────
+  //
+  // pyvis 는 fit 을 한 번도 안 부른다. 그래서 카메라가 기본값 그대로이고 칸이
+  // 아무리 넓어도 그래프가 그 자리에 머문다. 칸 크기가 늦게 정해지는 경우가
+  // 있어 한 번 더 잡은 뒤 칸 크기를 따라간다. 누가 카메라를 잡은 뒤로는 안 한다.
+  function settle(why) {
+    if (touched) {
+      if (TRACE) trace("camera", "SETTLE_SKIP", "why=" + why + " reason=touched");
+      return;
+    }
+    if (TRACE) trace("camera", pinned ? "SETTLE_RESTORE" : "SETTLE_FIT", "why=" + why + " " + where());
+    try {
+      if (pinned) {
+        network.moveTo({position: {x: pinned.x, y: pinned.y}, scale: pinned.scale,
+                        animation: false});
+      } else {
+        network.fit({});
+      }
+    } catch (e) {}
+  }
+
+  function overview() {
+    settle("start");
+    window.requestAnimationFrame(() => settle("frame"));
+    window.setTimeout(() => settle("timeout"), 120);
+    try {
+      new ResizeObserver(function () {
+        if (TRACE) trace("camera", "RESIZE_OBSERVER", "target=main");
+        settle("resize");
+      }).observe(document.getElementById("mynetwork"));
+    } catch (e) {
+      window.addEventListener("resize", () => settle("window-resize"));
+    }
+  }
+
+  // ══════════════════════════════════════════════════ 4. 고르기 · 살펴보기
   let picked = null;
 
   // 고른 후보만 또렷하게. 목록에서 줄을 빼지 않는다 — 후보가 몇이었는지는
   // 좁힌 뒤에도 보여야 한다.
   function mark(key) {
-    const chains = document.querySelectorAll("#list .chain");
-    for (let i = 0; i < chains.length; i++) {
+    const rows = document.querySelectorAll("#recipes .recipe");
+    for (let i = 0; i < rows.length; i++) {
       const one = !key || DATA.order[i] === key;
-      chains[i].classList.toggle("off", !one);
+      rows[i].classList.toggle("off", !one);
     }
   }
 
@@ -999,10 +1253,9 @@ GRAPH_SCRIPT = """
       network.body.data.nodes.update(patch.nodes);
     } catch (e) {}
     flow = reduced() ? [] : (patch.flow || []);
-
-    const list = document.getElementById("list");
-    // 목록은 늘 후보 전부다. 좁혀도 줄이 사라지지 않는다.
-    if (list && !list.childElementCount) list.innerHTML = DATA.chips || "";
+    lit = {};
+    for (const id of patch.focus || []) lit[id] = true;
+    miniKey = "";              // 미니맵의 강조도 함께 바뀐다
     mark(key);
     return patch;
   }
@@ -1017,78 +1270,84 @@ GRAPH_SCRIPT = """
     if (patch) glide(patch.focus, why);
   }
 
-  // ══════════════════════════════════════════════════ 5. 상단 전체 맞추기
-  //
-  // pyvis 는 fit 을 한 번도 안 부른다. 그래서 카메라가 기본값 그대로이고
-  // 칸이 아무리 넓어도 그래프가 그 자리에 머문다. 상단은 전체 overview 라
-  // 칸에 꽉 차게 맞춰 준다.
-  // ★ **상단에만 있다.** 하단에서는 이 함수가 아예 안 불린다 —
-  // 칸 크기 때문에 하단 카메라가 움직이면 안 된다.
-  let touched = false;
+  // 누른 노드를 살펴보기 칸에. 이름 · 종류 · 설명 · 그 노드를 지나는 후보.
+  // 글자는 textContent 로만 넣는다 — 설명에 꺾쇠가 섞여도 마크업이 안 된다.
+  function inspect(id) {
+    const panel = document.getElementById("node");
+    if (!panel) return;
+    const info = id ? DATA.nodes[id] : null;
+    panel.classList.toggle("filled", !!info);
+    if (!info) return;
+    panel.querySelector(".nname").textContent = info.name;
+    const kind = panel.querySelector(".nkind");
+    kind.textContent = info.kind;
+    kind.classList.toggle("group", !!info.group);
+    panel.querySelector(".ntext").textContent = info.text;
+    const owners = [];
+    DATA.order.forEach(function (rid, i) {
+      const patch = DATA.patches[rid];
+      if (patch && (patch.focus || []).indexOf(id) >= 0) owners.push("[" + (i + 1) + "] " + rid);
+    });
+    panel.querySelector(".nown").textContent =
+      owners.length ? CFG.ownerLabel + "  " + owners.join("   ") : "";
+  }
 
-  function overview() {
-    function fitAll(why) {
-      if (touched) {
-        if (TRACE) trace("camera", "TOP_FIT_SKIP", "why=" + why + " reason=user-moved");
-        return;
-      }
-      if (TRACE) trace("camera", "TOP_FIT", "why=" + why + " " + where());
-      try { network.fit({}); } catch (e) {}
-    }
-    network.on("dragStart", () => { touched = true; });
-    network.on("zoom", () => { touched = true; });
-    fitAll("start");
-    // 칸 크기가 늦게 정해지는 경우가 있다. 한 번 더 맞춘 뒤 창 크기를 따라간다.
-    window.requestAnimationFrame(() => fitAll("frame"));
-    window.setTimeout(() => fitAll("timeout"), 120);
-    try {
-      new ResizeObserver(function () {
-        if (TRACE) trace("camera", "RESIZE_OBSERVER", "target=top");
-        fitAll("resize");
-      }).observe(document.getElementById("mynetwork"));
-    } catch (e) {
-      window.addEventListener("resize", () => fitAll("window-resize"));
+  // 살펴보기 칸을 채운다. 후보 줄을 누르면 그 후보로 좁히고, 다시 누르면 전부로.
+  function fillSide() {
+    const list = document.querySelector("#recipes .list");
+    if (list && !list.childElementCount) list.innerHTML = DATA.recipes || "";
+    const state = document.querySelector("#recipes .state");
+    if (state) state.textContent = DATA.status || "";
+    const rows = document.querySelectorAll("#recipes .recipe");
+    for (let i = 0; i < rows.length; i++) {
+      rows[i].addEventListener("click", function () {
+        const key = DATA.order[i];
+        clicked(picked === key ? null : key, "candidate");
+      });
     }
   }
 
-  // ══════════════════════════════════════════════════ 6. 시작
+  // ══════════════════════════════════════════════════ 5. 시작
   function start() {
     if (typeof network === "undefined") { window.setTimeout(start, 60); return; }
     if (TRACE) trace("debug", "NETWORK_READY", where());
-    listen();
-    share();
 
-    if (CFG.flow) {
-      makeLayer();
-      window.requestAnimationFrame(animate);
-    }
-    if (CFG.overview) overview();
+    makeLayer();
+    window.requestAnimationFrame(animate);
+    makeMini();
+    window.requestAnimationFrame(watchMini);
+    track();
+    fillSide();
 
-    if (CFG.split) {
-      network.on("click", function (params) {
-        const id = (params.nodes || [])[0];
-        if (!id) {
-          // 배경을 누르면 후보 전부로 돌아간다.
-          clicked(null, "background");
-          return;
-        }
-        // 그 노드를 가진 후보가 하나뿐일 때만 좁힌다. 여럿이 함께 쓰는
-        // 노드는 어느 후보인지 가릴 근거가 없어 아무 일도 하지 않는다.
-        const only = DATA.picks[id];
-        if (!only) {
-          if (TRACE) trace("camera", "NODE_CLICK_AMBIGUOUS", "node=" + id);
-          return;
-        }
-        clicked(picked === only ? null : only, "candidate");
-      });
-      // 첫 그림. 카메라는 이 해석을 아직 안 보여줬을 때만 움직인다.
-      if (TRACE) trace("camera", "RESOLVE_RECEIVED",
-            "sig=" + JSON.stringify(CFG.sig || "") +
-            " variants=" + Object.keys(DATA.patches || {}).length +
-            " picks=" + Object.keys(DATA.picks || {}).length);
-      const patch = repaint();
-      if (patch) focusOnce(patch.focus);
-    }
+    network.on("click", function (params) {
+      const id = (params.nodes || [])[0];
+      if (!id) {
+        // 배경을 누르면 후보 전부로 돌아가고 살펴보기 칸을 비운다.
+        inspect(null);
+        clicked(null, "background");
+        return;
+      }
+      inspect(id);
+      // 그 노드를 가진 후보가 하나뿐일 때만 좁힌다. 여럿이 함께 쓰는
+      // 노드는 어느 후보인지 가릴 근거가 없어 설명만 보여준다.
+      const only = DATA.picks[id];
+      if (!only) {
+        if (TRACE) trace("camera", "NODE_CLICK_AMBIGUOUS", "node=" + id);
+        return;
+      }
+      clicked(picked === only ? null : only, "candidate");
+    });
+
+    // 첫 그림. 새 해석이면 좁혀 들어가고, 같은 해석을 다시 그린 것이면
+    // 마지막 카메라로 돌아가고(restoreView 가 자리를 정하고 overview 가 건다),
+    // 둘 다 아니면 전체를 칸에 맞춘다.
+    if (TRACE) trace("camera", "RESOLVE_RECEIVED",
+          "sig=" + JSON.stringify(CFG.sig || "") +
+          " variants=" + Object.keys(DATA.patches || {}).length +
+          " picks=" + Object.keys(DATA.picks || {}).length);
+    const patch = repaint();
+    if (!(patch && focusOnce(patch.focus))) restoreView();
+    overview();
   }
   start();
 })();
@@ -1096,26 +1355,18 @@ GRAPH_SCRIPT = """
 """
 
 
-def graph_script(*, side, split, flow, overview, signature, data) -> str:
+def graph_script(*, signature, data) -> str:
     """브라우저에서 도는 한 벌.
 
-    입력  side      "top" 또는 "bottom". 통로에서 제 것을 가리는 이름
-          split     오른쪽 칩 칸과 노드 누르기가 있는가 (하단만)
-          flow      흐르는 표시를 얹는가 (하단만)
-          overview  칸에 꽉 차게 맞추는가 (상단만)
-          signature 이 화면의 서명. 같으면 다시 안 좁힘
-          data      변형별 스타일 표 · 후보 목록 · 줄 차례 · 노드→후보 표
+    입력  signature 이 해석의 서명. 같으면 다시 안 좁힘
+          data      변형별 스타일 표 · 후보 목록 · 줄 차례 · 노드→후보 표 ·
+                    노드 설명 · 미니맵 엣지
     출력  <script> 태그까지 포함한 문자열
     제약  색과 굵기를 여기서 정하지 않는다. 파이썬이 만든 표를 고를 뿐이다
     """
     config = {
-        "side": side,
-        "split": split,
-        "flow": flow,
-        "overview": overview,
         "sig": signature,
-        "channel": POSITION_CHANNEL,
-        "memory": f"{FOCUS_MEMORY}_{side}",
+        "memory": FOCUS_MEMORY,
         "dash": FLOW_DASH,
         "gap": FLOW_GAP,
         "period": FLOW_PERIOD_SECONDS,
@@ -1133,82 +1384,72 @@ def graph_script(*, side, split, flow, overview, signature, data) -> str:
         "move": FOCUS_MOVE_MS,
         "maxScale": FOCUS_MAX_SCALE,
         "pad": FOCUS_PAD,
+        "ownerLabel": "지나는 후보",
+        "mini": {
+            "margin": MINIMAP_MARGIN,
+            "share": MINIMAP_SHARE,
+            "minWidth": MINIMAP_MIN_WIDTH,
+            "maxWidth": MINIMAP_MAX_WIDTH,
+            "maxHeight": MINIMAP_MAX_HEIGHT,
+            "pad": MINIMAP_PAD,
+            "dot": MINIMAP_DOT,
+            "litDot": MINIMAP_LIT_DOT,
+            "colors": data.pop("miniColors", {}),
+        },
     }
     return (GRAPH_SCRIPT
             .replace("__CFG__", embed_json(config))
             .replace("__DATA__", embed_json(data)))
 
 
-def _document(model, colors, *, top, height, extra_css, script) -> str:
-    """pyvis 문서에 우리 것을 얹은 한 벌."""
-    net = build_network(model, colors, top=top, height=height)
-    html = _without_cdn(net.generate_html(notebook=False))
-    css = "<style>" + BASE_CSS + extra_css + "</style>"
-    html = re.sub(r"</head>", css + "</head>", html, count=1)
-    return re.sub(r"</body>", script + "</body>", html, count=1)
+def main_html(model, colors, recipes="", *, status="", order=(), height,
+              signature="", side_ratio=0.28) -> str:
+    """서비스 화면의 그래프 문서 한 벌. 본 그래프 · 미니맵 · 살펴보기 칸.
 
-
-def top_html(model, colors, *, height) -> str:
-    """상단 문서. **중립 overview 다.**
-
-    입력  network 모형 · 색 · 픽셀 높이
+    입력  model       render 응답의 "network"
+          colors      /screen 의 colors
+          recipes     후보 recipe 목록 마크업 (path_panel.recipe_rows_markup)
+          status      후보 목록 머리에 적을 판정 한 마디. 없으면 빈 문자열
+          order       마크업 줄 차례에 맞춘 recipe id
+          height      픽셀 높이
+          signature   이 해석의 서명
+          side_ratio  살펴보기 칸이 차지하는 폭 비율
     출력  iframe 에 넣을 HTML 문서
-    규칙  점선(about)과 대상 노드 금색만 보여줌
-          노드를 끌면 그 좌표가 하단에도 간다
-          칸에 꽉 차게 맞춤. pyvis 가 fit 을 한 번도 안 불러 카메라가 기본값에
-          머무르므로 여기서 한 번 맞추고 칸 크기가 바뀌면 다시 맞춤.
-          사람이 끌거나 굴린 뒤에는 안 맞춤
-    제약  발화 해석 결과를 여기 칠하지 않는다.
-          강조 · 흐르는 표시 · 좁혀 들어가기 전부 하단의 일임
-    """
-    script = graph_script(side="top", split=False, flow=False, overview=True,
-                          signature="",
-                          data={"patches": {}, "chips": "", "order": [], "picks": {}})
-    return _document(model, colors, top=True, height=height, extra_css="", script=script)
-
-
-def bottom_html(model, colors, chips, *, left_ratio, order=(), height,
-                signature="") -> str:
-    """하단 문서. 왼쪽이 실행 흐름 그래프, 오른쪽이 후보 recipe 목록.
-
-    입력  network 모형 · 색 · 후보 목록 마크업 · 왼쪽 폭 비율 ·
-          마크업 줄 차례에 맞춘 recipe id · 픽셀 높이 · 이 해석의 서명
-    출력  iframe 에 넣을 HTML 문서
-    규칙  둘을 한 문서에 둠. 나누면 클릭마다 Streamlit 재실행이라 굼뜸
+    규칙  실행 전에는 온톨로지 전체를 칸에 맞춰 보여줌. 강조 없음
+          해석이 오면 처음 한 번 전체를 잠깐 보여준 뒤 후보 전부로 좁혀 들어감.
+          서명이 같으면 안 돎 — 같은 해석을 다시 그릴 때는 마지막 카메라로 돌아감
+          노드를 누르면 살펴보기 칸에 그 노드의 이름 · 종류 · 설명을 적음.
+          그 노드를 가진 후보가 하나일 때만 그 후보로 좁힘
+          후보 줄을 누르면 그 후보로 좁힘. 다시 누르거나 배경을 누르면 전부로
           변형 스타일은 파이썬이 미리 만들어 넘김. JS 는 고르기만 함
-          처음 한 번은 후보 전부를 감싸 좁혀 들어감. 서명이 같으면 안 돔 —
-          같은 발화를 다시 그릴 때마다 확대가 되풀이되면 안 됨
-          노드를 누르면 그 노드를 가진 후보가 하나일 때만 좁힘.
-          여럿이 함께 쓰는 노드는 가릴 근거가 없어 아무 일도 안 함
     제약  라이브러리 캔버스를 우리가 다시 그리지 않는다.
-          흐르는 표시만 afterDrawing 으로 한 겹 얹음
+          흐르는 표시와 미니맵은 제 캔버스에 그림
           좁힌다고 목록에서 줄을 빼지 않는다. 흐려질 뿐임
+          pyvis 마크업 안에 끼워 넣지 않는다. 살펴보기 칸은 .card 옆에 나란히 섬 —
+          그 안을 헤집으면 pyvis 판이 바뀔 때 조용히 깨짐
+          CDN 을 부르지 않는다. cdn_resources="in_line" 이라 인터넷 없이 뜸
     """
     script = graph_script(
-        side="bottom", split=True, flow=True, overview=False, signature=signature,
+        signature=signature,
         data={
             "patches": variant_patches(model, colors),
-            "chips": chips,
+            "recipes": recipes,
+            "status": status,
             "order": list(order),
             "picks": model.get("picks") or {},
+            "nodes": node_details(model),
+            "links": minimap_links(model),
+            "miniColors": minimap_colors(colors),
         },
     )
-    css = (SPLIT_CSS.format(left=round(left_ratio * 100, 2))
-           + CHIP_CSS.format(plain=colors.get("plain", "#8C93A1")))
-    # 칩 칸은 pyvis 의 .card 옆에 나란히 선다. **pyvis 마크업 안에 끼워 넣지
-    # 않는다** — 그 안을 헤집으면 pyvis 판이 바뀔 때 조용히 깨진다.
-    # 내용은 JS 가 고른 변형에 맞춰 채운다.
-    return _document(model, colors, top=False, height=height, extra_css=css,
-                     script=CHIP_BOX + script)
+    css = (SPLIT_CSS.format(side=round(side_ratio * 100, 2))
+           + SIDE_CSS.format(plain=colors.get("plain", "#8C93A1"),
+                             lit=colors.get("highlight", "#14B8A6"),
+                             group=colors.get("group", "#D9A441")))
 
-
-def network_html(model, colors, *, top, variant="", height=480):
-    """문서 한 벌. 시험과 옛 부름이 이 자리를 지난다.
-
-    제약  CDN 을 부르지 않는다.
-          cdn_resources="in_line" 이라 인터넷 없이 뜸. 시연 장소의 망을
-          믿지 않음
-    """
-    if top:
-        return top_html(model, colors, height=height)
-    return bottom_html(model, colors, "", left_ratio=1.0, height=height)
+    net = build_network(model, colors, height=height)
+    html = _without_cdn(net.generate_html(notebook=False))
+    # 바꿀 글자를 함수로 넘긴다. 문자열로 넘기면 JSON 안의 역슬래시를 re 가 풀어 버린다.
+    style = "<style>" + BASE_CSS + css + "</style></head>"
+    html = re.sub(r"</head>", lambda _: style, html, count=1)
+    return re.sub(r"</body>", lambda _: SIDE_BOX + script + "</body>", html, count=1)

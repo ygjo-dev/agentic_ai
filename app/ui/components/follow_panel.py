@@ -54,6 +54,7 @@ def follow_view(turn: dict) -> dict:
     규칙  kind 를 "resolve" 로 둠. 그래야 이미 있는 강조가 그대로 돎.
           render_mode 가 resolve 모드를 고르고 recipe_ids_to_show 가
           고른 것과 후보들을 집음
+          status 는 resolve 판정(SELECT · CLARIFY · NO_MATCH) 그대로. 후보 목록 머리가 읽음
           answer 와 단계는 follow 칸에 그대로 둠. 여기서 다시 만들지 않음
     제약  강조 규칙을 새로 만들지 않는다.
           발화를 여기서 넣었을 때와 같은 길로 그려야 두 장면이 안 갈린다
@@ -62,6 +63,7 @@ def follow_view(turn: dict) -> dict:
         "kind": "resolve",
         "utterance": turn.get("utterance") or "",
         "result": {
+            "status": turn.get("status") or "",
             "recipe_id": turn.get("recipe_id"),
             "candidate_recipe_ids": turn.get("candidate_recipe_ids") or [],
         },

@@ -12,15 +12,11 @@ import streamlit as st
 DEBUG = os.environ.get("DEMO_DEBUG", "0") == "1"
 
 LAYOUT = {
-    # 상단이 차지하는 화면 높이 비율. 하단 그래프가 종횡비 0.65 라 1/3 로는
-    # 폭을 20% 밖에 못 쓴다. 절반으로 올려야 읽을 만해진다.
-    "top_ratio": 0.5,
-    "left_ratio": 0.33,         # 상단 좌측(입력) 비율
-    # 하단 좌측(해석 그래프) 비율. 나머지가 칩 목록.
-    # 그래프는 높이에 걸려 있어서 이 값을 키워도 그래프가 커지지는 않는다 —
-    # 칩 사슬이 폭을 다 안 쓰니 줄이는 것뿐이다.
-    "bottom_left_ratio": 0.60,
-    "chrome_vh": 6,             # 헤더·패딩이 먹는 높이(vh)
+    # 그래프 문서 안에서 오른쪽 살펴보기 칸(후보 recipe · 노드 설명)이 차지하는 폭
+    "side_ratio": 0.26,
+    # KRRI_ASAP 회차를 따라 볼 때 그래프 오른쪽 실행 기록 칸이 차지하는 폭
+    "follow_ratio": 0.24,
+    "chrome_vh": 6,             # 탭 줄 · 패딩이 먹는 높이(vh)
     # 브라우저 창 높이(px). iframe 은 height 속성으로 높이가 고정되므로
     # CSS 로 덮을 수가 없다 — 픽셀을 직접 계산해 넘겨야 한다.
     # 실측값(32인치, 전체화면 미사용). 다른 화면에서는 ?vh= 로 덮는다.
@@ -45,9 +41,8 @@ FOLLOW_INTERVAL_SECONDS = 3
 
 # 비율은 리허설 중에 새로고침만으로 맞출 수 있어야 한다. 값이 정해지면 LAYOUT 에 박는다.
 _RATIO_KEYS = {
-    "top": "top_ratio",
-    "left": "left_ratio",
-    "bleft": "bottom_left_ratio",
+    "side": "side_ratio",
+    "follow": "follow_ratio",
 }
 
 
@@ -91,7 +86,7 @@ def _as_pixels(raw) -> int | None:
 
 
 def layout_ratios() -> dict:
-    """LAYOUT 에 쿼리 파라미터(?top=0.7&left=0.28&vh=900)를 얹은 값.
+    """LAYOUT 에 쿼리 파라미터(?side=0.3&follow=0.2&vh=900)를 얹은 값.
 
     규칙  Streamlit 런타임 밖에서도 부를 수 있어야 해 예외는 삼키고 기본값을 씀
     """
