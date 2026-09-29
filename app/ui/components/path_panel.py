@@ -7,8 +7,8 @@
 사슬을 받아 칩으로 그리기만 한다 — 순서 계산이 두 곳에 있으면 그래프와 목록이
 서로 다른 순서를 말하게 된다.
 
-recipe 를 설명하는 글은 게시 자산에 없다. 목록은 recipe id 와 실제 노드 이름
-사슬만 보여준다 — 지어낸 설명을 덧붙이지 않는다.
+후보 한 줄은 recipe id · 게시 menu 의 function 문장(무엇을 하는가) · 실제 노드 이름
+사슬(어떻게 하는가)이다. 화면이 만든 설명 문장은 없다.
 
 마크업 생성은 Streamlit 없이 부를 수 있는 순수 함수다(테스트 때문).
 """
@@ -76,33 +76,42 @@ def path_chain(names: list[str], color: str) -> str:
     return f'<div class="chain">{"".join(parts)}</div>'
 
 
-def recipe_row(recipe_id: str, names: list[str], chosen: bool, color: str) -> str:
-    """후보 recipe 한 줄. id · 꼬리표 · 노드 이름 사슬.
+def recipe_row(recipe_id: str, names: list[str], chosen: bool, color: str,
+               function: str = "") -> str:
+    """후보 recipe 한 줄. id · 꼬리표 · 기능 설명 · 노드 이름 사슬.
 
     출력  .recipe div 마크업
     규칙  해석이 고른 recipe 면 「선택」, 그 밖은 「후보」
           id 는 정답표 · 평가 화면 · KRRI 되묻기 목록과 맞춰 볼 수 있게 적음
+          기능 설명은 사슬보다 먼저 둠. 무엇을 하는지가 어떻게 하는지보다 먼저 읽혀야 함
+          설명이 없으면 그 칸만 빠지고 id · 사슬은 그대로임
+    제약  설명 문장을 줄이거나 다시 쓰지 않는다. 폭은 CSS 줄바꿈으로만 맞춤
     """
     tag = (f'<span class="tag chosen">{CHOSEN_TAG}</span>' if chosen
            else f'<span class="tag">{CANDIDATE_TAG}</span>')
+    text = f'<div class="rfn">{html.escape(function)}</div>' if function else ""
     return (
         f'<div class="recipe"><div class="rhead">'
         f'<span class="rid">{html.escape(recipe_id)}</span>{tag}</div>'
-        f"{path_chain(names, color)}</div>"
+        f"{text}{path_chain(names, color)}</div>"
     )
 
 
 def recipe_rows_markup(chains: list[list[str]], order: list[str],
-                       chosen: str | None, color: str) -> str:
+                       chosen: str | None, color: str,
+                       recipes: dict | None = None) -> str:
     """후보 recipe 목록 전체. 그래프 문서의 살펴보기 칸에 들어감.
 
-    입력  이름 사슬 목록 · 줄 차례에 맞춘 recipe id · 해석이 고른 recipe · 칩 색
+    입력  이름 사슬 목록 · 줄 차례에 맞춘 recipe id · 해석이 고른 recipe · 칩 색 ·
+          render 응답의 recipes ({recipe id: {"function": 문장}})
     출력  .recipe div 여러 개. 후보가 없으면 빈 문자열
     제약  줄 차례를 다시 매기지 않는다.
           서버가 낸 chips 차례가 곧 그래프 변형 차례임
     """
+    recipes = recipes or {}
     return "".join(
-        recipe_row(recipe_id, names, recipe_id == chosen, color)
+        recipe_row(recipe_id, names, recipe_id == chosen, color,
+                   (recipes.get(recipe_id) or {}).get("function") or "")
         for recipe_id, names in zip(order, chains or [])
     )
 

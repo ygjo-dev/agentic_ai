@@ -509,6 +509,8 @@ SIDE_CSS = """
 }}
 .rid {{ font-family: ui-monospace, "SFMono-Regular", Menlo, monospace;
   font-size: 0.86rem; color: #E6E8EB; }}
+.rfn {{ font-size: 0.9rem; line-height: 1.45; color: #E6E8EB;
+  margin: 0 0 0.35rem 0; word-break: keep-all; overflow-wrap: break-word; }}
 .tag {{ font-size: 0.72rem; padding: 0.05rem 0.45rem; border-radius: 999px;
   border: 1px solid {plain}; color: {plain}; }}
 .tag.chosen {{ border-color: {lit}; color: {lit}; }}

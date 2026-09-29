@@ -4,7 +4,7 @@
 함께 있다(`network.main_html`). 한 문서라야 노드를 누르거나 후보를 고를 때 파이썬
 왕복이 없어 즉각 반응하고 LLM 도 다시 불리지 않는다.
 
-노드 · 엣지 · 좌표 · 변형 스타일 재료는 백엔드가 보낸다(POST /render). 여기서는
+노드 · 엣지 · 좌표 · 변형 스타일 재료와 후보의 기능 설명은 백엔드가 보낸다(POST /render). 여기서는
 장면에서 서명 · 고른 recipe · 판정 한 마디를 뽑아 문서에 넘길 뿐이다 — 엣지 굵기 ·
 색 · 순번 규칙이 서버와 JS 두 곳으로 갈라지지 않게 하려는 것이다.
 
@@ -73,6 +73,7 @@ def graph_html(rendered: dict, view: dict | None, ratios: dict) -> str:
         path_panel.recipe_rows_markup(
             rendered.get("chips") or [], order,
             path_panel.chosen_recipe(view), theme.highlight(),
+            rendered.get("recipes"),
         ),
         status=path_panel.recipe_status(view, len(order)),
         order=order,

@@ -22,6 +22,8 @@ ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣
 
 import hashlib
 
+import yaml
+
 import paths
 from app.ui.graph import build, layout_store
 from app.ui.graph.dot import COLORS
@@ -61,6 +63,37 @@ def path_of(recipe_id: str, nodes: dict | None = None) -> list[dict]:
 def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
     """recipe id 여럿의 경로를 한 번에. 몸통은 Ontology 에 있음."""
     return ONTOLOGY.paths_for(ids, nodes)
+
+
+def recipe_functions(ids) -> dict[str, str]:
+    """후보 recipe 의 기능 설명. {recipe id: menu 의 function 문장}.
+
+    입력  recipe id 목록. 화면이 지금 강조하는 후보들
+    출력  function 이 있는 id 만. 없는 id 는 안 담음
+    규칙  게시 menu(paths.MENU_YAML_PATH) 원문 그대로. 발화 해석 프롬프트에 실리는 것과
+          같은 파일임
+          menu 를 못 읽으면 빈 dict. 설명이 없어도 그래프는 그려져야 함
+    제약  example 을 넘기지 않는다.
+          사람이 적은 발화 예시라 기능 설명이 아니고, 화면 응답에 실을 이유가 없음
+          문장을 다듬거나 줄이지 않는다
+          workflows/static/menu/load.load_menu 를 거치지 않는다.
+          그것은 프롬프트에 실을 원문 문자열을 한 글자도 안 바꾸고 돌려주는 자리임
+    """
+    wanted = list(dict.fromkeys(ids or []))
+    if not wanted:
+        return {}
+    try:
+        menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return {}
+    entries = menu.get("recipes") or {}
+    out = {}
+    for recipe_id in wanted:
+        entry = entries.get(recipe_id)
+        function = entry.get("function") if isinstance(entry, dict) else None
+        if isinstance(function, str) and function.strip():
+            out[recipe_id] = function
+    return out
 
 
 def drawn_nodes() -> dict:
@@ -175,4 +208,5 @@ def render(
         paths=paths_for(ids, nodes),
         recipe_ids=ids,
         version=ontology_version(),
+        functions=recipe_functions(ids),
     )

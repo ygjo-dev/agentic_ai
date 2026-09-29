@@ -515,14 +515,38 @@ def test_each_candidate_row_names_its_recipe_and_real_node_chain():
         for 이름 in 사슬:
             assert f">{이름}<" in 되묻기
 
-    고름 = path_panel.recipe_rows_markup(둘["chips"][:1], order[:1], "recipe_012", "#14B8A6")
+    고름 = path_panel.recipe_rows_markup(둘["chips"][:1], order[:1], "recipe_012", "#14B8A6",
+                                     둘["recipes"])
     assert "recipe_012" in 고름 and f">{path_panel.CHOSEN_TAG}<" in 고름
+    assert 둘["recipes"]["recipe_012"]["function"] in 고름
+
+    # 후보마다 제 function 이 사슬보다 먼저 온다
+    되묻기 = path_panel.recipe_rows_markup(둘["chips"], order, None, "#14B8A6", 둘["recipes"])
+    for 줄, recipe_id in zip(되묻기.split('<div class="recipe">')[1:], order):
+        문장 = 둘["recipes"][recipe_id]["function"]
+        assert 문장 in 줄
+        assert 줄.index(문장) < 줄.index('class="chain"')
 
     clarify = {"kind": "resolve", "result": {"status": "CLARIFY"}}
     select = {"kind": "resolve", "result": {"status": "SELECT", "recipe_id": "recipe_012"}}
     assert path_panel.recipe_status(clarify, 2) == "후보 2개 · 되묻기"
     assert path_panel.recipe_status(select, 1) == "선택"
     assert path_panel.recipe_status(None, 0) == ""
+
+
+def test_a_recipe_function_is_escaped_and_a_missing_one_is_just_left_out():
+    """설명에 꺾쇠가 섞여도 마크업이 안 됨. 설명이 없는 recipe 는 그 칸만 빠지고 id · 사슬은 그대로임."""
+    from app.ui.components import path_panel
+
+    이상한 = path_panel.recipe_rows_markup(
+        [["가", "나"]], ["recipe_x"], None, "#14B8A6",
+        {"recipe_x": {"function": "<script>x</script> & 「A→B」"}})
+    assert "<script>" not in 이상한
+    assert "&lt;script&gt;x&lt;/script&gt; &amp; 「A→B」" in 이상한
+
+    없음 = path_panel.recipe_rows_markup([["가", "나"]], ["recipe_y"], "recipe_y", "#14B8A6", {})
+    assert "recipe_y" in 없음 and ">가<" in 없음 and ">나<" in 없음
+    assert 'class="rfn"' not in 없음
 
 
 def test_clicking_a_node_tells_its_name_kind_and_description(model, colors):
@@ -636,6 +660,9 @@ def test_a_clarify_on_the_service_screen_lists_every_candidate(monkeypatch):
     assert "recipe_012" in 문서 and "recipe_045" in 문서
     assert "후보 2개 · 되묻기" in 문서
     assert '"order": ["recipe_012", "recipe_045"]' in 문서
+    # 두 후보가 제 function 을 따로 보여준다
+    for 설명 in screen_service.recipe_functions(["recipe_012", "recipe_045"]).values():
+        assert json.dumps(설명, ensure_ascii=False)[1:-1] in 문서
 
 
 # ── 창구 계약 ───────────────────────────────────────────────────────
@@ -666,5 +693,28 @@ def test_the_render_response_carries_no_picture():
     """
     payload = screen_service.render("plain")
 
-    assert set(payload) == {"version", "chips", "network"}
+    assert set(payload) == {"version", "chips", "recipes", "network"}
     assert "<svg" not in json.dumps(payload)
+
+
+def test_every_accepted_recipe_has_its_menu_function():
+    """★ 후보 목록의 기능 설명은 menu 의 function 문장이다. 받아들인 recipe 마다 있어야 함."""
+    ids = screen_service.recipe_ids()
+
+    assert set(screen_service.recipe_functions(ids)) == set(ids)
+
+
+def test_the_render_carries_the_menu_function_but_never_the_example():
+    """★ render 응답은 후보의 function 원문만 싣는다. example 은 사람이 적은 발화 예시라 안 실음."""
+    import yaml
+
+    import paths
+
+    menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))["recipes"]
+    with_example = next(rid for rid, entry in menu.items() if entry.get("example"))
+    payload = screen_service.render("resolve", ["recipe_036", with_example])
+
+    assert payload["recipes"]["recipe_036"] == {"function": menu["recipe_036"]["function"]}
+    assert set(payload["recipes"]) == {"recipe_036", with_example}
+    assert menu[with_example]["example"] not in json.dumps(payload, ensure_ascii=False)
+    assert screen_service.render("plain")["recipes"] == {}
