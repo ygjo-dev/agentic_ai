@@ -124,14 +124,15 @@ def render_payload(
     paths: dict,
     recipe_ids: list[str],
     version: str,
-    functions: dict | None = None,
+    menu_entries: dict | None = None,
 ) -> dict:
     """/render 응답 한 벌.
 
-    입력  functions  {recipe id: menu 의 function 문장}. 후보 목록에 기능 설명으로 실림
+    입력  menu_entries  {recipe id: {"title", "description"}}. 사람이 읽는 기능 메뉴(menu.md)
+                        원문. 후보 목록에 기능 이름 · 설명으로 실림
     출력  version  온톨로지 내용 해시. 화면이 「같은 해석인가」를 세는 재료
           chips    후보마다의 이름 사슬. 목록에 그대로 실림
-          recipes  {recipe id: {"function": 문장}}. 후보 가운데 문장이 있는 것만
+          recipes  {recipe id: {"title", "description"}}. 후보 가운데 메뉴에 있는 것만
           network  vis-network 가 받는 노드 · 엣지 모형
     규칙  chips 차례가 network["variants"] 의 빈 키를 뺀 차례와 같음.
           어긋나면 목록에서 고른 줄과 그래프가 다른 후보를 가리킴
@@ -146,9 +147,12 @@ def render_payload(
         # 변형마다 따로 만들지 않는다.
         "chips": focus.chips_of(paths, recipe_ids),
         "recipes": {
-            recipe_id: {"function": (functions or {})[recipe_id]}
+            recipe_id: {
+                "title": (menu_entries or {})[recipe_id]["title"],
+                "description": (menu_entries or {})[recipe_id]["description"],
+            }
             for recipe_id in recipe_ids
-            if (functions or {}).get(recipe_id)
+            if (menu_entries or {}).get(recipe_id)
         },
         "network": network_payload(
             nodes=nodes,

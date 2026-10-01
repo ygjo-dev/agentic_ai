@@ -18,6 +18,7 @@
 실제 손맛은 사람이 화면에서 본다.
 """
 
+import html
 import json
 import re
 from pathlib import Path
@@ -499,8 +500,8 @@ def test_the_recipe_panel_numbers_candidates_not_nodes(model, colors):
 def test_each_candidate_row_names_its_recipe_and_real_node_chain():
     """★ SELECT 는 고른 recipe 에 「선택」, CLARIFY 는 후보마다 「후보」 한 줄씩.
 
-    사슬은 서버가 낸 실제 노드 이름 그대로임. recipe 설명은 게시 자산에 없어서
-    지어내지 않음.
+    사슬은 서버가 낸 실제 노드 이름 그대로임. 기능 이름 · 설명은 사람이 읽는 기능
+    메뉴(menu.md) 원문이고 화면이 지어내지 않음.
     """
     from app.ui.components import path_panel
 
@@ -518,14 +519,16 @@ def test_each_candidate_row_names_its_recipe_and_real_node_chain():
     고름 = path_panel.recipe_rows_markup(둘["chips"][:1], order[:1], "recipe_012", "#14B8A6",
                                      둘["recipes"])
     assert "recipe_012" in 고름 and f">{path_panel.CHOSEN_TAG}<" in 고름
-    assert 둘["recipes"]["recipe_012"]["function"] in 고름
+    assert html.escape(둘["recipes"]["recipe_012"]["title"]) in 고름
+    assert html.escape(둘["recipes"]["recipe_012"]["description"]) in 고름
 
-    # 후보마다 제 function 이 사슬보다 먼저 온다
+    # 후보마다 제 제목 · 설명이 사슬보다 먼저 온다
     되묻기 = path_panel.recipe_rows_markup(둘["chips"], order, None, "#14B8A6", 둘["recipes"])
     for 줄, recipe_id in zip(되묻기.split('<div class="recipe">')[1:], order):
-        문장 = 둘["recipes"][recipe_id]["function"]
-        assert 문장 in 줄
-        assert 줄.index(문장) < 줄.index('class="chain"')
+        제목 = html.escape(둘["recipes"][recipe_id]["title"])
+        설명 = html.escape(둘["recipes"][recipe_id]["description"])
+        assert 제목 in 줄 and 설명 in 줄
+        assert 줄.index(제목) < 줄.index(설명) < 줄.index('class="chain"')
 
     clarify = {"kind": "resolve", "result": {"status": "CLARIFY"}}
     select = {"kind": "resolve", "result": {"status": "SELECT", "recipe_id": "recipe_012"}}
@@ -534,19 +537,20 @@ def test_each_candidate_row_names_its_recipe_and_real_node_chain():
     assert path_panel.recipe_status(None, 0) == ""
 
 
-def test_a_recipe_function_is_escaped_and_a_missing_one_is_just_left_out():
-    """설명에 꺾쇠가 섞여도 마크업이 안 됨. 설명이 없는 recipe 는 그 칸만 빠지고 id · 사슬은 그대로임."""
+def test_a_recipe_description_is_escaped_and_a_missing_one_is_just_left_out():
+    """제목 · 설명에 꺾쇠가 섞여도 마크업이 안 됨. 메뉴 항목이 없는 recipe 는 그 칸만 빠지고 id · 사슬은 그대로임."""
     from app.ui.components import path_panel
 
     이상한 = path_panel.recipe_rows_markup(
         [["가", "나"]], ["recipe_x"], None, "#14B8A6",
-        {"recipe_x": {"function": "<script>x</script> & 「A→B」"}})
-    assert "<script>" not in 이상한
+        {"recipe_x": {"title": "<b>제목</b>", "description": "<script>x</script> & 「A→B」"}})
+    assert "<script>" not in 이상한 and "<b>" not in 이상한
+    assert "&lt;b&gt;제목&lt;/b&gt;" in 이상한
     assert "&lt;script&gt;x&lt;/script&gt; &amp; 「A→B」" in 이상한
 
     없음 = path_panel.recipe_rows_markup([["가", "나"]], ["recipe_y"], "recipe_y", "#14B8A6", {})
     assert "recipe_y" in 없음 and ">가<" in 없음 and ">나<" in 없음
-    assert 'class="rfn"' not in 없음
+    assert 'class="rfn"' not in 없음 and 'class="rtitle"' not in 없음
 
 
 def test_clicking_a_node_tells_its_name_kind_and_description(model, colors):
@@ -660,9 +664,13 @@ def test_a_clarify_on_the_service_screen_lists_every_candidate(monkeypatch):
     assert "recipe_012" in 문서 and "recipe_045" in 문서
     assert "후보 2개 · 되묻기" in 문서
     assert '"order": ["recipe_012", "recipe_045"]' in 문서
-    # 두 후보가 제 function 을 따로 보여준다
-    for 설명 in screen_service.recipe_functions(["recipe_012", "recipe_045"]).values():
-        assert json.dumps(설명, ensure_ascii=False)[1:-1] in 문서
+    # 두 후보가 제 제목 · 설명을 따로 보여준다
+    항목 = screen_service.recipe_menu_entries(["recipe_012", "recipe_045"])
+    assert set(항목) == {"recipe_012", "recipe_045"}
+    assert 항목["recipe_012"]["title"] != 항목["recipe_045"]["title"]
+    for entry in 항목.values():
+        for 글 in (entry["title"], entry["description"]):
+            assert json.dumps(html.escape(글), ensure_ascii=False)[1:-1] in 문서
 
 
 # ── 창구 계약 ───────────────────────────────────────────────────────
@@ -697,15 +705,44 @@ def test_the_render_response_carries_no_picture():
     assert "<svg" not in json.dumps(payload)
 
 
-def test_every_accepted_recipe_has_its_menu_function():
-    """★ 후보 목록의 기능 설명은 menu 의 function 문장이다. 받아들인 recipe 마다 있어야 함."""
+def test_every_accepted_recipe_has_its_user_menu_entry():
+    """★ 후보 목록의 기능 이름 · 설명은 사람이 읽는 기능 메뉴(menu.md)다. 받아들인 recipe 마다 꼭 하나씩 있어야 함."""
+    import paths
+
     ids = screen_service.recipe_ids()
+    text = paths.MENU_MD_PATH.read_text(encoding="utf-8")
+    headings = re.findall(r"^## (recipe_\d+) · ", text, re.M)
+    entries = screen_service.recipe_menu_entries(ids)
 
-    assert set(screen_service.recipe_functions(ids)) == set(ids)
+    assert sorted(headings) == sorted(ids)            # 빠짐 · 남는 것 · 겹침 없음
+    assert set(entries) == set(ids)
+    assert all(e["title"].strip() and e["description"].strip() for e in entries.values())
+    assert len({e["title"] for e in entries.values()}) == len(ids)
 
 
-def test_the_render_carries_the_menu_function_but_never_the_example():
-    """★ render 응답은 후보의 function 원문만 싣는다. example 은 사람이 적은 발화 예시라 안 실음."""
+def test_the_user_menu_speaks_to_people_not_to_the_resolver():
+    """menu.md 는 사람이 읽는 글이다. 도구 이름 · server_id · recipe 번호 같은 개발자 말과 menu.yaml 의 문장(function · example)을 옮겨 오지 않음."""
+    import yaml
+
+    import paths
+    from ontology import ONTOLOGY
+
+    menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))["recipes"]
+    entries = screen_service.parse_menu_md(paths.MENU_MD_PATH.read_text(encoding="utf-8"))
+    글 = "\n".join(f'{e["title"]}\n{e["description"]}' for e in entries.values())
+
+    for entry in menu.values():
+        assert entry["function"] not in 글
+        if entry.get("example"):
+            assert entry["example"] not in 글
+    tool_ids = {node["tool"]["id"] for node in ONTOLOGY.nodes().values() if node.get("tool")}
+    words = {part for tool_id in tool_ids for part in tool_id.split("/")}
+    assert [word for word in words if word in 글] == []
+    assert "recipe" not in 글.lower() and "레시피" not in 글
+
+
+def test_the_render_carries_the_user_menu_never_the_resolve_menu():
+    """★ render 응답은 menu.md 의 제목 · 설명만 싣는다. menu.yaml 의 function 과 example 은 발화 해석용이라 안 실음."""
     import yaml
 
     import paths
@@ -713,8 +750,71 @@ def test_the_render_carries_the_menu_function_but_never_the_example():
     menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))["recipes"]
     with_example = next(rid for rid, entry in menu.items() if entry.get("example"))
     payload = screen_service.render("resolve", ["recipe_036", with_example])
+    text = json.dumps(payload, ensure_ascii=False)
 
-    assert payload["recipes"]["recipe_036"] == {"function": menu["recipe_036"]["function"]}
+    assert payload["recipes"]["recipe_036"] == screen_service.recipe_menu_entries(["recipe_036"])["recipe_036"]
+    assert set(payload["recipes"]["recipe_036"]) == {"title", "description"}
     assert set(payload["recipes"]) == {"recipe_036", with_example}
-    assert menu[with_example]["example"] not in json.dumps(payload, ensure_ascii=False)
+    for rid in ("recipe_036", with_example):
+        assert menu[rid]["function"] not in text
+    assert menu[with_example]["example"] not in text
     assert screen_service.render("plain")["recipes"] == {}
+
+
+def test_the_screen_reads_menu_md_even_when_menu_yaml_says_something_else(tmp_path, monkeypatch):
+    """★ 두 메뉴에 서로 다른 글을 넣으면 화면은 menu.md 쪽만 씀. menu.yaml 은 화면 설명의 원천이 아님."""
+    import paths
+
+    (tmp_path / "menu.yaml").write_text(
+        "recipes:\n  recipe_036:\n    function: 해석용-문장-YAML\n", encoding="utf-8")
+    (tmp_path / "menu.md").write_text(
+        "# 메뉴\n\n## recipe_036 · 사용자용-제목-MD\n\n사용자용-설명-MD\n", encoding="utf-8")
+    monkeypatch.setattr(paths, "MENU_YAML_PATH", tmp_path / "menu.yaml")
+    monkeypatch.setattr(paths, "MENU_MD_PATH", tmp_path / "menu.md")
+
+    payload = screen_service.render("resolve", ["recipe_036"])
+    text = json.dumps(payload, ensure_ascii=False)
+
+    assert payload["recipes"] == {"recipe_036": {"title": "사용자용-제목-MD", "description": "사용자용-설명-MD"}}
+    assert "해석용-문장-YAML" not in text
+
+
+def test_a_missing_or_broken_menu_md_drops_only_the_descriptions(tmp_path, monkeypatch):
+    """★ menu.md 가 없거나 깨져도 그래프 · id · 사슬은 그대로임. 설명만 빠지고 menu.yaml 로 돌아가지 않음."""
+    import paths
+
+    ids = ["recipe_036", "recipe_015", "recipe_016"]
+    정상 = screen_service.render("resolve", ids)
+
+    monkeypatch.setattr(paths, "MENU_MD_PATH", tmp_path / "없는.md")
+    없음 = screen_service.render("resolve", ids)
+    assert 없음["recipes"] == {}
+    assert 없음["chips"] == 정상["chips"] and 없음["network"] == 정상["network"]
+
+    깨진 = tmp_path / "menu.md"
+    깨진.write_text(
+        "## recipe_036 · 제목만 있고 설명 없음\n\n"
+        "## recipe_015\n\n머리줄 꼴이 틀림\n\n"
+        "## recipe_016 · 둘 중 어느 것\n\n첫째\n\n"
+        "## recipe_016 · 둘 중 어느 것\n\n둘째\n", encoding="utf-8")
+    monkeypatch.setattr(paths, "MENU_MD_PATH", 깨진)
+    깨짐 = screen_service.render("resolve", ids)
+    assert 깨짐["recipes"] == {}
+    assert 깨짐["chips"] == 정상["chips"] and 깨짐["network"] == 정상["network"]
+
+    깨진.write_bytes(b"\xff\xfe\x00broken")
+    assert screen_service.render("resolve", ids)["recipes"] == {}
+
+
+def test_the_user_menu_parser_reads_only_its_heading_form():
+    """menu.md 머리줄 한 꼴만 항목이 됨. 문단 나눔은 남기고 앞뒤 빈 줄은 뗌."""
+    text = (
+        "# 서비스 기능 메뉴\n\n> 안내 인용문\n\n"
+        "## recipe_001 · 첫 기능\n\n첫 문단.\n\n둘째 문단.\n\n"
+        "## 다른 머리줄\n\n이 글은 어디에도 안 붙음\n\n"
+        "## recipe_002 · 둘째 기능\n둘째 설명\n"
+    )
+    assert screen_service.parse_menu_md(text) == {
+        "recipe_001": {"title": "첫 기능", "description": "첫 문단.\n\n둘째 문단."},
+        "recipe_002": {"title": "둘째 기능", "description": "둘째 설명"},
+    }

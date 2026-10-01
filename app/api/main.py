@@ -120,6 +120,7 @@ async def render_endpoint(form: RenderRequest) -> dict:
 
     출력  version  온톨로지 내용 해시
           chips    칩에 적을 이름 사슬. 후보 차례 그대로
+          recipes  후보마다 사람이 읽는 기능 메뉴(menu.md)의 제목 · 설명
           network  vis-network 가 받는 노드 · 엣지 · 좌표 · 변형별 스타일
     규칙  모든 변형이 같은 좌표를 씀. 좌표는 layout.json 에 고정돼 있어
           어느 후보를 강조하든 안 흔들림

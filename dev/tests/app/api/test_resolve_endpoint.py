@@ -10,6 +10,7 @@
 """
 
 import logging
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -93,6 +94,65 @@ def test_the_menu_in_the_prompt_is_the_menu_yaml_verbatim():
     assert load_menu() == MENU_YAML_PATH.read_text(encoding="utf-8")
 
 
+def test_the_user_menu_md_never_reaches_the_resolve_prompt(tmp_path, monkeypatch, read_file_paths):
+    """사람이 읽는 기능 메뉴(menu.md)는 화면 설명용이다. 고르기에 섞이면 화면 문구를 고칠 때마다 선택이 흔들린다.
+
+    menu.md 를 다른 글로 바꿔도 load_menu 와 프롬프트는 그대로이고, 해석 한 번에 menu.md 를 한 번도 안 연다.
+    """
+    import json
+
+    import paths
+    from conftest import StubLLMClient
+    from llm_engine.role_config import RESOLVE, get_role_config
+    from orchestrator import resolve_service
+    from workflows.static.menu.load import load_menu
+
+    before = load_menu()
+    real_md = paths.MENU_MD_PATH.resolve()
+    fake_md = tmp_path / "menu.md"
+    fake_md.write_text("## recipe_036 · 화면용-제목-표식\n\n화면용-설명-표식\n", encoding="utf-8")
+    monkeypatch.setattr(paths, "MENU_MD_PATH", fake_md)
+
+    assert load_menu() == before == paths.MENU_YAML_PATH.read_text(encoding="utf-8")
+
+    read_file_paths.clear()
+    client = StubLLMClient(json.dumps({
+        "reason": "r", "argument": "오송역", "travel_mode": None, "minutes": None,
+        "admin_level": None, "candidate_recipe_ids": ["recipe_036"],
+        "status": "SELECT", "recipe_id": "recipe_036",
+    }))
+    resolve_service.resolve("오송역 근처 CCTV 보여줘", client, get_role_config(RESOLVE))
+
+    opened = {Path(p).resolve() for p in read_file_paths if isinstance(p, (str, Path))}
+    assert real_md not in opened and fake_md.resolve() not in opened
+    assert "화면용-설명-표식" not in client.prompts[0]
+    assert real_md.read_text(encoding="utf-8").splitlines()[0] not in client.prompts[0]
+
+
+def test_only_the_screen_service_reads_the_user_menu():
+    """menu.md 를 읽는 자리는 화면 설명을 만드는 screen_service 하나. 해석 · 실행 · LLM 쪽 코드는 그 이름조차 모름."""
+    import paths
+
+    def sources(*folders):
+        for folder in folders:
+            yield from (paths.REPO_ROOT / folder).rglob("*.py")
+
+    resolving = [
+        str(path.relative_to(paths.REPO_ROOT))
+        for path in sources("orchestrator", "workflows", "llm_engine", "execution", "ontology")
+        if any(word in path.read_text(encoding="utf-8") for word in ("MENU_MD_PATH", "menu.md"))
+    ]
+    readers = sorted(
+        str(path.relative_to(paths.REPO_ROOT))
+        for path in [*sources("app", "orchestrator", "workflows", "llm_engine", "execution", "ontology"),
+                     paths.REPO_ROOT / "endpoints.py"]
+        if "MENU_MD_PATH" in path.read_text(encoding="utf-8")
+    )
+
+    assert resolving == []
+    assert readers == ["app/api/services/streamlit/screen_service.py"]
+
+
 # ── 오류가 나갈 때 ──────────────────────────────────────────────────
 
 
@@ -156,3 +216,17 @@ def test_a_domain_error_still_says_what_was_wrong(monkeypatch):
 
     assert response.status_code == 422
     assert "그런 mode 는 없다" in response.json()["detail"]
+
+
+def test_the_render_endpoint_carries_the_user_menu_title_and_description():
+    """POST /render 응답의 recipes 가 화면이 받는 기능 이름 · 설명. 원천은 menu.md 다."""
+    from app.api.services.streamlit import screen_service
+
+    with TestClient(backend_main.app) as client:
+        response = client.post("/render", json={"mode": "resolve", "recipe_ids": ["recipe_015", "recipe_016"]})
+
+    assert response.status_code == 200
+    recipes = response.json()["recipes"]
+    assert recipes == screen_service.recipe_menu_entries(["recipe_015", "recipe_016"])
+    assert recipes["recipe_015"]["title"] != recipes["recipe_016"]["title"]
+    assert recipes["recipe_015"]["description"] != recipes["recipe_016"]["description"]

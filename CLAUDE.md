@@ -101,7 +101,8 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
   ```
   KRRI_Ontology_Registry/
     ontology/ontology.yaml
-    menu/menu.yaml
+    menu/menu.yaml               (발화 해석 LLM 이 읽는 menu)
+    menu/menu.md                 (사람이 읽는 기능 메뉴. 화면의 recipe 제목 · 설명)
     recipes/recipe_NNN.yaml      (각 recipe 의 execution 칸 포함)
   ```
 
@@ -245,8 +246,8 @@ example 은 온톨로지가 아니라 recipe 파일에 사람이 적는다.
 
 무엇을 언제 왜 지웠는지와 되살리는 법은 `NOTES.md` 에 있다.
 
-★ **recipe 하나를 되살리면 둘이 함께 움직인다** — `KRRI_Ontology_Registry/recipes/` 의
-파일(example 까지)과 `KRRI_Ontology_Registry/menu/menu.yaml` 의 해당 줄.
+★ **recipe 하나를 되살리면 셋이 함께 움직인다** — `KRRI_Ontology_Registry/recipes/` 의
+파일(example 까지)과 `KRRI_Ontology_Registry/menu/menu.yaml` 의 해당 줄, `menu/menu.md` 의 해당 항목.
 execution 칸은 등록 저장소가 게시한 것을 그대로 받는다. 온톨로지의 tool · source 를
 고쳤을 때도 거기서 다시 게시한다. 후보를 받아들이는 것도 거기 일이다.
 **그리고 menu 문장과 정답표 발화를 함께 만들어야 한다.** recipe 만 되살리면
@@ -260,8 +261,21 @@ menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
 ## 게시 자산은 한 벌이다
 
 온톨로지 · recipe · menu 는 `KRRI_Ontology_Registry/` 에 한 벌만 있다. **되돌릴 원본(`_init`)
-사본을 두지 않는다.** 되돌리기는 git 이 한다. menu 는 `menu.yaml` 하나고 사람이 읽을
-사본(`menu.md`)도 두지 않는다 — 두 벌은 어긋난다.
+사본을 두지 않는다.** 되돌리기는 git 이 한다.
+
+menu 는 읽는 쪽이 다른 두 파일이다. **서로의 사본이 아니고 서로 대신하지 않는다.**
+
+```
+menu/menu.yaml   발화 해석(Resolve) LLM 이 recipe 를 가르는 문장. 프롬프트에 원문 그대로 실림
+menu/menu.md     사람이 읽는 기능 메뉴. 화면 살펴보기 칸의 recipe 제목 · 설명. 프롬프트에 안 실림
+```
+
+- `menu.md` 는 `## recipe_NNN · 제목` 머리줄 한 꼴이고 그 아래 문단이 설명이다.
+  받아들인 recipe 마다 꼭 하나씩 둔다. 개발자 말(도구 이름 · server_id · execution)과
+  menu.yaml 의 example 을 쓰지 않는다
+- `menu.md` 를 읽는 곳은 `screen_service` 하나다. resolve · 실행 · LLM 쪽은 읽지 않는다.
+  못 읽으면 설명만 빠지고 `menu.yaml` 로 돌아가지 않는다
+- recipe 를 더하거나 되살리면 `menu.md` 항목도 함께 적는다
 
 화면 좌표는 게시 자산과 다른 책임이라 짝을 그대로 둔다.
 
@@ -329,8 +343,9 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 - 화면이 지은 설명글을 넣지 않는다. 범례 · 힌트 · 인터페이스 이름은 없앴다.
   그래프 위와 발화 띠에는 발화 인용문과 오류 메시지만 남긴다.
 - 예외는 그래프 문서 오른쪽 살펴보기 칸 하나다. 식별을 위해 후보 recipe 의 id 를 적고,
-  menu 의 function 문장 · 노드 이름 사슬 · 누른 노드의 이름과 description 을 보여준다.
-  전부 게시 자산 원문이다. example 은 싣지 않는다. recipe id 를 다른 자리에 퍼뜨리지 않는다.
+  사람이 읽는 기능 메뉴(`menu.md`)의 제목 · 설명 · 노드 이름 사슬 · 누른 노드의 이름과
+  description 을 보여준다. 전부 게시 자산 원문이다. `menu.yaml` 의 function · example 은
+  싣지 않는다. recipe id 를 다른 자리에 퍼뜨리지 않는다.
 
 ---
 

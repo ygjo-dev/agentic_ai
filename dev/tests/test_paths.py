@@ -15,7 +15,7 @@ import sys
 
 import paths
 
-NAMES = ("ARTIFACT_ROOT", "ONTOLOGY_PATH", "MENU_YAML_PATH", "RECIPES_DIR")
+NAMES = ("ARTIFACT_ROOT", "ONTOLOGY_PATH", "MENU_YAML_PATH", "MENU_MD_PATH", "RECIPES_DIR")
 
 
 def paths_in_child(root):
@@ -40,6 +40,7 @@ def test_without_an_artifact_root_the_registry_in_this_repository_is_read():
         "ARTIFACT_ROOT": str(registry),
         "ONTOLOGY_PATH": str(registry / "ontology" / "ontology.yaml"),
         "MENU_YAML_PATH": str(registry / "menu" / "menu.yaml"),
+        "MENU_MD_PATH": str(registry / "menu" / "menu.md"),
         "RECIPES_DIR": str(registry / "recipes"),
     }
 
@@ -55,6 +56,7 @@ def test_an_artifact_root_moves_the_ontology_the_menu_and_the_recipes_together(t
         "ARTIFACT_ROOT": str(root),
         "ONTOLOGY_PATH": str(root / "ontology" / "ontology.yaml"),
         "MENU_YAML_PATH": str(root / "menu" / "menu.yaml"),
+        "MENU_MD_PATH": str(root / "menu" / "menu.md"),
         "RECIPES_DIR": str(root / "recipes"),
     }
 
@@ -67,7 +69,7 @@ def test_an_artifact_root_that_is_not_a_folder_stops_instead_of_falling_back(tmp
     assert "ArtifactRootError" in done.stderr
 
 
-def test_there_is_no_second_menu_document():
-    """menu 는 menu.yaml 하나다. 사람이 읽을 사본을 따로 두면 둘이 어긋난다."""
-    assert not hasattr(paths, "MENU_MD_PATH")
-    assert not (paths.MENU_DIR / "menu.md").exists()
+def test_the_two_menus_have_different_readers():
+    """menu.yaml 은 발화 해석 프롬프트, menu.md 는 사람이 읽는 기능 메뉴. 같은 menu 폴더에 나란히 있음."""
+    assert paths.MENU_YAML_PATH.parent == paths.MENU_MD_PATH.parent == paths.MENU_DIR
+    assert paths.MENU_YAML_PATH.is_file() and paths.MENU_MD_PATH.is_file()

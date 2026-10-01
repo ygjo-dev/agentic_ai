@@ -21,8 +21,7 @@ ontology_service 와 render_service 로 나뉘어 있었고, 뒤엣것은 앞엣
 """
 
 import hashlib
-
-import yaml
+import re
 
 import paths
 from app.ui.graph import build, layout_store
@@ -65,35 +64,70 @@ def paths_for(ids, nodes: dict | None = None) -> dict[str, list[dict]]:
     return ONTOLOGY.paths_for(ids, nodes)
 
 
-def recipe_functions(ids) -> dict[str, str]:
-    """후보 recipe 의 기능 설명. {recipe id: menu 의 function 문장}.
+# menu.md 의 recipe 머리줄. 「## recipe_036 · 장소 주변 CCTV」 한 꼴만 읽는다.
+_MENU_HEADING = re.compile(r"^## (recipe_\d+) · (.+?)\s*$")
+
+
+def parse_menu_md(text: str) -> dict[str, dict]:
+    """사람이 읽는 기능 메뉴(menu.md) 원문을 recipe 마다 제목 · 설명으로 나눔.
+
+    입력  menu.md 원문
+    출력  {recipe id: {"title": 제목, "description": 설명}}
+    규칙  「## recipe_NNN · 제목」 줄이 한 항목의 시작. 다음 「## 」 줄까지가 설명
+          설명은 앞뒤 빈 줄만 뗌. 문단 사이 빈 줄은 그대로 둠
+          제목이나 설명이 비면 그 recipe 만 뺌
+          같은 recipe id 가 두 번 나오면 어느 쪽이 맞는지 모르므로 그 recipe 만 뺌
+          꼴이 다른 「## 」 줄은 앞 항목을 닫기만 하고 항목이 되지 않음
+    제약  Markdown 일반 문법을 해석하지 않는다. 정해 둔 머리줄 한 꼴만 읽음
+    """
+    entries: dict[str, dict] = {}
+    seen: dict[str, int] = {}
+    current: str | None = None
+    title = ""
+    lines: list[str] = []
+
+    def close():
+        if current is None:
+            return
+        description = "\n".join(lines).strip()
+        if title and description:
+            entries[current] = {"title": title, "description": description}
+
+    for line in text.splitlines():
+        if line.startswith("## "):
+            close()
+            hit = _MENU_HEADING.match(line)
+            current, title, lines = (hit.group(1), hit.group(2).strip(), []) if hit else (None, "", [])
+            if current:
+                seen[current] = seen.get(current, 0) + 1
+            continue
+        if current is not None:
+            lines.append(line)
+    close()
+
+    return {rid: entry for rid, entry in entries.items() if seen.get(rid) == 1}
+
+
+def recipe_menu_entries(ids) -> dict[str, dict]:
+    """후보 recipe 의 사람이 읽는 제목 · 설명. {recipe id: {"title", "description"}}.
 
     입력  recipe id 목록. 화면이 지금 강조하는 후보들
-    출력  function 이 있는 id 만. 없는 id 는 안 담음
-    규칙  게시 menu(paths.MENU_YAML_PATH) 원문 그대로. 발화 해석 프롬프트에 실리는 것과
-          같은 파일임
-          menu 를 못 읽으면 빈 dict. 설명이 없어도 그래프는 그려져야 함
-    제약  example 을 넘기지 않는다.
-          사람이 적은 발화 예시라 기능 설명이 아니고, 화면 응답에 실을 이유가 없음
+    출력  menu.md 에 제대로 적힌 id 만. 없거나 깨진 id 는 안 담음
+    규칙  게시 사용자 메뉴(paths.MENU_MD_PATH) 원문 그대로
+          menu.md 를 못 읽으면 빈 dict. 설명이 없어도 그래프 · id · 사슬은 그려져야 함
+    제약  menu.yaml 을 읽지 않는다.
+          menu.yaml 은 발화 해석 LLM 이 recipe 를 가르는 문장이라 사람에게 보일 글이 아님.
+          menu.md 를 못 읽었을 때 menu.yaml 의 function 으로 돌아가지도 않음
           문장을 다듬거나 줄이지 않는다
-          workflows/static/menu/load.load_menu 를 거치지 않는다.
-          그것은 프롬프트에 실을 원문 문자열을 한 글자도 안 바꾸고 돌려주는 자리임
     """
     wanted = list(dict.fromkeys(ids or []))
     if not wanted:
         return {}
     try:
-        menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
+        entries = parse_menu_md(paths.MENU_MD_PATH.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError):
         return {}
-    entries = menu.get("recipes") or {}
-    out = {}
-    for recipe_id in wanted:
-        entry = entries.get(recipe_id)
-        function = entry.get("function") if isinstance(entry, dict) else None
-        if isinstance(function, str) and function.strip():
-            out[recipe_id] = function
-    return out
+    return {recipe_id: entries[recipe_id] for recipe_id in wanted if recipe_id in entries}
 
 
 def drawn_nodes() -> dict:
@@ -208,5 +242,5 @@ def render(
         paths=paths_for(ids, nodes),
         recipe_ids=ids,
         version=ontology_version(),
-        functions=recipe_functions(ids),
+        menu_entries=recipe_menu_entries(ids),
     )

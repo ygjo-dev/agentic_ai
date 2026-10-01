@@ -7,6 +7,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 #
 #     <뿌리>/ontology/ontology.yaml
 #     <뿌리>/menu/menu.yaml
+#     <뿌리>/menu/menu.md
 #     <뿌리>/recipes/recipe_NNN.yaml
 #
 # 기본 뿌리는 이 저장소 안의 KRRI_Ontology_Registry 다. 그 폴더를 저장소 밖으로 옮긴
@@ -46,7 +47,9 @@ ROLES_DIR = REPO_ROOT / "llm_engine" / "roles"
 
 ONTOLOGY_PATH = ARTIFACT_ROOT / "ontology" / "ontology.yaml"
 MENU_DIR = ARTIFACT_ROOT / "menu"
-MENU_YAML_PATH = MENU_DIR / "menu.yaml"  # LLM 에 Context 로 전달하는 원문.
+# menu 는 두 벌이고 읽는 쪽이 다르다. 서로 대신하지 않는다.
+MENU_YAML_PATH = MENU_DIR / "menu.yaml"  # 발화 해석(Resolve) LLM 에 Context 로 전달하는 원문.
+MENU_MD_PATH = MENU_DIR / "menu.md"      # 사람이 읽는 기능 메뉴. 화면의 recipe 제목 · 설명. 프롬프트에 안 실음.
 RECIPES_DIR = ARTIFACT_ROOT / "recipes"
 
 # ★ 프롬프트 경로는 여기 없다. **어느 역할이 어느 프롬프트를 쓰는가**는 역할
