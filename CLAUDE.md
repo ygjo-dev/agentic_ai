@@ -259,6 +259,8 @@ menu 에는 실리는데 자에는 없는 상태가 된다. 정답표는
 `dev/evaluation/inputs/test_suites/test_suite_v1.yaml` 이고, 발화를 더하면 그 발화의 묶음(`group`)도
 함께 적는다. 테스트 세트 v2(`dev/evaluation/inputs/test_suites/test_suite_v2.yaml`)에는 그 recipe 의 발화를
 다섯 이상 더한다 — `dev/tests/evaluation/test_test_suite_integrity.py` 가 받아들인 recipe 마다 센다.
+False-positive 방어 테스트(`dev/evaluation/inputs/test_suites/test_suite_adversarial_v1.yaml`)에도 그 recipe 를
+유혹하지만 넘어서는 발화 하나를 `adversarial_for` 와 함께 더한다(기대는 NO_MATCH). 같은 시험이 빠짐 · 겹침을 본다.
 
 ---
 

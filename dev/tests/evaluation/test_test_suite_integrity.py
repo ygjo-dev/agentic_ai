@@ -9,6 +9,7 @@
     범위 밖      결과 이름이 resolve 응답 schema 의 status 에 있고, 전부 [NO_MATCH] 다
     두께         판 2 는 받아들인 recipe 마다 발화 MIN_UTTERANCES_PER_RECIPE 이상, 범위 밖 갈래마다 하나 이상
     분리         판 2 발화가 FULL48 발화와 글자까지 같지 않다
+    false positive  보조 자는 받아들인 recipe 마다 꼭 하나씩, 전부 범위 밖 NO_MATCH 다
 
 정답표 · recipe 를 고치지 않는다. 읽기만 한다.
 """
@@ -174,3 +175,34 @@ def test_spoken_refs_tells_required_default_and_conditional_reads_apart():
         ("argument", "unless_endswith=선"),
         ("future_name", "default=[30]"),
     ]
+
+
+def test_the_adversarial_suite_tempts_every_accepted_recipe_once_and_expects_no_match():
+    """recipe 마다 그 기능과 닮았지만 넘어서는 요청 하나. 하나라도 빠지면 그 recipe 의 false positive 는 아무도 안 잰다."""
+    adversarial = load_test_suite.load(load_test_suite.SUITE_ADVERSARIAL_PATH)
+    cases = adversarial["cases"]
+    tempted = [case.get("adversarial_for") for case in cases]
+
+    assert adversarial["name"] == "test_suite_adversarial_v1"
+    assert sorted(tempted) == _accepted()                       # 빠짐 · 겹침 없음
+    assert all(not load_test_suite.in_scope(case) for case in cases)
+    assert all(case["expected"] == {"category": "unsupported", "outcomes": ["NO_MATCH"]} for case in cases)
+    assert all(case["enabled"] for case in cases)
+    assert all(isinstance(case.get("rationale"), str) and case["rationale"].strip() for case in cases)
+    assert len({case["utterance"] for case in cases}) == len(cases)
+
+
+def test_the_adversarial_suite_shares_no_utterance_with_the_other_suites_or_the_menu():
+    """v1 · v2 · menu example 과 같은 발화면 다른 자를 다시 재는 셈이고, example 이면 정답이 프롬프트에 있다."""
+    import yaml
+
+    adversarial = {case["utterance"] for case in load_test_suite.load(load_test_suite.SUITE_ADVERSARIAL_PATH)["cases"]}
+    others = set()
+    for path in (load_test_suite.SUITE_PATH, load_test_suite.SUITE_V2_PATH):
+        others |= {case["utterance"] for case in load_test_suite.load(path)["cases"]}
+    menu = yaml.safe_load(paths.MENU_YAML_PATH.read_text(encoding="utf-8"))["recipes"]
+    examples = {entry["example"] for entry in menu.values() if entry.get("example")}
+
+    assert adversarial & others == set()
+    assert adversarial & examples == set()
+    assert not any(re.search(r"recipe_\d+|asap-mcp|server_id", text) for text in adversarial)

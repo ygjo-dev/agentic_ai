@@ -1,0 +1,396 @@
+# False-positive 방어 테스트 (test_suite_adversarial_v1) — 지원 기능과 닮았지만 넘어서는 요청.
+#
+# 테스트 세트 v2 를 대신하지 않는 보조 자다. v1(FULL48) · v2 의 발화 · 기대값 · 기준 벤치마크는
+# 그대로 두고, 이 파일은 따로 잰다. 세 자의 점수를 한 백분율로 합치지 않는다.
+#
+# 읽는 곳은 dev/evaluation/engine/load_test_suite.py 하나다. **데이터 파일이다. yaml.dump 로 다시 쓰지 않는다.**
+#
+# ── 무엇을 재나 ─────────────────────────────────────────────────────
+#
+# 받아들인 recipe 서른아홉마다 발화 하나. 그 recipe 와 아주 가까워 보이지만 그 도구가 실제로
+# 내놓지 못하는 능력(영상 분석 · 예측 · 예약 · 결제 · 전송 · 편집 · 저장 · 없는 자료 · 판정)을
+# 요구한다. 서른아홉 중 어느 기능을 골라도 요청한 일을 못 하므로 정답은 NO_MATCH 하나다.
+# 고르면 false positive 다.
+#
+#   입력이 빠진 요청이 아니다     장소 · 지점 · 화면 · 이름은 발화나 문맥에 다 있다
+#   되묻기가 정답인 요청이 아니다  후보 둘 사이에서 망설일 일이 아니다
+#   다른 기능으로 풀리는 요청이 아니다
+#
+# 짜임은 판 2 그대로다. 묶음 선언 넷을 똑같이 두고 case 는 전부 범위 밖(out_of_scope)이다.
+# 채점은 기존 범위 밖 채점(score)을 그대로 쓴다.
+#
+# case 마다 사람이 정답표를 검토하려고 두는 칸 둘. 점수에는 안 쓴다.
+#   adversarial_for   어느 recipe 를 유혹하는 발화인가. 서른아홉이 겹치지 않고 받아들인 recipe 전부다
+#   rationale         그 recipe 가 하는 일과 이 요청이 넘어서는 지점
+#
+# 발화는 v1 · v2 · menu example 과 글자까지 같지 않고, recipe id · 도구 이름을 담지 않는다
+# (dev/tests/evaluation/test_test_suite_integrity.py 가 본다).
+
+version: 2
+name: "test_suite_adversarial_v1"
+
+groups:
+  - id: spoken
+    label: "말한 것"
+  - id: picked_point
+    label: "찍은 지점"
+  - id: view_extent
+    label: "보이는 범위"
+  - id: out_of_scope
+    label: "범위 밖"
+
+spoken_value_names: [argument, travel_mode, minutes, admin_level]
+
+cases:
+
+  - id: 1
+    group: out_of_scope
+    adversarial_for: recipe_001
+    utterance: "대전역 위치로 택시 한 대 불러줘"
+    rationale: "장소의 위경도 좌표를 확인할 수 있을 뿐 택시 호출 같은 외부 서비스를 실행하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 2
+    group: out_of_scope
+    adversarial_for: recipe_002
+    utterance: "경부선 선로 선형 보고 곡선 구간마다 탈선 위험도 계산해줘"
+    rationale: "철도 구간의 선형 좌표만 준다. 곡선 반경 기반 위험도 산정 같은 분석 기능은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 3
+    group: out_of_scope
+    adversarial_for: recipe_003
+    utterance: "호남선 열차 지금 몇 분씩 지연되고 있는지 알려줘"
+    rationale: "노선 경로와 역 정보만 조회한다. 실시간 운행 · 지연 정보는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 4
+    group: out_of_scope
+    adversarial_for: recipe_004
+    utterance: "오송 테스트트랙 교량 균열이 얼마나 진행됐는지 점검 결과로 판정해줘"
+    rationale: "시설물을 디지털 트윈 화면에 띄울 뿐이다. 점검 기록 조회나 손상 판정은 하지 않는다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 5
+    group: out_of_scope
+    adversarial_for: recipe_005
+    utterance: "세종시랑 공주시 경계를 내가 말하는 대로 고쳐서 저장해줘"
+    rationale: "행정구역 경계를 이름 · 코드로 조회만 한다. 경계를 편집하거나 저장하는 기능은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 6
+    group: out_of_scope
+    adversarial_for: recipe_008
+    utterance: "대전 지역구들을 인구 기준에 맞게 새로 획정한 안을 짜줘"
+    rationale: "현행 제22대 선거구 목록을 조회할 뿐 선거구 재획정안을 설계하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 7
+    group: out_of_scope
+    adversarial_for: recipe_010
+    utterance: "국민의힘 교통 공약 중에 이미 이행 완료된 사업만 골라줘"
+    rationale: "공약 내용을 지역 · 당선인 · 정당 · 분야로 검색한다. 공약 이행 여부 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 8
+    group: out_of_scope
+    adversarial_for: recipe_012
+    utterance: "시군구별로 작년 출생아 수 순위 매겨줘"
+    rationale: "주민등록 인구 수와 순위만 집계한다. 출생 통계는 담겨 있지 않다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 9
+    group: out_of_scope
+    adversarial_for: recipe_014
+    utterance: "철도안전법 조문 찾아서 우리 회사 사고 처리가 위법인지 판단해줘"
+    rationale: "지식베이스 문서에서 관련 구절을 찾아 줄 뿐 특정 사안의 위법 여부를 판단하는 법률 자문은 하지 않는다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 10
+    group: out_of_scope
+    adversarial_for: recipe_015
+    utterance: "충북 청주상당 선거구 다음 총선 정당별 예상 득표율 뽑아줘"
+    rationale: "선거구 한 곳의 기본 정보와 구역만 조회한다. 득표율 자료도 선거 예측 기능도 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 11
+    group: out_of_scope
+    adversarial_for: recipe_016
+    utterance: "청주시 흥덕구 국회의원 의정활동을 점수로 평가해줘"
+    rationale: "선거구의 당선인 · 정당 · 공약을 조회한다. 의정활동 기록이나 평가 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 12
+    group: out_of_scope
+    adversarial_for: recipe_018
+    utterance: "여기가 속한 동 주민센터에 전입신고 접수해줘"
+    rationale: "선택한 지점의 행정구역과 코드를 알려줄 뿐 민원 접수 같은 행정 처리는 하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 13
+    group: out_of_scope
+    adversarial_for: recipe_019
+    utterance: "이 위치 주변 CCTV 화면에서 불법 주차한 차 번호판 읽어줘"
+    rationale: "주변 CCTV 목록과 실시간 영상 링크만 준다. 영상 속 차량 번호판 인식 같은 영상 분석은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 14
+    group: out_of_scope
+    adversarial_for: recipe_020
+    utterance: "선택한 위치 선거구의 최근 세 번 선거 투표율 추이 보여줘"
+    rationale: "지점이 속한 제22대 선거구 이름만 알려준다. 투표율 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 15
+    group: out_of_scope
+    adversarial_for: recipe_021
+    utterance: "여기 지역구 의원한테 민원 메일 써서 보내줘"
+    rationale: "지점 선거구의 당선인과 정당을 알려줄 뿐 메일을 작성해 보내는 기능은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 16
+    group: out_of_scope
+    adversarial_for: recipe_022
+    utterance: "이 위치 선거구 공약들에 드는 예산 총액 계산해줘"
+    rationale: "지점 선거구의 공약 내용과 분야를 보여준다. 공약별 사업비 자료가 없어 예산 합계를 낼 수 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 17
+    group: out_of_scope
+    adversarial_for: recipe_024
+    utterance: "지금 화면에 보이는 시군구 경계를 shp 파일로 내보내서 내 메일로 보내줘"
+    rationale: "화면에 걸친 행정구역 경계를 조회할 뿐 파일로 내보내거나 전송하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 18
+    group: out_of_scope
+    adversarial_for: recipe_026
+    utterance: "현재 화면 CCTV들 어제 오후 3시 녹화 영상으로 돌려봐줘"
+    rationale: "화면 안 CCTV 목록과 실시간 영상 링크만 준다. 지난 녹화 영상은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 19
+    group: out_of_scope
+    adversarial_for: recipe_027
+    utterance: "지금 화면에 보이는 철도 노선 중 공사 중인 구간 어디야"
+    rationale: "화면에 걸친 노선 경로와 역 정보만 조회한다. 선로 공사 현황 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 20
+    group: out_of_scope
+    adversarial_for: recipe_029
+    utterance: "현재 화면 지역 국회의원 공약에 대한 주민 여론조사 찬반 비율 보여줘"
+    rationale: "화면 지역 선거구의 공약을 검색한다. 공약에 대한 여론조사 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 21
+    group: out_of_scope
+    adversarial_for: recipe_031
+    utterance: "지금 보이는 지역에 실시간 유동인구 몇 명인지 알려줘"
+    rationale: "주민등록 인구(최신 기준월)를 집계한다. 실시간 유동인구 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 22
+    group: out_of_scope
+    adversarial_for: recipe_033
+    utterance: "수원역 둘레 행정구역마다 아파트 평균 매매가 표시해줘"
+    rationale: "장소 일대의 행정구역 경계를 조회할 뿐 부동산 시세 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 23
+    group: out_of_scope
+    adversarial_for: recipe_034
+    utterance: "익산역이 있는 동 행정복지센터 운영시간이랑 전화번호 알려줘"
+    rationale: "장소가 속한 행정구역과 코드만 알려준다. 관공서 운영 정보는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 24
+    group: out_of_scope
+    adversarial_for: recipe_036
+    utterance: "오송역 주변 CCTV 영상을 분석해서 교통사고가 났는지 판단해줘"
+    rationale: "CCTV 목록 조회는 가능하지만 영상 내용 분석 및 사고 판정 기능은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 25
+    group: out_of_scope
+    adversarial_for: recipe_038
+    utterance: "광주송정역 선거구에 내가 출마하면 당선 가능성 얼마나 돼"
+    rationale: "장소가 속한 선거구 이름만 알려준다. 당선 가능성 예측은 하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 26
+    group: out_of_scope
+    adversarial_for: recipe_040
+    utterance: "강릉역 쪽 국회의원 재산이 얼마인지랑 전과 기록 알려줘"
+    rationale: "장소 선거구의 당선인 · 정당과 공약 건수만 준다. 재산 · 전과 같은 개인 신상 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 27
+    group: out_of_scope
+    adversarial_for: recipe_042
+    utterance: "목포역 지역구 공약 정리해서 PDF 보고서 파일로 만들어줘"
+    rationale: "장소 선거구의 공약을 보여줄 뿐 PDF 같은 문서 파일을 만들지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 28
+    group: out_of_scope
+    adversarial_for: recipe_045
+    utterance: "부산역 주변에 사는 사람들 평균 소득이 얼마야"
+    rationale: "장소 일대 주민등록 인구 수와 순위를 집계한다. 소득 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 29
+    group: out_of_scope
+    adversarial_for: recipe_049
+    utterance: "중앙선 선로 따라 CCTV를 새로 설치할 최적 위치 추천해줘"
+    rationale: "구간 범위 안에 이미 있는 도로 CCTV를 조회할 뿐 설치 입지를 최적화하거나 추천하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 30
+    group: out_of_scope
+    adversarial_for: recipe_052
+    utterance: "한국전력 충전소 지금 충전 예약하고 결제까지 해줘"
+    rationale: "충전소를 검색해 충전기 상태를 알려줄 뿐 충전 예약 · 결제는 하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 31
+    group: out_of_scope
+    adversarial_for: recipe_054
+    utterance: "선택한 위치 동네 주민들 연령대별 질병 통계 보여줘"
+    rationale: "지점 행정구역의 연령대별 남녀 인구 구성만 알려준다. 보건 · 질병 통계는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 32
+    group: out_of_scope
+    adversarial_for: recipe_055
+    utterance: "여기 행정구역 인구가 왜 줄었는지 원인을 분석해줘"
+    rationale: "지점 행정구역의 월별 인구 증감 수치만 준다. 증감 원인을 밝힐 자료나 분석 기능은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 33
+    group: out_of_scope
+    adversarial_for: recipe_056
+    utterance: "현재 화면 충전소들 이용 후기랑 별점 높은 순으로 보여줘"
+    rationale: "화면 안 충전소를 찾아 충전기 상태를 알려줄 뿐 이용 후기 · 평점 자료는 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 34
+    group: out_of_scope
+    adversarial_for: recipe_058
+    utterance: "전주역 동네 연령별 인구 보고 초등학교를 새로 지어야 하는지 판정해줘"
+    rationale: "장소 행정구역의 연령대별 인구 구성을 보여줄 뿐 학교 신설 같은 정책 판정은 하지 않는다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 35
+    group: out_of_scope
+    adversarial_for: recipe_059
+    utterance: "대구역 일대 인구가 앞으로 5년 동안 달마다 어떻게 변할지 예측해줘"
+    rationale: "장소 행정구역의 지나간 월별 인구 변화만 보여준다. 미래 인구 예측은 하지 않는다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 36
+    group: out_of_scope
+    adversarial_for: recipe_060
+    utterance: "광명역 근처 충전소에 빈 충전기 생기면 나한테 문자로 알려줘"
+    rationale: "장소 주변 충전소와 충전기 상태를 한 번 조회할 뿐 상태 변화를 지켜보다 알림을 보내지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 37
+    group: out_of_scope
+    adversarial_for: recipe_061
+    utterance: "청주역에서 대중교통 30분 거리가 새 노선 개통 후엔 얼마나 넓어질지 계산해줘"
+    rationale: "지금 있는 교통망으로 도달 범위를 계산한다. 개통 예정 노선을 반영한 미래 시나리오는 계산하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 38
+    group: out_of_scope
+    adversarial_for: recipe_062
+    utterance: "여기서 서울역 가는 대중교통 승차권 바로 결제해줘"
+    rationale: "선택한 위치에서 장소까지 대중교통 경로를 찾아줄 뿐 승차권 구매 · 결제는 하지 못한다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]
+  - id: 39
+    group: out_of_scope
+    adversarial_for: recipe_063
+    utterance: "여기서 걸어서 15분 범위에 사는 사람들이 주로 어디로 이동하는지 분석해줘"
+    rationale: "선택한 지점에서 정해진 시간 안에 닿는 범위를 계산할 뿐 주민 이동 패턴 자료나 분석은 없다."
+    enabled: true
+    expected:
+      category: unsupported
+      outcomes: [NO_MATCH]

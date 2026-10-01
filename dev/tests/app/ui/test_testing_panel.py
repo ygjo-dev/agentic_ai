@@ -1061,10 +1061,13 @@ def test_the_tab_imports_only_the_new_evaluation_modules():
 
 
 # ── 테스트 세트 고르기 · 화면 정리 ───────────────────────────────────
-def test_both_test_suites_are_offered_and_the_case_count_comes_from_the_chosen_file():
-    """화면에 48 도 203 도 박지 않는다. 고른 파일에서 세므로 발화를 더하면 저절로 따라간다."""
+def test_every_test_suite_is_offered_and_the_case_count_comes_from_the_chosen_file():
+    """화면에 48 도 203 도 박지 않는다. 고른 파일에서 세므로 발화를 더하면 저절로 따라간다.
+
+    v1 · v2 차례와 뜻은 그대로이고 보조 자(False-positive 방어 테스트)가 그 뒤에 붙는다.
+    """
     entries = load_test_suite.datasets()
-    assert [e["id"] for e in entries] == ["test_suite_v1", "test_suite_v2"]
+    assert [e["id"] for e in entries] == ["test_suite_v1", "test_suite_v2", "test_suite_adversarial_v1"]
 
     counts = {}
     for entry in entries:
@@ -1174,11 +1177,12 @@ def test_a_function_card_carries_its_menu_description_without_a_second_table(res
     assert f"{panel.TIP_DELAY_MS}ms" in base.split(".st-key-test_fn_cards button:hover::after", 1)[1][:300]
 
 
-def test_the_two_suites_stay_separate_datasets():
+def test_the_suites_stay_separate_datasets():
     """한 벌로 합치면 얼린 기준선의 값이 옛 기록과 안 맞아 이어 읽을 수가 없다."""
-    v1, v2 = (load_test_suite.load(entry["path"]) for entry in load_test_suite.datasets())
-    assert v1["version"] == 1 and v2["version"] == 2
+    v1, v2, adversarial = (load_test_suite.load(entry["path"]) for entry in load_test_suite.datasets())
+    assert v1["version"] == 1 and v2["version"] == 2 and adversarial["version"] == 2
     assert {case["utterance"] for case in v1["cases"]} != {case["utterance"] for case in v2["cases"]}
+    assert not any(load_test_suite.in_scope(case) for case in adversarial["cases"])
 
 
 def test_the_function_results_section_is_titled_기능별_결과_and_nothing_else(app, monkeypatch, tmp_path):

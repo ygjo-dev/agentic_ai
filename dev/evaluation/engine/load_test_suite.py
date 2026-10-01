@@ -1,9 +1,11 @@
 """발화 해석 정답표(Test Suite)를 읽는 유일한 곳. 등록 목록 · 읽기 · 구조 검사 · 신원.
 
-정답표는 `dev/evaluation/inputs/test_suites/` 의 두 파일이다.
+정답표는 `dev/evaluation/inputs/test_suites/` 의 세 파일이다.
 
-    test_suite_v1.yaml   FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
-    test_suite_v2.yaml   테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖(NO_MATCH) 묶음
+    test_suite_v1.yaml              FULL48. 판 1. 얼린 회귀 기준선. 계기판 dev/tools/check_resolve.py 도 이것을 읽는다
+    test_suite_v2.yaml              테스트 세트 v2. 판 2. recipe 마다 발화 다섯 이상 + 범위 밖(NO_MATCH) 묶음
+    test_suite_adversarial_v1.yaml  False-positive 방어 테스트. 판 2 짜임에 범위 밖만. recipe 마다 그 기능과
+                                    닮았지만 넘어서는 발화 하나(adversarial_for). 보조 자라 v1 · v2 를 대신하지 않는다
 
 `dev/evaluation/run_evaluation.py` 와 화면 테스트 탭이 이 모듈로 읽는다.
 정답표가 게시 자산(recipe · menu · prompt)과 맞물리는지는 여기서 안 본다.
@@ -21,14 +23,17 @@ SUITES_DIR = Path(__file__).resolve().parents[1] / "inputs" / "test_suites"
 
 SUITE_PATH = SUITES_DIR / "test_suite_v1.yaml"
 SUITE_V2_PATH = SUITES_DIR / "test_suite_v2.yaml"
+SUITE_ADVERSARIAL_PATH = SUITES_DIR / "test_suite_adversarial_v1.yaml"
 
 # 화면 · 계기판이 이름으로 고를 수 있는 정답표(Test Suite). (id, 사람이 읽는 이름, 경로)
 # 정답표 파일을 더하면 여기 한 줄을 더한다. 첫 줄이 화면의 기본값이다.
 #   test_suite_v1   FULL48. 얼린 회귀 기준선. 발화 · 기대값을 바꾸지 않는다
 #   test_suite_v2   일반화를 재는 넓은 자. recipe 마다 발화 다섯 이상 + 범위 밖
+#   test_suite_adversarial_v1  지원 기능과 닮은 지원 밖 요청에 기능을 고르는지(false positive) 재는 보조 자
 DATASETS = (
     ("test_suite_v1", "FULL48 회귀 테스트", SUITE_PATH),
     ("test_suite_v2", "테스트 세트 v2", SUITE_V2_PATH),
+    ("test_suite_adversarial_v1", "False-positive 방어 테스트", SUITE_ADVERSARIAL_PATH),
 )
 
 # 이 모듈이 읽을 줄 아는 파일 판. 1 은 FULL48, 2 는 범위 밖 묶음을 더 가짐.

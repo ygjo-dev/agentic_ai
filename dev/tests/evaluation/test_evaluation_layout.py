@@ -75,12 +75,15 @@ def test_the_evaluation_tree_is_one_main_five_engine_modules_inputs_and_outputs(
 
 
 def test_both_test_suites_are_found_by_their_version_name_and_their_bytes_did_not_move():
+    """v1 · v2 는 기준 벤치마크와 이어 읽는 자라 바이트가 그대로여야 한다. 보조 자는 그 뒤에 따로 붙는다."""
     assert load_test_suite.SUITE_PATH == load_test_suite.SUITES_DIR / "test_suite_v1.yaml"
     assert load_test_suite.SUITE_V2_PATH == load_test_suite.SUITES_DIR / "test_suite_v2.yaml"
+    assert load_test_suite.SUITE_ADVERSARIAL_PATH == load_test_suite.SUITES_DIR / "test_suite_adversarial_v1.yaml"
     paths = [Path(entry["path"]) for entry in load_test_suite.datasets()]
-    assert paths == [load_test_suite.SUITE_PATH, load_test_suite.SUITE_V2_PATH]
-    assert sorted(p.name for p in load_test_suite.SUITES_DIR.glob("*.yaml")) == sorted(SUITE_SHA256)
-    for path in paths:
+    assert paths == [load_test_suite.SUITE_PATH, load_test_suite.SUITE_V2_PATH, load_test_suite.SUITE_ADVERSARIAL_PATH]
+    assert sorted(p.name for p in load_test_suite.SUITES_DIR.glob("*.yaml")) == sorted(
+        [*SUITE_SHA256, load_test_suite.SUITE_ADVERSARIAL_PATH.name])
+    for path in paths[:2]:
         assert _sha256(path) == SUITE_SHA256[path.name], path.name
 
 

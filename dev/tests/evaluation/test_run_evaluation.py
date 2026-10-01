@@ -65,9 +65,10 @@ def _selfcheck_suite(suite: dict, anchor: bool) -> None:
         inside = [row for row in rows if row["scope"] == score.SCOPE_IN]
         outside = [row for row in rows if row["scope"] == score.SCOPE_OUT]
         assert len(rows) == sum(1 for case in suite["cases"] if case["enabled"]), resolve.__name__
-        assert {row["grade"] for row in inside} == {grade}, (resolve.__name__, Counter(row["grade"] for row in inside))
+        # 범위 밖만 담은 보조 자(False-positive 방어 테스트)는 inside 가 비어 있다
+        assert {row["grade"] for row in inside} == ({grade} if inside else set()), (resolve.__name__, Counter(row["grade"] for row in inside))
         assert {row["grade"] for row in outside} <= {None}, resolve.__name__
-        assert {(row["passed"], row["failure_stage"]) for row in inside} == {(stage is None, stage)}, resolve.__name__
+        assert {(row["passed"], row["failure_stage"]) for row in inside} == ({(stage is None, stage)} if inside else set()), resolve.__name__
         assert {(row["passed"], row["failure_stage"]) for row in outside} <= {(outside_stage is None, outside_stage)}, resolve.__name__
         total = result["summary"]["total"]
         assert sum(total[name] for name in score.GRADES.values()) == total["in_scope_runs"] == len(inside)
