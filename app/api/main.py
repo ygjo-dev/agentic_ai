@@ -149,6 +149,7 @@ def _process(
     text: str,
     *,
     context: dict | None = None,
+    user_scope: dict | None = None,
     continue_after_resolve: bool,
 ):
     """창구 둘이 지나는 한 자리. 발화 한 건을 해석하고, 이어 가면 부르고 답을 냄.
@@ -158,6 +159,8 @@ def _process(
           async generator(_stream). 마지막은 반드시 type=result
     규칙  POST /resolve 는 continue_after_resolve=False, POST /chat/stream 은
           True 로 부름. 두 창구의 차이는 해석 뒤에 실행을 이어 가느냐 하나뿐임
+          user_scope 는 Gateway 가 넣은 사용자 범위(workflow_execution.gateway_scope).
+          실행에만 쓰고 해석에는 안 넘김
           역할 설정을 읽고 LLM 클라이언트를 만드는 자리가 여기 하나임. 창구마다
           따로 두면 한쪽 모델 · prompt · schema 만 바뀌어도 안 보임
           역할 설정은 요청마다 한 번 읽음. 그 한 벌이 LLM 클라이언트와 해석의
@@ -173,7 +176,7 @@ def _process(
     llm_client = get_llm_for(role)
     if not continue_after_resolve:
         return _resolve(text, llm_client, role)
-    return _stream(text, llm_client, role, context)
+    return _stream(text, llm_client, role, context, user_scope)
 
 
 def _resolve(text: str, llm_client, role) -> dict:
@@ -186,7 +189,7 @@ def _resolve(text: str, llm_client, role) -> dict:
     return resolve_service.resolve(text, llm_client=llm_client, role=role)
 
 
-async def _stream(text: str, llm_client, role, context: dict | None):
+async def _stream(text: str, llm_client, role, context: dict | None, user_scope: dict | None = None):
     """/chat/stream 한 건. 해석 -> 실행 전제 -> workflow -> 실행 -> result.
 
     출력  해석 단계의 step_start / step_end, 실행 단계마다 한 쌍, 마지막은 type=result
@@ -198,6 +201,7 @@ async def _stream(text: str, llm_client, role, context: dict | None):
           고른 recipe 의 게시된 execution 과 해석 결과 · 화면 문맥으로
           workflow_materializer 가 workflow 를 만듦. READY 가 아니면 부르지 않음
           READY 면 workflow_execution 이 KRRI 실행 창구로 부름. 그 답은 KRRI 것
+          user_scope 가 있으면 그 범위로, 없으면 standalone 범위로 부름(workflow_execution)
           실행 전에 멈춘 자리의 답 문구는 local_presentation 이 만듦
     제약  여기서 문장을 만들지 않는다
           고른 recipe 를 문맥으로 다시 고르지 않는다
@@ -225,12 +229,12 @@ async def _stream(text: str, llm_client, role, context: dict | None):
         yield {"type": "result", "answer": answer, "commands": []}
         return
 
-    async for payload in workflow_execution.run(materialized, text):
+    async for payload in workflow_execution.run(materialized, text, user_scope):
         yield payload
 
 
 @app.post("/chat/stream")
-async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
+async def chat_stream_endpoint(form: ChatRequest, request: Request) -> StreamingResponse:
     """발화 한 건의 답을 SSE 로 흘려보냄. **KRRI_ASAP 시스템이 부르는 유일한 창구다.**
 
     출력  text/event-stream. step_start · step_end · result · [DONE] 순서
@@ -242,6 +246,9 @@ async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
           Streamlit 이 물어가 따라 그림
           진입점은 흐름을 읽기 시작할 때 부름. 회차 칸이 열린 안에서 해석이
           돌아야 recent_service 가 해석 결과를 봄
+          Gateway 가 넣은 X-User-* 는 헤더에서만 읽음(KRRI_ASAP 채팅). 없으면 직접
+          호출(KRRI EASY MCPs 「AI로 사용해보기」)이고 standalone 범위로 감.
+          body 의 context 는 화면 문맥이라 범위를 거기서 읽지 않음
     제약  ensure_ascii 를 켜지 않는다. 켜면 한글이 유니코드 이스케이프로
           나가 받는 화면에서 읽히지 않는다
           기록 때문에 이벤트를 바꾸지 않는다.
@@ -253,7 +260,12 @@ async def chat_stream_endpoint(form: ChatRequest) -> StreamingResponse:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream():
-        events = _process(form.text, context=form.context, continue_after_resolve=True)
+        events = _process(
+            form.text,
+            context=form.context,
+            user_scope=workflow_execution.gateway_scope(request.headers),
+            continue_after_resolve=True,
+        )
         async for payload in recent_service.watched(form.text, events):
             yield event(payload)
         yield "data: [DONE]\n\n"

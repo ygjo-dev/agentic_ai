@@ -65,12 +65,12 @@ def krri_success(workflow, commands=(KRRI_COMMAND,)):
 def fake_krri(called, respond=krri_success):
     """KRRI 실행 창구 대역. 받은 것을 남기고 respond 가 만든 응답을 돌려준다."""
 
-    async def fake(workflow, *, user_text, context, user_context):
+    async def fake(workflow, *, user_text, context, headers):
         called.append({
             "workflow": copy.deepcopy(workflow),
             "user_text": user_text,
             "context": context,
-            "user_context": user_context,
+            "headers": headers,
         })
         return respond(workflow)
 
@@ -123,9 +123,10 @@ def test_the_context_goes_to_krri(monkeypatch):
     assert called[0]["context"] == materialized["context"]
 
 
-def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
-    """KRRI 가 이 값을 Gateway 에 넘긴다. 빠뜨리면 workflow 가 맞아도 거부된다.
+def test_a_standalone_call_goes_out_with_the_standalone_identity(monkeypatch):
+    """Gateway 범위가 없는 직접 호출은 STANDALONE_USER_CONTEXT 로 부른다.
 
+    KRRI 가 이 값을 Gateway 에 넘긴다. 빠뜨리면 workflow 가 맞아도 거부된다.
     실측 — refs 에 없는 서버는 HTTP 500 "MCP tool '<서버>/<도구>' is not
     applied for this user." 다.
     """
@@ -134,9 +135,8 @@ def test_the_user_context_names_only_the_servers_a_recipe_calls(monkeypatch):
 
     collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
-    user_context = called[0]["user_context"]
-    assert user_context["user_id"]
-    assert user_context["selected_mcp_tool_refs"] == workflow_execution.USER_CONTEXT["selected_mcp_tool_refs"]
+    assert called[0]["headers"] == krri_executor_client.identity_headers(workflow_execution.STANDALONE_USER_CONTEXT)
+    assert called[0]["headers"]["X-User-ID"]
 
 
 def test_a_step_pair_goes_out_for_every_step_krri_ran(monkeypatch):
@@ -330,3 +330,150 @@ def test_the_runtime_knows_only_the_krri_client_and_local_presentation():
     )
     assert imported == ["execution.krri_executor_client", "execution.local_presentation", "logging"]
     assert not (REPO_ROOT / "vendor_to_be_deleted").exists()
+
+
+# ================================================================ Gateway 범위
+
+# selection 이 비었을 때 Gateway 가 적는 값. SYSTEM_MCP_TOOL_REFS 기본 셋뿐이다.
+SYSTEM_ONLY = (
+    "asap-mcp-core/adminboundary.getdatasetinfo,"
+    "asap-mcp-core/adminboundary.searchboundaries,"
+    "asap-mcp-core/adminboundary.findboundarybypoint"
+)
+
+
+def gateway(tools: str) -> dict:
+    """Gateway 가 KRRI_ASAP 채팅에 넣는 여섯 값. 도구 범위만 바꿔 씀."""
+    return {
+        "X-User-ID": "guest:6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+        "X-User-Name": "guest",
+        "X-User-Role": "",
+        "X-User-MCP-Servers": "asap-mcp-core",
+        "X-User-MCP-Tools": tools,
+        "X-User-MCP-Groups": "__none__",
+    }
+
+
+def steps(*refs):
+    return [{"id": f"s{i}", "server_id": ref.split("/", 1)[0], "tool": ref.split("/", 1)[1], "input": {}}
+            for i, ref in enumerate(refs, 1)]
+
+
+def test_a_gateway_scope_that_holds_every_tool_calls_krri_once_with_that_scope(monkeypatch):
+    """CASE 1 — 부를 도구가 모두 범위 안이면 KRRI 를 한 번, 받은 여섯 값 그대로 부른다."""
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    scope = gateway("asap-mcp-core/geo.geocode,asap-mcp-core/road.getcctv")
+
+    events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), "", scope))
+
+    assert len(called) == 1
+    assert called[0]["headers"] == scope
+    assert events[-1]["answer"] == KRRI_ANSWER
+
+
+def test_a_tool_outside_the_gateway_scope_stops_before_krri(monkeypatch, caplog):
+    """CASE 2 — 하나라도 밖이면 KRRI 를 안 부른다. 밖인 refs 는 로그에만 남는다."""
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+
+    events = collect(workflow_execution.run(
+        ready(CCTV_AROUND_A_PLACE, "오송역"), "", gateway("asap-mcp-core/geo.geocode")))
+
+    assert called == []
+    assert events == [{"type": "result", "answer": local_presentation.TOOL_NOT_SELECTED, "commands": []}]
+    assert "asap-mcp-core/road.getcctv" in caplog.text
+    assert "road" not in events[-1]["answer"].lower()
+
+
+def test_a_server_wildcard_in_the_scope_allows_its_exact_tools():
+    """CASE 3 — Gateway contract 의 "<server>/*" 는 그 서버의 도구 전부다."""
+    outside = workflow_execution.tool_refs_outside(
+        steps("asap-mcp-core/geo.geocode", "r5-server/compute_isochrone"),
+        gateway("asap-mcp-core/geo.geocode,r5-server/*"),
+    )
+
+    assert outside == []
+
+
+def test_a_wildcard_of_another_server_does_not_allow_a_tool():
+    outside = workflow_execution.tool_refs_outside(
+        steps("otp-router/otp_plan_trip"), gateway("r5-server/*,asap-mcp-core/*"))
+
+    assert outside == ["otp-router/otp_plan_trip"]
+
+
+def test_refs_are_compared_without_case():
+    """Gateway 는 refs 를 소문자로 적는다. 게시된 도구 이름은 대소문자가 섞여 있다."""
+    outside = workflow_execution.tool_refs_outside(
+        steps("asap-mcp-core/adminBoundary.searchBoundaries"), gateway(SYSTEM_ONLY))
+
+    assert outside == []
+
+
+def test_a_wildcard_in_a_tool_to_call_is_an_invalid_workflow(monkeypatch):
+    """CASE 4 — 부를 도구는 exact 여야 한다. "*" 가 있으면 범위가 열려 있어도 KRRI 를 안 부른다."""
+    with pytest.raises(workflow_execution.InvalidToolRef):
+        workflow_execution.tool_refs_outside(steps("asap-mcp-core/*"), gateway("asap-mcp-core/*"))
+
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
+    materialized["workflow"]["steps"][0]["tool"] = "*"
+
+    events = collect(workflow_execution.run(materialized, "", gateway("asap-mcp-core/*")))
+
+    assert called == []
+    assert events == [{"type": "result", "answer": local_presentation.INVALID_WORKFLOW, "commands": []}]
+
+
+@pytest.mark.parametrize("tools", ["__none__", ""])
+def test_nothing_selected_allows_no_tool(tools):
+    """__none__ 이나 빈 값이면 허용이 없다."""
+    assert workflow_execution.tool_refs_outside(steps("asap-mcp-core/geo.geocode"), gateway(tools)) == [
+        "asap-mcp-core/geo.geocode"
+    ]
+
+
+def test_a_gateway_scope_without_the_tools_header_allows_no_tool():
+    """다른 X-User-* 는 왔는데 도구 범위가 없으면 비어 있는 것으로 본다. 넓히지 않는다."""
+    scope = {name: value for name, value in gateway(SYSTEM_ONLY).items() if name != "X-User-MCP-Tools"}
+
+    assert workflow_execution.tool_refs_outside(steps("asap-mcp-core/geo.geocode"), scope) == [
+        "asap-mcp-core/geo.geocode"
+    ]
+
+
+def test_system_tools_the_gateway_adds_run_with_an_empty_selection(monkeypatch):
+    """Gateway 는 selection 이 비어도 SYSTEM_MCP_TOOL_REFS 를 적는다. 그 정책을 그대로 따른다."""
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    system_only = workflow_materializer.materialize("recipe_005", {"argument": "세종시"})
+    needs_geocode = workflow_materializer.materialize("recipe_001", {"argument": "오송역"})
+
+    collect(workflow_execution.run(system_only, "", gateway(SYSTEM_ONLY)))
+    blocked = collect(workflow_execution.run(needs_geocode, "", gateway(SYSTEM_ONLY)))
+
+    assert [sent["workflow"] for sent in called] == [system_only["workflow"]]
+    assert blocked[-1]["answer"] == local_presentation.TOOL_NOT_SELECTED
+
+
+def test_the_standalone_call_is_never_stopped_by_a_scope(monkeypatch):
+    """CASE 6 — Gateway 범위가 없으면 도구함 등록과 무관하게 부른다."""
+    called = []
+    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+
+    collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), "", None))
+
+    assert len(called) == 1
+
+
+def test_gateway_scope_takes_only_the_six_headers_and_none_when_absent():
+    """헤더 이름의 대소문자는 가리지 않고, 값은 고치지 않는다. X-User-* 가 하나도 없으면 None."""
+    from starlette.datastructures import Headers
+
+    raw = [(name.lower().encode(), value.encode()) for name, value in gateway("A/B,c/*").items()]
+    headers = Headers(raw=raw + [(b"cookie", b"asap_mcp_guest=x"), (b"authorization", b"Bearer t")])
+
+    assert workflow_execution.gateway_scope(headers) == gateway("A/B,c/*")
+    assert workflow_execution.gateway_scope(Headers(raw=[(b"cookie", b"asap_mcp_guest=x")])) is None

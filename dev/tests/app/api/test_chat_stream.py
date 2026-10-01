@@ -69,7 +69,7 @@ BODY = {
 def client(monkeypatch):
     """공통 진입점과 LLM 클라이언트만 대역으로 바꾼 진짜 앱. 남긴 회차는 치움."""
 
-    async def fake_stream(text, llm_client, role, context):
+    async def fake_stream(text, llm_client, role, context, user_scope=None):
         for payload in EVENTS:
             yield payload
 

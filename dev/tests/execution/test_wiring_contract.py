@@ -148,7 +148,7 @@ def _permitted_servers():
     """refs 가 열어 준 서버. 「무엇을 왜 열었나」의 원천이다."""
     return {
         ref.split("/", 1)[0]
-        for ref in workflow_execution.USER_CONTEXT["selected_mcp_tool_refs"]
+        for ref in workflow_execution.STANDALONE_USER_CONTEXT["selected_mcp_tool_refs"]
     }
 
 

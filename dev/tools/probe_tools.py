@@ -18,7 +18,7 @@ dev/tools/check_resolve.py 와 같은 성격이라 그 파일의 짜임새를 �
 
 **user_context 를 반드시 싣는다.** 빠뜨리면 요청마다 새 guest 가 만들어지고
 adminBoundary 셋 말고는 전부 거부된다(실측). execution/workflow_execution
-의 USER_CONTEXT 를 그대로 쓴다 — 두 곳에 적으면 갈린다.
+의 STANDALONE_USER_CONTEXT 를 그대로 쓴다 — 두 곳에 적으면 갈린다.
 
 표에는 건수만 찍힌다. 배선을 적을 때는 필드 이름을 봐야 하므로 응답 전문을
 dev/tools/probe_out/<도구이름>.json 으로 남긴다. probe_out 은 실측 자산이지만
@@ -39,7 +39,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from execution.workflow_execution import USER_CONTEXT  # noqa: E402
+from execution.workflow_execution import STANDALONE_USER_CONTEXT  # noqa: E402
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -305,7 +305,7 @@ def _probe(tool: dict, timeout: int = TIMEOUT) -> dict:
     body = {
         "tool": name,
         "input": arguments,
-        "user_context": dict(USER_CONTEXT),
+        "user_context": dict(STANDALONE_USER_CONTEXT),
     }
     server_id = tool.get("serverId")
     if server_id:

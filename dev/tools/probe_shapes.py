@@ -38,7 +38,7 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from execution.workflow_execution import USER_CONTEXT  # noqa: E402
+from execution.workflow_execution import STANDALONE_USER_CONTEXT  # noqa: E402
 from tools.probe_tools import (  # noqa: E402
     ARGUMENT_RULES,
     DEFAULT_TOOLS_PATH,
@@ -400,7 +400,7 @@ def probe(tool: dict, timeout: int = TIMEOUT) -> dict:
     # KRRI_ASAP ASAP-orchestrator/app/core/mcp_client.execute_tool 이 만드는 본문과 같은 모양이다.
     # user_context 를 빼면 요청마다 새 guest 가 만들어져 adminBoundary 셋
     # 말고는 전부 거부된다(실측).
-    body = {"tool": name, "input": arguments, "user_context": dict(USER_CONTEXT)}
+    body = {"tool": name, "input": arguments, "user_context": dict(STANDALONE_USER_CONTEXT)}
     server_id = tool.get("serverId")
     if server_id:
         body["server_id"] = server_id

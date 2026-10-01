@@ -46,12 +46,23 @@ KRRI_RESPONSE = {
 }
 
 
-def call(workflow=WORKFLOW, context=None):
+# Gateway 가 KRRI_ASAP 채팅의 /chat/stream 에 넣는 여섯 값. 값은 예시다.
+GATEWAY_HEADERS = {
+    "X-User-ID": "guest:6f1c2d3e-4a5b-4c6d-8e7f-0a1b2c3d4e5f",
+    "X-User-Name": "guest",
+    "X-User-Role": "",
+    "X-User-MCP-Servers": "asap-mcp-core",
+    "X-User-MCP-Tools": "asap-mcp-core/geo.geocode,otp-router/*",
+    "X-User-MCP-Groups": "krri-map-location,route-accessibility",
+}
+
+
+def call(workflow=WORKFLOW, context=None, headers=None):
     return asyncio.run(krri_executor_client.execute_workflow(
         workflow,
         user_text="오송역 CCTV 보여줘",
         context=context if context is not None else {"view": {"zoom": 12}},
-        user_context=USER_CONTEXT,
+        headers=headers if headers is not None else krri_executor_client.identity_headers(USER_CONTEXT),
     ))
 
 
@@ -97,6 +108,23 @@ def test_the_identity_goes_out_as_the_same_headers_gateway_uses(krri):
     headers = krri["requests"][0].headers
     assert headers["X-User-ID"] == "asap-ontology-orchestrator"
     assert headers["X-User-MCP-Tools"] == "asap-mcp-core/*,r5-server/*,otp-router/*"
+
+
+def test_the_gateway_headers_go_out_as_they_came(krri):
+    """Gateway 가 준 여섯 값을 이름 · 값 그대로 싣는다. 빈 값도 빼지 않는다."""
+    call(headers=GATEWAY_HEADERS)
+
+    sent = krri["requests"][0].headers
+    assert {name: sent[name] for name in GATEWAY_HEADERS} == GATEWAY_HEADERS
+    assert sent.get_list("X-User-Role") == [""]
+
+
+def test_a_latin1_header_value_goes_out_byte_for_byte(krri):
+    """들어온 헤더는 latin-1 로 풀린 문자열이다. 같은 바이트로 되돌려 싣는다."""
+    call(headers={**GATEWAY_HEADERS, "X-User-Name": "gäst"})
+
+    raw = dict(krri["requests"][0].headers.raw)
+    assert raw[b"X-User-Name"] == "gäst".encode("latin-1")
 
 
 def test_the_krri_response_comes_back_as_it_is(krri):

@@ -1,7 +1,8 @@
 """완성된 KRRI native workflow 를 KRRI_ASAP Orchestrator 의 실행 창구로 보낸다. **나르기만 한다.**
 
     POST <ASAP_ORCHESTRATOR_URL>/workflow/execute
-      헤더  X-User-ID · X-User-MCP-Tools      Gateway 가 /chat 에 붙이는 것과 같은 뜻
+      헤더  X-User-*                         Gateway 가 /chat 에 붙이는 것과 같은 이름 · 같은 뜻.
+                                             부르는 쪽(workflow_execution)이 고른 것을 그대로 싣는다
       본문  {"workflow": …, "user_text": …, "context": …}
       응답  {"status", "answer", "commands", "trace", "errors"}
 
@@ -39,8 +40,8 @@ class KrriExecutorError(RuntimeError):
     """KRRI 실행 창구를 못 불렀거나 알아볼 수 없는 것이 돌아왔다. 실행 결과가 아니다."""
 
 
-def _headers(user_context: dict) -> dict:
-    """우리가 누구인지 · 어느 도구를 부를 수 있는지. KRRI 가 Gateway 권한으로 그대로 넘긴다.
+def identity_headers(user_context: dict) -> dict:
+    """standalone 신원(user_id · selected_mcp_tool_refs)을 KRRI 가 읽는 X-User-* 로.
 
     규칙  /chat 에 Gateway 가 붙이는 X-User-* 와 같은 이름 · 같은 쉼표 구분
     """
@@ -64,13 +65,15 @@ def _decoded(response: httpx.Response) -> dict:
     return body
 
 
-async def execute_workflow(workflow: dict, *, user_text: str, context: dict, user_context: dict) -> dict:
+async def execute_workflow(workflow: dict, *, user_text: str, context: dict, headers: dict) -> dict:
     """workflow 한 벌을 KRRI 에 보내 실행 결과를 받음.
 
     입력  workflow_materializer 가 만든 workflow 그대로 · 발화 원문 · 화면 문맥 ·
-          우리 신원(user_id · selected_mcp_tool_refs)
+          X-User-* 헤더 {이름: 값}(Gateway 가 준 것 또는 identity_headers 결과)
     출력  KRRI 응답 dict. status · answer · commands · trace · errors
     규칙  workflow 를 바꾸지 않고 본문에 그대로 실음
+          헤더 값을 고치지 않고 받은 바이트 그대로 실음. 들어온 헤더는 latin-1 로
+          풀린 문자열이라 latin-1 로 되돌림
           HTTP 200 이 아니면 실패. KRRI 가 실행하다 실패한 것은 200 + status=failed 로 옴
     제약  원문 오류(주소 · 응답 본문)는 로그에만 남긴다. 예외 문장에는 싣지 않는다
     """
@@ -82,7 +85,9 @@ async def execute_workflow(workflow: dict, *, user_text: str, context: dict, use
     payload = {"workflow": workflow, "user_text": user_text, "context": context or {}}
     try:
         async with httpx.AsyncClient(timeout=TIMEOUT_SECONDS) as client:
-            response = await client.post(url, json=payload, headers=_headers(user_context))
+            response = await client.post(
+                url, json=payload, headers={name: value.encode("latin-1") for name, value in headers.items()}
+            )
     except httpx.TimeoutException as exc:
         logger.error("KRRI 실행 창구 시간 초과: %s", exc)
         raise KrriExecutorError("KRRI 실행 창구가 제한 시간 안에 답하지 않았다") from exc

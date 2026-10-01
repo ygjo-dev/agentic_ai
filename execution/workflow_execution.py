@@ -27,6 +27,19 @@ result 의 status 다. 둘 다 KRRI 가 적은 것(trace 항목의 error 칸 · 
 **step_start / step_end 는 실행이 끝난 뒤에 나간다.** KRRI 창구는 steps 전부를 한 번에
 돌리고 trace 를 돌려주므로 중간에 끼어들 자리가 없다. 단계마다 한 쌍이 recipe 순서대로
 나가는 것은 그대로지만, 시각이 실제 호출 시각은 아니다.
+
+**누구의 범위로 부르는지는 두 갈래이고 섞지 않는다.**
+
+    Gateway 범위      KRRI_ASAP 채팅. Gateway 가 /chat/stream 에 X-User-* 를 넣어 보낸다
+                      (GATEWAY_SCOPE_HEADERS). 그 사용자가 도구함 · MCP 화면에서 적용한
+                      범위다. 받은 여섯 값을 그대로 KRRI 에 넘기고, 넘기기 전에 workflow 의
+                      도구가 모두 그 범위 안에 있는지 본다(tool_refs_outside). 밖이면 KRRI 를
+                      부르지 않는다
+    standalone 범위   X-User-* 가 하나도 없는 직접 호출. KRRI EASY MCPs 의 「AI로 사용해보기」가
+                      그렇다. 도구함 등록과 무관하게 돌아야 하므로 범위로 막지 않고
+                      STANDALONE_USER_CONTEXT 로 부른다
+
+body 의 context 는 화면 문맥일 뿐이다. 어느 갈래이든 범위를 거기서 읽지 않는다.
 """
 
 import logging
@@ -35,7 +48,8 @@ from execution import krri_executor_client, local_presentation
 
 logger = logging.getLogger(__name__)
 
-# 우리가 누구인지. KRRI 가 이 값을 Gateway 에 넘기고 Gateway 가 권한을 찾는다.
+# standalone 호출(X-User-* 없음)의 신원. KRRI 가 이 값을 Gateway 에 넘기고 Gateway 가
+# 권한을 찾는다. **Gateway 범위가 온 호출에는 쓰지 않는다.**
 #
 # 빠뜨리면 요청마다 새 guest 가 만들어지고 adminBoundary 셋 말고는 전부
 # 거부된다(실측).
@@ -44,10 +58,72 @@ logger = logging.getLogger(__name__)
 # 가리켜도 HTTP 500 "MCP tool '<서버>/<도구>' is not applied for this user."
 # 로 막힌다(실측). 부를 것이 없는 서버를 미리 열면 「무엇을 왜 열었나」를
 # 나중에 되짚을 수 없다. web-search 는 Gateway 쪽 권한이 안 열려 있다.
-USER_CONTEXT = {
+STANDALONE_USER_CONTEXT = {
     "user_id": "asap-ontology-orchestrator",
     "selected_mcp_tool_refs": ["asap-mcp-core/*", "r5-server/*", "otp-router/*"],
 }
+
+# Gateway 가 /api/orchestrator/* 프록시에서 넣는 사용자 범위. KRRI /workflow/execute 도 같은
+# 이름으로 읽는다(KRRI_ASAP ASAP-orchestrator build_user_scope). 하나라도 오면 Gateway 범위다.
+GATEWAY_SCOPE_HEADERS = (
+    "X-User-ID",
+    "X-User-Name",
+    "X-User-Role",
+    "X-User-MCP-Servers",
+    "X-User-MCP-Tools",
+    "X-User-MCP-Groups",
+)
+
+# 실행해도 되는 도구 refs. Gateway 가 selection 에 SYSTEM_MCP_TOOL_REFS 를 더해 적는다.
+SELECTED_TOOLS_HEADER = "X-User-MCP-Tools"
+
+# Gateway 가 「고른 것이 없다」를 적는 값.
+NONE_SELECTED = "__none__"
+
+# Gateway contract 의 server 전체 허용. "<server>/*".
+SERVER_WILDCARD = "/*"
+
+
+class InvalidToolRef(ValueError):
+    """workflow step 의 server/tool 이 exact 가 아니다. 잘못 만들어진 실행 계획이다."""
+
+
+def gateway_scope(headers) -> dict | None:
+    """요청 헤더에서 Gateway 가 넣은 사용자 범위만 꺼냄.
+
+    입력  요청 헤더(이름의 대소문자를 가리지 않는 mapping)
+    출력  {헤더 이름: 받은 값} — GATEWAY_SCOPE_HEADERS 중 온 것만. 하나도 없으면 None
+    제약  값을 고치거나 채우지 않는다. 받은 그대로 KRRI 에 넘길 것이다
+    """
+    scope = {name: headers[name] for name in GATEWAY_SCOPE_HEADERS if name in headers}
+    return scope or None
+
+
+def tool_refs_outside(steps: list[dict], scope: dict) -> list[str]:
+    """workflow 가 부를 도구 중 Gateway 범위 밖인 것.
+
+    입력  workflow steps · gateway_scope 가 꺼낸 범위
+    출력  범위 밖 "<server>/<tool>" (소문자, steps 차례)
+    규칙  부를 도구 = lower(server_id) + "/" + lower(tool). exact 여야 함
+          허용 = X-User-MCP-Tools 를 쉼표로 나눈 것(소문자). Gateway contract 그대로
+          exact "<server>/<tool>" 과 "<server>/*" 둘만 뜻이 있음
+          X-User-MCP-Tools 가 없거나 __none__ 이면 허용이 비어 전부 밖임
+    제약  부를 도구에 "*" 가 있으면 InvalidToolRef. 실행 계획이 도구를 정하지 못한 것이다
+    """
+    allowed = {
+        ref.strip().lower()
+        for ref in scope.get(SELECTED_TOOLS_HEADER, "").split(",")
+        if ref.strip() and ref.strip() != NONE_SELECTED
+    }
+    outside = []
+    for step in steps:
+        server = str(step["server_id"]).lower()
+        ref = f"{server}/{str(step['tool']).lower()}"
+        if "*" in ref:
+            raise InvalidToolRef(ref)
+        if ref not in allowed and server + SERVER_WILDCARD not in allowed:
+            outside.append(ref)
+    return outside
 
 
 def _result(answer: str, commands: list, status: str | None = None) -> dict:
@@ -62,7 +138,7 @@ def _result(answer: str, commands: list, status: str | None = None) -> dict:
     return result
 
 
-async def run(materialized: dict, text: str):
+async def run(materialized: dict, text: str, user_scope: dict | None = None):
     """완성된 KRRI native workflow 한 벌을 KRRI 실행 창구로 부름. 이벤트를 차례로 냄.
 
     입력  workflow_materializer.materialize 가 READY 로 낸 것 · 발화 원문
@@ -81,6 +157,10 @@ async def run(materialized: dict, text: str):
           한 단계가 실패하면 KRRI 가 거기서 멈춤. trace 에 그 단계까지만
           담기므로 이벤트도 거기까지만 나감
           KRRI 창구를 못 부르면 단계 이벤트 없이 EXECUTOR_UNREACHABLE
+          user_scope(gateway_scope 결과)가 있으면 그 여섯 값을 그대로 KRRI 에 넘김.
+          도구 하나라도 범위 밖이면 KRRI 를 안 부르고 TOOL_NOT_SELECTED. 밖인 refs 는
+          로그에만 남김. 부를 도구가 exact 가 아니면 KRRI 를 안 부르고 INVALID_WORKFLOW
+          user_scope 가 None 이면 범위로 막지 않고 STANDALONE_USER_CONTEXT 로 부름
     제약  KRRI 의 answer 를 다시 쓰지 않는다. 실제 실행의 답은 KRRI 가 주인이다
           도구 결과를 읽어 성공 · 실패를 다시 가르지 않는다
           KRRI 를 못 불렀을 때 다른 실행기로 돌아가지 않는다
@@ -96,12 +176,29 @@ async def run(materialized: dict, text: str):
         yield _result(local_presentation.NOTHING_RAN, commands)
         return
 
+    if user_scope is None:
+        headers = krri_executor_client.identity_headers(STANDALONE_USER_CONTEXT)
+    else:
+        try:
+            outside = tool_refs_outside(intent["steps"], user_scope)
+        except InvalidToolRef as exc:
+            logger.error("exact 가 아닌 도구를 부르는 workflow 라 KRRI 를 부르지 않는다: %s %s",
+                         materialized.get("recipe_id"), exc)
+            yield _result(local_presentation.INVALID_WORKFLOW, [])
+            return
+        if outside:
+            logger.warning("사용자 MCP 범위 밖 도구라 KRRI 를 부르지 않는다: %s %s",
+                           materialized.get("recipe_id"), outside)
+            yield _result(local_presentation.TOOL_NOT_SELECTED, [])
+            return
+        headers = user_scope
+
     try:
         executed = await krri_executor_client.execute_workflow(
             intent,
             user_text=text,
             context=materialized["context"],
-            user_context=USER_CONTEXT,
+            headers=headers,
         )
     except krri_executor_client.KrriExecutorError as exc:
         logger.error("KRRI 실행 창구를 부르지 못했다: %s", exc)

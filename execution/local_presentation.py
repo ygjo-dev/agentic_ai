@@ -12,6 +12,7 @@
     고른 것을 지금 못 부른다  workflow_materializer 가 READY 아닌 판정 — unready_answer
     지도 명령만 있다          NOTHING_RAN. KRRI 를 안 부른다
     KRRI 창구를 못 불렀다     EXECUTOR_UNREACHABLE
+    부를 도구를 막았다        TOOL_NOT_SELECTED · INVALID_WORKFLOW. KRRI 를 안 부른다
     단계 진행 표시            step_start · command_start · step_end
 
 **여기는 온톨로지를 읽지 않는다.** 사람에게 보일 노드 이름은 부르는 쪽이 넘긴 것만
@@ -38,6 +39,13 @@ NOTHING_RAN = "화면에 표시했습니다."
 # KRRI 실행 창구를 못 불렀을 때의 답. 실행 여부를 모르므로 단계 목록이 없다.
 # 주소 · 오류 원문을 적지 않는다 — 원인은 로그(execution.krri_executor_client)에 있다.
 EXECUTOR_UNREACHABLE = "실행 서비스에 연결하지 못했습니다. 잠시 후 다시 시도해 주세요."
+
+# KRRI_ASAP 채팅에서 workflow 가 부를 도구가 사용자가 적용한 MCP 범위 밖일 때의 답. KRRI 를
+# 안 부른다. 어느 도구가 빠졌는지는 적지 않는다 — 로그(execution.workflow_execution)에 있다.
+TOOL_NOT_SELECTED = "이 기능에 필요한 MCP가 적용되어 있지 않아 실행하지 않았습니다."
+
+# 실행 계획이 부를 도구를 exact 로 정하지 못했을 때의 답. KRRI 를 안 부른다.
+INVALID_WORKFLOW = "실행 계획이 올바르지 않아 실행하지 않았습니다."
 
 # 맞는 경로가 없을 때의 첫 줄.
 NO_MATCH_HEADLINE = "지금 할 수 있는 일 중에 맞는 것이 없습니다."

@@ -107,7 +107,7 @@ def entry(monkeypatch):
         calls.append({"text": text, "llm_client": llm_client, "role": role, "continue_after_resolve": False})
         return RESOLVED
 
-    async def fake_stream(text, llm_client, role, context):
+    async def fake_stream(text, llm_client, role, context, user_scope=None):
         calls.append({"text": text, "llm_client": llm_client, "role": role, "context": context,
                       "continue_after_resolve": True})
         for payload in EVENTS:
@@ -127,7 +127,7 @@ def counted(monkeypatch):
         seen["resolve"].append((text, llm_client, role))
         return seen["answer"]
 
-    async def fake_run(materialized, text):
+    async def fake_run(materialized, text, user_scope=None):
         seen["run"].append(materialized)
         yield {"type": "result", "answer": "끝", "commands": []}
 
@@ -363,7 +363,7 @@ def test_no_endpoint_takes_a_model_to_swap_the_role_for():
     """
     for endpoint, expected in (
         (main.resolve_endpoint, ["utterance"]),
-        (main.chat_stream_endpoint, ["form"]),
+        (main.chat_stream_endpoint, ["form", "request"]),
     ):
         assert list(inspect.signature(endpoint).parameters) == expected, endpoint.__name__
     assert "model" not in inspect.signature(main._process).parameters
