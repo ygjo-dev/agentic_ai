@@ -8,7 +8,7 @@
     → 온톨로지 관계가 이어질 수 있는지 말한다
     → 노드의 tool 이 MCP 서버 · 도구 · 인자에 잇는다 (agentic_ai 밖에서 compile 해 게시 = Recipe.execution)
     → 요청 중에 Recipe.execution + 이번 요청의 값 = KRRI native call_mcp_workflow (materialize)
-    → KRRI_ASAP /workflow/execute 가 실행하고 답한다 (execution.workflow_execution 이 그대로 넘김)
+    → KRRI_ASAP /workflow/execute/stream 이 실행하고 답한다 (execution.workflow_execution 이 그대로 넘김)
     → 답 · API · 화면
 
 여기서 지키는 것은 그 길의 이음매와 저장소 경계다.

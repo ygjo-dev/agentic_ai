@@ -292,6 +292,21 @@ def test_an_answer_without_numbered_lines_still_keeps_its_steps():
     assert turn["answer"] == KRRI_ANSWER
 
 
+def test_answer_deltas_pass_through_untouched_and_only_the_final_answer_is_kept():
+    """KRRI 가 답을 만드는 동안의 조각은 그대로 흘려보내되 기록하지 않는다. 남는 답은 result 의 답이다."""
+    events = executed(answer=KRRI_ANSWER)
+    조각 = [{"type": "answer_delta", "text": "오송역 주변"}, {"type": "answer_delta", "text": " 15km 안에서 일부"}]
+    흐름 = events[:-1] + 조각 + events[-1:]
+
+    out = turn_of("오송역 CCTV 보여줘", 흐름, resolve=resolved())
+
+    assert out == 흐름
+    turn = recent_service.since()["turns"][-1]
+    assert turn["answer"] == KRRI_ANSWER
+    assert [step["node"] for step in turn["steps"]] == ["resolve", "n_geocode", "n_cctv"]
+    assert "answer_delta" not in json.dumps(turn, ensure_ascii=False)
+
+
 def test_numbered_lines_in_the_answer_are_not_taken_for_steps():
     """답의 "1. " 줄은 답의 일부다. 단계 수 · 내용이 답에서 오지 않는다."""
     turn_of("오송역 CCTV 보여줘", executed(answer=ANSWER), resolve=resolved())

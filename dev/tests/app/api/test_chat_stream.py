@@ -4,7 +4,7 @@
 --execute 도 이쪽을 부른다.
 
 지키는 것은 다섯이다.
-  이벤트 순서 — step_start · step_end 가 짝으로, 마지막이 result
+  이벤트 순서 — step_start · step_end 가 짝으로, 답 조각(answer_delta)은 그 뒤, 마지막이 result
   SSE 틀 — "data: " 접두어 · 이벤트마다 빈 줄 · 마지막 [DONE]
   content-type 이 text/event-stream 이다
   ensure_ascii 가 꺼져 한글이 그대로 나간다 (main.py 가 적은 제약이다)
@@ -130,6 +130,24 @@ def test_step_events_flow_in_order_and_the_last_one_is_DONE(client):
 
     assert kinds == [payload["type"] for payload in EVENTS]
     assert kinds[-1] == "result", "result 뒤에 다른 이벤트가 오면 안 된다"
+
+
+def test_answer_deltas_go_out_between_the_steps_and_the_result_untouched(client, monkeypatch):
+    """KRRI 가 답을 만드는 동안 보낸 조각은 answer_delta 로 그대로 나간다. result 는 여전히 하나이고 마지막이다."""
+    조각 = [{"type": "answer_delta", "text": "오송역 CCTV 를 "}, {"type": "answer_delta", "text": "조회했습니다."}]
+
+    async def with_deltas(text, llm_client, role, context, user_scope=None):
+        for payload in EVENTS[:-1] + 조각 + EVENTS[-1:]:
+            yield payload
+
+    monkeypatch.setattr(main, "_stream", with_deltas)
+    raw = client.post("/chat/stream", json=BODY).text
+    result = sse_result(raw)
+
+    bodies = [json.loads(block[len("data: "):]) for block in raw.split("\n\n")
+              if block and block != "data: [DONE]"]
+    assert bodies == EVENTS[:-1] + 조각 + EVENTS[-1:]
+    assert result["answer"] == ANSWER
 
 
 def test_the_media_type_is_event_stream(client):

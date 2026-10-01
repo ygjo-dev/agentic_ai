@@ -2,7 +2,7 @@
 
 두 갈래이고 섞지 않는다.
   KRRI_ASAP 채팅   Gateway 가 X-User-* 여섯 값을 넣는다. 그 사용자가 적용한 범위 밖 도구면
-                   KRRI 를 안 부르고, 안이면 여섯 값을 그대로 KRRI /workflow/execute 에 싣는다
+                   KRRI 를 안 부르고, 안이면 여섯 값을 그대로 KRRI /workflow/execute/stream 에 싣는다
   직접 호출        X-User-* 가 없다(KRRI EASY MCPs 「AI로 사용해보기」). 도구함과 무관하게
                    standalone 신원으로 부른다
 body 의 context 는 어느 갈래에서도 범위가 아니다.
@@ -61,8 +61,10 @@ def krri(monkeypatch):
         requests.append(request)
         steps = json.loads(request.content)["workflow"]["steps"]
         trace = [{"id": s["id"], "server_id": s["server_id"], "tool": s["tool"], "input": {}, "result": {}} for s in steps]
-        return httpx.Response(200, json={"status": "success", "answer": KRRI_ANSWER, "commands": [],
-                                         "trace": trace, "errors": []})
+        result = {"type": "result", "status": "success", "answer": KRRI_ANSWER, "commands": [],
+                  "trace": trace, "errors": []}
+        return httpx.Response(200, text=f"data: {json.dumps(result, ensure_ascii=False)}\r\n\r\ndata: [DONE]\r\n\r\n",
+                              headers={"content-type": "text/event-stream"})
 
     real = httpx.AsyncClient
     monkeypatch.setattr(
@@ -98,7 +100,7 @@ def test_the_selected_tool_runs_and_the_six_gateway_headers_reach_krri_as_they_c
 
 
 def test_a_tool_the_user_did_not_select_is_not_sent_to_krri(krri):
-    """CASE 2 — 고른 범위에 부를 도구가 없으면 KRRI /workflow/execute 를 안 부른다."""
+    """CASE 2 — 고른 범위에 부를 도구가 없으면 KRRI /workflow/execute/stream 을 안 부른다."""
     result = chat(gateway("asap-mcp-core/adminboundary.searchboundaries"))
 
     assert krri == []

@@ -1,7 +1,7 @@
 """KRRI_ASAP 이 실행하지 않은 자리에서 agentic_ai 가 사람에게 보이는 문구.
 
 **실제로 실행한 워크플로의 답은 여기서 만들지 않는다.** 그 답은 KRRI_ASAP
-/workflow/execute 가 만들고 execution.workflow_execution 이 그대로 넘긴다. 성공인지
+/workflow/execute/stream 이 만들고 execution.workflow_execution 이 그대로 넘긴다. 성공인지
 실패인지도 KRRI 가 정한다. 여기에는 trace 를 읽어 답을 짓거나 결과를 성공 · 빈 결과 ·
 오류로 가르는 함수가 없고, 앞으로도 두지 않는다.
 

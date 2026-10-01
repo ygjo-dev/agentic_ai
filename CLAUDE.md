@@ -20,8 +20,8 @@ KRRI_ASAP 화면이 `/chat/stream` 을 부르는 길이다.
 → 노드의 tool(온톨로지)이 노드를 MCP 서버 · 도구 · 인자에 잇는다
   (agentic_ai 밖의 등록 저장소가 compile 해 게시한다 = Recipe.execution)
 → 요청 중에는 Recipe.execution 에 이번 요청의 값을 채워 KRRI native call_mcp_workflow 로 만든다
-→ KRRI_ASAP Orchestrator POST /workflow/execute 가 실행하고 답한다 (execution/workflow_execution 이 넘김)
-→ agentic_ai 가 KRRI 답을 그대로 SSE 로 낸다 · API · 화면
+→ KRRI_ASAP Orchestrator POST /workflow/execute/stream 이 실행하고 답한다 (execution/workflow_execution 이 넘김)
+→ agentic_ai 가 KRRI 답을 그대로 SSE 로 낸다 (Gemini 가 만드는 조각은 answer_delta) · API · 화면
 ```
 
 이 길의 이음매가 계약이다. **깨면 안 된다.**
@@ -67,14 +67,17 @@ materialize         Recipe.execution + spoken · context · runtime -> 완성된
   부를 수 없으면 문장이 아니라 status · missing 을 돌려준다
 - **실행은 KRRI_ASAP 이 한다.** `execution/workflow_execution.py` 가 완성된 workflow 를
   `execution/krri_executor_client.py`(얇은 HTTP client)로 KRRI_ASAP Orchestrator 의
-  `POST /workflow/execute` 에 그대로 넘긴다. agentic_ai 안에 KRRI 실행기 사본이 없다.
+  `POST /workflow/execute/stream` 에 그대로 넘긴다. agentic_ai 안에 KRRI 실행기 사본이 없다.
   KRRI 를 못 부르면 다른 실행기로 돌아가지 않고 실행 서비스 연결 실패로 답한다.
   KRRI_ASAP 에 agentic_ai 의 기호 해석기를 넣지 않고, KRRI Python 모듈을 import 하지 않는다
 - **실제로 실행한 답은 KRRI_ASAP 이 주인이다.** 성공이든 실패든 KRRI 가 돌려준 answer 를
   그대로 낸다. 단계의 성공 · 실패도 KRRI 가 trace 에 적은 error 칸으로만 안다 — 도구 결과를
   다시 읽어 판정하거나 답을 다시 쓰지 않는다
-- **step_start / step_end 는 KRRI 가 끝난 뒤 trace 로 낸다.** 창구가 스트리밍이 아니라
-  한 번에 돌려주므로 단계 한 쌍이 recipe 순서대로 나가지만 시각은 실제 호출 시각이 아니다.
+- **step_start / step_end 는 KRRI 가 도구를 다 부른 뒤 trace 로 낸다.** KRRI 는 도구 실행을
+  끝내고 execution 이벤트에 trace 를 한 번에 담아 보내므로 단계 한 쌍이 recipe 순서대로
+  나가지만 시각은 실제 호출 시각이 아니다. 그 뒤 KRRI 가 Gemini 최종 답을 만드는 동안 보내는
+  조각은 `answer_delta` 로 text 그대로 넘긴다. 완성된 답의 원본은 result 의 answer 다.
+  MCP 도구 자체를 스트리밍하는 것은 아니다
   지도 명령은 KRRI 가 돌려준 것 뒤에 materializer 의 지도 명령을 붙인다
 - **실행 기록은 이벤트 칸이다. 답 문장이 아니다.** step_end 의 `failed` 는 KRRI trace 의
   error 칸, result 의 `status` 는 KRRI 응답의 status 그대로다(KRRI 가 돈 때만 있다).
@@ -162,7 +165,8 @@ agentic_ai 가 안 갖는 것     노드 등록 · 후보 recipe 생성 · 받�
 않는다.** 고쳐야 하면 그쪽에서 새 브랜치를 판다.
 
 KRRI 실행기 코드를 이 저장소에 복사해 오지 않는다. 두 저장소 사이의 실행 계약은
-`POST /workflow/execute` 하나다(`execution/krri_executor_client.py`).
+`POST /workflow/execute/stream` 하나다(`execution/krri_executor_client.py`). 같은 실행을
+한 번에 돌려주는 `POST /workflow/execute` 도 KRRI 에 남아 있다.
 
 ### git push
 

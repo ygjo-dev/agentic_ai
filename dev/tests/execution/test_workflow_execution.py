@@ -1,7 +1,7 @@
 """대상 : execution/workflow_execution.py — 완성된 KRRI native workflow 를 KRRI 실행 창구에 맡기고 이벤트로 낸다
 
-여기서 판단하지 않는다. workflow 를 고치지 않고 넘기고, 돌아온 trace 로 단계 이벤트를,
-KRRI 의 answer 로 마지막 result 를 낸다. workflow 를 만드는 규칙은
+여기서 판단하지 않는다. workflow 를 고치지 않고 넘기고, KRRI execution 이벤트의 trace 로 단계
+이벤트를, KRRI 의 답변 조각을 answer_delta 로, KRRI 의 result 로 마지막 result 를 낸다. workflow 를 만드는 규칙은
 test_workflow_materializer.py 가, HTTP 로 나르는 일은 test_krri_executor_client.py 가 본다.
 
 LLM 도 KRRI 도 부르지 않는다. KRRI 실행 창구는 가짜로 준다.
@@ -62,8 +62,8 @@ def krri_success(workflow, commands=(KRRI_COMMAND,)):
     }
 
 
-def fake_krri(called, respond=krri_success):
-    """KRRI 실행 창구 대역. 받은 것을 남기고 respond 가 만든 응답을 돌려준다."""
+def fake_krri(called, respond=krri_success, deltas=()):
+    """KRRI 실행 창구 스트림 대역. 받은 것을 남기고 respond 가 만든 실행을 execution · 조각 · result 로 낸다."""
 
     async def fake(workflow, *, user_text, context, headers):
         called.append({
@@ -72,7 +72,11 @@ def fake_krri(called, respond=krri_success):
             "context": context,
             "headers": headers,
         })
-        return respond(workflow)
+        executed = respond(workflow)
+        yield {"type": "execution", **{name: value for name, value in executed.items() if name != "answer"}}
+        for text in deltas:
+            yield {"type": "answer_delta", "text": text}
+        yield {"type": "result", **executed}
 
     return fake
 
@@ -80,7 +84,7 @@ def fake_krri(called, respond=krri_success):
 def test_the_workflow_goes_to_krri_as_it_was_materialized(monkeypatch):
     """기호를 풀거나 참조 · inputAdapter 를 정하지 않는다. 받은 한 벌이 그대로 나간다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
     materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
     before = copy.deepcopy(materialized["workflow"])
 
@@ -95,7 +99,7 @@ def test_the_workflow_goes_to_krri_as_it_was_materialized(monkeypatch):
 def test_server_tool_order_refs_and_adapter_are_untouched(monkeypatch):
     """KRRI 가 받는 steps 의 서버 · 도구 · 차례 · raw 참조 · inputAdapter 가 materializer 가 적은 그대로다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
     materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
 
     collect(workflow_execution.run(materialized, ""))
@@ -114,7 +118,7 @@ def test_server_tool_order_refs_and_adapter_are_untouched(monkeypatch):
 def test_the_context_goes_to_krri(monkeypatch):
     """화면 문맥은 KRRI 가 $context 참조를 푸는 재료다. 받은 그대로 나간다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
     context = {"selectedLocation": {"lon": 127.3, "lat": 36.6}}
     materialized = ready(CCTV_AROUND_A_PLACE, "오송역", context)
 
@@ -131,7 +135,7 @@ def test_a_standalone_call_goes_out_with_the_standalone_identity(monkeypatch):
     applied for this user." 다.
     """
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
 
     collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -141,7 +145,7 @@ def test_a_standalone_call_goes_out_with_the_standalone_identity(monkeypatch):
 
 def test_a_step_pair_goes_out_for_every_step_krri_ran(monkeypatch):
     """단계마다 한 쌍이 recipe 순서대로 나감. 마지막은 반드시 result."""
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([]))
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -157,11 +161,71 @@ def test_a_step_pair_goes_out_for_every_step_krri_ran(monkeypatch):
 
 def test_the_krri_success_answer_goes_out_as_it_is(monkeypatch):
     """실제로 실행한 답은 KRRI 가 주인이다. 우리 문구로 다시 쓰지 않는다."""
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([]))
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
     assert events[-1]["answer"] == KRRI_ANSWER
+
+
+def test_krri_answer_deltas_go_out_untouched_between_the_steps_and_the_result(monkeypatch):
+    """KRRI 가 답을 만드는 동안 보낸 조각은 text 그대로 answer_delta 로 나간다. 단계 뒤, result 앞이다."""
+    조각 = ["  오송역 주변", " 15km 안에서\n", "CCTV 3대를 찾았습니다. (KRRI)"]
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([], deltas=조각))
+
+    events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    kinds = [event["type"] for event in events]
+    assert kinds == ["step_start", "step_end", "step_start", "step_end",
+                     "answer_delta", "answer_delta", "answer_delta", "result"]
+    assert [event for event in events if event["type"] == "answer_delta"] == [
+        {"type": "answer_delta", "text": text} for text in 조각
+    ]
+    assert events[-1]["answer"] == KRRI_ANSWER, "result 는 KRRI 의 result 다. 조각을 모아 만들지 않는다"
+
+
+def test_each_event_goes_out_as_soon_as_krri_sends_it(monkeypatch):
+    """KRRI 스트림을 다 받은 뒤 내지 않는다. 첫 조각이 나간 뒤에야 KRRI 가 다음 조각을 낸다."""
+    sent_first = asyncio.Event()
+
+    async def gated(workflow, **kwargs):
+        executed = krri_success(workflow)
+        yield {"type": "execution", **{k: v for k, v in executed.items() if k != "answer"}}
+        yield {"type": "answer_delta", "text": "첫 조각"}
+        await asyncio.wait_for(sent_first.wait(), timeout=2)
+        yield {"type": "answer_delta", "text": " 둘째"}
+        yield {"type": "result", **executed}
+
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", gated)
+
+    async def pump():
+        out = []
+        async for event in workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""):
+            out.append(event)
+            if event == {"type": "answer_delta", "text": "첫 조각"}:
+                sent_first.set()
+        return out
+
+    events = asyncio.run(pump())
+    assert [e["text"] for e in events if e["type"] == "answer_delta"] == ["첫 조각", " 둘째"]
+
+
+def test_a_stream_cut_after_the_steps_ends_with_the_unreachable_answer(monkeypatch):
+    """단계 · 조각이 나간 뒤 스트림이 끊기면 KRRI result 가 없다. 우리 문구로 끝내고 판정을 지어내지 않는다."""
+
+    async def cut(workflow, **kwargs):
+        executed = krri_success(workflow)
+        yield {"type": "execution", **{k: v for k, v in executed.items() if k != "answer"}}
+        yield {"type": "answer_delta", "text": "일부"}
+        raise krri_executor_client.KrriExecutorError("result 없이 끝났다")
+
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", cut)
+
+    events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
+
+    assert [e["type"] for e in events] == ["step_start", "step_end", "step_start", "step_end", "answer_delta", "result"]
+    assert events[-1]["answer"] == local_presentation.EXECUTOR_UNREACHABLE
+    assert "status" not in events[-1]
 
 
 def test_the_krri_failure_answer_goes_out_as_it_is(monkeypatch):
@@ -181,7 +245,7 @@ def test_the_krri_failure_answer_goes_out_as_it_is(monkeypatch):
             "errors": [KRRI_FAILURE],
         }
 
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], failed))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([], failed))
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -197,7 +261,7 @@ def test_the_krri_status_rides_on_the_result_as_it_came(monkeypatch, status):
     def judged(workflow):
         return {**krri_success(workflow), "status": status}
 
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], judged))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([], judged))
 
     result = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))[-1]
 
@@ -221,7 +285,7 @@ def test_a_step_end_carries_failed_exactly_where_krri_wrote_an_error(monkeypatch
             "errors": [KRRI_FAILURE],
         }
 
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], failed))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([], failed))
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -231,7 +295,7 @@ def test_a_step_end_carries_failed_exactly_where_krri_wrote_an_error(monkeypatch
 
 def test_krri_commands_come_first_and_materialized_commands_follow(monkeypatch):
     """지도 명령은 KRRI 가 도구 응답에서 만든 것 뒤에 우리 지도 명령이 붙는다. 순서가 경로 순서다."""
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([]))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([]))
     materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
     local = {"op": "digitalTwin.showFacility", "args": {"facilityName": "오송역"}}
     materialized = {**materialized, "commands": [local]}
@@ -247,8 +311,9 @@ def test_an_unreachable_krri_gets_a_local_answer_and_no_fallback(monkeypatch, re
 
     async def unreachable(workflow, **kwargs):
         raise krri_executor_client.KrriExecutorError(reason)
+        yield  # async generator 로 만든다
 
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", unreachable)
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", unreachable)
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -264,7 +329,7 @@ def test_a_map_command_only_run_never_reaches_krri(monkeypatch):
     KRRI_ASAP 의 show-facility plugin 에도 `## Run` 절이 없다.
     """
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
 
     events = collect(workflow_execution.run(ready(["place_name", "show_facility"], "오송 테스트트랙"), ""))
 
@@ -309,7 +374,7 @@ def test_a_step_is_marked_failed_only_where_krri_wrote_an_error(monkeypatch):
             "errors": [],
         }
 
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri([], judged_by_krri))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri([], judged_by_krri))
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), ""))
 
@@ -362,7 +427,7 @@ def steps(*refs):
 def test_a_gateway_scope_that_holds_every_tool_calls_krri_once_with_that_scope(monkeypatch):
     """CASE 1 — 부를 도구가 모두 범위 안이면 KRRI 를 한 번, 받은 여섯 값 그대로 부른다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
     scope = gateway("asap-mcp-core/geo.geocode,asap-mcp-core/road.getcctv")
 
     events = collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), "", scope))
@@ -375,7 +440,7 @@ def test_a_gateway_scope_that_holds_every_tool_calls_krri_once_with_that_scope(m
 def test_a_tool_outside_the_gateway_scope_stops_before_krri(monkeypatch, caplog):
     """CASE 2 — 하나라도 밖이면 KRRI 를 안 부른다. 밖인 refs 는 로그에만 남는다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
 
     events = collect(workflow_execution.run(
         ready(CCTV_AROUND_A_PLACE, "오송역"), "", gateway("asap-mcp-core/geo.geocode")))
@@ -417,7 +482,7 @@ def test_a_wildcard_in_a_tool_to_call_is_an_invalid_workflow(monkeypatch):
         workflow_execution.tool_refs_outside(steps("asap-mcp-core/*"), gateway("asap-mcp-core/*"))
 
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
     materialized = ready(CCTV_AROUND_A_PLACE, "오송역")
     materialized["workflow"]["steps"][0]["tool"] = "*"
 
@@ -447,7 +512,7 @@ def test_a_gateway_scope_without_the_tools_header_allows_no_tool():
 def test_system_tools_the_gateway_adds_run_with_an_empty_selection(monkeypatch):
     """Gateway 는 selection 이 비어도 SYSTEM_MCP_TOOL_REFS 를 적는다. 그 정책을 그대로 따른다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
     system_only = workflow_materializer.materialize("recipe_005", {"argument": "세종시"})
     needs_geocode = workflow_materializer.materialize("recipe_001", {"argument": "오송역"})
 
@@ -461,7 +526,7 @@ def test_system_tools_the_gateway_adds_run_with_an_empty_selection(monkeypatch):
 def test_the_standalone_call_is_never_stopped_by_a_scope(monkeypatch):
     """CASE 6 — Gateway 범위가 없으면 도구함 등록과 무관하게 부른다."""
     called = []
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_krri(called))
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
 
     collect(workflow_execution.run(ready(CCTV_AROUND_A_PLACE, "오송역"), "", None))
 

@@ -320,9 +320,9 @@ def test_the_chosen_recipe_runs_from_its_published_plan_without_reading_the_onto
     async def fake_workflow(workflow, **kwargs):
         called.append(workflow)
         trace = [{"id": step["id"], "tool": step["tool"], "result": {}} for step in workflow["steps"]]
-        return {"status": "success", "answer": "답", "commands": [], "trace": trace, "errors": []}
+        yield {"type": "result", "status": "success", "answer": "답", "commands": [], "trace": trace, "errors": []}
 
-    monkeypatch.setattr(krri_executor_client, "execute_workflow", fake_workflow)
+    monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_workflow)
     monkeypatch.setattr(
         main.resolve_service, "resolve",
         lambda text, llm_client, role: {**RESOLVED, "recipe_id": spoken, "candidate_recipe_ids": [spoken]},

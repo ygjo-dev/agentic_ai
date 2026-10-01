@@ -2,7 +2,7 @@
 
 **라우팅과 요청 한 건의 얇은 흐름만 둔다.** 발화 한 건은 _process 에서
 해석(orchestrator.resolve_service) -> workflow(execution.workflow_materializer) ->
-실행(execution.workflow_execution -> KRRI_ASAP /workflow/execute) 차례로 지난다. 실제로 실행한
+실행(execution.workflow_execution -> KRRI_ASAP /workflow/execute/stream) 차례로 지난다. 실제로 실행한
 답은 KRRI_ASAP 이 만들고, KRRI 까지 안 간 자리의 답은 execution.local_presentation 이 만든다.
 도메인 로직은 각 모듈과 app/api/services/ 가, 오류 매핑은 아래 미들웨어가 맡는다.
 엔드포인트마다 같은 try/except 를 반복하면 한 곳을 고칠 때 나머지를 빠뜨리게 된다.
@@ -193,7 +193,8 @@ def _resolve(text: str, llm_client, role) -> dict:
 async def _stream(text: str, llm_client, role, context: dict | None, user_scope: dict | None = None):
     """/chat/stream 한 건. 해석 -> 실행 전제 -> workflow -> 실행 -> result.
 
-    출력  해석 단계의 step_start / step_end, 실행 단계마다 한 쌍, 마지막은 type=result
+    출력  해석 단계의 step_start / step_end, 실행 단계마다 한 쌍, KRRI 가 답을 만드는 동안의
+          answer_delta, 마지막은 type=result
     규칙  해석 단계의 step_start 가 LLM 을 부르기 전에 나감. 부르는 화면이 기다리는
           동안 진행 상황을 그림
           해석은 한 번만 하고 그 결과 하나로 끝까지 감
@@ -238,7 +239,9 @@ async def _stream(text: str, llm_client, role, context: dict | None, user_scope:
 async def chat_stream_endpoint(form: ChatRequest, request: Request) -> StreamingResponse:
     """발화 한 건의 답을 SSE 로 흘려보냄. **KRRI_ASAP 시스템이 부르는 유일한 창구다.**
 
-    출력  text/event-stream. step_start · step_end · result · [DONE] 순서
+    출력  text/event-stream. step_start · step_end · (answer_delta …) · result · [DONE] 순서
+          answer_delta 는 KRRI 가 최종 답을 만드는 동안 보낸 조각(text). 모르는 화면은
+          버려도 됨. 완성된 답은 result 의 answer
     규칙  /resolve 와 같은 진입점(_process)을 continue_after_resolve=True 로 지남
           step_start 와 step_end 가 recipe 의 실행 단계마다 한 쌍씩 나감.
           해석(resolve)도 한 단계로 나감. 부르는 화면이 진행 상황을 그림
