@@ -524,7 +524,7 @@ def test_system_tools_the_gateway_adds_run_with_an_empty_selection(monkeypatch):
 
 
 def test_the_standalone_call_is_never_stopped_by_a_scope(monkeypatch):
-    """CASE 6 — Gateway 범위가 없으면 도구함 등록과 무관하게 부른다."""
+    """CASE 6 — Gateway 범위가 없으면 내 MCP 등록과 무관하게 부른다."""
     called = []
     monkeypatch.setattr(krri_executor_client, "stream_workflow", fake_krri(called))
 

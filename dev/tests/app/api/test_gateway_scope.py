@@ -3,7 +3,7 @@
 두 갈래이고 섞지 않는다.
   KRRI_ASAP 채팅   Gateway 가 X-User-* 여섯 값을 넣는다. 그 사용자가 적용한 범위 밖 도구면
                    KRRI 를 안 부르고, 안이면 여섯 값을 그대로 KRRI /workflow/execute/stream 에 싣는다
-  직접 호출        X-User-* 가 없다(KRRI EASY MCPs 「AI로 사용해보기」). 도구함과 무관하게
+  직접 호출        X-User-* 가 없다(KRRI EASY MCPs 「AI로 사용해보기」). 내 MCP과 무관하게
                    standalone 신원으로 부른다
 body 의 context 는 어느 갈래에서도 범위가 아니다.
 

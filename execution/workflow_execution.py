@@ -33,12 +33,12 @@ recipe 순서대로 나가는 것은 그대로지만, 시각이 실제 호출 �
 **누구의 범위로 부르는지는 두 갈래이고 섞지 않는다.**
 
     Gateway 범위      KRRI_ASAP 채팅. Gateway 가 /chat/stream 에 X-User-* 를 넣어 보낸다
-                      (GATEWAY_SCOPE_HEADERS). 그 사용자가 도구함 · MCP 화면에서 적용한
+                      (GATEWAY_SCOPE_HEADERS). 그 사용자가 내 MCP · MCP 화면에서 적용한
                       범위다. 받은 여섯 값을 그대로 KRRI 에 넘기고, 넘기기 전에 workflow 의
                       도구가 모두 그 범위 안에 있는지 본다(tool_refs_outside). 밖이면 KRRI 를
                       부르지 않는다
     standalone 범위   X-User-* 가 하나도 없는 직접 호출. KRRI EASY MCPs 의 「AI로 사용해보기」가
-                      그렇다. 도구함 등록과 무관하게 돌아야 하므로 범위로 막지 않고
+                      그렇다. 내 MCP 등록과 무관하게 돌아야 하므로 범위로 막지 않고
                       STANDALONE_USER_CONTEXT 로 부른다
 
 body 의 context 는 화면 문맥일 뿐이다. 어느 갈래이든 범위를 거기서 읽지 않는다.
