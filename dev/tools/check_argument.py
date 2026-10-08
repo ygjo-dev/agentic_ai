@@ -72,7 +72,7 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import endpoints  # noqa: E402
+import paths  # noqa: E402
 from execution import workflow_materializer  # noqa: E402
 from execution.workflow_execution import STANDALONE_USER_CONTEXT  # noqa: E402
 # check_resolve 의 밑줄 이름을 그대로 가져온다. 발화 목록과 /resolve 부르는
@@ -213,7 +213,7 @@ def _gateway_url() -> str:
     규칙  부를 때마다 읽음. import 시점에 굳히면 .env 를 고치고 이 도구를
           다시 띄워야 함
     """
-    return endpoints.asap_gateway_url()
+    return paths.asap_gateway_url()
 
 
 # 표 칸 폭.

@@ -37,11 +37,13 @@ import requests
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-import endpoints  # noqa: E402
 from dotenv import load_dotenv  # noqa: E402
-from execution.workflow_execution import STANDALONE_USER_CONTEXT  # noqa: E402
 
+# 프로젝트 모듈보다 먼저 읽는다. paths 가 import 시점에 AGENTIC_ARTIFACT_ROOT 를 읽는다.
 load_dotenv(REPO_ROOT / ".env")
+
+import paths  # noqa: E402
+from execution.workflow_execution import STANDALONE_USER_CONTEXT  # noqa: E402
 
 # 도구 목록. 이 저장소 밖이라 --tools 로 바꿀 수 있게 둔다.
 DEFAULT_TOOLS_PATH = REPO_ROOT.parent / "KRRI_ASAP" / "tools.json"
@@ -56,7 +58,7 @@ def gateway_url() -> str:
           부를 때마다 읽음. import 시점에 굳히면 이 모듈을 빌려 쓰는 자
           (probe_shapes)까지 주소를 요구하게 됨
     """
-    return endpoints.asap_gateway_url()
+    return paths.asap_gateway_url()
 
 EXECUTE_PATH = "/api/tools/execute"
 

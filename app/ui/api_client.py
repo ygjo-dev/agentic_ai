@@ -11,7 +11,7 @@
 import requests
 import streamlit as st
 
-import endpoints
+import paths
 
 # 타임아웃은 하는 일에 맞춘다. LLM 이 끼는 호출만 길다.
 SCREEN_TIMEOUT = 10
@@ -44,7 +44,7 @@ def _detail_of(response) -> str:
 
 def _call(method: str, path: str, *, timeout: float, **kwargs) -> dict:
     try:
-        base = endpoints.agentic_api_url()
+        base = paths.agentic_api_url()
         response = requests.request(method, f"{base}{path}", timeout=timeout, **kwargs)
     except requests.exceptions.ConnectionError as exc:
         raise ApiError(str(exc), kind="connection") from exc

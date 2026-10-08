@@ -15,7 +15,7 @@
 manifest 의 값 중 하나라도 뜻을 갖고 바꾸면 version 을 올린다.
 
 **어디에 붙는가**(OLLAMA_URL · VLLM_URL)는 기계마다 다르므로 여기 없다.
-provider 가 부를 설정을 만들 때 endpoints 에서 읽는다.
+provider 가 부를 설정을 만들 때 paths 에서 읽는다.
 
 **캐시하지 않는다.** 서버를 띄운 채 manifest · prompt · schema 를 고치면 다음
 요청부터 반영된다. 대신 get_role_config 한 번이 셋을 함께 읽어 한 벌로 돌려주고,

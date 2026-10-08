@@ -95,7 +95,7 @@ def test_no_wiring_table_stands_beside_the_ontology_and_the_published_plan():
 
 
 def test_every_tool_names_its_server_and_the_ontology_holds_no_address():
-    """tool.id 는 논리 식별이다. 주소 · 포트 · 기계 이름은 배포마다 달라 endpoints.py 가 갖는다.
+    """tool.id 는 논리 식별이다. 주소 · 포트 · 기계 이름은 배포마다 달라 paths.py 가 갖는다.
 
     온톨로지에 주소를 적으면 서비스를 다른 기계로 옮길 때 도메인을 고쳐야 한다.
     """

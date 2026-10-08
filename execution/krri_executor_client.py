@@ -28,7 +28,7 @@ import logging
 
 import httpx
 
-import endpoints
+import paths
 
 logger = logging.getLogger(__name__)
 
@@ -100,8 +100,8 @@ async def stream_workflow(workflow: dict, *, user_text: str, context: dict, head
           조각(answer_delta)의 text 를 고치지 않는다
     """
     try:
-        url = endpoints.asap_orchestrator_url() + STREAM_PATH
-    except endpoints.EndpointError as exc:
+        url = paths.asap_orchestrator_url() + STREAM_PATH
+    except paths.EndpointError as exc:
         raise KrriExecutorError(str(exc)) from exc
 
     payload = {"workflow": workflow, "user_text": user_text, "context": context or {}}

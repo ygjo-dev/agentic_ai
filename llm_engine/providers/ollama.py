@@ -9,7 +9,7 @@ import json
 import urllib.request
 from dataclasses import dataclass
 
-import endpoints
+import paths
 
 
 @dataclass(frozen=True)
@@ -19,7 +19,7 @@ class OllamaConfig:
     model: str
     num_ctx: int          # menu.yaml 길이가 길수록 ↑
     timeout: float        # 호출 하나의 상한(초)
-    host: str             # OLLAMA_URL. 기본값을 두지 않는다 — endpoints 를 본다
+    host: str             # OLLAMA_URL. 기본값을 두지 않는다 — paths 를 본다
 
 
 def config_for(role) -> OllamaConfig:
@@ -36,7 +36,7 @@ def config_for(role) -> OllamaConfig:
         model=role.model,
         num_ctx=role.inference["num_ctx"],
         timeout=role.inference["timeout"],
-        host=endpoints.ollama_url(),
+        host=paths.ollama_url(),
     )
 
 
@@ -61,7 +61,7 @@ def ping(timeout: float = 3) -> bool:
     """
     try:
         with urllib.request.urlopen(
-            f"{endpoints.ollama_url()}/api/tags", timeout=timeout
+            f"{paths.ollama_url()}/api/tags", timeout=timeout
         ):
             return True
     except Exception:  # noqa: BLE001 — 연결 거부 · 타임아웃 · DNS 전부 같은 답이다.

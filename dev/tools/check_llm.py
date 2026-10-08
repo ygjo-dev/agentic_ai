@@ -66,7 +66,6 @@ from dotenv import load_dotenv  # noqa: E402
 # (app/api/main.py 가 같은 까닭으로 같은 자리에 둔다)
 load_dotenv(REPO_ROOT / ".env")
 
-import endpoints  # noqa: E402
 import paths  # noqa: E402
 from dev.tools.check_demo import DEMO, SELECT  # noqa: E402
 from dev.tools.check_resolve import (  # noqa: E402
@@ -92,8 +91,8 @@ from orchestrator import resolve_service  # noqa: E402
 # provider -> (주소를 담은 환경변수 이름, 그 주소를 읽는 자, 살아 있는지 물어볼 경로).
 # 주소를 여기서 다시 적지 않는다. 읽는 곳이 둘이 되면 한쪽만 고쳐도 표가 거짓말을 한다.
 PROBE = {
-    OLLAMA: ("OLLAMA_URL", endpoints.ollama_url, "/api/tags"),
-    VLLM: ("VLLM_URL", endpoints.vllm_url, "/v1/models"),
+    OLLAMA: ("OLLAMA_URL", paths.ollama_url, "/api/tags"),
+    VLLM: ("VLLM_URL", paths.vllm_url, "/v1/models"),
 }
 
 
@@ -140,7 +139,7 @@ def _dry_run(role) -> int:
     env_name, read_url, path = probe
     try:
         host = read_url()
-    except endpoints.EndpointError as error:
+    except paths.EndpointError as error:
         print(f"host      {env_name} 을 못 읽는다 — {error}")
         return 1
     print(f"host      {host}   ({env_name})")

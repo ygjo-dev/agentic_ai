@@ -47,14 +47,15 @@ from dotenv import load_dotenv
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-import endpoints  # noqa: E402
+# 프로젝트 모듈보다 먼저 읽는다. paths 가 import 시점에 AGENTIC_ARTIFACT_ROOT 를 읽는다.
+load_dotenv(REPO_ROOT / ".env")
+
+import paths  # noqa: E402
 from dev.evaluation.engine import load_test_suite, manage_benchmark, monitor_gpu, monitor_metadata, score  # noqa: E402
 from dev.evaluation.engine.monitor_gpu import StopRun  # noqa: E402
 
 OUT_DIR = REPO_ROOT / "dev" / "tools" / "sweep_out"
 KST = monitor_metadata.KST
-
-load_dotenv(REPO_ROOT / ".env")
 
 # 역할 manifest 의 timeout 보다 짧으면 느린 판을 잴 때 서버가 답하기 전에 여기서
 # 끊겨 결과가 오류로만 찬다. 화면의 서비스 호출(app/ui/api_client.RESOLVE_TIMEOUT 180)과 달리
@@ -91,7 +92,7 @@ def base_url() -> str:
     규칙  화면이 부르는 주소와 같아야 결과를 믿을 수 있으므로 같은 환경변수를 봄
           부를 때마다 읽음. import 시점에 굳히면 정답표만 빌려 쓰는 자까지 주소를 요구하게 됨
     """
-    return endpoints.agentic_api_url()
+    return paths.agentic_api_url()
 
 
 def resolve_via_api(utterance: str) -> dict:

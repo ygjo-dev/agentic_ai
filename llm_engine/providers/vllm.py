@@ -22,7 +22,7 @@ import json
 import urllib.request
 from dataclasses import dataclass
 
-import endpoints
+import paths
 
 # reason 상한(200자)에 후보 몇 개면 100 토큰 언저리다. 넉넉하되 작은 상한.
 MAX_TOKENS = 1024
@@ -38,7 +38,7 @@ class VllmConfig:
 
     model: str
     timeout: float        # 호출 하나의 상한(초)
-    host: str             # VLLM_URL. 기본값을 두지 않는다 — endpoints 를 본다
+    host: str             # VLLM_URL. 기본값을 두지 않는다 — paths 를 본다
 
 
 def config_for(role) -> VllmConfig:
@@ -51,7 +51,7 @@ def config_for(role) -> VllmConfig:
           vLLM 을 안 쓰는 배포는 VLLM_URL 이 없어도 뜸
     """
     return VllmConfig(
-        model=role.model, timeout=role.inference["timeout"], host=endpoints.vllm_url()
+        model=role.model, timeout=role.inference["timeout"], host=paths.vllm_url()
     )
 
 

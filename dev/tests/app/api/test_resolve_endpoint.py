@@ -144,8 +144,7 @@ def test_only_the_screen_service_reads_the_user_menu():
     ]
     readers = sorted(
         str(path.relative_to(paths.REPO_ROOT))
-        for path in [*sources("app", "orchestrator", "workflows", "llm_engine", "execution", "ontology"),
-                     paths.REPO_ROOT / "endpoints.py"]
+        for path in sources("app", "orchestrator", "workflows", "llm_engine", "execution", "ontology")
         if "MENU_MD_PATH" in path.read_text(encoding="utf-8")
     )
 

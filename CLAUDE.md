@@ -331,7 +331,8 @@ app/ui/graph/layout.json        app/ui/graph/_init/layout.json   (작업본은 .
 
 ### 계층
 
-- 화면(`app/ui/`)에서 `ontology` · `llm_engine` · `paths` import 0건.
+- 화면(`app/ui/`)에서 `ontology` · `llm_engine` import 0건. `paths` 는 agentic_ai API 주소
+  (`agentic_api_url`)를 읽는 `app/ui/api_client.py` 한 곳만 쓴다.
 - 그리기(`app/ui/graph/`)가 `ontology` 를 직접 읽지 않는다 — 도메인 데이터는
   창구의 `screen_service` 에서만 온다. **`app/` 안에서 온톨로지를 읽는 유일한
   지점이 거기다.**
@@ -393,8 +394,8 @@ schema 는 판 번호를 올린 새 파일로 더한다. 경로는 manifest 에 
 
 ## 서비스 주소
 
-주소를 읽는 유일한 곳이 `endpoints.py` 다. 이름에 **누가 누구를 부르는가**가
-적혀 있다.
+`paths.py` 가 저장소 · 게시 자산 경로와 서비스 주소를 함께 갖는다. 주소를 읽는 유일한 곳도
+거기다. 이름에 **누가 누구를 부르는가**가 적혀 있다.
 
 ```
 OLLAMA_URL         agentic_ai  ->  Ollama
